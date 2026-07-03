@@ -10,12 +10,16 @@
 
 import type { ILedgerStore } from '../ports/ledger-store.js';
 import { assertGrant, type AppendGrant } from '../auth/append-grant.js';
-import type {
-  ShadowObservation,
-  ShadowSubject,
-  ShadowEdge,
-  ShadowDivergence,
-  ShadowReport,
+import {
+  foldCollectionEntity,
+  collectionObservationKind,
+  type ShadowObservation,
+  type ShadowSubject,
+  type ShadowEdge,
+  type ShadowDivergence,
+  type ShadowReport,
+  type CollectionEntity,
+  type ObservationAtSeq,
 } from '@freeside/shadow-mode-protocol';
 import {
   ChainFrozenError,
@@ -213,5 +217,36 @@ export class InMemoryLedgerStore implements ILedgerStore {
 
   async divergences(communityId: string): Promise<ShadowDivergence[]> {
     return [...this.divergencesById.values()].filter((d) => d.community_id === communityId);
+  }
+
+  // --- collection labelled-entities: FOLD the entity's worldline (SDD §2) ---
+
+  /** The (observation, seq) pairs on a chain, skipping the seq-0 genesis sentinel. */
+  private observationsAtSeq(chainId: string): ObservationAtSeq[] {
+    const links = this.chains.get(chainId) ?? [];
+    const out: ObservationAtSeq[] = [];
+    for (const link of links) {
+      if (link.seq === 0) continue; // genesis sentinel is not a label observation
+      const observation = this.observations.get(link.event_id);
+      if (observation) out.push({ observation, seq: link.seq });
+    }
+    return out;
+  }
+
+  async getCollectionEntity(entityId: string): Promise<CollectionEntity | undefined> {
+    return foldCollectionEntity(this.observationsAtSeq(entityId)) ?? undefined;
+  }
+
+  async listCollectionEntities(): Promise<CollectionEntity[]> {
+    const out: CollectionEntity[] = [];
+    for (const chainId of this.chains.keys()) {
+      const hasCollectionLabel = this.observationsAtSeq(chainId).some(
+        (e) => collectionObservationKind(e.observation) !== null,
+      );
+      if (!hasCollectionLabel) continue;
+      const entity = foldCollectionEntity(this.observationsAtSeq(chainId));
+      if (entity) out.push(entity);
+    }
+    return out;
   }
 }

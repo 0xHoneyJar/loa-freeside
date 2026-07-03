@@ -15,6 +15,7 @@ import type {
   ShadowEdge,
   ShadowDivergence,
   ShadowReport,
+  CollectionEntity,
 } from '@freeside/shadow-mode-protocol';
 import type { ChainLink, ChainVerdict } from '../chain.js';
 import type { AppendGrant } from '../auth/append-grant.js';
@@ -49,6 +50,15 @@ export interface ILedgerStore {
   subjects(communityId: string): Promise<ShadowSubject[]>;
   edges(communityId: string): Promise<ShadowEdge[]>;
   divergences(communityId: string): Promise<ShadowDivergence[]>;
+
+  // --- collection labelled-entities (SDD collections-sot §2) ---
+  // Collection observations reuse `appendObservationIfAbsent` (community_id =
+  // entity_id → the collection's OWN worldline). These reads FOLD that chain
+  // into the current projection — the chain stays the source of truth.
+  /** Fold a collection's worldline into its current entity, or undefined if none. */
+  getCollectionEntity(entityId: string): Promise<CollectionEntity | undefined>;
+  /** Every collection entity that has at least one label observation. */
+  listCollectionEntities(): Promise<CollectionEntity[]>;
 
   // --- hash chain (SDD sandwich-line §6a; chain_id = community_id) ---
   /** Head link of the chain, undefined if the chain has no links yet. */

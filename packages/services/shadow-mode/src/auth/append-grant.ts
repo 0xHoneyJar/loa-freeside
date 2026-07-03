@@ -71,6 +71,20 @@ export function operatorMigrationGrant(sources: string[], eventNames: string[]):
   return mintGrant('operator-migration', sources, eventNames);
 }
 
+/**
+ * The collection distiller/ratifier principal (SDD collections-sot §2). Writes
+ * `collection.label.{observed,ratified}` on the `collection` source. Scope it to
+ * specific entity_ids (chains) in production; empty = unrestricted (test/CLI).
+ */
+export function collectionProducerGrant(entityIds: string[] = []): AppendGrant {
+  return mintGrant(
+    'collection-distiller',
+    ['collection'],
+    ['collection.label.observed', 'collection.label.ratified'],
+    entityIds,
+  );
+}
+
 /** Test seam — refuses outside a test runner (SDD: test-marker gated). */
 export function testGrant(sources: string[] = ['*'], eventNames: string[] = ['*']): AppendGrant {
   if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {

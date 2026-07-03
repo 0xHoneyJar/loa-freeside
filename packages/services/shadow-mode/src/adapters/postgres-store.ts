@@ -18,12 +18,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
-import type {
-  ShadowObservation,
-  ShadowSubject,
-  ShadowEdge,
-  ShadowDivergence,
-  ShadowReport,
+import {
+  foldCollectionEntity,
+  COLLECTION_OBSERVED_NAME,
+  COLLECTION_RATIFIED_NAME,
+  type ShadowObservation,
+  type ShadowSubject,
+  type ShadowEdge,
+  type ShadowDivergence,
+  type ShadowReport,
+  type CollectionEntity,
+  type ObservationAtSeq,
 } from '@freeside/shadow-mode-protocol';
 import type { ILedgerStore } from '../ports/ledger-store.js';
 import { assertGrant, type AppendGrant } from '../auth/append-grant.js';
@@ -507,5 +512,39 @@ export class PostgresLedgerStore implements ILedgerStore {
       reason: r.reason,
       observed_at: r.observed_at.toISOString(),
     })) as ShadowDivergence[];
+  }
+
+  // --- collection labelled-entities: FOLD the entity's worldline (SDD §2) ---
+  // Collection observations already live in shadow_observations (community_id =
+  // entity_id, written by appendObservationIfAbsent) — no separate table. Fold
+  // reads them in chain-seq order.
+
+  private async observationsAtSeq(chainId: string): Promise<ObservationAtSeq[]> {
+    const { rows } = await this.pool.query(
+      `select o.*, c.seq
+         from shadow_chain c
+         join shadow_observations o on o.event_id = c.event_id
+        where c.chain_id = $1 and c.seq > 0
+        order by c.seq asc`,
+      [chainId],
+    );
+    return rows.map((r) => ({ observation: rowToObservation(r), seq: Number(r.seq) }));
+  }
+
+  async getCollectionEntity(entityId: string): Promise<CollectionEntity | undefined> {
+    return foldCollectionEntity(await this.observationsAtSeq(entityId)) ?? undefined;
+  }
+
+  async listCollectionEntities(): Promise<CollectionEntity[]> {
+    const { rows } = await this.pool.query(
+      `select distinct community_id from shadow_observations where event_name = any($1)`,
+      [[COLLECTION_OBSERVED_NAME, COLLECTION_RATIFIED_NAME]],
+    );
+    const out: CollectionEntity[] = [];
+    for (const r of rows) {
+      const entity = foldCollectionEntity(await this.observationsAtSeq(r.community_id));
+      if (entity) out.push(entity);
+    }
+    return out;
   }
 }

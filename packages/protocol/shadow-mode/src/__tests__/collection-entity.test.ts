@@ -4,6 +4,8 @@ import {
   collectionLabelRatified,
   observedEventId,
   isDerivedLabel,
+  foldCollectionEntity,
+  type ObservationAtSeq,
   COLLECTION_OBSERVED_NAME,
   COLLECTION_RATIFIED_NAME,
 } from '../schemas/collection-entity.js';
@@ -56,6 +58,45 @@ describe('collection observations (SDD §2, §11.5)', () => {
     expect(isDerivedLabel('collection_key')).toBe(true);
     expect(isDerivedLabel('world')).toBe(false);
     expect(isDerivedLabel('role')).toBe(false);
+  });
+
+  it('foldCollectionEntity: empty / non-collection input → null', () => {
+    expect(foldCollectionEntity([])).toBeNull();
+  });
+
+  it('foldCollectionEntity: latest-seq wins per label; token_standard defaults to unknown', () => {
+    const entries: ObservationAtSeq[] = [
+      { observation: collectionLabelObserved(CHAIN, CONTRACT, 'token_standard', 'unknown', NOW)!, seq: 1 },
+      { observation: collectionLabelObserved(CHAIN, CONTRACT, 'token_standard', 'erc1155', NOW)!, seq: 2 },
+      { observation: collectionLabelObserved(CHAIN, CONTRACT, 'collection_key', 'apdao-seat', NOW)!, seq: 3 },
+    ];
+    const e = foldCollectionEntity(entries)!;
+    expect(e.entity_id).toBe(ENTITY);
+    expect(e.labels.token_standard).toBe('erc1155'); // seq 2 > seq 1
+    expect(e.labels.collection_key).toBe('apdao-seat');
+    expect(e.labels.world).toBeUndefined();
+  });
+
+  it('foldCollectionEntity: ratified subjective label wins over an earlier proposal, no contest', () => {
+    const entries: ObservationAtSeq[] = [
+      { observation: collectionLabelObserved(CHAIN, CONTRACT, 'world', 'apdao', NOW)!, seq: 1 },
+      { observation: collectionLabelRatified(ENTITY, 'world', 'mibera', 'operator', NOW)!, seq: 2 },
+    ];
+    const e = foldCollectionEntity(entries)!;
+    expect(e.labels.world).toBe('mibera');
+    const prov = e.provenance.find((p) => p.label === 'world')!;
+    expect(prov.source_type).toBe('operator-validated');
+    expect(prov.contested).toBeUndefined();
+  });
+
+  it('foldCollectionEntity: a later disagreeing derive flags contested but preserves ratified value', () => {
+    const entries: ObservationAtSeq[] = [
+      { observation: collectionLabelRatified(ENTITY, 'world', 'mibera', 'operator', NOW)!, seq: 1 },
+      { observation: collectionLabelObserved(CHAIN, CONTRACT, 'world', 'purupuru', NOW)!, seq: 2 },
+    ];
+    const e = foldCollectionEntity(entries)!;
+    expect(e.labels.world).toBe('mibera'); // preserved
+    expect(e.provenance.find((p) => p.label === 'world')!.contested).toBe(true);
   });
 
   it('observedEventId is a pure function of the payload identity fields', () => {

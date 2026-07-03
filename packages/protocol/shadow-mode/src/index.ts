@@ -86,6 +86,9 @@ export {
   ratifiedEventId,
   collectionLabelObserved,
   collectionLabelRatified,
+  foldCollectionEntity,
+  collectionObservationKind,
+  type ObservationAtSeq,
 } from './schemas/collection-entity.js';
 
 export {
