@@ -106,3 +106,25 @@ worlds-api world-manifest.schema.json (additive 1.3), shadow-audit bin/http.ts C
 packages/events/src/schemas/nft-activity.ts (key grammar), ~/.claude/skills/recall/SKILL.md,
 grimoires/loa/context/self-grounded-collections-registry.txt, [[project_sandwich-line-cycle]]
 (the shadow-audit deploy this unblocks), [[feedback_ground-deployed-state-before-asserting]].
+
+---
+
+## OPERATOR REFRAME (2026-07-03, post-PRD-v1) — collapse into the worldline labelling spine
+- **DROP the pg-review-UI** ("fullstack native and reviewable is really low priority, you can even ignore it").
+- **Labelling is ONE substrate.** "The worldline spine and labelling for entities within our system which
+  we've been doing for the user/member graph is directly related to labelling of contract addresses as well."
+  → Collections/contracts are labelled ENTITIES on the SAME spine as the member graph = the shadow-mode
+  ledger (hash-chained/worldline, Postgres-backed — ALREADY BUILT this session). A `collection` is a new
+  SubjectKind alongside identity_user/discord_member/wallet_only.
+- **Queryable like /recall QMD.** "All of which should be queryable easily by you just like the design of
+  /recall QMD for MD files and our second brain vault." → labelled entities become a QMD-indexable source
+  the agent queries semantic+lexical, governed by the same /recall trust-weight/withhold plane.
+- **Data & truth first, bottom-up distillation.** "Distilling from the bottom up raw signals. Refining it/
+  distilling it so it retains its quality so it can exist without the noise." → raw signals (belt Transfer
+  stream + on-chain ERC-165 + discord/sonar) are DISTILLED into labelled entities on the ledger; the ledger's
+  observation→subject reduction IS the distillation.
+- **Consequence**: no world.yaml collections block, no separate pg projection, no git/pg dual-write (the
+  flatline's SKP-001/002 tensions dissolve). The SoT = the ledger. worlds/onboarding is one AUTHORITY that
+  ratifies the world-membership label; it is not a second store. Mostly in-repo (shadow-mode + shadow-audit
+  + freeside-cli). EVANS's one-collection-one-world invariant + worlds-authority STILL hold — as a
+  ratified edge on the ledger, not a separate manifest.
