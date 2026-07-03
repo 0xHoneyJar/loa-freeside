@@ -137,6 +137,56 @@ blocked without grant + append-only provenance · query returns right entity + w
 shadow-audit kill-test (no env → serves ratified set) · drift classes (drifted-overwrite vs
 contested-preserve). Every non-trivial branch leaves a runnable check.
 
+## 11.5 Flatline SDD integration (6 blocker-theme cures — the mutable-vs-chain model, resolved)
+
+**The root fix (SKP-002/003, IMP-004): the append-only chain IS the source of truth; the entity table
+is a derived PROJECTION** — exactly like member subjects fold from observations. There is NO direct
+mutable label upsert. Every label change — a derive OR a ratify — is a NEW append-only observation on
+the chain; `collection_entities` is re-folded from the observations (current label = the latest
+observation for that (entity, label)). This makes provenance intrinsic (the chain), tamper-evidence
+automatic (`verifyChain`), and divergence structurally impossible (one source). `upsertCollectionEntity`
+is REMOVED from the port; the port gains `appendCollectionObservation` (goes through the chain) +
+`getCollectionEntity` (folds). (Supersedes §2's upsert wording.)
+
+- **Collection worldline keyed by the CONTRACT, not the world (SKP-003):** a collection observation's
+  `chain_id` (ledger sense) = `entity_id` (`${chain}:${contract}`), so each collection has its OWN
+  worldline. There is NO `_unbound` world chain. `world` is a LABEL on the entity (absent until
+  ratified — the single unratified representation, IMP-009), never the chain key.
+
+- **Collection observation event schema (IMP-001), explicit:** `collection.label.observed`
+  `{ entity_id, chain, contract, label, value, source_type }` (a derive) and `collection.label.ratified`
+  `{ entity_id, label, value, ratified_by }` (a ratify). Both are `ShadowObservation`-shaped, JCS-hashed,
+  chained. The fold: latest `ratified` wins over `observed` for a subjective label; latest `observed`
+  wins for a derived label; a derived-`observed` that contradicts a later `ratified` on the SAME label
+  → `contested` (surfaced, not folded silently).
+
+- **Ratification enforcement boundary (SKP-001 CRITICAL), stated honestly:** the grant-gated CLI is the
+  SOLE sanctioned writer of a `collection.label.ratified` observation — there is NO service ratify
+  endpoint this cycle (no non-CLI writer exists to guard). An out-of-band direct DB insert is caught by
+  `verifyChain` (tamper-evidence) — the chain makes forgery loud, exactly as for member observations.
+  `// loa:shortcut: a db superuser can still append a raw row; the chain makes it EVIDENT, and no
+  service path mints ratify events — revisit if a service-side ratify endpoint is ever added.`
+
+- **Shadow-audit projection precedence (IMP-002, IMP-009) — FAIL-CLOSED:** the registry shadow-audit
+  builds includes a collection ONLY when `standard ∈ {erc721,erc1155}` (never `unknown`) AND `world`
+  is `operator-validated` AND no `contested` label. `unratified` / `unknown_standard` / `contested`
+  / `orphaned` entities are EXCLUDED — a not-yet-true label never produces an audit (money/ops
+  fail-closed). Deterministic precedence: validated-and-coherent → included; anything else → excluded + logged.
+
+- **Migration / rollback (IMP-003):** `0003` is additive (new tables + enum value); no member data
+  touched. Rollback = the `COLLECTION_REGISTRY` env override (FR-5) — set it and shadow-audit ignores
+  the SoT. Backfill = `propose` over the 24; no destructive step.
+
+- **RPC determinism (IMP-006):** per-chain public RPC list with a 8s timeout + one retry; a transient
+  failure → `standard: unknown` (logged), never a crash — so `sync`/`drift` are CI-deterministic
+  (a flaky RPC degrades to `unknown`, it does not fail the run non-deterministically).
+
+- **CLI contract (IMP-007, IMP-008):** `sync`/`query`/`drift` = READ-only (no creds; stable JSON:
+  `{entity_id, chain, contract, labels, provenance, status}`; exit 0 coherent / non-zero otherwise).
+  `propose`/`ratify` = MUTATING: refuse unless a writable ledger is configured (`DATABASE_URL` or the
+  in-memory test store) AND, for `ratify`, a fresh cockpit grant; refuse in a `RAILWAY_ENVIRONMENT`/
+  `NODE_ENV=production` context without an explicit `--yes` (no accidental prod/CI writes).
+
 ## 12. Cross-repo & sequencing
 
 Mostly in-repo (loa-freeside `shared/shadow-mode` + shadow-audit + freeside-cli). No worlds-api write
