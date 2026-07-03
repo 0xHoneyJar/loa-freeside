@@ -158,7 +158,7 @@ describe('createKitchenTriagePorts darkness observability', () => {
 describe('shadow delegation precedence (S3-T2): real probe > policy > stub', () => {
   function httpWithShadow(status: 'complete' | 'pending' | 'blocked') {
     const map: Record<string, number> = { complete: 200, pending: 404, blocked: 503 };
-    const fetchImpl = (async () => new Response('{}', { status: map[status] })) as unknown as typeof fetch;
+    const fetchImpl = (async () => new Response(JSON.stringify({ collection: 'azuki', standard: 'erc721' }), { status: map[status] })) as unknown as typeof fetch;
     return new HttpBuildingProbes({
       sonarApiUrl: 'https://s.test', scoreApiUrl: 'https://sc.test', worldsApiUrl: 'https://w.test',
       serviceToken: 'tok', shadowAuditApiUrl: 'https://shadow.test', fetchImpl,
