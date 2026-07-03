@@ -39,6 +39,9 @@ the port to async, update reducer/service call-sites mechanically, in-memory ada
 ## Sprint 2: durable spine (6b-2 + 6b-3, `shared/shadow-mode`)
 
 ### S2-T1 — Postgres store + chain append [SDD 6b-2]
+FAGAN i2 carry: the in-memory head-check is O(1)-only (older tampering extendable) — the
+Postgres store MUST verify from a trusted checkpoint at boot (or full verify) before serving
+appends, and the periodic verify cadence is documented in the package README.
 `0002_shadow_chain.sql` (shadow_chain + shadow_chain_state) + `PostgresLedgerStore` per the SDD
 transaction spec (advisory xact lock; seq inside lock; observation+chain in one txn; duplicate
 event_id → false). Tests run against a disposable pg (testcontainers or the repo's pg-test

@@ -30,6 +30,13 @@ function serialize(value: unknown): string {
         // undefined array elements serialize as null (JSON semantics).
         return `[${value.map((v) => (v === undefined ? 'null' : serialize(v))).join(',')}]`;
       }
+      // Only PLAIN objects are JSON data. Date/Map/Set/RegExp/class instances
+      // would silently canonicalize to '{}' or an enumerable subset — reject
+      // loud instead (FAGAN: a silent '{}' is a hash over the wrong bytes).
+      const proto = Object.getPrototypeOf(value);
+      if (proto !== Object.prototype && proto !== null) {
+        throw new JcsError(`JCS: non-plain object (${value.constructor?.name ?? 'unknown'})`);
+      }
       // Property names sorted by UTF-16 code units — the JS default sort.
       const obj = value as Record<string, unknown>;
       const parts: string[] = [];

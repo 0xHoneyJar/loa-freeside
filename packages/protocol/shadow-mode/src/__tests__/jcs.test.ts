@@ -59,6 +59,15 @@ describe('rejections (fail-loud)', () => {
     expect(() => jcsCanonicalize({ x: Infinity })).toThrow(JcsError);
     expect(() => jcsCanonicalize({ x: NaN })).toThrow(JcsError);
   });
+  it('rejects non-plain objects (Date/Map/Set/class) loud, never as {}', () => {
+    expect(() => jcsCanonicalize({ x: new Date(0) })).toThrow(JcsError);
+    expect(() => jcsCanonicalize({ x: new Map() })).toThrow(JcsError);
+    expect(() => jcsCanonicalize({ x: new Set() })).toThrow(JcsError);
+    class Foo { a = 1; }
+    expect(() => jcsCanonicalize({ x: new Foo() })).toThrow(JcsError);
+    expect(jcsCanonicalize({ x: Object.create(null) ? { a: 1 } : {} })).toBe('{"x":{"a":1}}');
+  });
+
   it('rejects bigint/function/symbol/top-level undefined', () => {
     expect(() => jcsCanonicalize({ x: 1n })).toThrow(JcsError);
     expect(() => jcsCanonicalize({ x: () => 0 })).toThrow(JcsError);

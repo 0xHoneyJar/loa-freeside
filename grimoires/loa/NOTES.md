@@ -303,3 +303,10 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   dirty-tree fence union + empty-count + dedup. FAGAN-ACCEPTS (rationale): constructor-policy-without-warn
   (factory is the sole production composition path — composition.ts only calls createKitchenTriagePorts);
   test-seam export resetShadowProducerlessWarning (existing codebase pattern, no prod caller).
+
+## Decision Log — cycle sandwich-line S1 (2026-07-03)
+- FAGAN sprint-1: 3 iters. Fixed: reserved genesis namespace · verify-gated clear (both voices
+  converged) · head-integrity on append · serialized txn queue · 409 chain_frozen route · JCS
+  non-plain-object rejection. ACCEPTS w/ rationale: AC-7 regex claim (phantom — regex needs
+  'role' prefix, suite green); full-verify-per-append (O(n) — head-check O(1) + periodic verify;
+  checkpoint requirement carried into S2-T1).
