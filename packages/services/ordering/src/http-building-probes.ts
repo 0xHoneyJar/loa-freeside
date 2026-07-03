@@ -10,6 +10,8 @@ export interface HttpBuildingProbesConfig {
   scoreApiUrl: string;
   worldsApiUrl: string;
   serviceToken: string;
+  /** shadow-audit base URL (optional — its absence leaves shadow_preview on the policy path). */
+  shadowAuditApiUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -90,6 +92,32 @@ export class HttpBuildingProbes {
     } catch {
       return 'blocked';
     }
+  }
+
+  /**
+   * shadow_preview capability probe (SDD sandwich-line FR-2). Hits the audit's
+   * OPEN membership read `GET /v1/collections/:chain/:contract`:
+   *   200 → the audit CAN cover this collection → `complete` (the preview is producible)
+   *   404 → not auditable here → `pending` (operator/onboarding follow-up)
+   *   else/network → `blocked`
+   * Only wired when `shadowAuditApiUrl` is configured; else callers use the policy path.
+   */
+  async probeShadow(chainId: string, contract: string): Promise<IngredientStatus> {
+    if (!this.config.shadowAuditApiUrl) return 'blocked';
+    const normalized = this.normalizePair(chainId, contract);
+    if (!normalized) return 'blocked';
+
+    const url = `${trimBase(this.config.shadowAuditApiUrl)}/v1/collections/${normalized.chainId}/${normalized.contract}`;
+    try {
+      const res = await this.fetchFn(url);
+      return mapLookupStatus(res.status);
+    } catch {
+      return 'blocked';
+    }
+  }
+
+  get hasShadowProbe(): boolean {
+    return Boolean(this.config.shadowAuditApiUrl);
   }
 
   async probeWorlds(chainId: string, contract: string): Promise<WorldsProbeDetail> {
@@ -222,6 +250,7 @@ export function httpBuildingProbesFromEnv(fetchImpl?: typeof fetch): HttpBuildin
     scoreApiUrl,
     worldsApiUrl,
     serviceToken,
+    shadowAuditApiUrl: process.env.SHADOW_AUDIT_API_URL?.trim() || undefined,
     fetchImpl,
   });
 }

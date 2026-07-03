@@ -112,3 +112,30 @@ describe('HttpBuildingProbes', () => {
     expect(ok).toBe(true);
   });
 });
+
+describe('probeShadow — shadow-audit capability probe (FR-2)', () => {
+  const CHAIN = '1';
+  const CONTRACT = '0xED5AF388653567Af2F388e6224DcC93746104133';
+  const CONTRACT_LOWER = CONTRACT.toLowerCase();
+
+  function shadowProbes(status: number) {
+    const url = `https://shadow.test/v1/collections/1/${CONTRACT_LOWER}`;
+    const fetchImpl = mockFetch({ [`GET ${url}`]: () => new Response(JSON.stringify({ collection: 'azuki', standard: 'erc721' }), { status }) });
+    return new HttpBuildingProbes({ sonarApiUrl: 'https://s.test', scoreApiUrl: 'https://sc.test', worldsApiUrl: 'https://w.test', serviceToken: 'tok', shadowAuditApiUrl: 'https://shadow.test', fetchImpl });
+  }
+
+  it('200 → complete (audit can cover this collection)', async () => {
+    expect(await shadowProbes(200).probeShadow(CHAIN, CONTRACT)).toBe('complete');
+  });
+  it('404 → pending (not auditable here)', async () => {
+    expect(await shadowProbes(404).probeShadow(CHAIN, CONTRACT)).toBe('pending');
+  });
+  it('5xx → blocked', async () => {
+    expect(await shadowProbes(503).probeShadow(CHAIN, CONTRACT)).toBe('blocked');
+  });
+  it('no shadowAuditApiUrl → blocked (leaves shadow on the policy path)', async () => {
+    const probes = new HttpBuildingProbes({ sonarApiUrl: 'https://s.test', scoreApiUrl: 'https://sc.test', worldsApiUrl: 'https://w.test', serviceToken: 'tok', fetchImpl: mockFetch({}) });
+    expect(probes.hasShadowProbe).toBe(false);
+    expect(await probes.probeShadow(CHAIN, CONTRACT)).toBe('blocked');
+  });
+});

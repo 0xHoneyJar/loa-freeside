@@ -62,18 +62,22 @@ export class KitchenTriagePorts implements TriagePorts {
       this.fallback.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
   };
   shadow = {
-    // Policy applies ONLY when no shadow producer was injected at all. A custom fallback or a
-    // future http probeShadow leg always wins — policy can never mask a real probe.
-    probe: (chainId: string, contract: string) =>
-      this.shadowPolicy === 'optional' && this.shadowProducerless
+    // Precedence: a REAL producer (http.probeShadow, when SHADOW_AUDIT_API_URL is set) wins over
+    // the policy knob, which wins over the stub. The policy applies ONLY when no producer exists.
+    probe: (chainId: string, contract: string) => {
+      if (this.http?.hasShadowProbe) return this.http.probeShadow(chainId, contract);
+      return this.shadowPolicy === 'optional' && this.shadowProducerless
         ? Promise.resolve('optional' as const)
-        : this.fallback.shadow.probe(chainId, contract),
+        : this.fallback.shadow.probe(chainId, contract);
+    },
     // Detail variant carries WHY into the durable trail (probe_meta.reason) when the status
-    // came from the policy rule rather than a real probe.
-    probeDetail: async (chainId: string, contract: string): Promise<ShadowProbeDetail> =>
-      this.shadowPolicy === 'optional' && this.shadowProducerless
+    // came from the policy rule rather than a real probe. A real probe reports no reason.
+    probeDetail: async (chainId: string, contract: string): Promise<ShadowProbeDetail> => {
+      if (this.http?.hasShadowProbe) return { status: await this.http.probeShadow(chainId, contract) };
+      return this.shadowPolicy === 'optional' && this.shadowProducerless
         ? { status: 'optional', reason: 'policy_optional_no_producer' }
-        : { status: await this.fallback.shadow.probe(chainId, contract) },
+        : { status: await this.fallback.shadow.probe(chainId, contract) };
+    },
   };
 
   get httpProbes(): HttpBuildingProbes | null {

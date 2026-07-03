@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HttpBuildingProbes } from '../http-building-probes.js';
 
 import {
   KitchenTriagePorts,
@@ -151,5 +152,27 @@ describe('createKitchenTriagePorts darkness observability', () => {
     createKitchenTriagePorts();
     const producerless = warn.mock.calls.flat().filter((m) => String(m).includes('producer-less'));
     expect(producerless).toHaveLength(1);
+  });
+});
+
+describe('shadow delegation precedence (S3-T2): real probe > policy > stub', () => {
+  function httpWithShadow(status: 'complete' | 'pending' | 'blocked') {
+    const map: Record<string, number> = { complete: 200, pending: 404, blocked: 503 };
+    const fetchImpl = (async () => new Response('{}', { status: map[status] })) as unknown as typeof fetch;
+    return new HttpBuildingProbes({
+      sonarApiUrl: 'https://s.test', scoreApiUrl: 'https://sc.test', worldsApiUrl: 'https://w.test',
+      serviceToken: 'tok', shadowAuditApiUrl: 'https://shadow.test', fetchImpl,
+    });
+  }
+
+  it('a wired probeShadow WINS over policy=optional (real probe, no fabricated reason)', async () => {
+    const ports = new KitchenTriagePorts(httpWithShadow('complete'), undefined, 'optional');
+    await expect(ports.shadow.probe('1', '0xED5AF388653567Af2F388e6224DcC93746104133')).resolves.toBe('complete');
+    await expect(ports.shadow.probeDetail('1', '0xED5AF388653567Af2F388e6224DcC93746104133')).resolves.toEqual({ status: 'complete' });
+  });
+
+  it('probeShadow pending is honored (not masked by policy)', async () => {
+    const ports = new KitchenTriagePorts(httpWithShadow('pending'), undefined, 'optional');
+    await expect(ports.shadow.probe('1', '0xED5AF388653567Af2F388e6224DcC93746104133')).resolves.toBe('pending');
   });
 });
