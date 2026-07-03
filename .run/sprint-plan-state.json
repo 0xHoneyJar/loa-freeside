@@ -1,0 +1,48 @@
+{
+  "plan_id": "plan-20260703-sandwich-line",
+  "branch": "cycle/sandwich-line",
+  "state": "HALTED",
+  "timestamps": {
+    "started": "2026-07-03T05:38:24Z",
+    "last_activity": "2026-07-03T07:06:09Z"
+  },
+  "sprints": {
+    "total": 3,
+    "completed": 2,
+    "current": "sprint-3",
+    "list": [
+      {
+        "id": "sprint-1",
+        "status": "completed",
+        "cycles": 1,
+        "files_changed": 9
+      },
+      {
+        "id": "sprint-2",
+        "status": "completed",
+        "cycles": 1,
+        "files_changed": 12
+      },
+      {
+        "id": "sprint-3",
+        "status": "in_progress"
+      }
+    ]
+  },
+  "options": {
+    "from": 1,
+    "to": 3,
+    "max_cycles": 20,
+    "timeout_hours": 8
+  },
+  "metrics": {
+    "total_cycles": 2,
+    "total_files_changed": 21,
+    "total_findings_fixed": 0
+  },
+  "failure": {
+    "sprint": "sprint-3",
+    "reason": "operator-decision-point: S1+S2 spine complete + FAGAN-converged (62 unit + 7 pg tests). Sprint 3 code (S3-T1..T4) + L-lanes remain; the visible deliverables (deploy shadow-audit, sandwich, demo, worlds data-loss fix) are operator-gated (COLLECTION_REGISTRY verify, test:live, Railway/Vercel). Two forks posed to operator: (a) PR the spine now vs grind S3, (b) slot the worlds data-loss fix first. Awaiting steer.",
+    "timestamp": "2026-07-03T07:06:09Z"
+  }
+}
