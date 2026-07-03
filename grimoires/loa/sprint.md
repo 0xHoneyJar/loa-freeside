@@ -8,7 +8,7 @@
 > [CROSS-REPO] markers and are tracked as beads that detach, never block.
 > Sequencing (NOT beads blocked-by, ADR-007 rule 5): S1 → S2 (flags+E2E) → S3 (read plane, parallel-ok).
 
-## Sprint 1 — shadow probe leg + fence (in-repo, PR-A `platform/ordering`)
+## Sprint 1: shadow probe leg + fence (in-repo, PR-A `platform/ordering`)
 
 **Goal**: the probe mesh's missing `shadow` leg exists, fail-closed, fully mapped; the sibling
 fence has teeth. (FR-2, G-6; enables G-1/G-2)
@@ -55,7 +55,7 @@ existing suite stays green (`pnpm test` in `packages/services/ordering`).
 PR-A from this worktree branch: S1-T0..T3 + grimoire artifacts. Draft, `platform/ordering` scope,
 fence script green in the PR body evidence. **AC**: PR open, unit tests green locally, fence 0.
 
-## Sprint 2 — flags, spike, settle gate (lanes; NOT run-mode executable)
+## S2 lanes — flags, spike, settle gate (NOT run-mode executable; no `Sprint N:` header by design)
 
 - **S2-L1 [OPERATOR-BOUNDED]** — Railway env truth (FR-3): verify/flip `ENABLE_REPROBE`,
   `KITCHEN_PROBE_HTTP_ENABLED`, trio URLs + `SERVICE_TOKEN`, add `SHADOW_AUDIT_API_URL` (post
@@ -74,7 +74,7 @@ fence script green in the PR body evidence. **AC**: PR open, unit tests green lo
   (incl. CAS replay-rejection evidence). **Evidence**: runbook quotes every verb call, exit codes,
   `probe_meta` trail. THIS CLOSES G-1.
 
-## Sprint 3 — read plane + orientation (lanes; parallel, detachable)
+## S3 lanes — read plane + orientation (parallel, detachable; NOT run-mode executable)
 
 - **S3-L1 [AGENT→operator]** — Privacy Gate evidence per SDD §5, with repo-artifact hygiene
   (blocker cure): probe using an OPERATOR-OWNED wallet address only (never an arbitrary user's);
