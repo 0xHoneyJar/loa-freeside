@@ -58,3 +58,57 @@ OP-chain order, including ONE deliberate replayed advance to quote the CAS rejec
 | _to fill_ | | | |
 
 ## S3-L1 — inventory Privacy Gate (to fill; operator wallet only, field shapes not raw dumps)
+
+---
+
+## E2E EVIDENCE — executed 2026-07-03 (lanes 1→2→3, operator-authorized "Full E2E")
+
+### Lane 1 — Railway env truth (S2-L1) ✅
+Observed BEFORE: `ENABLE_REPROBE=true`, `KITCHEN_PROBE_HTTP_ENABLED=true`, trio URLs + SERVICE_TOKEN
+already set; `SHADOW_PREVIEW_UNAVAILABLE_POLICY` ABSENT; deployment predated #424.
+Actions: set `SHADOW_PREVIEW_UNAVAILABLE_POLICY=optional`; deployed #424 code (`railway up`,
+deployment `cc3138cd` SUCCESS). Deployed log line OBSERVED:
+`[ordering-service] shadow_preview producer-less — policy=optional (fulfillment proceeds without preview…)`
++ `write_routes=token` (fail-closed). `SONAR_API_URL` contract confirmed: kitchen-api
+`/v1/collections/:chain/:contract/status` → 401 (exists, auth-gated as the Bearer probe expects).
+
+### Lane 2 — order E2E (S2-L3, fixture rule fired) ⚙️ partial-by-ground-truth
+Pinned fixture `6ddc06f5` → **404 on the deployed store** (pre-ordering-service artifact). Per the
+fulfillment plan's fixture rule, placed a FRESH demo order (real subject, Azuki chain-1):
+**`65e94061-5d41-4b91-a1d8-e7277f79ae38`** — placed via
+`freeside-cli order place --preset community-onboarding` (zero curl).
+
+Observed within 1s of placement (interval probe, `order status`):
+- `worlds_manifest: complete` + **`world_slug: "azuki"` auto-resolved** (config-service knew it)
+- `score: in_progress` + http_enqueue job `score:register:1:0xed5a…` fired (real building work)
+- `sonar: blocked` — kitchen-api truth for chain-1 Azuki (the #120 boundary, exactly as predicted)
+- **`shadow_preview: optional` with `probe_meta.shadow_preview.reason = "policy_optional_no_producer"`**
+  — the cycle's shipped surface, live in a production order's durable trail.
+- `kitchen probe` (reprobe endpoint): fresh per-ingredient outcomes, source=reprobe ✓.
+- Same-value advance (worlds complete→complete): idempotent accept, audit entry carries
+  SERVER-derived evidence + token_label ✓ (#420 contract).
+- **FINDING (bead arrakis-6hhs)**: operator-token advance CAN DOWNGRADE complete→pending (accepted,
+  audit-trailed with contradicting evidence). Recovery PROVEN: next real probe restored
+  `worlds_manifest: complete` from ground truth (abort-is-normal, SDD §4).
+- Not claimed: reprobe-cooldown 429 (second call was 16s later — outside the 10s window).
+
+Fulfillment gate now blocked ONLY by: `sonar` (=#120 spike lane S2-L2) and `score` (registration
+in_progress at score-api). Shadow + worlds + world_slug are green/optional. When those two flip,
+`fulfill watch` completes G-1 with zero further code.
+
+### Lane 3 — inventory read plane (S3) ✅ re-pointed, honestly degraded
+DISCOVERY: the 401 wall is on a DIFFERENT (older) deployment. The LIVE open read API existed all
+along: `inventory-api-production-3f25.up.railway.app` (`/health` 200, `/holdings` + `/profile` open).
+- **Privacy Gate: PASS** — observed field shapes are all chain-derived
+  (holdings[], completeness{as_of_block,holder_count,source,complete}, profile{address,contract,imageUrl});
+  no identity/session fields. Caveat: holdings item-shape unobserved (empty arrays, below).
+- Registry fixed: PR **#425 MERGED** (deployment_url → 3f25 host; walled mcp host demoted in notes).
+- Dashboard: `INVENTORY_API_URL` set in Vercel production + redeployed
+  (aliased freeside.0xhoneyjar.xyz) — the hardcoded dead default is now overridden.
+- **FINDING (bead arrakis-rxax)**: live host returns `holdings: []` even for active holders, with
+  self-declared `completeness.complete: "degraded"` + fixture-looking `as_of_block: 9123456`
+  (inventory-api#23 fixture fallback; env points at belt-hasura-production, a 3rd read host).
+  Read PLANE healthy; DATA pending real ingest (STOR-1/#19). S3-L4's fail-loud client should
+  render this degraded state instead of empty.
+- Deferred: DNS `inventory.0xhoneyjar.xyz` → Railway custom domain (consumers now use the canonical
+  Railway host directly); beacon serving = inventory-api#18 lane.
