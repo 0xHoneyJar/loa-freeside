@@ -23,14 +23,18 @@ export class KitchenTriagePorts implements TriagePorts {
   private readonly fallback: TriagePorts;
   private readonly http: HttpBuildingProbes | null;
   private readonly shadowPolicy: ShadowUnavailablePolicy;
+  /** True iff NO fallback was injected — the only state the policy may act on. Any injected
+   *  fallback (even a stub subclass) counts as a producer and always wins over the policy. */
+  private readonly shadowProducerless: boolean;
 
   constructor(
     http: HttpBuildingProbes | null,
-    fallback: TriagePorts = new StubTriagePorts(),
+    fallback?: TriagePorts,
     shadowPolicy: ShadowUnavailablePolicy = 'blocked',
   ) {
     this.http = http;
-    this.fallback = fallback;
+    this.shadowProducerless = fallback === undefined;
+    this.fallback = fallback ?? new StubTriagePorts();
     this.shadowPolicy = shadowPolicy;
   }
 
@@ -58,10 +62,10 @@ export class KitchenTriagePorts implements TriagePorts {
       this.fallback.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
   };
   shadow = {
-    // Policy applies ONLY when no real shadow producer exists (the default stub). A custom
-    // fallback or future http probeShadow leg always wins — policy can never mask a real probe.
+    // Policy applies ONLY when no shadow producer was injected at all. A custom fallback or a
+    // future http probeShadow leg always wins — policy can never mask a real probe.
     probe: (chainId: string, contract: string) =>
-      this.shadowPolicy === 'optional' && this.fallback instanceof StubTriagePorts
+      this.shadowPolicy === 'optional' && this.shadowProducerless
         ? Promise.resolve('optional' as const)
         : this.fallback.shadow.probe(chainId, contract),
   };
@@ -71,17 +75,25 @@ export class KitchenTriagePorts implements TriagePorts {
   }
 }
 
+let warnedShadowProducerless = false;
+
 export function createKitchenTriagePorts(): TriagePorts {
   const http = httpBuildingProbesFromEnv();
   const shadowPolicy = shadowUnavailablePolicyFromEnv();
-  if (shadowPolicy === 'optional') {
+  if (!warnedShadowProducerless && (http || shadowPolicy === 'optional')) {
+    warnedShadowProducerless = true;
     console.warn(
-      '[ordering-service] shadow_preview: no producer configured — policy=optional, fulfillment proceeds without preview',
-    );
-  } else if (http) {
-    console.warn(
-      '[ordering-service] shadow probe: DARK (stub blocked — no shadow-audit producer; see grimoires/loa/cycles/consumption-truth/e2e-runbook.md)',
+      `[ordering-service] shadow_preview producer-less — policy=${shadowPolicy} (${
+        shadowPolicy === 'optional'
+          ? 'fulfillment proceeds without preview'
+          : 'DARK: stub blocked; operator advance required'
+      }; see grimoires/loa/cycles/consumption-truth/e2e-runbook.md)`,
     );
   }
   return new KitchenTriagePorts(http, undefined, shadowPolicy);
+}
+
+/** Test seam: reset the once-per-process producer-less warning. */
+export function resetShadowProducerlessWarning(): void {
+  warnedShadowProducerless = false;
 }

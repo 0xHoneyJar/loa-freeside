@@ -22,7 +22,16 @@ FENCE=(
   "packages/freeside-cli/tests/inspect.test.ts"
 )
 
-git fetch origin main --quiet 2>/dev/null || echo "warn: could not fetch origin/main — diffing against local ref" >&2
+# Fail closed on fetch failure — a stale local origin/main can blind the fence (FAGAN i2).
+# Explicit offline escape: FENCE_ALLOW_STALE=1 (dev only, never CI).
+if ! git fetch origin main --quiet 2>/dev/null; then
+  if [[ "${FENCE_ALLOW_STALE:-0}" == "1" ]]; then
+    echo "warn: could not fetch origin/main — FENCE_ALLOW_STALE=1, diffing against local ref" >&2
+  else
+    echo "FENCE ERROR: could not fetch origin/main (set FENCE_ALLOW_STALE=1 to override offline)" >&2
+    exit 1
+  fi
+fi
 
 changed="$(git diff --name-only origin/main...HEAD)"
 
