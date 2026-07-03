@@ -103,30 +103,62 @@ The chain lives in the STORE layer so the privacy-reviewed protocol v1 schemas s
 - Genesis: seq=0 sentinel event per chain (`chain.genesis` synthetic observation, prev_hash =
   64 zeros). Ordering = seq (monotonic, store-assigned under lock); timestamps are payload.
 - `verifyChain(chainId, fromSeq?)`: recompute every hash; ANY mismatch → returns the first bad
-  seq + emits fail-loud alarm + sets a `chain_frozen` flag the append path checks (appends
-  rejected until operator ack clears it). Deterministic replay test = fixture chain re-verified
-  byte-exact. Tamper test = flip one byte in a stored payload → verify fails at that seq.
+  seq + emits fail-loud alarm + freezes the chain. Deterministic replay test = fixture chain
+  re-verified byte-exact. Tamper test = flip one byte in a stored payload → verify fails at
+  that seq.
+- **Freeze/recovery design (blocker cure SKP-002):** state lives in
+  `shadow_chain_state(chain_id PK, frozen_at, frozen_reason, first_bad_seq, cleared_at,
+  cleared_by)`. Verification sets it ATOMICALLY in its own transaction; the append transaction
+  reads it `FOR SHARE` after taking the advisory lock (frozen → append rejected with
+  `chain_frozen` error, logged). Partial verification (fromSeq) can only freeze, never clear.
+  CLEAR is operator-only: an authenticated admin action (CLI/route requiring the operator
+  principal) that writes cleared_at/cleared_by + a mandatory rationale — the clear itself is an
+  audit-trail row. Recovery procedure (documented in the package README): freeze → operator
+  investigates (verify output names first_bad_seq) → either restore the payload from the
+  source-of-truth producer and re-verify, or fork-ack: record rationale, re-anchor genesis at a
+  new chain_id, retire the bad chain read-only. No silent repair path exists.
 - In-memory store gains the same chain logic (one shared pure `chainLink()` function; stores
   only persist).
 
 ### 6b — PostgresLedgerStore + producer-auth (BLOCKING invariant)
-- **Port async-ification (the honest wide refactor):** `ILedgerStore` is synchronous today
-  (in-memory-shaped: `appendObservationIfAbsent(...): boolean`, `withTransaction<T>(fn:()=>T)`).
-  A real Postgres adapter cannot be sync. Change the port to async (`Promise<...>`), update the
-  reducer/service call-sites (mechanical, contained in the package), in-memory adapter wraps
-  sync in resolved promises. This is the largest mechanical surface of 6b — named, not hidden.
-- PostgresLedgerStore implements the async port over `sql/0001` + `0002`: append = ONE
-  transaction { advisory lock on chain_id → insert observation ON CONFLICT DO NOTHING → if
-  inserted: seq = max+1, compute hash, insert chain row }. Duplicate (chain_id,seq) is
-  structurally impossible under the lock; duplicate event_id returns false (existing idempotency
-  contract). Concurrent-append test via two parallel clients.
-- **Producer auth**: the append path (HTTP/NATS ingest — `src/http` ingest routes) verifies a
-  svc-JWT (existing substrate: `packages/adapters/agent/jwt-service.ts` conventions) whose
-  claims carry `producer_id` + allowed `sources[]`/`event_names[]`; `StaticProducerPolicy` is
-  replaced by `JwtProducerPolicy` implementing the existing `IProducerPolicy` port. No token or
-  out-of-scope append → 401/403 + logged. There is NO code path that reaches
-  `appendObservationIfAbsent` without a verified principal in the durable configuration.
-  Unauthorized-producer test included.
+
+**Merge-surface slicing (blocker cure SKP-001a, CRITICAL)** — 6b lands as THREE serialized PRs,
+each independently green and reviewable, never one bundled merge:
+1. *6b-1 async port refactor* (mechanical): `ILedgerStore` → async. A pre-edit task produces the
+   METHOD + CALLER INVENTORY (IMP-007/014: every port method, every call-site, before/after
+   signature) as the review artifact; in-memory adapter wraps sync in resolved promises;
+   behavior-identical, full suite green.
+2. *6b-2 PostgresLedgerStore + chain append* (durability + 6a chain in the store).
+3. *6b-3 producer-auth* (JwtProducerPolicy + capability-gated append).
+
+**Append authorization is a STORE-boundary capability (blocker cure SKP-001b, CRITICAL)** — not
+a routes-only check. The durable append API takes an `AppendGrant` — an opaque object mintable
+ONLY by the auth layer (`JwtProducerPolicy.authorize(...)` → grant scoped to producer_id +
+sources[] + event_names[]) or by the operator-principal factory used for migration/replay
+(explicitly logged `principal=operator-migration`). Enumerated callers, ALL through grants:
+HTTP ingest routes, (future) NATS consumer, the in-memory→Postgres migration/replay path, and
+tests (a `testGrant()` factory gated behind the package's test env marker — grep-able, never
+importable from src index). A grant-less call does not typecheck; a forged plain-object grant
+fails a WeakSet identity check (the estate's reflectable-symbol cure).
+
+**JWT specifics (blocker cure SKP-004):** verify per the existing svc-JWT substrate conventions
+(`packages/adapters/agent/jwt-service.ts`): pinned `iss` (the substrate issuer) + `aud =
+"shadow-mode-ledger"`, `exp` required (≤1h tokens), clock skew ±60s, revocation = substrate key
+rotation (kid-based), claims schema zod-validated `{producer_id: string, sources: string[],
+event_names: string[]}` — unknown claim shape = reject. Keys via the substrate's existing
+provisioning; never minted ad-hoc.
+
+**Lock/transaction specifics (blocker cure SKP-003):** append = single transaction:
+`SELECT pg_advisory_xact_lock(hashtext($chain_id))` → `INSERT observation ON CONFLICT DO
+NOTHING` (returns inserted?) → if inserted: `seq = COALESCE((SELECT MAX(seq) FROM shadow_chain
+WHERE chain_id=$1), -1) + 1` → compute hash → insert chain row. Isolation: READ COMMITTED is
+sufficient — the xact-scoped advisory lock serializes writers per chain; a failed transaction
+releases the lock automatically and leaves NO seq gap (seq is computed inside the lock, never
+pre-allocated). Retry: caller-level single retry on lock-timeout/serialization errors, then
+fail loud. Multi-client concurrent-append test asserts: no fork, no gap, one winner per seq.
+
+**Unauthorized-producer test** included (no token / expired / out-of-scope source / forged grant
+object — four cases).
 
 ### 6c — differential consumer (decision-grade)
 Wire `makeProjectionOwnershipSource` (shadow-audit, built+tested, unwired) as the SHADOW side of
@@ -136,15 +168,51 @@ COUNTS + hashed wallet ids (never raw lists) logged + posted to the ops webhook.
 the record: 3 consecutive parity runs on ≥2 collections (recorded in the cycle report; cutover
 explicitly out of cycle). PRECONDITION task: the FAGAN HIGH-3 value-semantics contract test
 (token-standard value semantics pinned cross-package) — 6c does not merge before it.
-NOTE: the projection source has no backfill (deploy-time subscription) — early runs will show
-expected divergence on pre-subscription history; the differential report must CLASSIFY
-"no-backfill window" divergences separately from true mismatches (else the parity bar is
-unreachable and the signal is noise).
+**No-backfill classifier (blocker cure SKP-006), defined:** the projection records
+`subscription_started_at` per collection at subscribe time. Snapshot boundary semantics: a
+differential run compares holder sets AS OF a snapshot block/time both sources can answer for.
+A divergent wallet is classified `no_backfill_window` iff its most recent transfer for that
+collection precedes `subscription_started_at` (the projection could not have seen it);
+everything else is `true_mismatch`. The parity bar counts ONLY `true_mismatch == 0` runs; the
+report always shows both counts side by side. Classifier is a pure function with its own unit
+tests (transfer-before/after/at-boundary cases).
+
+**Divergence log privacy (IMP-005):** logged wallet identifiers are salted hashes —
+per-cycle salt held in service env (rotating the salt orphans old logs by design), ops-webhook
+audience only, 30-day retention note in the runbook. Raw wallet lists never leave the service.
 
 ### 6d — doctrine note
 `packages/protocol/shadow-mode/README.md` section "The spine thesis": all projections (Discord
 permissions, rosters, audits) derive from THIS chain; each new projection ships shadow-first vs
 the incumbent; hash chain = the verification root. ~20 lines, links the PRD.
+
+## 7.5 Integrated flatline consensus (IMP items)
+
+- **Role-source decision (IMP-002):** internal-look reports NEED roles → the role snapshot ships
+  IN-IMAGE for this cycle (a checked-in, reviewed snapshot file for the operated communities;
+  `ROLE_SNAPSHOT_PATH` points inside the image). Acceptance test: boot with the image snapshot →
+  audit run includes role data. Live role sync is future work.
+- **COLLECTION_REGISTRY contract (IMP-003):** documented in DEPLOY.md with 2 worked examples
+  (erc721 + erc1155), key format `"<chainId>/<lowercase-contract>"`, and the provenance-table
+  requirement from FR-1a. `test:live` ordering (IMP-015): every deployed collection MUST have a
+  green live anchor BEFORE the registry cell is added — the deploy exists but is not declared
+  until the gate passes; below-threshold collections are dropped from the env, not shipped dark.
+- **FR-4 migration semantics (IMP-006):** at boot, if the pg manifest table is empty and a file
+  index exists, import it once (logged); conflicts (same slug both stores) prefer pg; the yaml
+  write becomes an export artifact only; rollback = the file path remains readable one release.
+- **Publication checklist (IMP-008/013, auditable):** the landed report carries a front-matter
+  checklist — k≥5 buckets verified · field allowlist diffed against the template · no joinable
+  identifiers · operator sign-off line with date. Review of that checklist IS the audit gate's
+  publication check (not vague editorial review).
+- **Structured log contract (IMP-010):** appends log `{event: 'ledger.append', chain_id, seq,
+  producer_id, event_name}`; rejections `{event: 'ledger.reject', reason, producer_id?}`;
+  differential runs `{event: 'differential.run', collection, true_mismatch, no_backfill,
+  verdict}`; probe serves `{event: 'capability.probe', chain, contract, hit}` — these fields are
+  the acceptance-evidence surface.
+- **Probe operational details (IMP-012):** FR-2 probe inherits the consumption-truth table
+  (10s timeout, single attempt per reprobe tick, 429→pending) — no new retry machinery.
+- **Cross-repo evidence return (IMP-011):** each /coord lane PR links back to the cycle runbook
+  section it satisfies; the runbook is the single evidence ledger (as last cycle).
 
 ## 8. Security
 
