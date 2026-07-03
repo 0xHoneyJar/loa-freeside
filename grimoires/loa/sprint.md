@@ -111,6 +111,43 @@ silent overwrite.** Exit non-zero on any `contested`/`orphaned` (CI/cron, fails 
 fixture where a derived standard changed → `drifted`+overwritten; a ratified world changed under it →
 `contested`, not overwritten; an un-belt-tracked entity → `orphaned` + non-zero exit.
 
+## Flatline sprint integration (6 blocker cures — 4 concrete specs the tasks now carry)
+
+These pin the two ambiguities the plan left open (deterministic identity + fold order) and the two
+trust-boundary CRITICALs. Each is now a binding AC on its task.
+
+- **Deterministic `event_id` (SKP-001/002) — content-addressed, NOT timestamped.** For an `observed`:
+  `event_id = "col:obs:" + sha256(JCS({entity_id, label, value, source_type}))`. For a `ratified`:
+  `"col:rat:" + sha256(JCS({entity_id, label, value, ratified_by}))`. Re-deriving the SAME value →
+  same id → dedup (idempotent propose, S2-T2 AC). A CHANGED value → new id → a new observation —
+  which IS the drift signal (S3-T3). No wall-clock in identity, so CI is deterministic. (Adds to
+  S1-T2 + S2-T2.)
+
+- **Fold total order = chain seq, not wall-clock (SKP-003).** Label classes: DERIVED = {token_standard,
+  collection_key}; SUBJECTIVE = {world, role}. Current value of a label = the value on the highest-seq
+  observation for that (entity, label). `contested` iff an `observed` exists with `seq >` the latest
+  `ratified` seq for the SAME label AND a different value (a re-derive disagreeing with operator truth).
+  seq is unique per chain → no tie-break needed. (Pins S1-T3's fold AC.)
+
+- **Grant is single-consume + operator-invoked; binding ceiling named (SKP-001/003 CRITICAL).** REUSE
+  the existing `memory-promotion-guard` grant as-is — do NOT build a new grant primitive. The file is
+  unlinked on read (one grant = exactly one ratify write) and `ratify` is an interactive operator
+  command, so target-binding is by the operator's own invocation. `// loa:shortcut: no cryptographic
+  grant↔(entity,label) binding this cycle — single-consume + operator-in-the-loop is the boundary;
+  add a signed grant payload if a non-interactive ratify path is ever introduced.` (S2-T3 AC asserts
+  single-consume: a second ratify after one grant is blocked.)
+
+- **Shadow-audit trusts the projection ONLY if its chain verifies (SKP-004).** `loadRegistry` (S3-T2)
+  MUST NOT read the mutable `collection_entities` table blindly — for each candidate entity it calls
+  `verifyChain(entity_id)` (or a batch verify) and EXCLUDES any entity whose chain is frozen/failed
+  (fail-closed, alongside the standard/world/contested gate). The projection is a cache; the chain is
+  the trust root. **AC add**: an entity with a tampered/frozen chain is NOT served even if its
+  projection row looks valid.
+
+- **Snapshot fallback artifact contract (IMP-010, disputed→folded):** if S3-T2 uses the build-time
+  snapshot fallback, it is a committed JSON with a `{schema_version, generated_from_chain_head,
+  entities[]}` header; a missing/malformed snapshot fails startup LOUD (never fail-open to empty).
+
 ## Goal traceability
 
 | Goal | Met by |
