@@ -16,6 +16,7 @@ import type {
   ShadowDivergence,
   ShadowReport,
 } from '@freeside/shadow-mode-protocol';
+import type { ChainLink, ChainVerdict } from '../chain.js';
 
 export interface ILedgerStore {
   /** Atomic insert-if-absent. Returns true iff newly inserted (idempotency, AC-1). Append-only. */
@@ -47,4 +48,13 @@ export interface ILedgerStore {
   subjects(communityId: string): ShadowSubject[];
   edges(communityId: string): ShadowEdge[];
   divergences(communityId: string): ShadowDivergence[];
+
+  // --- hash chain (SDD sandwich-line §6a; chain_id = community_id) ---
+  /** Head link of the chain, undefined if the chain has no links yet. */
+  getChainHead(chainId: string): ChainLink | undefined;
+  /** Recompute every hash from genesis; a failure freezes the chain. */
+  verifyChain(chainId: string): ChainVerdict;
+  isChainFrozen(chainId: string): boolean;
+  /** Operator-only; writes an append-only clear record. Never called by services. */
+  clearChainFreeze(chainId: string, clearedBy: string, rationale: string): void;
 }

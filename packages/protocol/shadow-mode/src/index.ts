@@ -75,3 +75,5 @@ export {
   type TopicSegments,
   SHADOW_EVENT_TOPICS,
 } from './topics.js';
+
+export { JcsError, jcsBytes, jcsCanonicalize } from './jcs.js';

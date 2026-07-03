@@ -16,6 +16,20 @@ import type {
   ShadowDivergence,
   ShadowReport,
 } from '@freeside/shadow-mode-protocol';
+import {
+  ChainFrozenError,
+  chainLink,
+  genesisObservation,
+  verifyChain as verifyLinks,
+  type ChainLink,
+  type ChainVerdict,
+} from '../chain.js';
+
+interface FreezeState {
+  first_bad_seq: number;
+  reason: string;
+  cleared?: { cleared_by: string; rationale: string };
+}
 
 export class InMemoryLedgerStore implements ILedgerStore {
   private readonly observations = new Map<string, ShadowObservation>();
@@ -24,11 +38,74 @@ export class InMemoryLedgerStore implements ILedgerStore {
   private readonly edgesById = new Map<string, ShadowEdge>();
   private readonly divergencesById = new Map<string, ShadowDivergence>();
   private readonly reportsById = new Map<string, ShadowReport>();
+  private readonly chains = new Map<string, ChainLink[]>();
+  /** Append-only freeze/clear history per chain (last entry uncleared = frozen). */
+  private readonly freezeLog = new Map<string, FreezeState[]>();
 
   appendObservationIfAbsent(observation: ShadowObservation): boolean {
     if (this.observations.has(observation.event_id)) return false;
+    const chainId = observation.community_id;
+    const active = this.activeFreeze(chainId);
+    if (active) throw new ChainFrozenError(chainId, active.first_bad_seq);
+    let links = this.chains.get(chainId);
+    if (!links) {
+      // Lazy genesis: seq 0 is the sentinel; the incoming observation is seq 1.
+      const genesis = genesisObservation(chainId, observation.ingested_at);
+      this.observations.set(genesis.event_id, genesis);
+      links = [chainLink(chainId, null, genesis)];
+      this.chains.set(chainId, links);
+    }
     this.observations.set(observation.event_id, observation);
+    links.push(chainLink(chainId, links[links.length - 1], observation));
     return true;
+  }
+
+  getChainHead(chainId: string): ChainLink | undefined {
+    const links = this.chains.get(chainId);
+    return links?.[links.length - 1];
+  }
+
+  verifyChain(chainId: string): ChainVerdict {
+    const links = this.chains.get(chainId) ?? [];
+    const verdict = verifyLinks(links, (eventId) => this.observations.get(eventId));
+    if (!verdict.ok && !this.isChainFrozen(chainId)) {
+      const log = this.freezeLog.get(chainId) ?? [];
+      log.push({ first_bad_seq: verdict.first_bad_seq, reason: verdict.reason });
+      this.freezeLog.set(chainId, log);
+    }
+    return verdict;
+  }
+
+  isChainFrozen(chainId: string): boolean {
+    return this.activeFreeze(chainId) !== undefined;
+  }
+
+  clearChainFreeze(chainId: string, clearedBy: string, rationale: string): void {
+    const active = this.activeFreeze(chainId);
+    if (!active) return;
+    // Append-only: the clear is recorded ON the freeze entry, never deleted.
+    active.cleared = { cleared_by: clearedBy, rationale };
+  }
+
+  private activeFreeze(chainId: string): FreezeState | undefined {
+    const log = this.freezeLog.get(chainId);
+    const last = log?.[log.length - 1];
+    return last && !last.cleared ? last : undefined;
+  }
+
+  /** Test/verification seam: expose links + observation lookup (read-only). */
+  chainLinks(chainId: string): readonly ChainLink[] {
+    return this.chains.get(chainId) ?? [];
+  }
+
+  getObservation(eventId: string): ShadowObservation | undefined {
+    return this.observations.get(eventId);
+  }
+
+  /** Test seam ONLY: corrupt a stored observation to exercise tamper detection. */
+  unsafeMutateObservationForTest(eventId: string, mutate: (o: ShadowObservation) => void): void {
+    const o = this.observations.get(eventId);
+    if (o) mutate(o);
   }
 
   withTransaction<T>(fn: () => T): T {
