@@ -1,46 +1,37 @@
 {
-  "plan_id": "plan-20260703-sandwich-line",
-  "branch": "cycle/sandwich-line",
-  "state": "JACKED_OUT",
-  "timestamps": {
-    "started": "2026-07-03T05:38:24Z",
-    "last_activity": "2026-07-03T08:00:59Z"
-  },
+  "plan_id": "plan-collections-sot",
+  "target": "sprint-plan",
+  "state": "RUNNING",
   "sprints": {
     "total": 3,
-    "completed": 3,
-    "current": null,
+    "completed": 1,
+    "current": "sprint-2",
     "list": [
       {
         "id": "sprint-1",
         "status": "completed",
         "cycles": 1,
-        "files_changed": 9
+        "note": "S1-T1 identity + S1-T2 entity done; S1-T3 store next"
       },
       {
         "id": "sprint-2",
-        "status": "completed",
-        "cycles": 1,
-        "files_changed": 12
+        "status": "in_progress"
       },
       {
         "id": "sprint-3",
-        "status": "completed",
-        "cycles": 1,
-        "files_changed": 8
+        "status": "pending"
       }
     ]
   },
   "options": {
     "from": 1,
     "to": 3,
-    "max_cycles": 20,
-    "timeout_hours": 8
+    "max_cycles": 20
   },
+  "base": "merged cycle/sandwich-line (#429 spine) \u2014 building on real committed spine",
   "metrics": {
-    "total_cycles": 3,
-    "total_files_changed": 29,
-    "total_findings_fixed": 0
-  },
-  "pr_url": "pending-push"
+    "total_cycles": 1,
+    "total_files_changed": 5,
+    "fagan_s1": "1 HIGH + 2 MEDIUM fixed"
+  }
 }

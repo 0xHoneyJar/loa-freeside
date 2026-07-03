@@ -339,3 +339,20 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - G-1 (consumer 0→≥1) still NOT met: the differential is CODE-complete + flag-gated OFF; it only
   runs live once shadow-audit deploys (L-2, operator COLLECTION_REGISTRY + test:live) and the flag flips.
   Remaining L-lanes all operator-gated: L-1 registry mining+verify, L-2 deploy, L-3 sandwich+report, L-5 demo.
+
+## collections-sot checkpoint (2026-07-03)
+- **Base topology (operator: "comprehensive, fix root problems"):** MERGED cycle/sandwich-line
+  (#429 spine) into cycle/collections-sot. #429 was open/REVIEW_REQUIRED but its redness is
+  UNRELATED pre-existing monolith CI (sietch webhook flake being fixed on
+  fix/webhook-insert-failure-retriable-503; aws-embedded-metrics dep). Spine's own unit tests
+  pass. The worktree had a broken PARTIAL leak of the spine (38 tc errors); merge replaced it
+  with the real committed spine. All verified green (protocol 37, service 71, audit 161).
+  → collections-sot now CONTAINS #429. Ship implication: either collections-sot PR supersedes
+  #429, or #429 merges first then collections-sot rebases on main.
+- **Sprint 1 DONE + FAGAN-clean:** S1-T1 identity choke point, S1-T2 CollectionEntity +
+  content-addressed observation factories, S1-T3 store fold (chain=SoT, table=projection).
+  FAGAN caught 1 HIGH (derived-label ratify silently ignored → now fail-closed) + 2 MEDIUM
+  (token_standard validation, verify-on-read) — all fixed + tested.
+- **Next:** S2 (freeside collections sync/propose/ratify distiller) → S3 (query + shadow-audit
+  collapse kill-test + drift). S2 open Q: propose/ratify reach the ledger via store+DATABASE_URL
+  or shadow-mode HTTP API.
