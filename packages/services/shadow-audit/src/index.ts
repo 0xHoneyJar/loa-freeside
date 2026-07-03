@@ -82,3 +82,5 @@ export {
   ComparisonUnavailableError,
   type ComparisonArtifact,
 } from './comparison-export.js';
+export { makeFileStore } from './shadow-store-file.js';
+export { runShadowCycle, type ShadowCycleResult } from './shadow-cycle.js';

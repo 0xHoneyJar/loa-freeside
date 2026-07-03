@@ -12,6 +12,7 @@
 import {
   AuditOutputSchema,
   computeInputsHash,
+  diffShadow,
   sha256Hex,
   type AccessDecisionRecord,
   tokenGatingPolicy,

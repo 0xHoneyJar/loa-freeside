@@ -20,6 +20,12 @@ describe('Shadow Mode — diffShadow (Comparison View + Discrepancy Report)', ()
     expect(changeFromBand('ok')).toBe('no_change');
   });
 
+  it('throws on an unknown band — drift fails loud, never silently no_change (FAGAN MEDIUM-2)', () => {
+    // the compile-time `never` guard is the primary defense; this pins the runtime fallback so a band
+    // that slips past the type (bad data, enum drift) is NOT silently bucketed as no_change.
+    expect(() => changeFromBand('expired' as never)).toThrow(/unhandled band/);
+  });
+
   it('builds the per-member view + the aggregate over the audit decisions', () => {
     const report = diffShadow([
       rec({ band: 'ok', holds_role: true, qualifies: true, wallet: addr('1') }), // correctly has → no_change

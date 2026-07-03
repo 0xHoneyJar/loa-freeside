@@ -76,3 +76,26 @@ export {
   type AuditInputs,
   computeInputsHash,
 } from './inputs-hash.js';
+
+// Shadow Mode — the Discrepancy engine (Comparison View + Discrepancy Report over the audit's bands).
+export {
+  diffShadow,
+  changeFromBand,
+  ChangeSchema,
+  MemberDiscrepancySchema,
+  DiscrepancyReportSchema,
+  type Change,
+  type MemberDiscrepancy,
+  type DiscrepancyReport,
+} from './discrepancy.js';
+
+// Shadow Mode — the runner (produce + persist a Discrepancy Report, read-only; store is injected).
+export {
+  ShadowSnapshotSchema,
+  toShadowSnapshot,
+  runShadow,
+  makeMemoryStore,
+  type ShadowSnapshot,
+  type ShadowRunInput,
+  type ShadowStore,
+} from './shadow-runner.js';

@@ -134,6 +134,25 @@ describe('POST /v1/audit (named output, authed)', () => {
     expect(Array.isArray(json.records)).toBe(true);
   });
 
+  it('serves the Shadow Mode discrepancy — the dashboard contract (bands-only Comparison View)', async () => {
+    // The seam the Shadow Mode dashboard binds to: the authed response MUST carry output.discrepancy.
+    // Pin it at the HTTP layer so a future router reshape can't silently drop it.
+    const res = await post(createAuditRouter(makeDeps()), '/v1/audit', namedBody());
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.discrepancy).toBeDefined();
+    // every record is classified into the Comparison View
+    expect(json.discrepancy.aggregate.total).toBe(json.records.length);
+    // the Conviction Distribution is BANDS, never a raw score
+    expect(json.discrepancy.aggregate.band_distribution).toEqual(
+      expect.objectContaining({ stale: expect.any(Number), missing: expect.any(Number), ok: expect.any(Number) }),
+    );
+    // BANDS-ONLY invariant enforced at the served boundary — no numeric score leaks to the dashboard
+    expect(JSON.stringify(json.discrepancy)).not.toContain('"score"');
+    // R2 sold its NFT (role without holdings) → a demotion in the cutover preview (GET aggregate = 1 stale)
+    expect(json.discrepancy.aggregate.demotions).toBeGreaterThanOrEqual(1);
+  });
+
   it('rejects a bad signature with 401', async () => {
     const deps = makeDeps({
       auth: { ...makeDeps().auth, recover: async () => '0x' + 'd'.repeat(40) },

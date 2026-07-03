@@ -24,9 +24,23 @@ export const ChangeSchema = z.enum(['promotion', 'demotion', 'no_change']);
 export type Change = z.infer<typeof ChangeSchema>;
 
 /** The band → change mapping. The band already IS the holds×qualifies quadrant (common.ts), so the
- *  classification is canonical — not a second, drift-prone computation. */
-export const changeFromBand = (band: Band): Change =>
-  band === 'missing' ? 'promotion' : band === 'stale' ? 'demotion' : 'no_change';
+ *  classification is canonical — not a second, drift-prone computation. Exhaustive switch with a
+ *  `never` guard: if BandSchema ever grows a 4th band, this fails to COMPILE rather than silently
+ *  bucketing the new band as `no_change` (which would hide a real discrepancy). */
+export const changeFromBand = (band: Band): Change => {
+  switch (band) {
+    case 'missing':
+      return 'promotion';
+    case 'stale':
+      return 'demotion';
+    case 'ok':
+      return 'no_change';
+    default: {
+      const _exhaustive: never = band;
+      throw new Error(`changeFromBand: unhandled band ${String(_exhaustive)}`);
+    }
+  }
+};
 
 /** One row of the Comparison View — incumbent vs recommended, and the resulting change. */
 export const MemberDiscrepancySchema = z
@@ -74,6 +88,9 @@ export type DiscrepancyReport = z.infer<typeof DiscrepancyReportSchema>;
  * Read-only by construction: it consumes decisions and emits a report. It NEVER mutates a role — that is
  * the whole point of Shadow Mode (operate alongside the incumbent, show potential actions, change
  * nothing until the operator reviews the report and chooses to go live).
+ *
+ * Precondition: `records` are schema-valid (validate upstream via AccessDecisionRecordSchema — the wired
+ * path does). diffShadow is a public export; an unvalidated caller risks double-counted duplicate rows.
  */
 export function diffShadow(records: readonly AccessDecisionRecord[]): DiscrepancyReport {
   const members: MemberDiscrepancy[] = records.map((r) => ({
