@@ -134,6 +134,13 @@ function isBlockedV6(ip: string): boolean {
     const v4 = `${(h[6] >> 8) & 0xff}.${h[6] & 0xff}.${(h[7] >> 8) & 0xff}.${h[7] & 0xff}`;
     return isBlockedV4(v4);
   }
+  // IPv4-embedding transition mechanisms — unwrap the embedded v4 (or block outright) (BB BC-B-006,
+  // mirrored from loa-cli#10 lib/model.mjs to keep the two SSRF surfaces at parity).
+  if (h[0] === 0x2002) return isBlockedV4(`${(h[1] >> 8) & 0xff}.${h[1] & 0xff}.${(h[2] >> 8) & 0xff}.${h[2] & 0xff}`); // 6to4 2002::/16
+  if (h[0] === 0x0064 && h[1] === 0xff9b && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0) {
+    return isBlockedV4(`${(h[6] >> 8) & 0xff}.${h[6] & 0xff}.${(h[7] >> 8) & 0xff}.${h[7] & 0xff}`); // NAT64 64:ff9b::/96
+  }
+  if (h[0] === 0x2001 && h[1] === 0x0000) return true; // Teredo 2001:0::/32 — block outright
   if ((h[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((h[0] & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local (defense-in-depth)
   if ((h[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
