@@ -56,7 +56,7 @@ export class InMemoryLedgerStore implements ILedgerStore {
       this.chains.set(chainId, links);
     }
     this.observations.set(observation.event_id, observation);
-    links.push(chainLink(chainId, links[links.length - 1], observation));
+    links.push(chainLink(chainId, links[links.length - 1] ?? null, observation));
     return true;
   }
 

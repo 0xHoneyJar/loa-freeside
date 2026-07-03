@@ -33,7 +33,7 @@ function buildChain(n: number) {
   for (let i = 1; i <= n; i++) {
     const o = obs(`e${i}`);
     store.set(o.event_id, o);
-    links.push(chainLink('azuki', links[links.length - 1], o));
+    links.push(chainLink('azuki', links[links.length - 1] ?? null, o));
   }
   return { links, store };
 }
@@ -41,9 +41,9 @@ function buildChain(n: number) {
 describe('chainLink / verifyChain (pure)', () => {
   it('genesis anchors at the zero hash and seq 0', () => {
     const { links } = buildChain(0);
-    expect(links[0].seq).toBe(0);
-    expect(links[0].prev_hash).toBe(GENESIS_PREV_HASH);
-    expect(links[0].chain_version).toBe(CHAIN_VERSION);
+    expect(links[0]!.seq).toBe(0);
+    expect(links[0]!.prev_hash).toBe(GENESIS_PREV_HASH);
+    expect(links[0]!.chain_version).toBe(CHAIN_VERSION);
   });
 
   it('replay determinism: rebuilding the same chain reproduces every hash byte-exactly', () => {
@@ -66,8 +66,8 @@ describe('chainLink / verifyChain (pure)', () => {
 
   it('tamper: a rewritten link hash breaks linkage at the NEXT seq', () => {
     const { links, store } = buildChain(3);
-    const forged = { ...links[2], hash: 'f'.repeat(64) };
-    const verdict = verifyChain([links[0], links[1], forged, links[3]], (id) => store.get(id));
+    const forged = { ...links[2]!, hash: 'f'.repeat(64) };
+    const verdict = verifyChain([links[0]!, links[1]!, forged, links[3]!], (id) => store.get(id));
     // forged seq-2 hash itself mismatches recomputation first
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) expect(verdict.first_bad_seq).toBe(2);
@@ -75,7 +75,7 @@ describe('chainLink / verifyChain (pure)', () => {
 
   it('seq gap detected', () => {
     const { links, store } = buildChain(3);
-    const verdict = verifyChain([links[0], links[2], links[3]], (id) => store.get(id));
+    const verdict = verifyChain([links[0]!, links[2]!, links[3]!], (id) => store.get(id));
     expect(verdict).toEqual({ ok: false, first_bad_seq: 2, reason: 'seq_gap' });
   });
 

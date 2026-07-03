@@ -84,7 +84,7 @@ export function verifyChain(
 ): ChainVerdict {
   let prevHash = GENESIS_PREV_HASH;
   for (let i = 0; i < links.length; i++) {
-    const link = links[i];
+    const link = links[i]!;
     if (link.seq !== i) return { ok: false, first_bad_seq: link.seq, reason: 'seq_gap' };
     if (link.prev_hash !== prevHash) return { ok: false, first_bad_seq: link.seq, reason: 'broken_linkage' };
     const observation = observationByEventId(link.event_id);
