@@ -1,0 +1,2 @@
+{"construct": "herald", "genome_hash": "7af3268e42765cda6b7fa33dd85ca7af8bfbdc46ea7c8ba9ed6cd2c8574dee89", "parent_hash": "GENESIS", "payload": {"learning": "sense-only constructs never gate operator decisions", "minted_at": "2026-07-03T00:00:00Z"}, "seq": 1}
+{"construct": "herald", "genome_hash": "fdf2dbb7cd8250a0d0c1bad1ded98ee8c47e93bac1265c4f7a38f5b89cf97fd1", "parent_hash": "7af3268e42765cda6b7fa33dd85ca7af8bfbdc46ea7c8ba9ed6cd2c8574dee89", "payload": {"learning": "capability-reality drift is invisible without the ground", "minted_at": "2026-07-03T00:01:00Z"}, "seq": 2}
