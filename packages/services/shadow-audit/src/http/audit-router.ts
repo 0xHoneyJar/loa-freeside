@@ -196,6 +196,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   // NO member data. This is what the ordering service's shadow_preview probe
   // needs (SDD sandwich-line FR-2). Returns 200 {collection, standard} / 404.
   app.get('/v1/collections/:chain/:contract', (c) => {
+    // Rate-limited like the sibling routes — an OPEN endpoint must not be an
+    // unauthenticated enumeration oracle (FAGAN S3).
+    if (isRateLimited(c)) return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
     if (!deps.collectionRegistry) return c.json({ error: 'registry unavailable' }, 503);
     const chain = c.req.param('chain');
     const contract = c.req.param('contract');

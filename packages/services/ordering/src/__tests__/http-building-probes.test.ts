@@ -133,6 +133,13 @@ describe('probeShadow — shadow-audit capability probe (FR-2)', () => {
   it('5xx → blocked', async () => {
     expect(await shadowProbes(503).probeShadow(CHAIN, CONTRACT)).toBe('blocked');
   });
+  it('200 with a malformed body → blocked (never trust a bare 200)', async () => {
+    const url = `https://shadow.test/v1/collections/1/${CONTRACT_LOWER}`;
+    const fetchImpl = mockFetch({ [`GET ${url}`]: () => new Response('not json', { status: 200 }) });
+    const probes = new HttpBuildingProbes({ sonarApiUrl: 'https://s.test', scoreApiUrl: 'https://sc.test', worldsApiUrl: 'https://w.test', serviceToken: 'tok', shadowAuditApiUrl: 'https://shadow.test', fetchImpl });
+    expect(await probes.probeShadow(CHAIN, CONTRACT)).toBe('blocked');
+  });
+
   it('no shadowAuditApiUrl → blocked (leaves shadow on the policy path)', async () => {
     const probes = new HttpBuildingProbes({ sonarApiUrl: 'https://s.test', scoreApiUrl: 'https://sc.test', worldsApiUrl: 'https://w.test', serviceToken: 'tok', fetchImpl: mockFetch({}) });
     expect(probes.hasShadowProbe).toBe(false);

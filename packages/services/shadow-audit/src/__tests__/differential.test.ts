@@ -27,10 +27,17 @@ describe('computeDifferential', () => {
   });
 
   it('a wallet in sonar but not projection, last transfer AFTER sub → true_mismatch', () => {
-    const r = computeDifferential(base({ sonar: new Map([[A, 1n]]), projection: new Map() }));
+    const r = computeDifferential(base({ sonar: new Map([[A, 1n]]), projection: new Map(), lastTransferAtMs: () => SUB + 1 }));
     expect(r.true_mismatch).toBe(1);
     expect(r.verdict).toBe('diverged');
     expect(r.divergences[0]!.wallet_hash).not.toContain(A); // salted hash, never raw
+  });
+
+  it('unknown last-transfer time → no_backfill_window (never inflates parity failure)', () => {
+    const r = computeDifferential(base({ sonar: new Map([[A, 1n]]), projection: new Map(), lastTransferAtMs: () => undefined }));
+    expect(r.true_mismatch).toBe(0);
+    expect(r.no_backfill).toBe(1);
+    expect(r.verdict).toBe('parity');
   });
 
   it('a pre-subscription divergence → no_backfill_window, parity preserved', () => {

@@ -93,7 +93,9 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
     const keyBuf = Buffer.from(config.apiKey);
     app.use('*', async (c, next) => {
       // /healthz + the OPEN capability read (membership only, no member data) skip the key gate.
-      if (c.req.path === '/healthz' || c.req.path.startsWith('/v1/collections/')) return next();
+      // Match the EXACT route only (/v1/collections/:chain/:contract) — a broad prefix could
+      // accidentally expose a future /v1/collections/... route (FAGAN S3).
+      if (c.req.path === '/healthz' || /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)) return next();
       const got = Buffer.from(c.req.header('x-api-key') ?? '');
       // constant-time compare (FAGAN LOW-7: a `!==` on a shared secret is a timing oracle).
       const ok = got.length === keyBuf.length && timingSafeEqual(got, keyBuf);

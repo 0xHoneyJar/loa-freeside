@@ -110,7 +110,18 @@ export class HttpBuildingProbes {
     const url = `${trimBase(this.config.shadowAuditApiUrl)}/v1/collections/${normalized.chainId}/${normalized.contract}`;
     try {
       const res = await this.fetchFn(url);
-      return mapLookupStatus(res.status);
+      if (res.status === 404) return 'pending'; // not auditable here
+      if (res.status < 200 || res.status >= 300) return 'blocked';
+      // A 200 only means 'complete' if the body IS the FR-2 capability contract
+      // ({collection, standard}); a 200 with a malformed/empty body is not a
+      // producible preview (FAGAN S3 — never trust a bare 200).
+      const body = await this.readJson(res);
+      const ok =
+        typeof body === 'object' &&
+        body !== null &&
+        typeof (body as { collection?: unknown }).collection === 'string' &&
+        typeof (body as { standard?: unknown }).standard === 'string';
+      return ok ? 'complete' : 'blocked';
     } catch {
       return 'blocked';
     }

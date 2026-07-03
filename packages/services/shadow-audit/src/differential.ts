@@ -62,7 +62,7 @@ export interface DifferentialInput {
 }
 
 function hashWallet(wallet: string, salt: string): string {
-  return createHash('sha256').update(`${salt}:${wallet.toLowerCase()}`).digest('hex').slice(0, 32);
+  return createHash('sha256').update(`${salt}:${wallet.toLowerCase()}`).digest('hex'); // full 256-bit digest
 }
 
 /**
@@ -80,9 +80,12 @@ export function computeDifferential(input: DifferentialInput): DifferentialResul
 
     const last = input.lastTransferAtMs(wallet);
     // The projection can only have seen transfers at/after it subscribed. A
-    // divergence whose last transfer precedes subscription is expected.
+    // divergence whose last transfer precedes subscription — OR whose time we
+    // cannot establish — is NOT a confirmed true mismatch (FAGAN S3: an unknown
+    // must not inflate parity failures in a shadow-only comparison). Only a
+    // divergence we can PROVE happened after subscription is a true mismatch.
     const classification: DivergentWallet['classification'] =
-      last !== undefined && last < input.subscriptionStartedAtMs ? 'no_backfill_window' : 'true_mismatch';
+      last !== undefined && last >= input.subscriptionStartedAtMs ? 'true_mismatch' : 'no_backfill_window';
 
     divergences.push({
       wallet_hash: hashWallet(wallet, input.salt),
