@@ -40,24 +40,24 @@ export function createShadowRouter({ ledger, policy }: ShadowRouterDeps): Hono {
       return c.json({ error: 'unauthorized', reason: verdict.reason }, 401);
     }
 
-    return c.json(ledger.ingest(event), 202);
+    return c.json(await ledger.ingest(event), 202);
   });
 
-  app.get('/communities/:id/member-graph', (c) =>
-    c.json(ledger.getMemberGraph(c.req.param('id'))),
+  app.get('/communities/:id/member-graph', async (c) =>
+    c.json(await ledger.getMemberGraph(c.req.param('id'))),
   );
 
-  app.get('/communities/:id/unresolved', (c) =>
-    c.json({ subjects: ledger.getUnresolved(c.req.param('id')) }),
+  app.get('/communities/:id/unresolved', async (c) =>
+    c.json({ subjects: await ledger.getUnresolved(c.req.param('id')) }),
   );
 
-  app.get('/communities/:id/shadow/divergences', (c) =>
-    c.json({ divergences: ledger.getDivergences(c.req.param('id')) }),
+  app.get('/communities/:id/shadow/divergences', async (c) =>
+    c.json({ divergences: await ledger.getDivergences(c.req.param('id')) }),
   );
 
-  app.post('/communities/:id/reports/access-audit', (c) => {
+  app.post('/communities/:id/reports/access-audit', async (c) => {
     const id = c.req.param('id');
-    return c.json(buildAccessAuditReport(id, ledger.getMemberGraph(id)), 201);
+    return c.json(buildAccessAuditReport(id, await ledger.getMemberGraph(id)), 201);
   });
 
   return app;

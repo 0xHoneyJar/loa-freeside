@@ -42,7 +42,7 @@ export class InMemoryLedgerStore implements ILedgerStore {
   /** Append-only freeze/clear history per chain (last entry uncleared = frozen). */
   private readonly freezeLog = new Map<string, FreezeState[]>();
 
-  appendObservationIfAbsent(observation: ShadowObservation): boolean {
+  async appendObservationIfAbsent(observation: ShadowObservation): Promise<boolean> {
     if (this.observations.has(observation.event_id)) return false;
     const chainId = observation.community_id;
     const active = this.activeFreeze(chainId);
@@ -60,15 +60,15 @@ export class InMemoryLedgerStore implements ILedgerStore {
     return true;
   }
 
-  getChainHead(chainId: string): ChainLink | undefined {
+  async getChainHead(chainId: string): Promise<ChainLink | undefined> {
     const links = this.chains.get(chainId);
     return links?.[links.length - 1];
   }
 
-  verifyChain(chainId: string): ChainVerdict {
+  async verifyChain(chainId: string): Promise<ChainVerdict> {
     const links = this.chains.get(chainId) ?? [];
     const verdict = verifyLinks(links, (eventId) => this.observations.get(eventId));
-    if (!verdict.ok && !this.isChainFrozen(chainId)) {
+    if (!verdict.ok && !this.activeFreeze(chainId)) {
       const log = this.freezeLog.get(chainId) ?? [];
       log.push({ first_bad_seq: verdict.first_bad_seq, reason: verdict.reason });
       this.freezeLog.set(chainId, log);
@@ -76,11 +76,11 @@ export class InMemoryLedgerStore implements ILedgerStore {
     return verdict;
   }
 
-  isChainFrozen(chainId: string): boolean {
+  async isChainFrozen(chainId: string): Promise<boolean> {
     return this.activeFreeze(chainId) !== undefined;
   }
 
-  clearChainFreeze(chainId: string, clearedBy: string, rationale: string): void {
+  async clearChainFreeze(chainId: string, clearedBy: string, rationale: string): Promise<void> {
     const active = this.activeFreeze(chainId);
     if (!active) return;
     // Append-only: the clear is recorded ON the freeze entry, never deleted.
@@ -108,72 +108,72 @@ export class InMemoryLedgerStore implements ILedgerStore {
     if (o) mutate(o);
   }
 
-  withTransaction<T>(fn: () => T): T {
+  async withTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
     // Single-threaded synchronous: no partial-await window (no concurrent
     // interleaving). loa:shortcut: this does NOT roll back already-applied
     // mutations if fn throws mid-way — the in-memory adapter has no undo log.
     // Apply handlers run only on Zod-validated input so no throw path is known,
     // but the Postgres adapter MUST provide real transactional rollback.
     // Upgrade trigger: the Postgres adapter, or any apply handler that can throw.
-    return fn();
+    return await fn();
   }
 
-  getSubject(subjectId: string): ShadowSubject | undefined {
+  async getSubject(subjectId: string): Promise<ShadowSubject | undefined> {
     return this.subjectsById.get(subjectId);
   }
 
-  findSubjectByAlias(communityId: string, alias: string): ShadowSubject | undefined {
+  async findSubjectByAlias(communityId: string, alias: string): Promise<ShadowSubject | undefined> {
     const id = this.aliasToSubject.get(`${communityId}:${alias}`);
     return id ? this.subjectsById.get(id) : undefined;
   }
 
-  upsertSubject(subject: ShadowSubject): void {
+  async upsertSubject(subject: ShadowSubject): Promise<void> {
     this.subjectsById.set(subject.subject_id, subject);
   }
 
-  deleteSubject(subjectId: string): void {
+  async deleteSubject(subjectId: string): Promise<void> {
     this.subjectsById.delete(subjectId);
   }
 
-  upsertAlias(communityId: string, alias: string, subjectId: string): void {
+  async upsertAlias(communityId: string, alias: string, subjectId: string): Promise<void> {
     this.aliasToSubject.set(`${communityId}:${alias}`, subjectId);
   }
 
-  hasEdge(edgeId: string): boolean {
+  async hasEdge(edgeId: string): Promise<boolean> {
     return this.edgesById.has(edgeId);
   }
 
-  upsertEdge(edge: ShadowEdge): void {
+  async upsertEdge(edge: ShadowEdge): Promise<void> {
     this.edgesById.set(edge.edge_id, edge);
   }
 
-  reassignEdges(fromSubjectId: string, toSubjectId: string): void {
+  async reassignEdges(fromSubjectId: string, toSubjectId: string): Promise<void> {
     for (const edge of this.edgesById.values()) {
       if (edge.subject_id === fromSubjectId) edge.subject_id = toSubjectId;
     }
   }
 
-  upsertDivergence(divergence: ShadowDivergence): void {
+  async upsertDivergence(divergence: ShadowDivergence): Promise<void> {
     this.divergencesById.set(divergence.divergence_id, divergence);
   }
 
-  deleteDivergence(divergenceId: string): void {
+  async deleteDivergence(divergenceId: string): Promise<void> {
     this.divergencesById.delete(divergenceId);
   }
 
-  upsertReport(report: ShadowReport): void {
+  async upsertReport(report: ShadowReport): Promise<void> {
     this.reportsById.set(report.report_id, report);
   }
 
-  subjects(communityId: string): ShadowSubject[] {
+  async subjects(communityId: string): Promise<ShadowSubject[]> {
     return [...this.subjectsById.values()].filter((s) => s.community_id === communityId);
   }
 
-  edges(communityId: string): ShadowEdge[] {
+  async edges(communityId: string): Promise<ShadowEdge[]> {
     return [...this.edgesById.values()].filter((e) => e.community_id === communityId);
   }
 
-  divergences(communityId: string): ShadowDivergence[] {
+  async divergences(communityId: string): Promise<ShadowDivergence[]> {
     return [...this.divergencesById.values()].filter((d) => d.community_id === communityId);
   }
 }
