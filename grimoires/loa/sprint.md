@@ -1,109 +1,112 @@
-# Sprint Plan — Consumption Truth
+# Sprint Plan — The Sandwich Line
 
-> Cycle: consumption-truth (simstim-20260702-323be229). Implements `sdd.md` (flatline-integrated
-> `e5075870`). Previous plan archived: sprint.prev-2026-07-01-fulfillment-surface.md.
-> Sprint 1 = the ONLY `/run sprint-plan`-executable sprint (in-repo, `platform/ordering` +
-> `shared/planning`). Sprints 2–3 are coordination/operator lanes per the PRD's Cross-Repo
-> Execution Contract — run-mode MUST NOT attempt them; they carry [OPERATOR-BOUNDED] or
-> [CROSS-REPO] markers and are tracked as beads that detach, never block.
-> Sequencing (NOT beads blocked-by, ADR-007 rule 5): S1 → S2 (flags+E2E) → S3 (read plane, parallel-ok).
+> Cycle: sandwich-line (simstim-20260702-923f3fca). Implements sdd.md (flatline-integrated
+> `897589ad`). Previous plan archived: sprint.prev-2026-07-02-consumption-truth.md.
+> Sprints 1–3 are `/run sprint-plan`-executable (in-repo, `shared/shadow-mode` +
+> `platform/ordering` + `shared/shadow-audit`). L-lanes are agent/operator/cross-repo work
+> outside run-mode (markers as before). Sequencing (NOT beads blocked-by): S1 → S2 → S3;
+> L-1 → L-2 → L-3 serialized; L-4, L-5 parallel any time.
+> R-1 slice rule: S1+S2 landing alone = "spine durable, unconsumed" — the cycle report must say
+> so if S3's 6c slips.
 
-## Sprint 1: shadow probe leg + fence (in-repo, PR-A `platform/ordering`)
+## Sprint 1: chain + async port (spine 6a + 6b-1, `shared/shadow-mode`)
 
-**Goal**: the probe mesh's missing `shadow` leg exists, fail-closed, fully mapped; the sibling
-fence has teeth. (FR-2, G-6; enables G-1/G-2)
+### S1-T1 — JCS canonicalization lib [SDD 6a]
+`packages/protocol/shadow-mode/src/jcs.ts`: RFC 8785 canonicalization (port the approach of
+`.claude/adapters/loa_cheval/jcs.py`; cross-test against published JCS vectors + 3 vectors
+generated from the python impl). **AC**: vector tests green; no `JSON.stringify` ordering
+assumptions anywhere in chain code.
 
-### S1-T0 — Sibling fence with teeth [G-6]
-`scripts/check-sibling-fence.sh` per SDD §8: fence list derived from `gh pr view 422 --json files`
-(record derivation date + head SHA in script header); `git diff --name-only origin/main...HEAD`
-vs fence → exit 1 on hit. **AC**: script exits 0 on current branch; exits 1 when a fence path is
-touched in a test scenario; exit code never piped.
+### S1-T2 — chain link + verify (pure) [SDD 6a]
+`packages/services/shadow-mode/src/chain.ts`: pure `chainLink(prev, seq, observation, version)`
+→ `{prev_hash, hash}` with `hash = sha256(JCS({chain_version, chain_id, seq, prev_hash,
+observation}))`; `verifyChain(iterator)` returning first-bad-seq; genesis sentinel constant
+(prev_hash = 64 zeros, `chain.genesis` synthetic observation). **AC**: tamper test (one byte →
+fails at that seq), replay-determinism test (fixture chain byte-exact), version-bump test.
 
-### S1-T1 — Shadow-audit deployed auth contract, observed [SDD §2 gate — no probe code before this]
-Read `packages/services/shadow-audit/src/http/audit-router.ts` auth middleware + one live request
-against the deployed shadow-audit URL; record header name, success/401 shapes, and the deployed
-URL in `grimoires/loa/cycles/consumption-truth/e2e-runbook.md` (create scaffold).
-**Credentials rule (blocker cure)**: credentials come ONLY from operator-held env
-(existing Railway service config / operator-provided env var at execution time) — the agent never
-mints, requests, or copies keys elsewhere. If no credential is available to this session, the live
-half moves to S2-L1 (operator lane) and this task closes on the code-read half alone.
-**Runbook redaction rule**: quote status codes + body FIELD SHAPES only — never auth headers,
-tokens, or full raw bodies.
-**AC**: runbook quotes an OBSERVED response (status + redacted shape); the auth header name is a
-config decision, written down. Unreachable/no-creds → task closes as "contract unresolved, shadow
-stays stub" and S1-T2/T3 proceed with fail-closed default config (feature dark until S2 resolves it).
+### S1-T3 — in-memory store gains the chain [SDD 6a]
+InMemoryLedgerStore appends through `chainLink` (seq assigned store-side); expose
+`verifyChain()`. Freeze semantics in-memory: `chain_frozen` map honored by append. **AC**:
+existing 42-test suite green + chain/freeze tests; frozen chain rejects appends until clear.
 
-### S1-T2 — `probeShadow` + total status map [FR-2]
-`http-building-probes.ts`: optional `shadowAuditApiUrl` + `shadowAuditAuthHeader` config;
-`probeShadow()` in the `probeScore` shape; `mapShadowStatus` implementing the SDD §2 table
-(200+result→complete · 200-partial→pending+warn · 404→pending · 401/403→blocked auth_misconfig ·
-429→pending · 5xx/network→blocked · timeout 10s→blocked · redirects→final status).
-Env naming pinned (one convention, blocker-adjacent IMP-004): `SHADOW_AUDIT_API_URL`,
-`SHADOW_AUDIT_AUTH_HEADER` (optional, default `authorization`) — no aliases.
-**AC**: one test per table row (8 rows), fromEnv with/without `SHADOW_AUDIT_API_URL`; absence of
-the shadow URL leaves the sonar/score/worlds trio fully enabled; **feature-dark proof (blocker
-cure)**: an explicit test asserting unset-URL → shadow stays on stub (`blocked`), PLUS one startup
-log line `shadow probe: DARK (stub)` when HTTP probes are enabled without the shadow URL — the
-darkness is observable in deployed logs, not assumed.
+### S1-T4 — async port refactor with inventory artifact [SDD 6b-1]
+FIRST produce the method+caller inventory (every `ILedgerStore` method, every call-site,
+before/after signature) into `grimoires/loa/cycles/sandwich-line/port-inventory.md`; THEN flip
+the port to async, update reducer/service call-sites mechanically, in-memory adapter wraps sync.
+**AC**: inventory committed before the refactor commit; full suite green; zero behavior diffs
+(same test assertions, awaited).
 
-### S1-T3 — Triage-port delegation [FR-2]
-`kitchen-triage-ports.ts:37-39`: `shadow.probe` delegates to `http.probeShadow` iff configured,
-else stub fallback (behavior-preserving when unset). **AC**: delegation test + fallback test;
-existing suite stays green (`pnpm test` in `packages/services/ordering`).
+## Sprint 2: durable spine (6b-2 + 6b-3, `shared/shadow-mode`)
 
-### S1-T4 — Cycle PR
-PR-A from this worktree branch: S1-T0..T3 + grimoire artifacts. Draft, `platform/ordering` scope,
-fence script green in the PR body evidence. **AC**: PR open, unit tests green locally, fence 0.
+### S2-T1 — Postgres store + chain append [SDD 6b-2]
+`0002_shadow_chain.sql` (shadow_chain + shadow_chain_state) + `PostgresLedgerStore` per the SDD
+transaction spec (advisory xact lock; seq inside lock; observation+chain in one txn; duplicate
+event_id → false). Tests run against a disposable pg (testcontainers or the repo's pg-test
+pattern — reuse whatever `packages/services/shadow-audit`'s pg tests use; if none exists, gate
+pg tests behind `PG_TEST_URL` env with a loud skip). **AC**: concurrent-append test (2 clients,
+no fork/gap), duplicate-replay test, freeze-row blocks append test.
 
-## S2 lanes — flags, spike, settle gate (NOT run-mode executable; no `Sprint N:` header by design)
+### S2-T2 — freeze/clear surface [SDD 6a freeze design]
+Operator-only clear action (CLI script in the package `bin/chain-admin.ts` — authenticated by
+DATABASE_URL possession + logged rationale row), recovery procedure in package README. **AC**:
+clear writes cleared_by+rationale; partial verify can freeze but never clear.
 
-- **S2-L1 [OPERATOR-BOUNDED]** — Railway env truth (FR-3): verify/flip `ENABLE_REPROBE`,
-  `KITCHEN_PROBE_HTTP_ENABLED`, trio URLs + `SERVICE_TOKEN`, add `SHADOW_AUDIT_API_URL` (post
-  S1-T1 contract). Confirm `SONAR_API_URL` (kitchen-api host) serves
-  `/v1/collections/:chain/:contract/status`. **Evidence**: `freeside kitchen probe` +
-  `order status` show fresh `probe_meta`; Railway log shows worker cadence.
-- **S2-L2 [CROSS-REPO sonar-api, timebox 1 day]** — #120 spike per SDD §7. Exit: fix PR or
-  diagnosis doc + /coord lane; decides G-1 subject (real Azuki vs OP-chain pivot).
-- **S2-L3 [AGENT + operator gates]** — E2E per SDD §4 under the PRD's Live-Order Safety Protocol,
-  concretized (blocker cure): *zero-spend* (community-onboarding ingredient advancement performs no
-  payment interaction; if ANY payment-bearing hop appears, halt — out of protocol); *abort
-  conditions* = ambiguous probe state, any non-2xx on advance, evidence/CAS mismatch, or fence/
-  check failure → halt in place (partially-advanced is a valid persistent state per SDD §4) and
-  surface to operator; *operator confirmation points* = (1) before the first touch of the REAL
-  order, (2) before the fulfill flip that sets `world_slug`. Dry-run fresh OP-chain order first
-  (incl. CAS replay-rejection evidence). **Evidence**: runbook quotes every verb call, exit codes,
-  `probe_meta` trail. THIS CLOSES G-1.
+### S2-T3 — AppendGrant + JwtProducerPolicy [SDD 6b-3]
+Capability-gated append (WeakSet-identity `AppendGrant`, mintable by `JwtProducerPolicy.
+authorize` | operator-migration factory | test factory behind test marker); JWT validation per
+SDD (pinned iss/aud, exp ≤1h, skew ±60s, zod claims). `StaticProducerPolicy` retired from the
+durable path. **AC**: four-case unauthorized test (no token / expired / out-of-scope / forged
+grant); grant-less append does not typecheck (compile-time assertion via tsd or a type test).
 
-## S3 lanes — read plane + orientation (parallel, detachable; NOT run-mode executable)
+## Sprint 3: consumption seams (FR-2 + 6c code, `shared/shadow-audit` + `platform/ordering`)
 
-- **S3-L1 [AGENT→operator]** — Privacy Gate evidence per SDD §5, with repo-artifact hygiene
-  (blocker cure): probe using an OPERATOR-OWNED wallet address only (never an arbitrary user's);
-  the runbook records field NAMES + types + one operator-wallet example — full raw dumps of other
-  wallets never enter repo artifacts. Apply ALLOWED/FORBIDDEN criteria, operator sign-off line.
-  FORBIDDEN hit → posture falls back, lane ends honestly.
-- **S3-L2 [CROSS-REPO inventory-api]** — merge #18 beacon serving; fix registry `beacon_url`
-  (in loa-freeside, small follow-up commit on this branch); `app.ts` docstring drift.
-- **S3-L3 [OPERATOR-BOUNDED]** — un-wall + DNS per gate outcome; rate-limit stays.
-- **S3-L4 [CROSS-REPO dashboard]** — fail-loud inventory client (typed result, surfaced error
-  state, structured log) + `buildings.ts` (~3 sites). One PR, Cursor reviews.
-- **S3-L5 [CROSS-REPO dashboard+characters]** — AGENTS.md orientation stubs per SDD §6 content
-  contract + characters `AGENTS.md:1` repair + characters `buildings.ts` (~10 sites). One PR per
-  repo, additive files only.
+### S3-T1 — capability read on the audit [FR-2]
+`GET /v1/collections/:chain/:contract` (open; 200 `{collection, standard}` / 404) + route-
+posture test asserting the PRD security-boundary map. **AC**: in-registry/not/malformed tests.
 
-## Lane detachment (durable, IMP-002)
-A lane that detaches files a bead (`br create`) carrying: the lane id, unresolved state, evidence
-gathered so far (runbook pointer), follow-up owner, and the `domain:` label — detachment without a
-bead is not detachment, it's dropping.
+### S3-T2 — probeShadow (ordering) [FR-2]
+`shadowAuditApiUrl` config + `probeShadow` (mapLookupStatus + timeout rows) + triage delegation
+(policy fallback retained until knob-retirement criteria). **AC**: mapping rows tested;
+feature-dark unchanged when unset; delegation test.
 
-## PR readiness rule (IMP-006)
-PR-A opens DRAFT; flips ready when S1 ACs are green + fence exit 0 + local `pnpm test` green in
-`packages/services/ordering`. Merge is the operator's (cross-repo contract). S2 contract
-resolution does NOT block PR-A merge — shadow ships fail-closed dark by design.
+### S3-T3 — FAGAN HIGH-3 value-semantics contract test [6c precondition]
+Pin token-standard value semantics cross-package (the open finding): one contract test asserting
+erc721 vs erc1155 holding-value semantics agree between shadow-audit's ownership sources and the
+shadow-mode projection shapes. **AC**: test exists, green, referenced by 6c PR.
 
-## Fence git semantics (IMP-003)
-`scripts/check-sibling-fence.sh` fetches `origin main` before diffing (`git fetch origin main`) and
-diffs `origin/main...HEAD` (three-dot, merge-base) so a stale local main can't blind the fence.
+### S3-T4 — differential consumer + classifier [SDD 6c]
+`subscription_started_at` recorded; pure classifier (`no_backfill_window` vs `true_mismatch`,
+boundary cases tested); differential runner comparing sonar-replay vs projection source with
+salted-hash divergence logging + ops webhook post; wiring FLAG-GATED (`SHADOW_DIFFERENTIAL_
+ENABLED`, default off — turns on in L-3 once deployed against the live host). **AC**: classifier
+unit tests; runner tests with fixture sources; structured log contract fields exact.
+
+## L-lanes (NOT run-mode executable)
+
+- **L-1 [AGENT research → OPERATOR verify]** — FR-1a registry mining: assemble
+  COLLECTION_REGISTRY + provenance table (worlds manifests via gh, honeyroad, cubquests,
+  belt entities, `cast call name()` verification) → operator verification pass. <8 minable →
+  tooling-gap issue fires with the provenance table. Subset floor: ≥2 verified.
+- **L-2 [AGENT infra + OPERATOR gates]** — FR-1 deploy: Railway service (agent, proven pattern),
+  env per SDD §2 (role snapshot IN-IMAGE decision), `test:live` output quoted in runbook
+  [OPERATOR authorizes], registry cell added ONLY after green. Then S3-T4's flag flips.
+- **L-3 [AGENT]** — FR-3 sandwich: Vercel env (SHADOW_AUDIT_API_URL/_KEY) + redeploy; run ONE
+  real audit; author + land `cycles/sandwich-line/first-audit-report.md` with the publication
+  checklist (k≥5, allowlist, sign-off line = operator's). Oracle C4/C5 re-run recorded.
+- **L-4 [CROSS-REPO freeside-worlds]** — FR-4 manifest durability per SDD §5 (pg-backed store,
+  boot import, yaml as export); /coord PR; kill-test = redeploy survival quoted.
+- **L-5 [AGENT + CROSS-REPO]** — FR-5 demo: pivot subject from CollectionStat (must pass
+  score/worlds probes), full CLI E2E to `fulfilled`, evidence in `cycles/sandwich-line/
+  e2e-demo.md`, KEEPER settle-check armed. Parallel: sonar #120 spike (1-day timebox, sonar-api
+  via /coord; exit = fix PR or diagnosis doc).
+
+## Lane detachment / PR readiness / fence
+Same contracts as consumption-truth: detaching lanes file beads with domain labels + evidence
+pointers; sprint PRs open DRAFT and flip ready on green ACs + local suite; operator merges.
+Evidence ledger = `grimoires/loa/cycles/sandwich-line/` runbook files; every /coord lane PR
+links its runbook section (IMP-011).
 
 ## Acceptance for the cycle
-G-1 evidence in the runbook (S2-L3) + S1 PR merged + at least S3-L1 gate decided. Everything else
-detaches to beads without blocking cycle close.
+G-1 = S1+S2+S3-T4 landed AND L-2 deployed AND the differential ran ≥once live (else report says
+"spine durable, unconsumed"). G-2/G-3 = L-2/L-3 evidence. G-4 = S3-T1/T2 + knob retirement or
+its criteria pending honestly. G-5 = L-4 kill-test. G-6 = L-5 fulfilled evidence.
