@@ -47,16 +47,20 @@ export function consumeCockpitGrant(opts: CockpitGrantOpts = {}): boolean {
   }
   const now = opts.nowMs ?? Date.now();
   const fresh = now - mtimeMs <= ttl;
-  // one gesture = one write: consume the grant whether fresh or stale.
-  let removed = true;
+  // Atomic consume (CSOT-003): unlink WITHOUT `force`, so the unlink itself is
+  // the race winner — exactly ONE caller's rmSync succeeds; a concurrent caller
+  // (or a grant already consumed between our stat and unlink) gets ENOENT and is
+  // NOT authorized. `force:true` would have masked ENOENT and let both win.
+  let consumed = true;
   try {
-    rmSync(path, { force: true });
+    rmSync(path);
   } catch {
-    removed = false;
+    consumed = false;
   }
-  // FAIL-CLOSED (FAGAN M-1): if we could not GUARANTEE the grant is gone, do NOT
-  // authorize — else a fresh grant that failed to unlink would re-authorize.
-  return fresh && removed;
+  // FAIL-CLOSED (FAGAN M-1 + CSOT-003): authorize ONLY if THIS call removed a
+  // fresh grant. A stale grant (fresh=false) never authorizes; a lost race
+  // (consumed=false) never authorizes.
+  return fresh && consumed;
 }
 
 export interface RatifyResult {

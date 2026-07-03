@@ -64,9 +64,14 @@ function assertMutable(yes: boolean): pg.Pool {
   return new pg.Pool({ connectionString: dbUrl });
 }
 
-async function withStore<T>(pool: pg.Pool, fn: (s: PostgresLedgerStore) => Promise<T>): Promise<T> {
+/**
+ * `migrate:false` for READ verbs (CSOT-004): query/export-snapshot must not run
+ * DDL — a read verb that mutates schema is a surprise write. The schema is
+ * owned by the mutating path (propose/ratify/drift) + the deploy migration.
+ */
+async function withStore<T>(pool: pg.Pool, fn: (s: PostgresLedgerStore) => Promise<T>, migrate = true): Promise<T> {
   const store = new PostgresLedgerStore(pool);
-  await store.migrate();
+  if (migrate) await store.migrate();
   try {
     return await fn(store);
   } finally {
@@ -109,8 +114,10 @@ async function main(): Promise<void> {
       const q = argv.find((a) => !a.startsWith('--')) ?? '';
       const dbUrl = process.env.DATABASE_URL?.trim();
       if (!dbUrl) fail('query requires DATABASE_URL');
-      const hits = await withStore(new pg.Pool({ connectionString: dbUrl }), (s) =>
-        queryCollections(s, q, { showContested: hasFlag(argv, '--show-contested') }),
+      const hits = await withStore(
+        new pg.Pool({ connectionString: dbUrl }),
+        (s) => queryCollections(s, q, { showContested: hasFlag(argv, '--show-contested') }),
+        false, // read verb — no migrate
       );
       process.stdout.write(JSON.stringify({ hits, count: hits.length }, null, 2) + '\n');
       break;
@@ -125,7 +132,7 @@ async function main(): Promise<void> {
     case 'export-snapshot': {
       const dbUrl = process.env.DATABASE_URL?.trim();
       if (!dbUrl) fail('export-snapshot requires DATABASE_URL');
-      const snapshot = await withStore(new pg.Pool({ connectionString: dbUrl }), (s) => exportRatifiedSnapshot(s));
+      const snapshot = await withStore(new pg.Pool({ connectionString: dbUrl }), (s) => exportRatifiedSnapshot(s), false);
       process.stdout.write(JSON.stringify(snapshot, null, 2) + '\n');
       break;
     }

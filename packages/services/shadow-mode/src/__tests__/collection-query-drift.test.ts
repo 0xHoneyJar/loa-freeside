@@ -89,6 +89,21 @@ describe('collections drift (S3-T3, SDD §8)', () => {
     expect(entity!.labels.token_standard).toBe('erc1155'); // overwritten
   });
 
+  it('CSOT-001: a transient RPC failure NEVER poisons a known standard (unknown never overwrites known)', async () => {
+    const store = new InMemoryLedgerStore();
+    const grant = collectionProducerGrant();
+    await seed(store, [MIBERA], new Set()); // erc721 established
+    const id = collectionEntityId(MIBERA.chainId, MIBERA.contract)!;
+    // RPC is down: ethCall returns null → detect degrades to 'unknown'
+    const rpcDown: EthCall = async () => null;
+    await drift(store, grant, { belt: async () => [MIBERA], ethCall: rpcDown }, '2026-07-04T00:00:00.000Z');
+    expect((await store.getCollectionEntity(id))!.labels.token_standard).toBe('erc721'); // NOT poisoned
+
+    // RPC recovers → re-derive erc721 → still erc721 (never got stuck at unknown)
+    await drift(store, grant, { belt: async () => [MIBERA], ethCall: mkEthCall(new Set()) }, '2026-07-05T00:00:00.000Z');
+    expect((await store.getCollectionEntity(id))!.labels.token_standard).toBe('erc721');
+  });
+
   it('an orphaned entity (no longer belt-tracked) → orphaned + failed', async () => {
     const store = new InMemoryLedgerStore();
     await seed(store, [MIBERA], new Set());

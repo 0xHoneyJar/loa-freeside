@@ -75,6 +75,12 @@ export async function drift(
       ['collection_key', rederived.collection_key],
     ] as const) {
       const cur = label === 'token_standard' ? entity.labels.token_standard : entity.labels.collection_key;
+      // CSOT-001: `unknown` is absence-of-information (ERC-165 unreachable / a
+      // transient RPC blip degrades to it). It must NEVER overwrite a known
+      // standard — otherwise a re-derive back to the known value dedups against
+      // the original observation (content-addressed event_id) and the entity is
+      // stuck at 'unknown' forever, silently ejected from the settle gate.
+      if (label === 'token_standard' && value === 'unknown' && cur !== 'unknown') continue;
       if (value !== cur) {
         const obs = collectionLabelObserved(entity.chain, entity.contract, label, value, nowIso);
         if (obs) await store.appendObservationIfAbsent(obs, grant);
@@ -83,7 +89,11 @@ export async function drift(
       }
     }
 
-    if (rederived.token_standard === 'unknown') {
+    // Only flag unknown_standard when the CURRENT (folded) standard is unknown —
+    // a transient re-derive to 'unknown' over a known value was skipped above
+    // (CSOT-001) and must not relabel a healthy entity. Never clobber 'drifted'
+    // (both can be true; drift is the more actionable signal) — CSOT-011.
+    if (entity.labels.token_standard === 'unknown' && classified !== 'drifted') {
       classified = 'unknown_standard';
       detail.push('ERC-165 un-derivable');
     }

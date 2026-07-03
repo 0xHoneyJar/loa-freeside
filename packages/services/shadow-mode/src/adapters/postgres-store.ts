@@ -44,6 +44,24 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Canonicalize timestamps to the exact form `rowToObservation` reads back
+ * (`Date.toISOString()`, millisecond UTC) BEFORE we hash + store (CSOT-002).
+ * Postgres `timestamptz` round-trips a producer string like `...00:00Z` or a
+ * microsecond value to a DIFFERENT string, so hashing the producer form and
+ * verifying against the read-back form falsely freezes a healthy chain. Hashing
+ * the canonical form makes append-hash == verify-hash. Validated ISO upstream
+ * (`z.string().datetime()`), so `new Date` never yields NaN here.
+ */
+function canonicalizeObsTimestamps(o: ShadowObservation): ShadowObservation {
+  return {
+    ...o,
+    observed_at: new Date(o.observed_at).toISOString(),
+    emitted_at: new Date(o.emitted_at).toISOString(),
+    ingested_at: new Date(o.ingested_at).toISOString(),
+  };
+}
+
 function rowToObservation(row: pg.QueryResultRow): ShadowObservation {
   return {
     event_id: row.event_id,
@@ -130,6 +148,8 @@ export class PostgresLedgerStore implements ILedgerStore {
     if (observation.event_id.startsWith('genesis:')) {
       throw new Error(`event_id namespace 'genesis:' is reserved (got ${observation.event_id})`);
     }
+    // CSOT-002: hash + store the canonical timestamp form the DB reads back.
+    observation = canonicalizeObsTimestamps(observation);
     const chainId = observation.community_id;
     const client = await this.pool.connect();
     try {

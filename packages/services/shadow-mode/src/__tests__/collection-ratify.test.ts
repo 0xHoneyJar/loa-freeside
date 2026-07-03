@@ -73,6 +73,11 @@ describe('collection ratify — the force-chain gate (S2-T3, SDD §4)', () => {
     expect(entity!.provenance.find((p) => p.label === 'world')!.source_type).toBe('operator-validated');
   });
 
+  it('CSOT-003: a grant already consumed (ENOENT on unlink) does NOT authorize', () => {
+    // no grant file exists → the unlink gets ENOENT → not authorized (the race-loser path)
+    expect(consumeCockpitGrant({ grantPath })).toBe(false);
+  });
+
   it('a stale grant is refused (and consumed so it cannot be reused)', () => {
     touchGrant();
     const stale = consumeCockpitGrant({ grantPath, nowMs: Date.now() + COCKPIT_GRANT_TTL_MS + 1000 });
