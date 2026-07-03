@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { RiskBandSchema } from '@freeside/shadow-audit-protocol';
 import { ShadowLedger } from '../shadow-ledger.js';
+import { testGrant } from '../auth/append-grant.js';
 import { InMemoryLedgerStore } from '../adapters/in-memory-store.js';
 import { buildAccessAuditReport } from '../access-audit.js';
 import { demoEvents } from '../fixtures.js';
 
 async function ledgerWithDemo(): Promise<ShadowLedger> {
   const l = new ShadowLedger(new InMemoryLedgerStore());
-  for (const e of demoEvents) await l.ingest(e);
+  for (const e of demoEvents) await l.ingest(e, testGrant());
   return l;
 }
 
@@ -21,7 +22,7 @@ describe('a revoked link is not counted as verified in the report (FAGAN MEDIUM)
       name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
       observed_at: NOW, emitted_at: NOW,
       payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } },
-    });
+    }, testGrant());
     let report = buildAccessAuditReport('demo', await l.getMemberGraph('demo'));
     expect((report.summary as Record<string, number>).verified_subjects).toBe(1);
 
@@ -30,7 +31,7 @@ describe('a revoked link is not counted as verified in the report (FAGAN MEDIUM)
       name: 'identity.link.revoked.v1', source: 'identity_api', truth_status: 'attested',
       observed_at: NOW, emitted_at: NOW,
       payload: { user_id: 'usr_alice', link_kind: 'wallet' },
-    });
+    }, testGrant());
     report = buildAccessAuditReport('demo', await l.getMemberGraph('demo'));
     expect((report.summary as Record<string, number>).verified_subjects).toBe(0);
   });

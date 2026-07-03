@@ -17,10 +17,11 @@ import type {
   ShadowReport,
 } from '@freeside/shadow-mode-protocol';
 import type { ChainLink, ChainVerdict } from '../chain.js';
+import type { AppendGrant } from '../auth/append-grant.js';
 
 export interface ILedgerStore {
   /** Atomic insert-if-absent. Returns true iff newly inserted (idempotency, AC-1). Append-only. */
-  appendObservationIfAbsent(observation: ShadowObservation): Promise<boolean>;
+  appendObservationIfAbsent(observation: ShadowObservation, grant: AppendGrant): Promise<boolean>;
 
   /** Run a unit of work atomically (in-memory: synchronous passthrough; Postgres: a DB tx). */
   withTransaction<T>(fn: () => Promise<T> | T): Promise<T>;

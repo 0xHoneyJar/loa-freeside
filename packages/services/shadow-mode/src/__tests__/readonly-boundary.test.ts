@@ -24,6 +24,8 @@ const ALLOWED_BARE_IMPORTS = new Set([
   // mutation-capable UPSTREAM clients (discord/identity/sonar writes) — writing
   // to the building's own Postgres is the store's job, not an upstream mutation.
   'pg',
+  // JWT verification (producer-auth 6b-3) — read-only crypto, not an upstream client.
+  'jose',
 ]);
 
 function walk(dir: string): string[] {

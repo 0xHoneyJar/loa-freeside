@@ -9,6 +9,7 @@ import {
   verifyChain,
 } from '../chain.js';
 import { InMemoryLedgerStore } from '../adapters/in-memory-store.js';
+import { testGrant } from '../auth/append-grant.js';
 import type { ShadowObservation } from '@freeside/shadow-mode-protocol';
 
 function obs(eventId: string, community = 'azuki'): ShadowObservation {
@@ -90,29 +91,29 @@ describe('chainLink / verifyChain (pure)', () => {
 describe('InMemoryLedgerStore chain integration', () => {
   it('appends build a verifiable chain with lazy genesis', async () => {
     const store = new InMemoryLedgerStore();
-    await store.appendObservationIfAbsent(obs('e1'));
-    await store.appendObservationIfAbsent(obs('e2'));
+    await store.appendObservationIfAbsent(obs('e1'), testGrant());
+    await store.appendObservationIfAbsent(obs('e2'), testGrant());
     expect((await store.getChainHead('azuki'))?.seq).toBe(2);
     expect(await store.verifyChain('azuki')).toEqual({ ok: true, length: 3 });
   });
 
   it('duplicate event_id is idempotent-false and does not extend the chain', async () => {
     const store = new InMemoryLedgerStore();
-    expect(await store.appendObservationIfAbsent(obs('e1'))).toBe(true);
-    expect(await store.appendObservationIfAbsent(obs('e1'))).toBe(false);
+    expect(await store.appendObservationIfAbsent(obs('e1'), testGrant())).toBe(true);
+    expect(await store.appendObservationIfAbsent(obs('e1'), testGrant())).toBe(false);
     expect((await store.getChainHead('azuki'))?.seq).toBe(1);
   });
 
   it('tamper → verify freezes → appends rejected → operator clear reopens', async () => {
     const store = new InMemoryLedgerStore();
-    await store.appendObservationIfAbsent(obs('e1'));
+    await store.appendObservationIfAbsent(obs('e1'), testGrant());
     store.unsafeMutateObservationForTest('e1', (o) => {
       (o.payload as { n: string }).n = 'tampered';
     });
     const verdict = await store.verifyChain('azuki');
     expect(verdict.ok).toBe(false);
     expect(await store.isChainFrozen('azuki')).toBe(true);
-    await expect(store.appendObservationIfAbsent(obs('e2'))).rejects.toThrow(ChainFrozenError);
+    await expect(store.appendObservationIfAbsent(obs('e2'), testGrant())).rejects.toThrow(ChainFrozenError);
     // hardened behavior: clear requires the chain to verify green — repair first
     store.unsafeMutateObservationForTest('e1', (o) => {
       (o.payload as { n: string }).n = 'e1';
@@ -123,8 +124,8 @@ describe('InMemoryLedgerStore chain integration', () => {
 
   it('chains are per-community (independent genesis + seq)', async () => {
     const store = new InMemoryLedgerStore();
-    await store.appendObservationIfAbsent(obs('a1', 'azuki'));
-    await store.appendObservationIfAbsent(obs('m1', 'mibera'));
+    await store.appendObservationIfAbsent(obs('a1', 'azuki'), testGrant());
+    await store.appendObservationIfAbsent(obs('m1', 'mibera'), testGrant());
     expect((await store.getChainHead('azuki'))?.seq).toBe(1);
     expect((await store.getChainHead('mibera'))?.seq).toBe(1);
     expect(await store.verifyChain('mibera')).toEqual({ ok: true, length: 2 });
@@ -135,13 +136,13 @@ describe('FAGAN hardening (sprint-1 review)', () => {
   it("rejects user observations in the reserved genesis: namespace", async () => {
     const store = new InMemoryLedgerStore();
     await expect(
-      store.appendObservationIfAbsent({ ...obs('x'), event_id: 'genesis:azuki' }),
+      store.appendObservationIfAbsent({ ...obs('x'), event_id: 'genesis:azuki' }, testGrant()),
     ).rejects.toThrow(/reserved/);
   });
 
   it('clear is refused while the chain still fails verification', async () => {
     const store = new InMemoryLedgerStore();
-    await store.appendObservationIfAbsent(obs('e1'));
+    await store.appendObservationIfAbsent(obs('e1'), testGrant());
     store.unsafeMutateObservationForTest('e1', (o) => {
       (o.payload as { n: string }).n = 'tampered';
     });
@@ -153,16 +154,16 @@ describe('FAGAN hardening (sprint-1 review)', () => {
     });
     await store.clearChainFreeze('azuki', 'operator', 'payload restored');
     expect(await store.isChainFrozen('azuki')).toBe(false);
-    await expect(store.appendObservationIfAbsent(obs('e2'))).resolves.toBe(true);
+    await expect(store.appendObservationIfAbsent(obs('e2'), testGrant())).resolves.toBe(true);
   });
 
   it('append freezes on a tampered HEAD without an explicit verify call', async () => {
     const store = new InMemoryLedgerStore();
-    await store.appendObservationIfAbsent(obs('e1'));
+    await store.appendObservationIfAbsent(obs('e1'), testGrant());
     store.unsafeMutateObservationForTest('e1', (o) => {
       (o.payload as { n: string }).n = 'tampered';
     });
-    await expect(store.appendObservationIfAbsent(obs('e2'))).rejects.toThrow(ChainFrozenError);
+    await expect(store.appendObservationIfAbsent(obs('e2'), testGrant())).rejects.toThrow(ChainFrozenError);
     expect(await store.isChainFrozen('azuki')).toBe(true);
   });
 

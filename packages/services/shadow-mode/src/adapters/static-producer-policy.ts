@@ -12,6 +12,7 @@
 
 import type { EventName, SourceKind } from '@freeside/shadow-mode-protocol';
 import type { IProducerPolicy, PolicyContext, PolicyResult } from '../ports/producer-policy.js';
+import { AppendGrant } from '../auth/append-grant.js';
 
 /** Which sources may emit which events. Fail-closed: anything not listed is rejected. */
 const SOURCE_ALLOWED_EVENTS: Record<SourceKind, ReadonlySet<EventName>> = {
@@ -36,6 +37,8 @@ export class StaticProducerPolicy implements IProducerPolicy {
     if (ctx.producer?.communities && !ctx.producer.communities.includes(ctx.communityId)) {
       return { ok: false, reason: 'cross_community' };
     }
-    return { ok: true };
+    // Structural grant: scoped to exactly this (source, name) pair. Real
+    // producer-auth grants come from JwtProducerPolicy (6b-3).
+    return { ok: true, grant: AppendGrant._mint(`static:${ctx.source}`, [ctx.source], [ctx.name]) };
   }
 }

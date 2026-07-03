@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ShadowLedger } from '../shadow-ledger.js';
+import { testGrant } from '../auth/append-grant.js';
 import { InMemoryLedgerStore } from '../adapters/in-memory-store.js';
 import { buildAccessAuditReport } from '../access-audit.js';
 import { demoEvents } from '../fixtures.js';
@@ -7,7 +8,7 @@ import { demoEvents } from '../fixtures.js';
 describe('e2e smoke: demo fixtures → member graph + report', () => {
   it('ingests the demo events into a coherent graph (alice verified, bob wallet-only)', async () => {
     const l = new ShadowLedger(new InMemoryLedgerStore());
-    for (const e of demoEvents) expect((await l.ingest(e)).status).toBe('ingested');
+    for (const e of demoEvents) expect((await l.ingest(e, testGrant())).status).toBe('ingested');
 
     const g = await l.getMemberGraph('demo');
     // alice (merged identity_user) + bob (wallet_only) = 2 subjects
@@ -32,9 +33,9 @@ describe('e2e smoke: demo fixtures → member graph + report', () => {
 
   it('replaying ALL demo events is fully idempotent (AC-1 at e2e scale)', async () => {
     const l = new ShadowLedger(new InMemoryLedgerStore());
-    for (const e of demoEvents) await l.ingest(e);
+    for (const e of demoEvents) await l.ingest(e, testGrant());
     const before = await l.getMemberGraph('demo');
-    for (const e of demoEvents) expect((await l.ingest(e)).status).toBe('duplicate');
+    for (const e of demoEvents) expect((await l.ingest(e, testGrant())).status).toBe('duplicate');
     const after = await l.getMemberGraph('demo');
     expect(after.summary).toEqual(before.summary);
   });

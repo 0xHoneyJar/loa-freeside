@@ -34,6 +34,7 @@ import {
   type CommunityConfigUpdatedPayload,
 } from '@freeside/shadow-mode-protocol';
 import type { ILedgerStore } from './ports/ledger-store.js';
+import type { AppendGrant } from './auth/append-grant.js';
 
 interface CommunityConfig {
   role_rank: Record<string, number>;
@@ -51,7 +52,7 @@ export class ShadowLedger {
   constructor(private readonly store: ILedgerStore) {}
 
   /** Idempotent, atomic, transactional ingest (AC-1). */
-  async ingest(event: ShadowEvent): Promise<IngestResult> {
+  async ingest(event: ShadowEvent, grant: AppendGrant): Promise<IngestResult> {
     return this.store.withTransaction(async () => {
       const observation: ShadowObservation = {
         event_id: event.event_id,
@@ -66,7 +67,7 @@ export class ShadowLedger {
         ingested_at: new Date().toISOString(),
       };
 
-      if (!(await this.store.appendObservationIfAbsent(observation))) {
+      if (!(await this.store.appendObservationIfAbsent(observation, grant))) {
         return { status: 'duplicate', event_id: event.event_id };
       }
 

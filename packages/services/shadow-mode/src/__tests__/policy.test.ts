@@ -40,7 +40,7 @@ describe('AC-9 StaticProducerPolicy is fail-closed', () => {
 
 describe('AllowAllPolicy is a guarded test double', () => {
   it('constructs under NODE_ENV=test (vitest) and allows all', async () => {
-    expect(new AllowAllPolicy().verifyProducer().ok).toBe(true);
+    expect(new AllowAllPolicy().verifyProducer({ source: 'discord', name: 'discord.member.snapshot.v1', communityId: 'demo' } as never).ok).toBe(true);
   });
 
   it('refuses to construct outside NODE_ENV=test', async () => {

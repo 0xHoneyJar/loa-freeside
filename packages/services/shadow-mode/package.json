@@ -12,7 +12,8 @@
     "@freeside/shadow-mode-protocol": "file:../../protocol/shadow-mode",
     "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
     "hono": "^4.7.0",
-    "pg": "^8.16.0"
+    "pg": "^8.16.0",
+    "jose": "^5.9.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

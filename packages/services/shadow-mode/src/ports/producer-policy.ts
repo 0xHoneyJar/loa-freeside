@@ -9,6 +9,7 @@
  */
 
 import type { EventName, SourceKind } from '@freeside/shadow-mode-protocol';
+import type { AppendGrant } from '../auth/append-grant.js';
 
 /** Authenticated producer identity (populated by SvcJwtPolicy; absent in the static MVP). */
 export interface ProducerIdentity {
@@ -23,12 +24,14 @@ export interface PolicyContext {
   name: EventName;
   communityId: string;
   producer?: ProducerIdentity;
+  /** Raw bearer token from the transport (JwtProducerPolicy verifies it). */
+  bearerToken?: string;
 }
 
 export type PolicyResult =
-  | { ok: true }
-  | { ok: false; reason: 'unauthorized_source' | 'cross_community' | 'unknown_event' };
+  | { ok: true; grant: AppendGrant }
+  | { ok: false; reason: 'unauthorized_source' | 'cross_community' | 'unknown_event' | 'token_rejected' | 'no_token' };
 
 export interface IProducerPolicy {
-  verifyProducer(ctx: PolicyContext): PolicyResult;
+  verifyProducer(ctx: PolicyContext): PolicyResult | Promise<PolicyResult>;
 }

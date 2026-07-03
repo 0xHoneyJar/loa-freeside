@@ -32,17 +32,18 @@ export function createShadowRouter({ ledger, policy }: ShadowRouterDeps): Hono {
     }
     const event = parsed.data;
 
-    const verdict = policy.verifyProducer({
+    const verdict = await policy.verifyProducer({
       source: event.source,
       name: event.name,
       communityId: event.community_id,
+      bearerToken: c.req.header('authorization')?.replace(/^Bearer\s+/i, ''),
     });
     if (!verdict.ok) {
       return c.json({ error: 'unauthorized', reason: verdict.reason }, 401);
     }
 
     try {
-      return c.json(await ledger.ingest(event), 202);
+      return c.json(await ledger.ingest(event, verdict.grant), 202);
     } catch (err) {
       if (err instanceof ChainFrozenError) {
         return c.json({ error: 'chain_frozen', chain_id: err.chainId, first_bad_seq: err.firstBadSeq }, 409);

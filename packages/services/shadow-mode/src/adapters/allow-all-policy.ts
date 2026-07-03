@@ -6,7 +6,8 @@
  * structural rather than conventional (flatline SDD SKP-001/003).
  */
 
-import type { IProducerPolicy, PolicyResult } from '../ports/producer-policy.js';
+import type { IProducerPolicy, PolicyContext, PolicyResult } from '../ports/producer-policy.js';
+import { AppendGrant } from '../auth/append-grant.js';
 
 export class AllowAllPolicy implements IProducerPolicy {
   constructor() {
@@ -18,7 +19,7 @@ export class AllowAllPolicy implements IProducerPolicy {
     }
   }
 
-  verifyProducer(): PolicyResult {
-    return { ok: true };
+  verifyProducer(ctx: PolicyContext): PolicyResult {
+    return { ok: true, grant: AppendGrant._mint('allow-all-test', [ctx.source], [ctx.name]) };
   }
 }

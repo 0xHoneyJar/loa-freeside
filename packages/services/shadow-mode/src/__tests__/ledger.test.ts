@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { ShadowEvent } from '@freeside/shadow-mode-protocol';
 import { ShadowLedger } from '../shadow-ledger.js';
+import { testGrant } from '../auth/append-grant.js';
 import { InMemoryLedgerStore } from '../adapters/in-memory-store.js';
 
 const NOW = '2026-06-26T00:00:00.000Z';
@@ -25,8 +26,8 @@ describe('AC-1 idempotent ingest', () => {
     const l = ledger();
     const e = ev({ event_id: 'e1', name: 'discord.member.snapshot.v1', source: 'discord',
       payload: { discord_user_id: '1001', role_ids: ['role-holder'] } });
-    expect((await l.ingest(e)).status).toBe('ingested');
-    expect((await l.ingest(e)).status).toBe('duplicate');
+    expect((await l.ingest(e, testGrant())).status).toBe('ingested');
+    expect((await l.ingest(e, testGrant())).status).toBe('duplicate');
     expect((await l.getMemberGraph('demo')).summary.total_subjects).toBe(1);
   });
 });
@@ -35,7 +36,7 @@ describe('AC-2 discord-only member stays unresolved until verified', () => {
   it('a discord snapshot alone is observed_only, not verified', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'e1', name: 'discord.member.snapshot.v1', source: 'discord',
-      payload: { discord_user_id: '1001', role_ids: ['role-holder'] } }));
+      payload: { discord_user_id: '1001', role_ids: ['role-holder'] } }), testGrant());
     const [subj] = (await l.getMemberGraph('demo')).subjects;
     expect(subj!.kind).toBe('discord_member');
     expect(subj!.attribution_quality).not.toBe('verified');
@@ -47,7 +48,7 @@ describe('AC-3 wallet-only chain actor stays wallet_only until verified', () => 
   it('a sonar attribution alone is wallet_only, not verified', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'e1', name: 'sonar.wallet.attributed.v1', source: 'sonar',
-      payload: { wallet: { chain: 'berachain', address: '0xBBB' }, contract_address: '0xc', edge_kind: 'minted' } }));
+      payload: { wallet: { chain: 'berachain', address: '0xBBB' }, contract_address: '0xc', edge_kind: 'minted' } }), testGrant());
     const [subj] = (await l.getMemberGraph('demo')).subjects;
     expect(subj!.kind).toBe('wallet_only');
     expect(subj!.attribution_quality).not.toBe('verified');
@@ -58,9 +59,9 @@ describe('AC-4 verified link merges conservatively', () => {
   it('discord_member + identity.account.linked(discord) merge into a verified identity_user', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'd1', name: 'discord.member.snapshot.v1', source: 'discord',
-      payload: { discord_user_id: '1001', display_name: 'alice', role_ids: ['role-holder'] } }));
+      payload: { discord_user_id: '1001', display_name: 'alice', role_ids: ['role-holder'] } }), testGrant());
     await l.ingest(ev({ event_id: 'i1', name: 'identity.account.linked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_alice', account_kind: 'discord', external_id: '1001' } }));
+      payload: { user_id: 'usr_alice', account_kind: 'discord', external_id: '1001' } }), testGrant());
     const g = await l.getMemberGraph('demo');
     expect(g.summary.total_subjects).toBe(1); // absorbed
     const subj = g.subjects[0]!;
@@ -74,9 +75,9 @@ describe('AC-4 verified link merges conservatively', () => {
   it('wallet_only + identity.wallet.linked merge the wallet alias into the identity_user', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 's1', name: 'sonar.wallet.attributed.v1', source: 'sonar',
-      payload: { wallet: { chain: 'berachain', address: '0xAAA' }, contract_address: '0xc', edge_kind: 'minted' } }));
+      payload: { wallet: { chain: 'berachain', address: '0xAAA' }, contract_address: '0xc', edge_kind: 'minted' } }), testGrant());
     await l.ingest(ev({ event_id: 'w1', name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } } }));
+      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } } }), testGrant());
     const g = await l.getMemberGraph('demo');
     expect(g.summary.total_subjects).toBe(1);
     expect(g.subjects[0]!.attribution_quality).toBe('verified');
@@ -88,11 +89,11 @@ describe('AC-5 divergence classification honors role_rank', () => {
   it('incumbent role-holder vs freeside role-core (higher) => freeside_higher', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'cfg', name: 'community.config.updated.v1', source: 'manual_config', truth_status: 'attested',
-      payload: { role_rank: { 'role-holder': 1, 'role-core': 2 } } }));
+      payload: { role_rank: { 'role-holder': 1, 'role-core': 2 } } }), testGrant());
     await l.ingest(ev({ event_id: 'inc', name: 'incumbent.role.observed.v1', source: 'incumbent_bot',
-      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }));
+      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }), testGrant());
     await l.ingest(ev({ event_id: 'fr', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
-      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-core'] } }));
+      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-core'] } }), testGrant());
     const [div] = await l.getDivergences('demo');
     expect(div!.kind).toBe('freeside_higher');
     expect(div!.reason).toMatch(/higher ranked role/);
@@ -101,9 +102,9 @@ describe('AC-5 divergence classification honors role_rank', () => {
   it('equal role sets => match', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'inc', name: 'incumbent.role.observed.v1', source: 'incumbent_bot',
-      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }));
+      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }), testGrant());
     await l.ingest(ev({ event_id: 'fr', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
-      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-holder'] } }));
+      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-holder'] } }), testGrant());
     expect((await l.getDivergences('demo'))[0]!.kind).toBe('match');
   });
 });
@@ -112,17 +113,17 @@ describe('merge cleans up the absorbed subject (no dangling divergence — FAGAN
   it('a merge that absorbs a subject WITH a divergence leaves no divergence pointing at a deleted subject', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'cfg', name: 'community.config.updated.v1', source: 'manual_config', truth_status: 'attested',
-      payload: { role_rank: { 'role-holder': 1, 'role-core': 2 } } }));
+      payload: { role_rank: { 'role-holder': 1, 'role-core': 2 } } }), testGrant());
     // discord subject accrues incumbent + freeside roles => a divergence keyed on the discord subject_id
     await l.ingest(ev({ event_id: 'd1', name: 'discord.member.snapshot.v1', source: 'discord',
-      payload: { discord_user_id: '1001', role_ids: ['role-holder'] } }));
+      payload: { discord_user_id: '1001', role_ids: ['role-holder'] } }), testGrant());
     await l.ingest(ev({ event_id: 'inc', name: 'incumbent.role.observed.v1', source: 'incumbent_bot',
-      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }));
+      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }), testGrant());
     await l.ingest(ev({ event_id: 'fr', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
-      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-core'] } }));
+      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-core'] } }), testGrant());
     // NOW an identity link merges that discord subject into an identity_user (deletes the discord subject)
     await l.ingest(ev({ event_id: 'i1', name: 'identity.account.linked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_alice', account_kind: 'discord', external_id: '1001' } }));
+      payload: { user_id: 'usr_alice', account_kind: 'discord', external_id: '1001' } }), testGrant());
 
     const g = await l.getMemberGraph('demo');
     const subjectIds = new Set(g.subjects.map((s) => s.subject_id));
@@ -140,12 +141,12 @@ describe('AC-10 merge provenance + revoke downgrade', () => {
   it('a merge records provenance; revoke downgrades verified -> observed_only and flags re-split', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'w1', name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } } }));
+      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } } }), testGrant());
     let subj = (await l.getMemberGraph('demo')).subjects[0]!;
     expect(subj.attribution_quality).toBe('verified');
 
     await l.ingest(ev({ event_id: 'r1', name: 'identity.link.revoked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_alice', link_kind: 'wallet', reason: 'compromised' } }));
+      payload: { user_id: 'usr_alice', link_kind: 'wallet', reason: 'compromised' } }), testGrant());
     subj = (await l.getMemberGraph('demo')).subjects[0]!;
     expect(subj.attribution_quality).toBe('observed_only');
     expect(subj.pending_resplit).toBe(true);
@@ -156,9 +157,9 @@ describe('identity-vs-identity conflict is never silently absorbed (FAGAN HIGH)'
   it('two identities linking the SAME wallet stay distinct (no account-takeover collapse)', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'a', name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xWWW' } } }));
+      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xWWW' } } }), testGrant());
     await l.ingest(ev({ event_id: 'b', name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
-      payload: { user_id: 'usr_bob', wallet: { chain: 'berachain', address: '0xWWW' } } }));
+      payload: { user_id: 'usr_bob', wallet: { chain: 'berachain', address: '0xWWW' } } }), testGrant());
     const g = await l.getMemberGraph('demo');
     const ids = g.subjects.filter((s) => s.kind === 'identity_user').map((s) => s.identity_user_id).sort();
     expect(ids).toEqual(['usr_alice', 'usr_bob']); // both survive — NOT collapsed
@@ -176,9 +177,9 @@ describe('unresolved freeside fallback is idempotent on retry (FAGAN MEDIUM)', (
   it('re-emitting the same unresolvable locator with a new event_id collapses to ONE subject', async () => {
     const l = ledger();
     await l.ingest(ev({ event_id: 'f1', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
-      payload: { locator: { user_id: 'ghost' }, role_ids: ['role-core'] } }));
+      payload: { locator: { user_id: 'ghost' }, role_ids: ['role-core'] } }), testGrant());
     await l.ingest(ev({ event_id: 'f2', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
-      payload: { locator: { user_id: 'ghost' }, role_ids: ['role-core'] } }));
+      payload: { locator: { user_id: 'ghost' }, role_ids: ['role-core'] } }), testGrant());
     expect((await l.getMemberGraph('demo')).summary.total_subjects).toBe(1);
   });
 });

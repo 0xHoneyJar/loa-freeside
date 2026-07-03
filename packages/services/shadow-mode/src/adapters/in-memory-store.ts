@@ -9,6 +9,7 @@
  */
 
 import type { ILedgerStore } from '../ports/ledger-store.js';
+import { assertGrant, type AppendGrant } from '../auth/append-grant.js';
 import type {
   ShadowObservation,
   ShadowSubject,
@@ -43,7 +44,8 @@ export class InMemoryLedgerStore implements ILedgerStore {
   /** Append-only freeze/clear history per chain (last entry uncleared = frozen). */
   private readonly freezeLog = new Map<string, FreezeState[]>();
 
-  async appendObservationIfAbsent(observation: ShadowObservation): Promise<boolean> {
+  async appendObservationIfAbsent(observation: ShadowObservation, grant: AppendGrant): Promise<boolean> {
+    assertGrant(grant, observation.source, observation.name);
     if (this.observations.has(observation.event_id)) return false;
     const chainId = observation.community_id;
     // Reserved namespace: the synthetic genesis id can never arrive as user input

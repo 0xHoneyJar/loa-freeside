@@ -39,3 +39,29 @@ This is a **fixture-driven MVP**. The following are deliberate, tracked fast-fol
 The contract (`@freeside/shadow-mode-protocol`), the reducer logic, and the fail-closed
 authz / read-only / idempotency guarantees ARE production-shaped and tested; the items
 above are the wiring + scale work between MVP and a deployed building.
+
+## Hash chain + producer-auth (sandwich-line cycle)
+
+The append-only observation stream is hash-chained per community (`src/chain.ts`,
+`sql/0002_shadow_chain.sql`): `hash = sha256(JCS({chain_version, chain_id, seq, prev_hash, observation}))`,
+ordering by store-assigned monotonic `seq`. Verification failure freezes the chain (fail-loud tamper
+evidence); appends are rejected until an operator clear, and a clear only reopens if the chain verifies
+green post-repair.
+
+**Producer auth (6b-3):** the durable append path takes an unforgeable `AppendGrant` (WeakSet identity).
+Grants are minted ONLY by `JwtProducerPolicy.authorize` (verified ES256 svc-JWT — `alg` pinned, `none`/HS*
+rejected, `aud=shadow-mode-ledger`, `exp≤1h`, claims zod-validated), `operatorMigrationGrant`
+(migration/replay, loudly labeled), or `testGrant` (test-runner gated). A grant-less append does not
+typecheck; a forged plain object fails the registry identity check.
+
+**Operator recovery** (`bin/chain-admin.ts`): `verify` / `status` / `clear` a chain. `clear` requires a
+dedicated `CHAIN_ADMIN_TOKEN` (db access alone does not suffice) + a mandatory rationale, recorded on the
+append-only `shadow_chain_state` row. Recovery = restore the payload from the source producer and clear,
+OR fork-ack (re-anchor a new chain, retire the bad one read-only). No silent repair path exists.
+
+**Deployment integrity cadence:** `PostgresLedgerStore.assertChainsVerified()` runs a FULL verification
+of every chain at boot before serving appends. Periodic re-verification (cron / scheduled task) is the
+deployment's responsibility — the per-append head check is O(1) tamper-detection, not a full audit.
+
+_loa:shortcut: a db superuser can still mutate rows directly; move the admin audit trail onto the hash
+chain itself when the chain hosts system events._

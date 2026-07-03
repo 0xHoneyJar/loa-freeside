@@ -26,6 +26,7 @@ import type {
   ShadowReport,
 } from '@freeside/shadow-mode-protocol';
 import type { ILedgerStore } from '../ports/ledger-store.js';
+import { assertGrant, type AppendGrant } from '../auth/append-grant.js';
 import {
   ChainFrozenError,
   GENESIS_PREV_HASH,
@@ -114,7 +115,8 @@ export class PostgresLedgerStore implements ILedgerStore {
     this.booted = true;
   }
 
-  async appendObservationIfAbsent(observation: ShadowObservation): Promise<boolean> {
+  async appendObservationIfAbsent(observation: ShadowObservation, grant: AppendGrant): Promise<boolean> {
+    assertGrant(grant, observation.source, observation.name);
     if (observation.event_id.startsWith('genesis:')) {
       throw new Error(`event_id namespace 'genesis:' is reserved (got ${observation.event_id})`);
     }
