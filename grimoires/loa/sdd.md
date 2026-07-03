@@ -118,9 +118,16 @@ flowchart TD
 - **Purpose:** the salted correlation id. `host_fp = HMAC_SHA256(CLUSTER_FP_SALT,
   lower("${engine}://${host}:${port}/${db}"))[:16]` (prd.md:118-124). Credentials are NOT
   in the preimage; the preimage is normalized (lowercase, default ports elided).
-- **Home:** `packages/adapters/storage/host-fp.ts` (new) — colocated with `pool-config.ts`
-  so both the cell runtime (which imports storage adapters) and any Node consumer share ONE
-  implementation. Reuses `node:crypto` `createHmac`.
+- **Home:** `@freeside/cluster-fp` (`packages/cluster-fp/src/host-fp.ts`) — a **src-shipping
+  leaf** so every cell runtime imports ONE implementation with no build step. Reuses
+  `node:crypto` `createHmac`.
+  > **Amendment (S1-T3, operator-ratified 2026-07-03):** the original home
+  > `packages/adapters/storage/host-fp.ts` proved **unconsumable** — `@freeside/adapters` has a
+  > broken dist build (`@freeside/core/ports` missing), ships `dist` only (`files: ["dist"]`), and
+  > its `file:` dep is a stale hard-copy `pnpm install` won't refresh. No cell could import it.
+  > Re-homed to a src-shipping leaf (the proven `@freeside/*-protocol` pattern: `exports` →
+  > `./src/index.ts`), matching how cells already consume shared code. Same implementation, same
+  > tests (9/9). This does NOT fix the adapters dist chain (out of scope) — it routes around it.
 - **Dependencies:** `CLUSTER_FP_SALT` env (a single non-secret-rotating cluster constant,
   shared so fps are comparable across cells).
 

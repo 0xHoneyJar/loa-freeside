@@ -102,4 +102,3 @@ export {
 
 export { computeAdvisoryLockKey } from '@0xhoneyjar/loa-hounfour/commons';
 export { sleep } from './audit-helpers.js';
-export * from './host-fp.js';

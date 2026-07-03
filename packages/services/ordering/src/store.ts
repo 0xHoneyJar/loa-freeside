@@ -101,6 +101,22 @@ export interface TransitionOpts {
   event?: OutboxEvent;
 }
 
+/**
+ * Sanitized data-store facts a cell self-reports via `GET /admin/data-store`
+ * (datastore-legibility SDD C-1). NEVER contains the connection string,
+ * credentials, host, port, or db-name — only the salted `host_fp` correlation
+ * id (`@freeside/cluster-fp`) + non-secret topology (NFR-1). `host_fp`/`engine`
+ * are null for an absent store (e.g. the in-memory backend has no database).
+ */
+export interface DataStoreFacts {
+  schema_version: 'datastore.report.v1';
+  engine: string | null;
+  host_fp: string | null;
+  reachable: boolean;
+  migrations_applied: number | null;
+  store: 'postgres' | 'memory' | 'none';
+}
+
 export interface OrderStore {
   /** Persist a new order in `placed` + enqueue its `placed` event. Idempotent on `order_id`. */
   placeOrder(order: NewOrder, placedEvent: OutboxEvent): Promise<{ created: boolean; record: OrderRecord }>;
@@ -120,6 +136,13 @@ export interface OrderStore {
   markPublished(seq: number): Promise<void>;
   /** Kitchen worker — orders in a given lifecycle state. */
   listByState(state: OrderState): Promise<OrderRecord[]>;
+  /**
+   * Sanitized DB facts for the cell's `GET /admin/data-store` self-report (SDD
+   * C-1). `salt` is the cluster fingerprint salt; the store derives `host_fp`
+   * WITHOUT exposing the connection string or credentials. `reachable` is a live
+   * `SELECT 1` probe (an absent store reports it however it can honestly).
+   */
+  dataStoreFacts(salt: string): Promise<DataStoreFacts>;
 }
 
 export class OrderNotFoundError extends Error {
@@ -227,5 +250,18 @@ export class InMemoryOrderStore implements OrderStore {
 
   async listByState(state: OrderState): Promise<OrderRecord[]> {
     return [...this.orders.values()].filter((r) => r.state === state);
+  }
+
+  async dataStoreFacts(_salt: string): Promise<DataStoreFacts> {
+    // The in-memory backend has no database — an honest absent-store report.
+    // No connection URL means no `host_fp` to derive (salt is unused here).
+    return {
+      schema_version: 'datastore.report.v1',
+      engine: null,
+      host_fp: null,
+      reachable: true,
+      migrations_applied: null,
+      store: 'memory',
+    };
   }
 }

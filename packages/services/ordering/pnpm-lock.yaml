@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@freeside/cluster-fp':
+        specifier: file:../../cluster-fp
+        version: file:../../cluster-fp
       '@freeside/ordering-protocol':
         specifier: file:../../protocol/ordering
         version: file:../../protocol/ordering(zod@3.25.76)
@@ -310,6 +313,9 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       pino: '>=8.0.0'
+
+  '@freeside/cluster-fp@file:../../cluster-fp':
+    resolution: {directory: ../../cluster-fp, type: directory}
 
   '@freeside/core@file:../../core':
     resolution: {directory: ../../core, type: directory}
@@ -1482,6 +1488,8 @@ snapshots:
       - supports-color
       - typescript
       - utf-8-validate
+
+  '@freeside/cluster-fp@file:../../cluster-fp': {}
 
   '@freeside/core@file:../../core': {}
 

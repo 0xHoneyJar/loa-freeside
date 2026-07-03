@@ -18,6 +18,7 @@
   },
   "license": "AGPL-3.0",
   "dependencies": {
+    "@freeside/cluster-fp": "file:../../cluster-fp",
     "@freeside/ordering-protocol": "file:../../protocol/ordering",
     "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
     "@freeside/shadow-audit-service": "file:../shadow-audit",

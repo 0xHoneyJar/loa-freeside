@@ -7,6 +7,10 @@
  * or brute-force a low-entropy internal hostname. **Credentials (user/password)
  * are NEVER in the preimage** — only engine + host + port + db, normalized. A
  * connection string never leaves the process; only this 16-hex fingerprint does.
+ *
+ * Home: `@freeside/cluster-fp` — a src-shipping leaf so every cell runtime imports
+ * ONE implementation with no build step (the cell runtimes resolve TS source
+ * directly via tsx/vitest, matching the `@freeside/*-protocol` packages).
  */
 
 import { createHmac } from 'node:crypto';
