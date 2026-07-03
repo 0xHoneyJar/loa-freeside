@@ -94,6 +94,8 @@ export interface ReprobeIngredientOutcome {
   source: 'reprobe';
   freshness: 'fresh' | 'ambiguous';
   error_class?: 'timeout' | 'probe_error';
+  /** Rule provenance, mirrored from probe_meta.reason (probe_meta is authoritative). */
+  reason?: string;
 }
 
 export type ReprobeResult =
@@ -382,8 +384,9 @@ export class CommunityOnboardingOrchestrator {
             () => port(inputs.chain_id, inputs.contract_address),
             REPROBE_PER_PROBE_TIMEOUT_MS,
           );
+          const reason = probeReasons[key];
           probes[key] = res.ok
-            ? { status: res.value, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
+            ? { status: res.value, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh', ...(reason ? { reason } : {}) }
             : { probed_at_unix: atUnix, source: 'reprobe', freshness: 'ambiguous', error_class: res.error_class };
           if (res.ok) probedStatuses[key] = res.value;
         }),
