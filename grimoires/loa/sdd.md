@@ -1,168 +1,173 @@
-# Software Design Document — First Live Beacon Consumer (keyed building→orientation READ)
+# Software Design Document — Consumption Truth
 
-> `/simstim` Phase 3. Implements `grimoires/loa/prd.md` (beacon-consumer cycle, flatline-reviewed: 11 integrated, 3 blockers resolved). Branch `cycle/beacon-consumer` (off origin/main).
+> Cycle `consumption-truth` · from prd.md (this worktree, flatline-integrated `6bb1b421`).
+> Design is grounded in post-#420/#421 code read 2026-07-02 (file:line below are worktree paths
+> off origin/main). Previous cycle SDD archived: sdd.prev-2026-07-01-fulfillment-surface.md.
 
-## 1. Architecture Overview
+## 1. Architecture overview
 
-No new services, no new building. One typed packet, two read surfaces, one honest fetcher — composing machinery that already exists.
+No new services, no new packages. The cycle wires four EXISTING surfaces so consumption becomes
+true: (a) the ordering probe mesh gains its missing `shadow` leg, (b) production flags turn the
+already-built ReProbeWorker on, (c) the inventory read plane gets one canonical URL + fail-loud
+consumers, (d) the FE/BFF repos get keyed orientation files. The settle gate is behavioral: a real
+order driven to `fulfilled` by an agent through `freeside order/kitchen/fulfill`.
 
-```mermaid
-flowchart LR
-  A[agent / operator] -->|"freeside-cli inspect <slug>"| I[inspect.ts un-stub]
-  A -->|"loa model <slug> --brief"| M[loa-cli lib/model.mjs]
-  I --> P[OrientationPacket builder]
-  M --> P2[OrientationPacket builder (mjs mirror)]
-  P --> S[(OrientationPacket type<br/>@freeside/beacon-schema — single owner)]
-  P2 -.parity differential.-> S
-  P --> F[hardenedBeaconFetcher<br/>reuse doctor: redirect-manual + host-pin + timeout<br/>+ NEW: https-only, private-IP block, size cap]
-  F --> R[registry beacon_url]
-  P --> V[verdict: probeBeacon→classifyProbe + validateBeaconV3]
+```
+freeside-cli verbs ──HTTP──▶ ordering-service (Railway)
+                               ├─ ReProbeWorker (ENABLE_REPROBE)            [FR-3]
+                               └─ KitchenTriagePorts ── HttpBuildingProbes
+                                    ├─ probeSonar  ──▶ sonar/kitchen-api    [FR-1 unblocks]
+                                    ├─ probeScore  ──▶ score-api
+                                    ├─ probeWorlds ──▶ worlds-api
+                                    └─ probeShadow ──▶ shadow-audit /v1/audit  [FR-2 NEW]
+dashboard ──▶ buildings.ts ──▶ inventory-api (un-walled reads)              [FR-5]
+Cursor agent ──▶ AGENTS.md (WHO×WHAT + canonical URLs)                      [FR-6]
 ```
 
-The packet is a value; both surfaces build the same value; a parity differential pins them. The reader consumes the ~8 already-declared beacons; it builds no capability.
+## 2. FR-2 — shadow_preview real probe
 
-## 2. Design Decisions
+**Files** (all `packages/services/ordering/src/`):
+- `http-building-probes.ts` — extend `HttpBuildingProbesConfig` with OPTIONAL
+  `shadowAuditApiUrl?: string`. Add `probeShadow(chainId, contract): Promise<IngredientStatus>`
+  following the exact `probeScore` shape: normalize pair → GET
+  `${shadowAuditApiUrl}/v1/audit?chain_id=&contract_address=` with `authHeaders(serviceToken)` →
+  map response.
+- Status mapping (`mapShadowStatus`, sibling of `mapSonarStatus:29`): HTTP 200 + audit result
+  present → `complete`; 404/no-audit-yet → `pending`; 5xx/network/parse → `blocked`; ambiguous
+  body (200 but undecodable) → `pending` + structured warn log (fail-loud invariant: never
+  fabricate `complete`; PRD Live-Order Safety #4).
+- `kitchen-triage-ports.ts:37-39` — un-hardcode: `shadow.probe` delegates to
+  `this.http?.probeShadow(...)` when the HTTP adapter exists AND it was configured with
+  `shadowAuditApiUrl`; else fallback stub (preserves today's behavior when unset —
+  additive, reversible).
+- `httpBuildingProbesFromEnv()` (`http-building-probes.ts:203`) — read optional
+  `SHADOW_AUDIT_API_URL`; its absence does NOT disable the other probes (unlike the required
+  trio), it only leaves shadow on stub. One warn line when enabled-but-missing.
 
-### D0 — `buildOrientationPacket` contract (flatline-SDD IMP-002/IMP-006)
-The pure builder `buildOrientationPacket(registryEntry, probe, beacon?)` has a defined input+output contract, since both repos depend on it:
-- **Input**: `registryEntry` (always — slug/deployment_url/runtime_state); `probe: BeaconProbe` (always — the classification + target); `beacon?: BeaconV3` (present ONLY when `probe.classification === 'beacon_valid'`).
-- **Missing-field policy** (IMP-006): if `beacon` is absent OR any BeaconV3 optional field is absent, the corresponding packet field is `null` — NEVER partial-filled from an invalid/partial beacon (an invalid beacon → `beacon_invalid` classification, ALL beacon fields null, packet still returned). A packet never presents unvalidated beacon data as authoritative.
-- **Output**: a total `OrientationPacket` (D1) — the function is total (never throws; a bad input → a packet with the right verdict).
+**Contract resolution is a gating pre-task (blocker cure, SKP-001)**: S1's FIRST task resolves the
+deployed shadow-audit auth contract by observation (read `audit-router.ts` auth middleware + one
+live probe against the deployed service) and records header name + example status codes in the
+runbook BEFORE `probeShadow` is coded. The adapter takes the header name from config
+(`shadowAuditAuthHeader`, default `Authorization: Bearer`), so a different observed contract is a
+config value, not a code change. Fail-closed: until the contract is verified, `SHADOW_AUDIT_API_URL`
+stays unset and shadow remains on stub — the feature cannot ship on a guessed contract.
 
-### D1 — `OrientationPacket`: single-owned type in `@freeside/beacon-schema`
-The packet shape lands ONCE in `packages/beacon-schema/src/orientation-packet.ts`, exported from the index [CODE:packages/beacon-schema/src/index.ts]. freeside-cli imports it directly (it already depends on beacon-schema). Shape:
+**Full status mapping (blocker cure, SKP-002)** — deterministic, total:
 
-```ts
-interface OrientationPacket {
-  slug: string;
-  // beacon-derived (null when dark):
-  publisher: string | null;
-  is: string | null;
-  is_not: string[] | null;         // anti-scope (≥2 when present)
-  capabilities: string[] | null;
-  composes_with: Record<string, string> | null;  // sibling → Tag@ver+hash (belts)
-  cycle_state: string | null;      // maturity
-  transport: { mcp: boolean; cli: boolean } | null;
-  // registry-derived (ALWAYS present — FR-2a):
-  deployment_url: string | null;   // from registry
-  runtime_state: string;           // deployed/scaffolded/not-built
-  // verdict (ALWAYS present):
-  verdict: {
-    reachable: boolean;
-    beacon_valid: boolean;
-    classification: 'beacon_valid'|'beacon_dark'|'beacon_void'|'beacon_invalid'|'beacon_unreachable';
-    detail: string;                // human/agent-readable, no raw body/headers (NFR-6e)
-    target: string;                // the declared beacon_url probed
-  };
-}
-```
-Beacon-only fields are `null` when dark — never stale-filled (FR-2a). A dark packet is valid + useful.
-
-### D2 — `freeside-cli inspect` un-stub: compose doctor's exported machinery
-Rewrite `packages/freeside-cli/src/verbs/inspect.ts` (currently a 37-line stub [CODE:inspect.ts:35]):
-1. `loadRegistry()` → resolve the module entry; unknown slug → exit 1 + available-slug list (FR-11).
-2. `probeBeacon(beacon_url, slug, hardenedFetcher)` [CODE:doctor.ts:249] → `BeaconProbe` (host-pinned, redirect-safe).
-3. `classifyProbe(probe)` [CODE:doctor.ts:184] → `RemoteVerdict` → map to `classification` (D5).
-4. If reachable+valid: `loadBeaconFromText`/`validateBeaconV3` [CODE:doctor.ts:27,31] → populate beacon fields.
-5. Build `OrientationPacket` (registry fields always; beacon fields or null; verdict).
-6. Emit single-line JSON (`--pretty` human-formats).
-
-**`--raw` semantics** (flatline-SDD IMP-004): on `beacon_valid`, `--raw` returns the raw fetched BeaconV3 JSON + the verdict block. On any non-valid classification, `--raw` returns `{raw: null, verdict}` — it NEVER emits an unvalidated/oversize/off-host body (the body was never read for void; is capped for oversize; NFR-6e no-leak holds for `--raw` too). Exit code is the classification's (D5) regardless of `--raw`.
-
-NO new fetch/validate code — reuse the EXPORTED helpers only (no coupling to doctor internals, NFR).
-
-**`verdict.detail` enumerated strings** (flatline-SDD IMP-005): a fixed set — `ok`, `scheme_rejected`, `host_not_allowlisted`, `resolved_private`, `off_host_redirect`, `not_found`, `not_a_beacon`, `invalid_beacon`, `oversize`, `timeout`, `transport_error`, `unknown_slug`. Agent-parseable; never contains a response body/header substring. One-to-one-ish with classification (a classification may carry a more specific detail, e.g. `beacon_unreachable` + `timeout` vs `+ scheme_rejected`).
-
-### D3 — SSRF hardening in the shared fetcher (BLOCKER SKP-004 + flatline-SDD SKP-001 → NFR-6)
-`defaultBeaconFetcher` [CODE:doctor.ts:203] already does redirect:manual + host-pin + off-host→void + 12s timeout. ADD, INTO it (benefits `doctor --remote` too):
-- (a) **https-only**: reject non-https `beacon_url` before fetch → status-0 `scheme_rejected`.
-- (b) **Registry-host allowlist** [flatline SKP-001 — the primary control]: a beacon_url host MUST match the allowlist of cluster-controlled domain suffixes (`*.0xhoneyjar.xyz`, `*.up.railway.app`, `*.vercel.app` — sourced from a single `ALLOWED_BEACON_HOST_SUFFIXES` const, not scattered). `beacon_url` is registry-controlled, so an allowlist means even a compromised registry entry cannot point the fetcher at `169.254.169.254`/internal — it must be a known cluster host. Non-allowlisted host → status-0 `host_not_allowlisted`. This is the load-bearing SSRF control; the literal-IP + DNS checks below are defense-in-depth.
-- (c) **DNS pre-resolution private-range reject** [flatline SKP-001]: `dns.lookup(host, {all:true})` BEFORE fetch; if ANY resolved A/AAAA record is private/loopback/link-local/metadata (127/8, 10/8, 172.16/12, 192.168/16, 169.254/16 incl. 169.254.169.254, ::1, fc00::/7), refuse → status-0 `resolved_private`. Closes the public-hostname→private-IP hole that literal-IP-only checks miss. Residual TOCTOU between lookup and fetch is bounded by (b)'s allowlist (a cluster host won't flip to internal) — documented, not hand-waved.
-- (d) **size cap**: read the body with a byte cap (256KB) → oversize → `beacon_invalid`.
-Existing redirect:manual + host-pin + timeout kept. Errors never echo body/headers (NFR-6e). Fetcher stays injectable (NFR-5). **These guards ship as one `hardenBeaconFetch(url)` pre-check helper** so freeside-cli and the loa-cli mjs mirror apply IDENTICAL rules from ONE spec (the conformance suite D6 enforces parity of the guards, not just the packet).
-
-### D4 — `loa model <building> --brief`: mirror in external loa-cli (pure mjs)
-New `lib/model.mjs` + a `model` case in `bin/loa.mjs` [external: `~/Documents/GitHub/loa-cli`]. loa-cli is zero-dep pure-`.mjs` and CANNOT import the TS beacon-schema, so it re-implements the read in mjs: read the registry entry, fetch the beacon with the SAME hardening rules (https-only, host-pin, redirect-manual, private-IP block, timeout, size cap — ported, not imported), lighter BeaconV3 validation (JSON parse + required-field presence: slug/publisher/is/is_not/cycle_state), and build the SAME `OrientationPacket` shape. It is a **discovery/read verb** — no `run`/`pipe`/dispatch, no proof-of-run (loa-cli anti-corruption rule, NFR-4). `--brief` is the packet; without it, a fuller render is allowed later (out of scope).
-
-### D5 — classification → exit-code map (FR-4a/FR-5a)
-| doctor RemoteVerdict / state | packet.classification | exit |
+| Observation | IngredientStatus | Note |
 |---|---|---|
-| valid beacon, slug match | `beacon_valid` | 0 |
-| (unknown slug) | — | 1 |
-| transport fail / timeout / scheme_rejected / private_target_blocked | `beacon_unreachable` | 2 |
-| fetched, V3 decode/validate fails / oversize | `beacon_invalid` | 3 |
-| correct host, 404 / non-BeaconV3 body | `beacon_dark` | 4 |
-| off-host redirect | `beacon_void` | 5 |
-One table, both surfaces (D6 pins it).
+| 200 + decodable audit result | `complete` | |
+| 200 + missing/partial/undecodable body | `pending` + warn | never fabricate complete |
+| 404 | `pending` | audit not produced yet |
+| 401 / 403 | `blocked` + loud log `reason=auth_misconfig` | distinct from outage |
+| 429 | `pending` | reprobe cadence retries; not a block |
+| 5xx / network error | `blocked` `reason=upstream` | |
+| timeout (AbortSignal, 10s like siblings) | `blocked` `reason=timeout` | |
+| redirects | follow (fetch default); map FINAL status | |
 
-### D6 — shared conformance vector suite (FR-8 + flatline-SDD SKP-002 + IMP-003)
-Two implementations are unavoidable (loa-cli is zero-dep pure-`.mjs`, Finn-safe standalone — it CANNOT import the TS beacon-schema; this is a deliberate architecture constraint, not laziness). Full code-dedup is precluded, so drift is bound LOUDLY by a **canonical machine-readable conformance-vector suite** — not one happy-path fixture:
+**Tests**: the mapping table above 1:1 (every row is a test case), fromEnv with/without
+`SHADOW_AUDIT_API_URL`, triage-port delegation vs stub fallback — in the existing ordering test
+dir (`__tests__/` pattern from #420). Reuse the existing `fetchImpl` injection seam — no new
+mocking machinery.
 
-- `packages/beacon-schema/test-vectors/orientation-conformance.json` — versioned WITH beacon-schema. Each vector: `{name, input: {registry_entry, fetch_result (status/finalUrl/body) OR fetch_error}, expect: {packet, classification, exit_code}}`. Covers **every** classification + hardening case: valid, dark(404/non-beacon), void(off-host), invalid(bad-V3/oversize), unreachable(timeout), scheme_rejected, host_not_allowlisted, resolved_private, unknown-slug.
-- **Both repos are required consumers**: freeside-cli's test drives its builder+fetcher-guards through every vector; loa-cli's mjs test drives its mirror through the SAME committed vectors (copied in, with a checksum-pinned drift check: the loa-cli copy's sha256 must match beacon-schema's — a stale copy fails). A security-guard fix that lands in one repo but not the other fails the other's vector run.
+## 3. FR-3 — production flag truth (deploy, [OPERATOR-BOUNDED])
 
-This makes the mirror's security guards (D3) conformance-tested, not just the packet shape.
+No code. Railway ordering service env: verify then set `ENABLE_REPROBE=true`
+(`bin/http.ts:52`), `KITCHEN_PROBE_HTTP_ENABLED=true` + the four
+`SERVICE_TOKEN`/`SONAR_API_URL`/`SCORE_API_URL`/`WORLDS_API_URL` (fromEnv hard-requires all
+four, `http-building-probes.ts:206-214`) + new `SHADOW_AUDIT_API_URL`. NOTE: DEPLOY.md says
+`SONAR_API_URL` points at kitchen-api-production — confirm the live probe contract
+(`/v1/collections/:chain/:contract/status`) resolves on that host before flipping.
+**Verification (observed)**: `freeside kitchen probe <order-id>` then `freeside order status
+<order-id>` shows fresh `probe_meta` timestamps; Railway logs show ReProbeWorker 15-min cadence
+line. Rollback = unset flags (behavior returns to stub/operator-advance).
 
-### D7 — the ~50-token reach pointer (FR-10/10a)
-Text: *"Freeside building? `loa model <slug> --brief` (or `freeside-cli inspect <slug>`) reads its beacon — what it is, does, composes with, and whether it's usable — in one call. Prefer it over grepping registry.yaml."* Home: `loa-freeside/CLAUDE.md` §"Ecosystem Navigation" block. Landed in release step 4 (the pointer-flip), never before `loa model` exists.
+## 4. FR-4 — the settle gate (G-1 E2E)
 
-## 3. Component Design
+Runbook, not code: `grimoires/loa/cycles/consumption-truth/e2e-runbook.md` records each verb call +
+`probe_meta`/event-trail output. Sequence: (1) dry-run — place fresh OP-chain test order, drive
+via `order place → fulfill watch → kitchen probe/advance` to `fulfilled`; (2) real order
+`6ddc06f5` under the PRD's Live-Order Safety Protocol (evidence per advance; ambiguous → halt;
+operator gates irreversible seams). Exit codes are the honesty surface (fulfilled→0/failed→6/
+timeout→5 per #421) — the runbook quotes them.
 
-### 3.1 beacon-schema (network domain, PR-A)
-`orientation-packet.ts` — the `OrientationPacket` type + a builder helper `buildOrientationPacket(registryEntry, probe, beacon?)` that both freeside-cli imports and loa-cli mirrors. Pure, no I/O.
+**Idempotency / replay / abort (blocker cure, SKP-005)**: `advance-ingredient` is CAS-guarded
+per-ingredient (#420 store semantics) — a replayed advance against an already-advanced ingredient
+is rejected by the CAS precondition, not double-applied; the dry-run EXPLICITLY replays one
+advance and quotes the rejection as evidence. Abort at any point leaves the order in per-ingredient
+persistent states, each individually valid; recovery = `kitchen probe` recomputes from building
+ground truth (probes are read-only). A partially-advanced order is therefore a NORMAL state, not a
+corruption — the loop resumes by re-probing, never by replaying writes. Irreversible seams
+(bot install, DNS, announcements) sit OUTSIDE the verb loop and are operator-gated per the PRD.
 
-### 3.2 freeside-cli (network domain, PR-A)
-- `inspect.ts` — un-stubbed (D2), imports `buildOrientationPacket` + doctor's `probeBeacon`/`classifyProbe`/`loadBeaconFromText`/`validateBeaconV3`.
-- `doctor.ts` — `defaultBeaconFetcher` gains the D3 SSRF guards (shared improvement).
-- exit-code table constant (D5) in a small `src/lib/exit-codes.ts` shared by inspect (+ future verbs).
-- `bin/freeside-cli.ts` usage text updated for the enriched `inspect`.
+## 5. FR-5 — inventory read plane
 
-### 3.3 loa-cli (EXTERNAL repo, PR-B, operator-gated)
-- `lib/model.mjs` (D4) + `bin/loa.mjs` `model` case + usage. Parity test + fixture.
+- **5a (operator, infra)**: Railway edge wall off for `/health`, `/.well-known/beacon.json`,
+  `/holdings/:wallet`, `/profile/:address` AFTER the Privacy Gate passes. DNS
+  `inventory.0xhoneyjar.xyz` → Railway service. Rate-limit stays.
+  - **Privacy Gate mechanics (blocker cure, SKP-004/006)**: (1) *Evidence*: quote the LIVE JSON of
+    one `/holdings/:wallet` + one `/profile/:address` response (behind the wall, via key or Railway
+    shell) into the runbook. (2) *Criteria*: ALLOWED = wallet address, contract address, chain id,
+    token ids/counts, token metadata/image URLs, timestamps. FORBIDDEN = email, social/discord/
+    telegram ids, session/auth material, internal notes, any field naming a PERSON rather than a
+    wallet. (3) *No redaction path*: if any FORBIDDEN field appears, the endpoint STAYS walled
+    (deletion-over-denylist — we do not ship a field-filter this cycle) and posture falls back to
+    health+beacon-only. (4) *Approval artifact*: operator sign-off line in the runbook quoting the
+    field inventory — the un-wall action is operator-executed, so the sign-off IS the act.
+- **5b (inventory-api repo)**: merge #18 (beacon serving); registry.yaml `beacon_url` corrected to
+  the resolvable host; `src/app.ts` docstring drift fix (routes list omits `/profile`).
+- **5c (dashboard repo)**: `src/lib/inventory-api/client.ts` — replace silent `null`/`[]` with a
+  typed result `{ ok: true, data } | { ok: false, status, reason }`; callers render an explicit
+  error/empty distinction; one structured `console.error` per failure (BR-003 class kill). Default
+  URL moves to `buildings.ts` (FR-6) sourced from the registry-canonical deployment URL.
+- **Drift test**: a unit test in dashboard asserting `BUILDINGS.inventory` matches the canonical
+  URL constant; loa-freeside side asserts registry.yaml `deployment_url`/`beacon_url` for
+  inventory resolve (HTTP 200 beacon) in the existing doctor/registry test lane.
 
-### 3.4 pointer (network domain — landed in PR-A referencing `inspect` only; `loa model` added at step 4)
-To eliminate the release-sequencing contradiction (flatline-SDD IMP-001): PR-A's CLAUDE.md pointer references **only `freeside-cli inspect`** (which exists on PR-A land). The `loa model` reference is added by the **step-4 flip commit**, AFTER PR-B merges + parity is green. At no point does the pointer name a command that doesn't yet exist (partial-rollout invariant). §4 is the single source of truth for ordering; there is no "honesty note" interim state.
+## 6. FR-6 — keyed orientation (Cursor surface)
 
-## 4. Delivery Plan (PRD §7.0 — strict order, ADR-007)
+Additive files only, one PR per repo:
+- `freeside-dashboard/AGENTS.md` (NEW) + repair `freeside-characters/AGENTS.md:1`
+  (`@.Codex/loa/Codex.loa.md` → the repo's real CLAUDE.loa twin, or inline the intro).
+  Content contract (same skeleton both repos): (1) WHO×WHAT ladder verbatim (WHO
+  person→account→inventory × WHAT L0 sonar→L1 score→L2 member-graph→L3 audit); (2) this repo's
+  rung + role (dashboard = projection BFF: client components fetch `/api/*` ONLY; characters =
+  L2 consumer backend); (3) buildings-consumed table with CANONICAL URLs from
+  `loa-freeside/packages/freeside-registry/registry.yaml` incl. the sonar belt-gateway
+  read-plane warning; (4) rules: read via BFF, write to the owning `*-api`, never fan out
+  client-side, never hand-mirror another building's schema without a `DO NOT EDIT` + source
+  pointer.
+- `buildings.ts` per repo: single exported map `{ building: { baseUrl, source: 'registry.yaml' } }`;
+  dashboard (~3 call sites), characters (~10 incl. `packages/persona-engine/src/config.ts:47-52`).
+  Mechanical, behavior-preserving (same URLs, one home). `// loa:shortcut: registry drift-check is
+  manual (snapshot comment); automate when the beacon orientation packet (PR #422 sibling) ships`.
 
-| Step | PR | Domain | Contents |
-|------|----|--------|----------|
-| 1 | **PR-A** | `network/` (beacon-schema + freeside-cli + CLAUDE.md) | OrientationPacket type + builder, inspect un-stub, SSRF hardening, exit-code table, parity test + fixture, pointer (referencing inspect; loa model noted as pending) |
-| 2 | **PR-B** | external loa-cli | `loa model` verb, mjs mirror, parity test against the same fixture |
-| 3 | — | — | verify parity green both sides (same fixture → same packet) |
-| 4 | tiny follow-up on PR-A's branch or a doc commit | `network/` | flip the CLAUDE.md pointer + `/recall` orientation to reference `loa model … --brief` as live |
+## 7. FR-1 — sonar #120 diagnosis spike (cross-repo, timebox 1 day)
 
-Rollback: PR-A stands alone (inspect useful without loa-cli); PR-B independently revertable; the pointer only ever names a command that exists in the deployed state (partial-rollout invariant, PRD §7.0).
+Not designed here beyond the spike protocol: compare chain-1 vs chain-10 Envio `config.yaml`
+source blocks (HyperSync endpoint, start_block, address registration for Azuki), inspect
+TrackedErc721 registration rows, targeted reinit with debug logging if config diverges. Exit
+per PRD: fix PR on sonar-api OR diagnosis doc + /coord lane + G-1 pivots to the OP-chain order.
 
-## 5. Security
-| Control | Where | Test |
-|---------|-------|------|
-| https-only beacon fetch | `hardenBeaconFetch` (D3a) | conformance vector: http:// → `scheme_rejected`, no fetch |
-| **registry-host allowlist** (primary SSRF control) | `hardenBeaconFetch` (D3b) | vector: non-cluster host → `host_not_allowlisted`, no fetch — BOTH repos |
-| **DNS resolves-to-private reject** | `hardenBeaconFetch` (D3c) | vector: host resolving to 169.254.169.254 / 10.x → `resolved_private`, no fetch |
-| host-pin + off-host→void | doctor (existing, reused) | vector: off-host redirect → `beacon_void` exit 5 |
-| size cap + timeout | `hardenBeaconFetch` (D3d) | vector: oversize → `beacon_invalid`; hung → timeout → `beacon_unreachable` |
-| no body/header in errors | packet.verdict.detail (enumerated) | vector: detail ∈ fixed set, never a body substring |
-| guard parity across repos | conformance vector suite (D6) | both freeside-cli + loa-cli run the SAME vectors; checksum-pinned copy |
-| read-only (no dispatch) | inspect + loa model | design review: no run/pipe/mutate path |
+## 8. Sibling fence (G-6, machine-checked)
 
-## 6. Testing (network-free by default)
-- **PR-A**: unit — inspect happy (valid beacon fixture → full packet exit 0), each classification/exit-code row (dark/void/invalid/unreachable), unknown-slug exit 1 + list, dark-packet field semantics (beacon fields null, registry fields present), SSRF guards (§5), parity differential (D6), `--raw`/`--pretty`. All via injected fetcher — no live network.
-- **PR-B** (loa-cli): mjs unit — same classification rows + the parity test against the shared fixture.
-- **G-1 kill-test** (PRD pre-registered): post-merge, operator-run — fresh agent + pointer + one grep-forcing cross-building question; measure unprompted reach (≥2/3) + steering-token delta vs grep. Recorded, not a code test.
+`scripts/check-sibling-fence.sh` (cycle branch): `git diff --name-only origin/main...HEAD` grepped
+against the fence list (`packages/freeside-cli/src/verbs/inspect.ts`, `verbs/doctor.ts`,
+`bin/freeside-cli.ts`, `src/lib/harden-beacon-fetch.ts`, `packages/beacon-schema/`) → exit 1 on
+hit. Run in the review gate for every sprint of this cycle. Exit code is the verdict — never piped.
+Fence-list freshness (disputed IMP-008, accepted): the list is derived from `gh pr view 422
+--json files` at S1 start and the script header records the derivation date + PR head SHA; if #422
+merges or its file set changes, re-derive (one command, documented in the script header).
 
-## 7. Traceability
-| PRD | Design | Test |
-|-----|--------|------|
-| FR-1/2/2a/3/4/4a | D1, D2, D5 | classification rows + dark-field semantics |
-| FR-5/5a | D5 exit table, exit-codes.ts | per-row exit assertions |
-| FR-6/7/8 | D4, D6 | parity differential (both repos) |
-| FR-9/10/10a/11 | D7, §4 step 4, D2 slug | pointer land; unknown-slug test |
-| NFR-1/2 | §4 two-PR split | domain check; operator-gated PR-B |
-| NFR-6 (+SKP-004, IMP-011) | D3 | SSRF guard suite |
-| G-1..G-5 | D2 (consume), D5 (honest verdict), D6 (verdict==doctor) | classification suite + kill-test |
+## 9. Security
 
-## 8. Open Items (SDD-resolved; none block sprint)
-- ~~Packet ownership across repos~~ → D1 (beacon-schema owns; loa-cli mirrors + parity). ~~SSRF policy~~ → D3. ~~Release ordering~~ → §4.
-- `loa:shortcut` ceiling: full DNS-rebind defense deferred (host-pin covers the classic vector); upgrade if a cell's beacon_url ever resolves attacker-controlled.
-- Deferred (PRD §7): #253 Hyper drive-API, beacon DNS/routes, BeaconV3 CI validators.
+No new authN surfaces. probeShadow reuses the bearer service-token seam. FR-5a exposes only
+Privacy-Gate-passed fields; rate-limit retained. SERVICE_TOKEN never logged (existing posture,
+#420 token-rotation runbook applies). No secrets in AGENTS.md/buildings.ts (URLs only, public).
+
+## 10. Test strategy
+
+Unit: probe mapping + fromEnv + delegation (FR-2), dashboard client fail-loud (FR-5c), buildings
+map (FR-6). Integration (observed, not fixture): kitchen probe against deployed shadow-audit on a
+staging order; beacon 200 check post-#18. Settle: the FR-4 runbook with quoted event trail — the
+differential vs the REAL thing. Every non-trivial branch above leaves a runnable check.
