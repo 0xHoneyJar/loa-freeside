@@ -44,13 +44,28 @@ Cursor agent ──▶ AGENTS.md (WHO×WHAT + canonical URLs)                   
   `SHADOW_AUDIT_API_URL`; its absence does NOT disable the other probes (unlike the required
   trio), it only leaves shadow on stub. One warn line when enabled-but-missing.
 
-**Contract note**: the audit read endpoint is `GET /v1/audit`
-(`packages/services/shadow-audit/src/http/audit-router.ts` — same contract the dashboard's
-`access-audit/client.ts` consumes). If the deployed shadow-audit requires an API key
-(`SHADOW_AUDIT_API_KEY` per its DEPLOY.md), pass it as its own header — verify the deployed
-auth header name BEFORE coding (observed-not-claimed).
+**Contract resolution is a gating pre-task (blocker cure, SKP-001)**: S1's FIRST task resolves the
+deployed shadow-audit auth contract by observation (read `audit-router.ts` auth middleware + one
+live probe against the deployed service) and records header name + example status codes in the
+runbook BEFORE `probeShadow` is coded. The adapter takes the header name from config
+(`shadowAuditAuthHeader`, default `Authorization: Bearer`), so a different observed contract is a
+config value, not a code change. Fail-closed: until the contract is verified, `SHADOW_AUDIT_API_URL`
+stays unset and shadow remains on stub — the feature cannot ship on a guessed contract.
 
-**Tests**: mapping table (200-with-result/404/5xx/ambiguous-body), fromEnv with/without
+**Full status mapping (blocker cure, SKP-002)** — deterministic, total:
+
+| Observation | IngredientStatus | Note |
+|---|---|---|
+| 200 + decodable audit result | `complete` | |
+| 200 + missing/partial/undecodable body | `pending` + warn | never fabricate complete |
+| 404 | `pending` | audit not produced yet |
+| 401 / 403 | `blocked` + loud log `reason=auth_misconfig` | distinct from outage |
+| 429 | `pending` | reprobe cadence retries; not a block |
+| 5xx / network error | `blocked` `reason=upstream` | |
+| timeout (AbortSignal, 10s like siblings) | `blocked` `reason=timeout` | |
+| redirects | follow (fetch default); map FINAL status | |
+
+**Tests**: the mapping table above 1:1 (every row is a test case), fromEnv with/without
 `SHADOW_AUDIT_API_URL`, triage-port delegation vs stub fallback — in the existing ordering test
 dir (`__tests__/` pattern from #420). Reuse the existing `fetchImpl` injection seam — no new
 mocking machinery.
@@ -76,11 +91,29 @@ via `order place → fulfill watch → kitchen probe/advance` to `fulfilled`; (2
 operator gates irreversible seams). Exit codes are the honesty surface (fulfilled→0/failed→6/
 timeout→5 per #421) — the runbook quotes them.
 
+**Idempotency / replay / abort (blocker cure, SKP-005)**: `advance-ingredient` is CAS-guarded
+per-ingredient (#420 store semantics) — a replayed advance against an already-advanced ingredient
+is rejected by the CAS precondition, not double-applied; the dry-run EXPLICITLY replays one
+advance and quotes the rejection as evidence. Abort at any point leaves the order in per-ingredient
+persistent states, each individually valid; recovery = `kitchen probe` recomputes from building
+ground truth (probes are read-only). A partially-advanced order is therefore a NORMAL state, not a
+corruption — the loop resumes by re-probing, never by replaying writes. Irreversible seams
+(bot install, DNS, announcements) sit OUTSIDE the verb loop and are operator-gated per the PRD.
+
 ## 5. FR-5 — inventory read plane
 
 - **5a (operator, infra)**: Railway edge wall off for `/health`, `/.well-known/beacon.json`,
-  `/holdings/:wallet`, `/profile/:address` AFTER the Privacy Gate passes (enumerate LIVE response
-  fields first — PRD gate). DNS `inventory.0xhoneyjar.xyz` → Railway service. Rate-limit stays.
+  `/holdings/:wallet`, `/profile/:address` AFTER the Privacy Gate passes. DNS
+  `inventory.0xhoneyjar.xyz` → Railway service. Rate-limit stays.
+  - **Privacy Gate mechanics (blocker cure, SKP-004/006)**: (1) *Evidence*: quote the LIVE JSON of
+    one `/holdings/:wallet` + one `/profile/:address` response (behind the wall, via key or Railway
+    shell) into the runbook. (2) *Criteria*: ALLOWED = wallet address, contract address, chain id,
+    token ids/counts, token metadata/image URLs, timestamps. FORBIDDEN = email, social/discord/
+    telegram ids, session/auth material, internal notes, any field naming a PERSON rather than a
+    wallet. (3) *No redaction path*: if any FORBIDDEN field appears, the endpoint STAYS walled
+    (deletion-over-denylist — we do not ship a field-filter this cycle) and posture falls back to
+    health+beacon-only. (4) *Approval artifact*: operator sign-off line in the runbook quoting the
+    field inventory — the un-wall action is operator-executed, so the sign-off IS the act.
 - **5b (inventory-api repo)**: merge #18 (beacon serving); registry.yaml `beacon_url` corrected to
   the resolvable host; `src/app.ts` docstring drift fix (routes list omits `/profile`).
 - **5c (dashboard repo)**: `src/lib/inventory-api/client.ts` — replace silent `null`/`[]` with a
@@ -122,6 +155,9 @@ per PRD: fix PR on sonar-api OR diagnosis doc + /coord lane + G-1 pivots to the 
 against the fence list (`packages/freeside-cli/src/verbs/inspect.ts`, `verbs/doctor.ts`,
 `bin/freeside-cli.ts`, `src/lib/harden-beacon-fetch.ts`, `packages/beacon-schema/`) → exit 1 on
 hit. Run in the review gate for every sprint of this cycle. Exit code is the verdict — never piped.
+Fence-list freshness (disputed IMP-008, accepted): the list is derived from `gh pr view 422
+--json files` at S1 start and the script header records the derivation date + PR head SHA; if #422
+merges or its file set changes, re-derive (one command, documented in the script header).
 
 ## 9. Security
 
