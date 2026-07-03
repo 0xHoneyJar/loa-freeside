@@ -148,8 +148,35 @@ one-collection-one-world.
   propose flags it `unratified`/`orphaned`; operator ratifies the edge (or files the world). The
   ratify case, not a blocker.
 
+## Flatline v2 integration (5 blocker-theme cures — requirement level; design detail → SDD)
+
+- **Identity normalization (SKP-002a):** entity identity `(chain, contract)` is normalized ONCE at a
+  single choke point — chain as a canonical numeric string, contract lowercased (reusing ordering's
+  `normalizeContractAddress`/`normalizeChainId`, `packages/services/ordering/src/contract-address.ts`).
+  No checksum-case identity, no aliasing on identity; `collection_key` is the only alias. The SDD
+  pins the exact function + a normalization test as an AC.
+- **QMD-vs-CLI scope (SKP-002b, IMP-004):** this cycle ships a **dedicated `freeside collections query`
+  (lexical, provenance-badged, governed by the label trust-fields)** as the concrete FR-4 surface;
+  registering the entities as a first-class /recall-QMD source (semantic + rerank parity) is the
+  SHAPE it's built toward but a follow-up, not the settle gate. G-3 metric holds against the CLI query.
+- **Ledger extension (SKP-001):** additive, backward-compatible — a new `collection` SubjectKind value
+  + a per-kind labels bag; existing member subjects untouched (the enum widens, no column drops).
+  Legacy rows read unchanged; the migration is one additive SQL. The SDD specifies the schema delta +
+  a "member subjects still resolve" regression AC. Fallback (assumption): a sibling `labelled_entities`
+  table on the same store if the `subjects` shape strains.
+- **Ratification authorization (SKP-003):** NOT a new auth model — the /recall force-chain IS the
+  authorization: a label flips `ai-derived → operator-validated` ONLY behind a fresh cockpit grant
+  (the `memory-promotion-guard` hook shape), one grant = one write, TTL-bounded. The agent has no
+  code path to self-ratify. Every ratify is an append-only provenance event on the hash-chained
+  ledger (audit trail for free). The SDD specifies the grant mechanic + the provenance event.
+- **Derived-vs-ratified drift policy (IMP-007):** DERIVED labels — the agent re-derives + overwrites
+  freely (ground truth wins). RATIFIED labels — drift raises `contested`, never a silent overwrite;
+  the operator re-ratifies or corrects. The SDD's drift table enumerates the five classes + the
+  per-class action.
+
 > Sources: direction brief + §OPERATOR REFRAME; EVANS (one-world invariant, worlds-authority);
 > ml-sot-engine (field truth-location, /recall force-chain, CLI verbs, drift sensor, 2 hazards);
 > ml-sot-consumers (shadow-audit highest-drift consumer); the shadow-mode ledger built PR #429
 > (the spine this consumes); operator reframe 2026-07-03 (worldline spine · QMD-queryable · drop
-> pg-UI · bottom-up distillation); flatline v1 (dual-store tensions — dissolved by the reframe).
+> pg-UI · bottom-up distillation); flatline v1+v2 (dual-store tensions dissolved by the reframe; 5
+> spec cuts integrated above).
