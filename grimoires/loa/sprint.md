@@ -1,160 +1,89 @@
-# Sprint Plan — Labelled Entities on the Worldline Spine (collections-sot)
+# Sprint Plan — Legible Data-Store Topology (datastore-legibility)
 
-> Cycle: collections-sot. Implements sdd.md (flatline-SDD-integrated `38d25000`) + prd.md
-> (`d92e4e34`). Previous plan archived: sprint.prev-2026-07-03-sandwich-line-run.md.
-> All three sprints are `/run sprint-plan`-executable and in-repo:
-> `shared/shadow-mode` (protocol + services) + `shared/shadow-audit` + `network/freeside-cli`.
-> No cross-repo write (worlds-api `/lookup` is READ-only authority for the world-binding proposal).
+> Cycle: datastore-legibility. Implements sdd.md (v1.1, §12-amended) + prd.md (flatline-cured).
+> Previous plan archived: sprint.prev-2026-07-03-collections-sot.md.
+> Reuses the collections-sot #430 shape (projection · contested fold · fail-loud) verbatim where it fits.
 >
-> Core architecture (SDD §11.5): the append-only observation chain IS the source of truth;
-> `collection_entities` is a re-folded projection. Every derive/ratify is an appended
-> `collection.label.{observed,ratified}` observation, keyed on the collection's OWN worldline
-> (`chain_id = entity_id = ${chain}:${contract}`). NO mutable label upsert. Ratify = /recall
-> force-chain (cockpit grant). Shadow-audit reads the ratified set fail-closed.
+> Operator decision (SDD §12): **register the cells first** — the registry doesn't know its members,
+> so phase 1 registers the four in-monolith cells before legibility rides on top.
 >
-> Sequencing (NOT beads blocked-by): S1 → S2 → S3. G-4 (settle gate) depends only on S1+S2.
-> Reuse-shaping (FR-7) is a factoring discipline across all three (one internal `LabelledEntity`
-> interface + the collections impl), not a separate task.
->
-> Slice rule: S1+S2 landing alone = "spine holds a ratified collection, unconsumed" — the cycle
-> report must say so if S3's shadow-audit collapse slips. The settle gate is S3-T2 (the kill-test).
+> Sequencing (NOT beads blocked-by): S1 → S2 → S3. The settle gate is S1 (ONE cell — ordering —
+> legible end-to-end: register → self-report → doctor --data → ratified label → drift). S2/S3 fan out.
+> Slice rule: S1 landing alone = "ordering is legible, the pattern is proven" — the report says so if S2/S3 slip.
 
-## Sprint 1: the labelled entity on the spine (FR-1 + identity norm, `shared/shadow-mode`)
+## Sprint 1: the vertical slice — one cell legible end-to-end (SDD A-1, C-1, C-2, C-3 seed)
 
-### S1-T1 — identity normalization choke point [SDD §7]
-Single function pair for `entity_id`: chain → canonical numeric string, contract → lowercased
-`0x`+40hex. Reuse/lift `packages/services/ordering/src/contract-address.ts`
-(`normalizeChainId`/`normalizeContractAddress`) into a shared util both ordering and shadow-mode
-import (no copy-paste). **AC**: a normalization test pins mixed-case contract + numeric-vs-string
-chain inputs to ONE `entity_id`; no checksum-case identity; `collection_key` is the only alias.
+### S1-T1 — register the four in-monolith cells as modules [SDD A-1]
+Add `shadow-mode`, `shadow-audit`, `apps/worker`, `operator-dash` to `packages/freeside-registry/registry.yaml`
+following the `ordering` declaration-keystone precedent (`git_url: …/loa-freeside.git`, `beacon_url: ~`,
+`visibility: internal`, `runtime_state` per reality). **AC**: `loadRegistry()` parses all four; a test
+asserts the four slugs are present with `visibility: internal`; no existing module entry changes.
 
-### S1-T2 — CollectionEntity + observation schemas [SDD §2, §11.5 IMP-001]
-`packages/protocol/shadow-mode/src/schemas/collection-entity.ts`:
-`CollectionEntity { entity_id, chain, contract, labels: CollectionLabels, provenance: LabelProvenance[] }`,
-`CollectionLabels = { token_standard: 'erc721'|'erc1155'|'unknown', collection_key, world?, role? }`.
-The two observation shapes (both `ShadowObservation`-compatible, JCS-hashable):
-`collection.label.observed {entity_id,chain,contract,label,value,source_type}` and
-`collection.label.ratified {entity_id,label,value,ratified_by}`. `SubjectKind` enum GAINS
-`'collection'` (the ONLY edit to `subject.ts`; no new required field on `ShadowSubject`).
-**AC**: schemas parse/round-trip; member-subject type suite compiles unchanged; a collection
-observation JCS-hashes deterministically (byte-exact fixture).
+### S1-T2 — host_fp derivation helper (shared) [SDD C-2, flatline SKP-001]
+`packages/adapters/storage/host-fp.ts`: `hostFp(parts, salt): string` =
+`HMAC_SHA256(salt, lower("${engine}://${host}:${port}/${db}"))[:16]` via `node:crypto` `createHmac`;
+credentials NEVER in the preimage; default ports elided; parse the connection URL via the existing
+`pool-config.ts` source. `CLUSTER_FP_SALT` read via a `configFromEnv`-style helper (fail-closed when unset
+in a deployed context). **AC**: same host → same fp; a changed host/db → different fp; a changed
+user/password → SAME fp (credentials excluded — test-pinned); missing salt in prod → throws.
 
-### S1-T3 — store: append + fold + sibling tables [SDD §2, §11.5]
-`ILedgerStore` gains `appendCollectionObservation(obs, grant)` (chain write, `chain_id = entity_id`),
-`getCollectionEntity(entity_id)` (FOLDS the projection: latest `ratified` wins for subjective,
-latest `observed` for derived, derived-vs-later-ratified on same label → `contested`),
-`listCollectionEntities()`, `labelProvenance(entity_id)`. In-memory adapter implements the fold;
-migration `0003_labelled_collections.sql` adds `collection_entities` (projection) +
-`collection_label_provenance` (append-only) + the enum value. NO `upsertCollectionEntity`.
-**AC**: member-subject regression suite stays green; a collection entity round-trips (append →
-fold → read); its observations verify on the chain (`verifyChain(entity_id)` green); a tamper
-test freezes that collection's chain without touching member chains.
+### S1-T3 — ordering `GET /admin/data-store` self-report [SDD C-1]
+Add the authed route to ordering's Hono app (`intake.ts`), behind its existing `SERVICE_TOKEN` Bearer gate.
+Expose `PostgresOrderStore` DB facts: `{ schema_version:'datastore.report.v1', engine:'postgres', host_fp,
+reachable (SELECT 1), migrations_applied|null, store:'postgres' }`. The store exposes a `dataStoreFacts()`
+method (pool.options → host/port/db → host_fp; never the raw pool). **AC**: authed GET returns the shape;
+unauthed → 401; the connection string / password NEVER appears in the body or logs (test asserts absence).
 
-## Sprint 2: distillation + ratification (FR-2 + FR-3, `network/freeside-cli`)
+### S1-T4 — `loa doctor --data` reads ONE cell (the settle gate) [SDD C-3]
+`packages/freeside-cli/src/verbs/doctor.ts` gains a `--data` mode (`doctorData()` + `DataStoreReport` type),
+wired in `bin/freeside-cli.ts:86-98`, reusing the SSRF-safe `hardenedBeaconFetcher` + operator's existing
+per-cell credential (NO Railway API). Probes ordering's `/admin/data-store`, prints JSON + a terse table
+(follow the `printList` precedent). **AC (settle gate)**: `doctor --data` against a live ordering fixture
+shows one row {slug, engine, host_fp, reachable, status}; a cell it can't reach → `unreachable`; exit 0 clean.
 
-### S2-T1 — the ground() distiller [SDD §3, §9]
-`freeside collections sync` (READ-only): (a) belt GraphQL `TrackedHolder distinct_on collectionKey`;
-(b) on-chain ERC-165 `supportsInterface(0x80ac58cd|0xd9b67a26)` per contract over a per-chain public
-RPC list (8s timeout + one retry; both-false/revert/transient-fail → `unknown`, logged — SDD §11.5
-IMP-006); (c) world-binding proposal = reverse `/v1/worlds/lookup` where it resolves else key-prefix
-heuristic, flagged `proposed`. Prints a ratifiable diff vs the SoT; `collection_key` normalized
-`_`→`-` with the transform shown. Exit 0 = fully-ratified & coherent, non-zero otherwise.
-Factor as `LabelledEntity.ground(): DerivedLabels[]` (FR-7 seam). **AC (the 24-collection proof)**:
-`sync` reproduces `self-grounded-collections-registry.txt` (20 erc721 + 4 erc1155); a normalization
-test pins `apdao_seat`→`apdao-seat`; an ERC-165-revert fixture → `unknown` (never erc721).
+## Sprint 2: fan out the self-report + the registry label layer (SDD A-2, A-3, A-4, C-4)
 
-### S2-T2 — propose (born-low, additive) [SDD §3]
-`freeside collections propose`: distill into born-low entities — every derived label
-`source_type: ai-derived`, `read_state: unread`; subjective labels (world, role) blank +
-`unratified`. Appends `collection.label.observed` per label (never overwrites a ratified label).
-MUTATING-command guard: refuse without a writable ledger; refuse in `RAILWAY_ENVIRONMENT`/
-`NODE_ENV=production` without `--yes` (SDD §11.5 IMP-008). **AC**: propose over the 24 writes
-born-low observations; a re-propose is idempotent (same event_id → no dup); a ratified label
-survives a re-propose untouched.
+### S2-T1 — absent-store + remaining cell self-reports [SDD A-2, A-3, A-4]
+`shadow-audit` + `operator-dash` → absent-store shape (`engine:null, store:'none'`, honest "no datastore").
+`shadow-mode` → add `/admin/data-store` to `createShadowRouter` (router-level; full server deferred).
+`apps/worker` → add the `/admin/data-store` branch to its raw-http health server behind a shared-secret
+`X-Internal-Key` (`timingSafeEqual`). **AC**: each cell returns its correct shape; `store:'none'` renders as
+a first-class row (not `unreported`); worker unauthed → 401; a cell without the route → `unreported`.
 
-### S2-T3 — ratify = the force-chain [SDD §4, §11.5 SKP-001]
-`freeside collections ratify <key> <label> <value>`: flips `ai-derived → operator-validated` ONLY
-with a fresh cockpit grant (the `memory-promotion-guard` shape: `~/.claude/.recall-cockpit-grant`,
-15-min TTL, one grant = one write); appends a `collection.label.ratified` observation. The agent has
-NO code path that writes `operator-validated` without the grant (sole sanctioned writer;
-out-of-band DB writes caught by `verifyChain`). **AC (SKP-003)**: a self-ratify without a grant is
-blocked (test asserts the guard); a ratify appends an append-only provenance row + re-folds the
-projection; a member subject cannot be collection-ratified (kind guard).
+### S2-T2 — registry `data_store` label layer [SDD C-4]
+Extend `ModuleEntry` (`packages/freeside-registry/src/registry.ts:26-54`) with an optional
+`data_store: { host_fp, label, purpose }` (the ratified layer — NOT live state). Loader validates it;
+absent is legal (unratified). CODEOWNERS-gate the `data_store:` path (operator-owned). **AC**: a module with
+a `data_store` label round-trips through `loadRegistry`; a malformed label fails validation loud; live facts
+are never stored here (schema forbids reachable/migrations).
 
-## Sprint 3: query + settle gate + drift (FR-4 + FR-5 + FR-6)
+## Sprint 3: ratify + drift + full projection (SDD C-3 complete, FR-4/FR-5)
 
-### S3-T1 — queryable like /recall [SDD §5]
-`freeside collections query "<q>"` (lexical this cycle): ranked entities matching collection_key /
-contract / world / role, each with a provenance badge (`ai-derived`/`operator-validated`/
-`contested`); `contested` withheld unless `--show-contested` (mirrors /recall). JSON (agent) + terse
-table (human). Leave the QMD-source export shape documented (one doc per entity, frontmatter =
-trust-fields) as the follow-up seam — NOT built this cycle. **AC (G-3)**: "collections in mibera"
-returns the mibera-family entities; "0x6666…c420" returns the mibera entity with its badge; a
-contested label is withheld by default.
+### S3-T1 — `doctor --data` full projection + status classification [FR-2, FR-5]
+Aggregate ALL registered cells: join each self-report with its ratified `data_store` label, classify per
+SDD §6 precedence (`contested` > `unreachable` > `unreported` > `coherent`; `store:none` its own row).
+Terse table + JSON. **AC**: a fixture with one coherent, one unreachable, one unreported, one no-db cell
+renders all four correctly; JSON is machine-readable (stable keys).
 
-### S3-T2 — settle gate: shadow-audit collapse (KILL-TEST) [SDD §6, §11.5 IMP-002]
-`packages/services/shadow-audit/bin/http.ts`: `loadRegistryFromEnv` → `loadRegistry` reads the
-ratified collection entities (ledger projection query; assumption-guarded build-time snapshot as the
-fallback, per the role-snapshot precedent) and builds the same `registryFromMap` shape. FAIL-CLOSED
-precedence: include a collection ONLY when `standard ∈ {erc721,erc1155}` AND `world` is
-`operator-validated` AND no `contested`/`orphaned` label — everything else excluded + logged.
-`COLLECTION_REGISTRY` env becomes an optional deprecated break-glass override (env wins if set).
-**AC (kill-test, G-4)**: boot with NO `COLLECTION_REGISTRY` → `GET /v1/collections/:chain/:contract`
-serves the ratified set; with the env set → override honored; an `unratified`/`unknown` collection
-is NEVER served. The FR-1a operator ask is retired.
+### S3-T2 — drift = loud [FR-5, reuse #430 drift shape]
+A cell whose derived `host_fp` ≠ its ratified `data_store.host_fp` (DB re-pointed) → `contested`, preserves
+the operator label, `doctor --data` exits non-zero. Reuse the collections-sot `contested`/fail-loud contract
+(`drift.ts:16-135`). **AC**: a fixture where derived host_fp diverges from the ratified label → `contested` +
+non-zero exit; a matching host_fp → `coherent` exit 0; the operator label is never overwritten.
 
-### S3-T3 — drift sensor [SDD §8]
-`freeside collections drift`: re-derives every DERIVED label and classifies per entity — `coherent` /
-`drifted` (derived changed → auto-overwrite via a new `observed`, log) / `orphaned` (in SoT, no longer
-belt-tracked) / `unratified` / `unknown_standard`. **Drift on a RATIFIED label → `contested`, never a
-silent overwrite.** Exit non-zero on any `contested`/`orphaned` (CI/cron, fails loud). **AC**: a
-fixture where a derived standard changed → `drifted`+overwritten; a ratified world changed under it →
-`contested`, not overwritten; an un-belt-tracked entity → `orphaned` + non-zero exit.
-
-## Flatline sprint integration (6 blocker cures — 4 concrete specs the tasks now carry)
-
-These pin the two ambiguities the plan left open (deterministic identity + fold order) and the two
-trust-boundary CRITICALs. Each is now a binding AC on its task.
-
-- **Deterministic `event_id` (SKP-001/002) — content-addressed, NOT timestamped.** For an `observed`:
-  `event_id = "col:obs:" + sha256(JCS({entity_id, label, value, source_type}))`. For a `ratified`:
-  `"col:rat:" + sha256(JCS({entity_id, label, value, ratified_by}))`. Re-deriving the SAME value →
-  same id → dedup (idempotent propose, S2-T2 AC). A CHANGED value → new id → a new observation —
-  which IS the drift signal (S3-T3). No wall-clock in identity, so CI is deterministic. (Adds to
-  S1-T2 + S2-T2.)
-
-- **Fold total order = chain seq, not wall-clock (SKP-003).** Label classes: DERIVED = {token_standard,
-  collection_key}; SUBJECTIVE = {world, role}. Current value of a label = the value on the highest-seq
-  observation for that (entity, label). `contested` iff an `observed` exists with `seq >` the latest
-  `ratified` seq for the SAME label AND a different value (a re-derive disagreeing with operator truth).
-  seq is unique per chain → no tie-break needed. (Pins S1-T3's fold AC.)
-
-- **Grant is single-consume + operator-invoked; binding ceiling named (SKP-001/003 CRITICAL).** REUSE
-  the existing `memory-promotion-guard` grant as-is — do NOT build a new grant primitive. The file is
-  unlinked on read (one grant = exactly one ratify write) and `ratify` is an interactive operator
-  command, so target-binding is by the operator's own invocation. `// loa:shortcut: no cryptographic
-  grant↔(entity,label) binding this cycle — single-consume + operator-in-the-loop is the boundary;
-  add a signed grant payload if a non-interactive ratify path is ever introduced.` (S2-T3 AC asserts
-  single-consume: a second ratify after one grant is blocked.)
-
-- **Shadow-audit trusts the projection ONLY if its chain verifies (SKP-004).** `loadRegistry` (S3-T2)
-  MUST NOT read the mutable `collection_entities` table blindly — for each candidate entity it calls
-  `verifyChain(entity_id)` (or a batch verify) and EXCLUDES any entity whose chain is frozen/failed
-  (fail-closed, alongside the standard/world/contested gate). The projection is a cache; the chain is
-  the trust root. **AC add**: an entity with a tampered/frozen chain is NOT served even if its
-  projection row looks valid.
-
-- **Snapshot fallback artifact contract (IMP-010, disputed→folded):** if S3-T2 uses the build-time
-  snapshot fallback, it is a committed JSON with a `{schema_version, generated_from_chain_head,
-  entities[]}` header; a missing/malformed snapshot fails startup LOUD (never fail-open to empty).
+### S3-T3 — ratify = git commit (agent proposes, operator ratifies) [FR-4, flatline SKP-003]
+`doctor --data --propose` emits a candidate `data_store` label diff (from the derived host_fp) for the
+operator to commit — NO runtime write, NO cockpit grant (git ownership is the gate). **AC**: `--propose`
+prints a valid registry.yaml diff/patch for an unratified cell; it never writes the file itself; the emitted
+label carries the derived host_fp + a blank operator `label`/`purpose` for the operator to fill.
 
 ## Goal traceability
 
 | Goal | Met by |
 |------|--------|
-| G-1 collections are labelled entities on the ledger spine | S1-T2, S1-T3 |
-| G-2 agent self-distills, operator ratifies (derive-don't-ask) | S2-T1, S2-T2, S2-T3 |
-| G-3 queryable like /recall | S3-T1 |
-| G-4 settle gate: shadow-audit reads the SoT (env retired) | S3-T2 (depends S1+S2) |
-| G-5 drift sensed, ratified truth never silently overwritten | S3-T3, S2-T3 |
-| G-6 reuse-shaped (pattern generalizes past collections) | FR-7 seam in S1-T3/S2-T1 (factoring, all sprints) |
+| G-1 every cell's DB binding legible via one command | S1-T4, S3-T1 |
+| G-2 staleness structurally caught (re-derived + drift loud) | S1-T4 (re-derive), S3-T2 (drift) |
+| G-3 zero new secrets, no vendor coupling | S1-T4 (reuse cluster auth + hardenedBeaconFetcher; no Railway API) |
+| G-4 durable human meaning survives re-derives (git-ratified) | S2-T2 (label layer), S3-T3 (git-commit ratify) |
+| G-5 no secret ever leaks | S1-T2 (creds excluded from host_fp), S1-T3 (absence test) |
+| (root) registry knows its members | S1-T1 |
