@@ -325,3 +325,17 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   is deliberate (trusted global producers e.g. a cluster-wide sonar indexer); a token that omits it
   is a config choice, documented. (3) deployed-marker robustness moot — no deployed shadow-mode
   server this cycle; producerPolicyFromEnv is the future single wiring point, fail-closed by default.
+
+## Decision Log — cycle sandwich-line S3 (2026-07-03)
+- Worlds data-loss fix (Fork-2, slotted ahead): worlds-api PR #15 — PgManifestStore + migration
+  0002 + kill-test (manifest survives redeploy); 55 unit + 3 pg green. Cross-repo, operator merges.
+- Sprint 3 code complete (T1-T4): S3-T1 audit GET /v1/collections capability read (open, rate-limited,
+  key-exempt); S3-T2 ordering probeShadow (validates body, precedence real>policy>stub); S3-T3
+  value-semantics contract test (sonar-replay vs projection agree per standard, per-token-vs-net
+  divergence documented — 6c precondition); S3-T4 differential + no-backfill classifier (flag-gated,
+  salted-hash divergence logs, unknown-time→no_backfill never inflates parity). FAGAN S3: i1 6 findings
+  (1 critical false-positive on unwired-registry — bin/ was outside diff filter), i2 codex APPROVED@0 +
+  cursor 0-findings = converged. shadow-audit 161 + ordering 122 tests green, both typecheck clean.
+- G-1 (consumer 0→≥1) still NOT met: the differential is CODE-complete + flag-gated OFF; it only
+  runs live once shadow-audit deploys (L-2, operator COLLECTION_REGISTRY + test:live) and the flag flips.
+  Remaining L-lanes all operator-gated: L-1 registry mining+verify, L-2 deploy, L-3 sandwich+report, L-5 demo.
