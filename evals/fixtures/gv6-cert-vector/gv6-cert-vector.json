@@ -1,0 +1,230 @@
+{
+  "vector_id": "gv6-cert-001",
+  "title": "GV6 cert_hash byte-match vector (Echelon → loa-freeside/evals)",
+  "description": "A valid vie/0.1.0 frozen_replay_baseline corpus envelope. Recompute recipe: dereference -> remove forge_seam.calibration_ref -> jcs-subset/v0 canonicalize -> sha256 -> byte-match against expected_cert_hash.",
+  "canon_strategy": "jcs-subset/v0",
+  "spec_ref": "FORGE spec/JCS_SUBSET_V0.md @ 20626a23 (mirrored byte-for-byte by backend/utils/jcs_subset.py)",
+  "generated_by": "backend.schemas.verdict_integrity_envelope.compute_cert_hash over backend.utils.jcs_subset.jcs_subset_canonical",
+  "recompute_recipe": [
+    "1. dereference the served envelope (`envelope_document` below)",
+    "2. remove `forge_seam.calibration_ref` (ONLY that key; risk-flag arrays stay)",
+    "3. canonicalize the result with jcs-subset/v0 (NOT full RFC 8785) — see rule doc",
+    "4. sha256 the UTF-8 canonical bytes",
+    "5. compare byte-for-byte against `expected_cert_hash`"
+  ],
+  "bundle_schema_version": "1.0.0",
+  "bundle_schema_version_note": "1.0.0 is the Echelon receiving-contract target, asserted at the recompute endpoint. It lives on the admission-bundle wrapper, NOT inside cert_hash (this vector is the cert/canon layer only).",
+  "envelope_document": {
+    "envelope_version": "vie/0.1.0",
+    "verdict_id": "sha256:cd9a62baa3a14bc1b2aa8ae8170768fb2417497f76739d3074f9ca8be7103ef1",
+    "subject": {
+      "claim_ref": "corpus:swebench-live-patch/post-cutoff/1",
+      "construct": "echelon-corpus",
+      "verdict_object": "claim",
+      "disposition": "ADMITTED"
+    },
+    "as_of": 1700000000,
+    "verifier_type": "frozen_replay_baseline",
+    "factors": {
+      "calibration": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          13
+        ],
+        "reason": "no calibration measurement on a frozen-replay corpus verdict"
+      },
+      "evidence_integrity": {
+        "state": "asserted",
+        "score": 1.0,
+        "regimes": [
+          1
+        ]
+      },
+      "process_attestation": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          8
+        ],
+        "reason": "no Echelon-replay receipt (unsigned-bundle seam, §11.3)"
+      },
+      "independence": {
+        "state": "asserted",
+        "score": 0.8,
+        "regimes": [
+          9
+        ]
+      },
+      "dispute_resistance": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          10
+        ],
+        "reason": "no dispute window on a frozen-replay corpus verdict"
+      },
+      "reasoning_faithfulness": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          14
+        ],
+        "reason": "regime-14 OUT of V-6 (V-7 backfills); reasoning_faithful N/A"
+      }
+    },
+    "composition": {
+      "operator": "min_over_applicable",
+      "applicable_factors": [
+        "evidence_integrity",
+        "independence"
+      ],
+      "na_factors": [
+        "calibration",
+        "process_attestation",
+        "dispute_resistance",
+        "reasoning_faithfulness"
+      ],
+      "failed_factors": [],
+      "scalar": 0.8,
+      "integrity_ceiling": 1.0,
+      "coverage": {
+        "asserted": 2,
+        "n_a": 4,
+        "failed": 0,
+        "total": 6,
+        "text": "2 of 6 factors asserted"
+      }
+    },
+    "metrics": {
+      "fresh": true,
+      "attested": null,
+      "reasoning_faithful": null
+    },
+    "provenance": {
+      "reality_label": "frozen_replay",
+      "exogeneity": "self_baseline",
+      "harness": {
+        "harness_id": "h:corpus",
+        "tool_surface": []
+      },
+      "normalization_trace": []
+    },
+    "forge_seam": {
+      "calibration_ref": {
+        "cert_uri": "echelon://corpus/1",
+        "cert_hash": "sha256:2866a4e05354a2ec9cd18ef63705586eae6ec8f88c5c03ee2a98222551c56bcb",
+        "n_resolutions": 1,
+        "as_of": 1700000000,
+        "verifier_type": "frozen_replay_baseline"
+      },
+      "echelon_owned_risk_flags": [],
+      "forge_owned_risk_flags_seen": []
+    }
+  },
+  "stripped_document": {
+    "envelope_version": "vie/0.1.0",
+    "verdict_id": "sha256:cd9a62baa3a14bc1b2aa8ae8170768fb2417497f76739d3074f9ca8be7103ef1",
+    "subject": {
+      "claim_ref": "corpus:swebench-live-patch/post-cutoff/1",
+      "construct": "echelon-corpus",
+      "verdict_object": "claim",
+      "disposition": "ADMITTED"
+    },
+    "as_of": 1700000000,
+    "verifier_type": "frozen_replay_baseline",
+    "factors": {
+      "calibration": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          13
+        ],
+        "reason": "no calibration measurement on a frozen-replay corpus verdict"
+      },
+      "evidence_integrity": {
+        "state": "asserted",
+        "score": 1.0,
+        "regimes": [
+          1
+        ]
+      },
+      "process_attestation": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          8
+        ],
+        "reason": "no Echelon-replay receipt (unsigned-bundle seam, §11.3)"
+      },
+      "independence": {
+        "state": "asserted",
+        "score": 0.8,
+        "regimes": [
+          9
+        ]
+      },
+      "dispute_resistance": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          10
+        ],
+        "reason": "no dispute window on a frozen-replay corpus verdict"
+      },
+      "reasoning_faithfulness": {
+        "state": "n_a",
+        "score": null,
+        "regimes": [
+          14
+        ],
+        "reason": "regime-14 OUT of V-6 (V-7 backfills); reasoning_faithful N/A"
+      }
+    },
+    "composition": {
+      "operator": "min_over_applicable",
+      "applicable_factors": [
+        "evidence_integrity",
+        "independence"
+      ],
+      "na_factors": [
+        "calibration",
+        "process_attestation",
+        "dispute_resistance",
+        "reasoning_faithfulness"
+      ],
+      "failed_factors": [],
+      "scalar": 0.8,
+      "integrity_ceiling": 1.0,
+      "coverage": {
+        "asserted": 2,
+        "n_a": 4,
+        "failed": 0,
+        "total": 6,
+        "text": "2 of 6 factors asserted"
+      }
+    },
+    "metrics": {
+      "fresh": true,
+      "attested": null,
+      "reasoning_faithful": null
+    },
+    "provenance": {
+      "reality_label": "frozen_replay",
+      "exogeneity": "self_baseline",
+      "harness": {
+        "harness_id": "h:corpus",
+        "tool_surface": []
+      },
+      "normalization_trace": []
+    },
+    "forge_seam": {
+      "echelon_owned_risk_flags": [],
+      "forge_owned_risk_flags_seen": []
+    }
+  },
+  "expected_canonical_utf8": "{\"as_of\":1700000000,\"composition\":{\"applicable_factors\":[\"evidence_integrity\",\"independence\"],\"coverage\":{\"asserted\":2,\"failed\":0,\"n_a\":4,\"text\":\"2 of 6 factors asserted\",\"total\":6},\"failed_factors\":[],\"integrity_ceiling\":1,\"na_factors\":[\"calibration\",\"process_attestation\",\"dispute_resistance\",\"reasoning_faithfulness\"],\"operator\":\"min_over_applicable\",\"scalar\":0.8},\"envelope_version\":\"vie/0.1.0\",\"factors\":{\"calibration\":{\"reason\":\"no calibration measurement on a frozen-replay corpus verdict\",\"regimes\":[13],\"score\":null,\"state\":\"n_a\"},\"dispute_resistance\":{\"reason\":\"no dispute window on a frozen-replay corpus verdict\",\"regimes\":[10],\"score\":null,\"state\":\"n_a\"},\"evidence_integrity\":{\"regimes\":[1],\"score\":1,\"state\":\"asserted\"},\"independence\":{\"regimes\":[9],\"score\":0.8,\"state\":\"asserted\"},\"process_attestation\":{\"reason\":\"no Echelon-replay receipt (unsigned-bundle seam, §11.3)\",\"regimes\":[8],\"score\":null,\"state\":\"n_a\"},\"reasoning_faithfulness\":{\"reason\":\"regime-14 OUT of V-6 (V-7 backfills); reasoning_faithful N/A\",\"regimes\":[14],\"score\":null,\"state\":\"n_a\"}},\"forge_seam\":{\"echelon_owned_risk_flags\":[],\"forge_owned_risk_flags_seen\":[]},\"metrics\":{\"attested\":null,\"fresh\":true,\"reasoning_faithful\":null},\"provenance\":{\"exogeneity\":\"self_baseline\",\"harness\":{\"harness_id\":\"h:corpus\",\"tool_surface\":[]},\"normalization_trace\":[],\"reality_label\":\"frozen_replay\"},\"subject\":{\"claim_ref\":\"corpus:swebench-live-patch/post-cutoff/1\",\"construct\":\"echelon-corpus\",\"disposition\":\"ADMITTED\",\"verdict_object\":\"claim\"},\"verdict_id\":\"sha256:cd9a62baa3a14bc1b2aa8ae8170768fb2417497f76739d3074f9ca8be7103ef1\",\"verifier_type\":\"frozen_replay_baseline\"}",
+  "expected_canonical_sha256": "sha256:2866a4e05354a2ec9cd18ef63705586eae6ec8f88c5c03ee2a98222551c56bcb",
+  "expected_cert_hash": "sha256:2866a4e05354a2ec9cd18ef63705586eae6ec8f88c5c03ee2a98222551c56bcb",
+  "expected_verdict_id": "sha256:cd9a62baa3a14bc1b2aa8ae8170768fb2417497f76739d3074f9ca8be7103ef1"
+}
