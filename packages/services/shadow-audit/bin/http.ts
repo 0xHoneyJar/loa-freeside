@@ -91,7 +91,7 @@ const sonar = new SonarClient(
   defaultTransferPageFetcher,
 );
 const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
-const app = buildAuditApp(ownership, configFromEnv());
+const app = buildAuditApp(ownership, configFromEnv(), registry);
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
 serve({ fetch: app.fetch, port }, (info) => {

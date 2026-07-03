@@ -41,6 +41,7 @@ import {
   type RoleSource,
   type WhaleSource,
 } from '../audit-service.js';
+import type { CollectionRegistry } from '../ownership-source.js';
 import {
   verifyAssociation,
   SignedAuthMessageSchema,
@@ -59,6 +60,8 @@ import {
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
+  /** Membership lookup for the OPEN capability read (GET /v1/collections/:chain/:contract). */
+  collectionRegistry?: CollectionRegistry;
   whale: WhaleSource;
   roles: RoleSource;
   eventStore: EventStore;
@@ -187,6 +190,22 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     reason: 'too many requests',
     retryable: true,
   };
+
+  // ---- GET /v1/collections/:chain/:contract — capability read (OPEN) ------
+  // "Can the audit cover this collection?" — membership + static config only,
+  // NO member data. This is what the ordering service's shadow_preview probe
+  // needs (SDD sandwich-line FR-2). Returns 200 {collection, standard} / 404.
+  app.get('/v1/collections/:chain/:contract', (c) => {
+    // Rate-limited like the sibling routes — an OPEN endpoint must not be an
+    // unauthenticated enumeration oracle (FAGAN S3).
+    if (isRateLimited(c)) return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    if (!deps.collectionRegistry) return c.json({ error: 'registry unavailable' }, 503);
+    const chain = c.req.param('chain');
+    const contract = c.req.param('contract');
+    const ref = deps.collectionRegistry({ chain, contract });
+    if (!ref) return c.json({ error: 'not_found', chain, contract }, 404);
+    return c.json({ chain, contract, collection: ref.collection, standard: ref.standard });
+  });
 
   // ---- GET /v1/audit — anonymous aggregate -------------------------------
   app.get('/v1/audit', async (c) => {

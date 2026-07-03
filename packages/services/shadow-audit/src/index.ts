@@ -82,3 +82,12 @@ export {
   ComparisonUnavailableError,
   type ComparisonArtifact,
 } from './comparison-export.js';
+
+export {
+  computeDifferential,
+  differentialEnabled,
+  differentialLogLine,
+  type DifferentialInput,
+  type DifferentialResult,
+  type DivergentWallet,
+} from './differential.js';

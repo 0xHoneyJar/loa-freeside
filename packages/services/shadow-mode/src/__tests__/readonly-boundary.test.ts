@@ -20,6 +20,12 @@ const ALLOWED_BARE_IMPORTS = new Set([
   '@freeside/shadow-audit-protocol',
   'hono',
   'zod',
+  // The ledger's OWN persistence (sandwich-line 6b-2). AC-7 guards against
+  // mutation-capable UPSTREAM clients (discord/identity/sonar writes) — writing
+  // to the building's own Postgres is the store's job, not an upstream mutation.
+  'pg',
+  // JWT verification (producer-auth 6b-3) — read-only crypto, not an upstream client.
+  'jose',
 ]);
 
 function walk(dir: string): string[] {
@@ -39,7 +45,7 @@ function importSpecifiers(source: string): string[] {
 }
 
 describe('AC-7 read-only boundary', () => {
-  it('no source file imports a non-allowlisted (mutation-capable) upstream client', () => {
+  it('no source file imports a non-allowlisted (mutation-capable) upstream client', async () => {
     const offenders: string[] = [];
     for (const file of walk(SRC_ROOT)) {
       for (const spec of importSpecifiers(readFileSync(file, 'utf8'))) {
@@ -53,7 +59,7 @@ describe('AC-7 read-only boundary', () => {
     expect(offenders, `forbidden imports:\n${offenders.join('\n')}`).toHaveLength(0);
   });
 
-  it('the ledger store port exposes no upstream-mutation method', () => {
+  it('the ledger store port exposes no upstream-mutation method', async () => {
     const methods = Object.getOwnPropertyNames(InMemoryLedgerStore.prototype);
     const forbidden = /discord|role.?(grant|assign|dispense|mutate|write)|identity.*write|sonar.*write|publish|emit/i;
     const leaks = methods.filter((m) => forbidden.test(m));
