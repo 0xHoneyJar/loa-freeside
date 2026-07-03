@@ -298,3 +298,8 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   community-onboarding preset does not carry; RunEvent carries no contract identity (no runs-read).
   #401 is missing a PRODUCER, not a probe. Full contract notes: grimoires/loa/cycles/consumption-truth/e2e-runbook.md.
   Auth header observed = X-API-Key (NOT Bearer) — recorded for the future probe adapter.
+- FAGAN convergence (3 iters, cap): i1 codex-major fixed (policy-masks-producer); i2 cursor 2-major fixed
+  (injection-based producer signal; fail-closed fence fetch) + 2 cleanups; i3 codex APPROVED, took
+  dirty-tree fence union + empty-count + dedup. FAGAN-ACCEPTS (rationale): constructor-policy-without-warn
+  (factory is the sole production composition path — composition.ts only calls createKitchenTriagePorts);
+  test-seam export resetShadowProducerlessWarning (existing codebase pattern, no prod caller).

@@ -33,7 +33,14 @@ if ! git fetch origin main --quiet 2>/dev/null; then
   fi
 fi
 
-changed="$(git diff --name-only origin/main...HEAD)"
+# Committed range ∪ staged ∪ unstaged — a dirty working tree on fenced paths must trip too.
+changed="$(
+  {
+    git diff --name-only origin/main...HEAD
+    git diff --name-only HEAD
+    git diff --name-only --cached
+  } | sort -u
+)"
 
 violations=()
 while IFS= read -r file; do
@@ -41,14 +48,17 @@ while IFS= read -r file; do
   for fence in "${FENCE[@]}"; do
     if [[ "$file" == "$fence" || "$file" == "$fence"* ]]; then
       violations+=("$file")
+      break
     fi
   done
 done <<< "$changed"
 
 if (( ${#violations[@]} > 0 )); then
   echo "SIBLING FENCE VIOLATION — branch touches PR #422's file set:" >&2
-  printf '  %s\n' "${violations[@]}" >&2
+  printf '  %s\n' "${violations[@]}" | sort -u >&2
   exit 1
 fi
 
-echo "sibling fence: clean ($(wc -l <<< "$changed" | tr -d ' ') changed files checked)"
+count=0
+[[ -n "$changed" ]] && count=$(printf '%s\n' "$changed" | wc -l | tr -d ' ')
+echo "sibling fence: clean (${count} changed files checked)"
