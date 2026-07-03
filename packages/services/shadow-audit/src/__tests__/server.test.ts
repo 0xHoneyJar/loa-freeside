@@ -198,3 +198,19 @@ describe('configFromEnv — fail loud on missing required config', () => {
     expect(cfg.apiKey).toBe('k');
   });
 });
+
+describe('capability read security boundary (FR-2 / PRD §Security boundary)', () => {
+  const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[R1, 1n]]));
+  const registry = ({ chain, contract }: { chain: string; contract: string }) =>
+    ({ '1/0xabc': { collection: 'azuki', standard: 'erc721' as const } })[`${chain}/${contract}`.toLowerCase()];
+
+  it('GET /v1/collections is OPEN even when an X-API-Key is configured', async () => {
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), registry);
+    // no key header → still 200 (capability read carries no member data)
+    const res = await app.request('/v1/collections/1/0xABC');
+    expect(res.status).toBe(200);
+    // and /v1/audit WITHOUT the key is still gated
+    const gated = await app.request(`/v1/audit?${query('thj')}`);
+    expect(gated.status).toBe(401);
+  });
+});

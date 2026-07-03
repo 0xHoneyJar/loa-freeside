@@ -23,6 +23,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
+import type { CollectionRegistry } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
 import { makeBalanceWhaleSource } from './whale-source.js';
 import { InMemoryEventStore } from './event-store.js';
@@ -59,11 +60,12 @@ function failClosedAuth(): AuditRouterDeps['auth'] {
 }
 
 /** Build the audit Hono app from an injected `OwnershipSource` + the local adapters. */
-export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig): Hono {
+export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collectionRegistry?: CollectionRegistry): Hono {
   const now = () => Date.now();
   const rl = config.rateLimit ?? { limit: 30, windowMs: 60_000 };
   const deps: AuditRouterDeps = {
     ownership,
+    collectionRegistry,
     whale: makeBalanceWhaleSource(),
     roles: makeFileRoleSource(config.roleSnapshotPath),
     // F4: the event store + rate limiter are IN-MEMORY (per-replica, non-durable). That is correct for the
@@ -90,7 +92,8 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
   if (config.apiKey) {
     const keyBuf = Buffer.from(config.apiKey);
     app.use('*', async (c, next) => {
-      if (c.req.path === '/healthz') return next();
+      // /healthz + the OPEN capability read (membership only, no member data) skip the key gate.
+      if (c.req.path === '/healthz' || c.req.path.startsWith('/v1/collections/')) return next();
       const got = Buffer.from(c.req.header('x-api-key') ?? '');
       // constant-time compare (FAGAN LOW-7: a `!==` on a shared secret is a timing oracle).
       const ok = got.length === keyBuf.length && timingSafeEqual(got, keyBuf);
