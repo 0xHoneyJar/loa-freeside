@@ -168,6 +168,9 @@ describe('AppendGrant is unforgeable (FAGAN S2 critical)', () => {
 
   it('producerPolicyFromEnv refuses to run structural-only when deployed', async () => {
     const { producerPolicyFromEnv } = await import('../adapters/svc-jwt-policy.js');
-    expect(() => producerPolicyFromEnv({ RAILWAY_ENVIRONMENT: 'production' } as NodeJS.ProcessEnv)).toThrow(/producer-auth not configured/);
+    expect(() => producerPolicyFromEnv({} as NodeJS.ProcessEnv)).toThrow(/producer-auth not configured/);
+    // Explicit opt-in is the ONLY way to structural-only.
+    const { StaticProducerPolicy } = await import('../adapters/static-producer-policy.js');
+    expect(producerPolicyFromEnv({ SHADOW_MODE_ALLOW_STRUCTURAL_POLICY: '1' } as NodeJS.ProcessEnv)).toBeInstanceOf(StaticProducerPolicy);
   });
 })

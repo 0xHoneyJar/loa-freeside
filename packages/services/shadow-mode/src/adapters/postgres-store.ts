@@ -261,9 +261,15 @@ export class PostgresLedgerStore implements ILedgerStore {
       : [];
     const byId = new Map(obsRows.map((r) => [r.event_id as string, rowToObservation(r)]));
     const verdict = verifyLinks(links, (id) => byId.get(id));
-    if (!verdict.ok && !(await this.isChainFrozen(chainId))) {
+    if (!verdict.ok) {
+      // Idempotent freeze: insert only if there is no active (uncleared) freeze
+      // — concurrent verifyChain calls cannot pile up duplicate rows (FAGAN S2).
       await this.pool.query(
-        `insert into shadow_chain_state (chain_id, frozen_reason, first_bad_seq) values ($1,$2,$3)`,
+        `insert into shadow_chain_state (chain_id, frozen_reason, first_bad_seq)
+         select $1, $2, $3
+         where not exists (
+           select 1 from shadow_chain_state where chain_id = $1 and cleared_at is null
+         )`,
         [chainId, verdict.reason, verdict.first_bad_seq],
       );
     }

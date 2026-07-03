@@ -38,14 +38,14 @@ export class SvcJwtProducerPolicy implements IProducerPolicy {
 export function producerPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): IProducerPolicy {
   const jwt = jwtProducerPolicyFromEnv(env);
   if (jwt) return new SvcJwtProducerPolicy(jwt);
-  // A DEPLOYED server without producer-JWT config is fail-closed: the structural
-  // StaticProducerPolicy is NOT a transport-auth boundary, so refuse to run it as
-  // the deployed default (FAGAN S2: silent downgrade would leave HTTP unauthed).
-  const deployed = Boolean(env.RAILWAY_ENVIRONMENT?.trim()) || env.NODE_ENV === 'production';
-  if (deployed) {
-    throw new Error(
-      'producer-auth not configured (PRODUCER_JWT_ISSUER + PRODUCER_JWKS[_URL]) but environment is deployed — refusing to run HTTP ingress on structural-only StaticProducerPolicy',
-    );
-  }
-  return new StaticProducerPolicy();
+  // No JWT config → structural-only StaticProducerPolicy, which is NOT a
+  // transport-auth boundary. It is NEVER a silent default (FAGAN S2 crit): an
+  // operator must EXPLICITLY opt in with SHADOW_MODE_ALLOW_STRUCTURAL_POLICY=1
+  // (intended only for in-process/library or a trusted-network deploy). Absent
+  // that flag we fail closed regardless of any environment marker.
+  if (env.SHADOW_MODE_ALLOW_STRUCTURAL_POLICY === '1') return new StaticProducerPolicy();
+  throw new Error(
+    'producer-auth not configured (set PRODUCER_JWT_ISSUER + PRODUCER_JWKS[_URL] for real auth, ' +
+      'or SHADOW_MODE_ALLOW_STRUCTURAL_POLICY=1 to explicitly accept the structural-only gate)',
+  );
 }

@@ -93,6 +93,24 @@ describe.skipIf(!PG_TEST_URL)('PostgresLedgerStore (PG_TEST_URL)', () => {
     expect(await store.appendObservationIfAbsent(obs(`t2-${c3}`, c3), testGrant())).toBe(true);
   });
 
+  it('jsonb round-trip preserves the chain hash (tricky payload)', async () => {
+    const c4 = `${community}-json`;
+    const tricky: ShadowObservation = {
+      ...obs(`j1-${c4}`, c4),
+      payload: {
+        nested: { b: 2, a: 1, arr: [3, 2, { z: 0, y: 1 }] },
+        unicode: '€ 𐌠 \n',
+        num: 1234567.89,
+        flags: [true, false, null],
+      } as unknown,
+    };
+    expect(await store.appendObservationIfAbsent(tricky, testGrant())).toBe(true);
+    // The hash was computed over JCS(payload); read-back re-canonicalizes the
+    // jsonb — if jsonb reordered keys or reformatted, JCS still normalizes, so
+    // verification MUST stay green.
+    expect(await store.verifyChain(c4)).toEqual({ ok: true, length: 2 });
+  });
+
   it('boot gate: assertChainsVerified passes on healthy chains', async () => {
     await expect(store.assertChainsVerified()).resolves.toBeUndefined();
   });

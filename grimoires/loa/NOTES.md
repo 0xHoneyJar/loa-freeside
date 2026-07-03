@@ -310,3 +310,18 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   non-plain-object rejection. ACCEPTS w/ rationale: AC-7 regex claim (phantom — regex needs
   'role' prefix, suite green); full-verify-per-append (O(n) — head-check O(1) + periodic verify;
   checkpoint requirement carried into S2-T1).
+
+## Decision Log — cycle sandwich-line S2 (2026-07-03)
+- FAGAN S2: 3 iters, verdict converged on the load-bearing critical (AppendGrant _mint
+  forgery) — CLOSED via module-private symbol mint + no package-index export; both voices
+  dropped it by i3. Also fixed: head-check-before-insert (no orphan), boot-gate on append,
+  admin token via env (not argv), non-silent clear, JWT exp-iat≤1h, SvcJwtProducerPolicy +
+  community binding, explicit-opt-in structural policy (no silent unauthed default), idempotent
+  freeze insert, jsonb-roundtrip hash proof (empirically green).
+- FAGAN-ACCEPTS (rationale): (1) PostgresLedgerStore.withTransaction is not one atomic txn across
+  append+projection — NAMED ceiling + gated: the pg store MUST NOT back a live producer this cycle
+  (FR-6 scope: only the flag-gated read-only differential; no NATS consumer). Upgrade trigger =
+  client-scoped txn through ingest before any producer cutover. (2) communities-empty = unrestricted
+  is deliberate (trusted global producers e.g. a cluster-wide sonar indexer); a token that omits it
+  is a config choice, documented. (3) deployed-marker robustness moot — no deployed shadow-mode
+  server this cycle; producerPolicyFromEnv is the future single wiring point, fail-closed by default.
