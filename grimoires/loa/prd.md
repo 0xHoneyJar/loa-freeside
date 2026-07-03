@@ -62,13 +62,33 @@ silently-empty inventory; the community whose order is stuck.
 - **FR-4 (G-1, the settle gate):** The E2E: place/watch/advance the real order to `fulfilled` using
   only the landed verbs. This is the cycle's acceptance test — it consumes #420/#421, closes epic
   #415 Phase C, and settles against the order's event trail (differential vs the REAL thing,
-  never a fixture).
-- **FR-5 (G-4, cross-repo inventory-api + dashboard + infra):** Public-reads posture
-  (operator-decided): drop the Railway edge wall on `/health`, beacon, `/holdings/:wallet`,
-  `/profile/:address` (code-declared no-auth surfaces; on-chain-derivable data); point
-  `inventory.0xhoneyjar.xyz` DNS at the Railway deploy; merge inventory-api #18 (beacon serving) +
-  fix registry `beacon_url`; dashboard client stops fail-softing (non-2xx → surfaced error state +
-  log, never silent `[]`); registry/consumer/producer URL agreement asserted by a test.
+  never a fixture). Runs under the Live-Order Safety Protocol (below); a dry-run on a FRESH
+  disposable order proves the loop before the real order is touched.
+  - **Live-Order Safety Protocol (blocker cure):** (1) *Authorization*: the operator owns order
+    `6ddc06f5` and authorized it as the gate (fork decision 2026-07-02); no third-party customer
+    order may be a test subject. (2) *Dry-run first*: a fresh OP-chain test order runs the full
+    verb loop end-to-end before the real order. (3) *Evidence per advance*: every
+    `advance-ingredient` carries server-derived probe evidence (#420 contract) — no evidence, no
+    advance. (4) *Ambiguous = halt*: any `ambiguous`/contradictory probe state halts the loop in a
+    named safe state (`pending`, never fabricated `complete`) and surfaces to the operator —
+    resolution is a human decision. (5) *Rollback*: per-ingredient CAS re-set, operator-gated;
+    the runbook documents the exact reset call per ingredient. (6) *Irreversible side effects*
+    (bot installs, DNS, external announcements) are operator-gated seams — the agent stops before
+    them.
+- **FR-5a (G-4, infra/posture — [OPERATOR-BOUNDED]):** Public-reads posture (operator-decided):
+  drop the Railway edge wall on `/health`, beacon, `/holdings/:wallet`, `/profile/:address`
+  ONLY after the Privacy Gate (below) passes; point `inventory.0xhoneyjar.xyz` DNS at the Railway
+  deploy. Un-wall ≠ un-throttle: edge rate-limiting stays ON.
+- **FR-5b (G-4, producer inventory-api):** merge inventory-api #18 (beacon serving) + fix registry
+  `beacon_url`; docstring drift fix (`app.ts` route list).
+- **FR-5c (G-4, consumer dashboard):** client stops fail-softing (non-2xx → surfaced error state +
+  log, never silent `[]`); registry/consumer/producer URL agreement asserted by a test that fails on
+  drift.
+  - **Privacy Gate (blocker cure, pre-FR-5a):** enumerate the LIVE response fields of
+    `/holdings/:wallet` and `/profile/:address`. PASS = fields limited to chain-derivable data
+    (wallet address, contract, chain id, token ids/counts, metadata/image URLs). FAIL = any
+    off-chain identity field (email, discord/social id, session, internal notes) → fall back to
+    health+beacon-only un-walling and the operator re-decides posture.
 - **FR-6 (G-5, cross-repo dashboard + characters):** Additive orientation stubs — `AGENTS.md` in
   dashboard (new) and repaired `characters/AGENTS.md:1` (`@.Codex/...` → correct import), each
   naming: the WHO×WHAT ladder, this repo's rung, canonical building URLs FROM `registry.yaml`,
@@ -78,9 +98,25 @@ silently-empty inventory; the community whose order is stuck.
 ## Invariants (every FR must satisfy)
 
 Observed-not-claimed (every "works" claim traces to a live probe, event trail, or merged commit —
-never a fixture tautology) · fail-loud (no new fail-soft paths; ambiguous states surface as explicit
-states) · sibling fence (G-6) · cross-repo changes coordinate via /coord and never admin-merge past
-the operator.
+never a fixture tautology; the E2E's evidence = the order's `probe_meta` + event trail, quoted in
+the cycle report) · fail-loud (no new fail-soft paths; ambiguous states surface as explicit named
+states with a defined safe default) · sibling fence (G-6, machine-checked: a repo-local guard
+fails any branch of this cycle that touches PR #422's file set) · cross-repo changes coordinate
+via /coord and never admin-merge past the operator.
+
+## Cross-Repo Execution Contract (blocker cure)
+
+| Lane | Repo(s) | Owner | Branch/PR | Merge gate |
+|------|---------|-------|-----------|------------|
+| Golden thread (FR-2→3→4) | loa-freeside (`packages/services/ordering`) + Railway env | this session | worktree branch → PR | operator |
+| Index spike (FR-1) | sonar-api | /coord-dispatched lane (or this session, timeboxed 1 day) | sonar-api PR | operator |
+| Inventory relight (FR-5a/b/c) | inventory-api + freeside-dashboard + Railway/DNS | this session (code) + operator (5a infra) | one PR per repo | operator |
+| Orientation stubs (FR-6) | freeside-dashboard + freeside-characters | this session, additive files only | one PR per repo | operator (Cursor's turf — she reviews) |
+
+**Sequencing DAG:** FR-2 → FR-3 → FR-4 (serialized; FR-1 feeds FR-4's subject choice at the
+timebox boundary). FR-5a → FR-5c verification (5b parallel). FR-6 independent, any time.
+**Failure handoff:** a lane that stalls (blocked check, unowned decision) files a bead with
+`domain:` label + [OPERATOR-BOUNDED] marker and detaches — it never blocks the golden thread.
 
 ## Assumptions (tagged, falsifiable)
 
