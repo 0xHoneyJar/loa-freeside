@@ -35,6 +35,7 @@ import {
   type AcvpProofReceipt,
 } from "@freeside/beacon-schema";
 import { jcsCanonicalize, sha256Hex } from "../lib/jcs.js";
+import { hardenedBeaconFetcher } from "../lib/harden-beacon-fetch.js";
 
 export type Severity = "ok" | "warn" | "error";
 
@@ -85,7 +86,8 @@ export interface DoctorOptions {
    *  (beacon_discoverable / beacon_dark / beacon_void / beacon_exempt). */
   readonly remote?: boolean;
   /** Injected network fetcher for --remote (determinism + no live calls in tests).
-   *  Default = `defaultBeaconFetcher` (global fetch, host-pinned, 12s timeout). */
+   *  Default = `defaultBeaconFetcher` = the shared SSRF-safe `hardenedBeaconFetcher`
+   *  (allowlist + private-range reject + IP-pinned connect, 12s timeout). */
   readonly fetchBeacon?: BeaconFetcher;
   /** prior registry for the visibility-transition guard (SC: not wired this build) */
   readonly baselineRegistryPath?: string;
@@ -120,7 +122,6 @@ const SHA256_RE = /^[a-f0-9]{64}$/;
 // a probe can never false-flag a real cell as dark on the wrong host, nor pass a
 // wrong cell as discoverable.
 
-const REMOTE_TIMEOUT_MS = 12_000;
 
 /** A single host-pinned probe of a declared beacon_url (the guard record). */
 export interface BeaconProbe {
@@ -189,59 +190,13 @@ export function classifyProbe(p: BeaconProbe): RemoteVerdict {
   return "dark";
 }
 
-/** Max same-host redirect hops to follow before giving up (bounds the loop). */
-const REMOTE_MAX_REDIRECTS = 5;
-
-/** Default fetcher: global fetch, host-pinned. redirect:"manual" — we follow
- *  redirects OURSELVES and ONLY when they stay on the declared host. An OFF-HOST
- *  Location is NEVER followed and its body is NEVER read (the host-integrity guard
- *  must be actually host-pinned: redirect:"follow" let fetch chase an off-host
- *  redirect and read an off-host body BEFORE the guard ran — arbitrary outbound
- *  fetch under --remote). The off-host target is surfaced as finalUrl so the probe
- *  classifies it VOID. Every transport failure becomes a status-0 result, never a
- *  throw into the audit. */
-export const defaultBeaconFetcher: BeaconFetcher = async (url) => {
-  try {
-    const declaredHost = hostOf(url);
-    let current = url;
-    for (let hop = 0; hop <= REMOTE_MAX_REDIRECTS; hop++) {
-      const res = await fetch(current, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
-      });
-      if (res.status >= 300 && res.status < 400) {
-        // a redirect: do NOT read the body — resolve the Location and decide.
-        const loc = res.headers.get("location");
-        if (!loc) return { status: res.status, finalUrl: current, body: "" };
-        const next = new URL(loc, current).toString();
-        if (hostOf(next) !== declaredHost) {
-          // off-host hop → STOP. Off-host body never fetched; surface the off-host
-          // finalUrl so the host-integrity guard classifies it void.
-          return { status: res.status, finalUrl: next, body: "" };
-        }
-        current = next; // same-host redirect → follow (still host-pinned)
-        continue;
-      }
-      // terminal response at a host-pinned URL → read the body.
-      let body = "";
-      try {
-        body = await res.text();
-      } catch {
-        // body read failure (e.g. abort mid-stream) — status still load-bearing
-      }
-      return { status: res.status, finalUrl: res.url || current, body };
-    }
-    // same-host redirect chain too long → treat as unreachable, never off-host.
-    return { status: 0, finalUrl: current, body: "", error: "too many redirects" };
-  } catch (err) {
-    return {
-      status: 0,
-      finalUrl: url,
-      body: "",
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-};
+/** The default --remote fetcher IS the shared SSRF-safe `hardenedBeaconFetcher`
+ *  (beacon-consumer S1-T3, flatline IMP-004): `inspect` + `doctor --remote` fetch through
+ *  ONE hardened path — https-only + canonical host allowlist + complete private-range
+ *  reject + IP-pinned connect (DNS-rebinding TOCTOU closed) + size cap. It supersedes the
+ *  old global-fetch host-pinned fetcher; no parallel copy remains. Same `RemoteFetchResult`
+ *  shape, so `probeBeacon`/`classifyProbe` are unchanged. */
+export const defaultBeaconFetcher: BeaconFetcher = hardenedBeaconFetcher;
 
 /** Probe the EXACT declared beacon_url and record the full host-integrity guard.
  *  `expectedSlug` is the registry slug being probed — carried through so the verdict

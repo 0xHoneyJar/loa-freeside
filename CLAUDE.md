@@ -142,6 +142,7 @@ loa doctor              # live · health + discovery probe across registered bui
 loa caps                # live · capabilities reachable under the current grant (discovery == permission)
 loa where <dest>        # live · cheapest invocation to reach a destination (the `cd` of the ecosystem)
 loa census --graph      # live · the living building graph — set LOA_WORKSPACE=<cluster-root> first
+loa model <slug> --brief # live · one building's keyed orientation packet (is/is_not/capabilities/edges + verdict)
 
 # WRONG - do not hand-probe what loa already covers
 grep -r "deployment_url" packages/freeside-registry/registry.yaml  # stale hand-authored field
@@ -158,6 +159,14 @@ the verified path must be the path of least resistance.
 > `LOA_WORKSPACE=<cluster-root>` set first — `loa` reads only approved veve roots, never an
 > arbitrary cwd: `LOA_WORKSPACE=~/Documents/GitHub loa census --graph` (reads 4 registries →
 > buildings + constructs + worlds + zones). `ADR-011 §D-5` is the cited floor.
+
+To orient to ONE building — its `is`/`is_not`, capabilities, and composition edges — from its
+live beacon, reach for the keyed orientation READ instead of grepping a building's source:
+`loa model <slug> --brief` (launcher-native, grant-gated) or, in-repo, `freeside-cli inspect
+<slug>` (single-line JSON; `--pretty` to expand). Both fetch the declared beacon over the SAME
+SSRF-safe path and return the same orientation packet with an honest classification
+(`beacon_valid`/`dark`/`void`/`invalid`/`unreachable`) — parity is pinned by the shared
+conformance vectors in `packages/beacon-schema/test-vectors/`.
 
 ---
 

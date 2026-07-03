@@ -23,10 +23,13 @@ import {
   readAllowlist,
   classifyProbe,
   probeBeacon,
-  defaultBeaconFetcher,
   type BeaconFetcher,
   type BeaconProbe,
 } from "../src/verbs/doctor.js";
+import { makeHardenedBeaconFetcher, type HardenTransport } from "../src/lib/harden-beacon-fetch.js";
+
+/** A public A-record so the private-range guard passes; the redirect logic is what's under test. */
+const PUBLIC_RESOLVE: HardenTransport["resolveAll"] = async () => [{ address: "93.184.216.34", family: 4 }];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(__dirname, "fixtures");
@@ -462,57 +465,51 @@ test("doctor() · --remote → public+deployed cell whose URL serves a SIBLING's
   }
 });
 
-// ── FINDING 2: redirect host-integrity — the REAL fetcher must NOT chase off-host ──
-// These exercise defaultBeaconFetcher directly by mocking globalThis.fetch (no live
-// network), recording every URL fetch is called with. The fix (redirect:"manual",
-// same-host-only follow) means an off-host Location is never requested and its body
-// is never read — so --remote cannot make arbitrary outbound fetches.
+// ── FINDING 2: redirect host-integrity — the shared fetcher must NOT chase off-host ──
+// `defaultBeaconFetcher` is now the shared `hardenedBeaconFetcher` (S1-T3, IMP-004). These
+// drive it via an INJECTED transport (no live network), recording every URL `get` is called
+// with. An off-host Location is never requested and its body never read — so --remote cannot
+// make arbitrary outbound fetches. resolveAll returns a public IP so the redirect logic is
+// isolated from the private-range guard.
 
-test("defaultBeaconFetcher · off-host redirect is NOT followed — off-host body never fetched (FINDING 2)", async () => {
+test("hardenedBeaconFetcher (== defaultBeaconFetcher) · off-host redirect is NOT followed — off-host body never fetched (FINDING 2)", async () => {
   const declared = SCORE_URL;
   const offHost = "https://evil.example.com/.well-known/beacon.json";
   const calls: string[] = [];
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: unknown) => {
-    const u = typeof input === "string" ? input : (input as URL).toString();
-    calls.push(u);
-    if (u === declared) return new Response(null, { status: 302, headers: { location: offHost } });
-    // reaching here means the off-host body WAS fetched — the vulnerability
-    return new Response(VALID_BEACON_BODY, { status: 200 });
-  }) as typeof fetch;
-  try {
-    const r = await defaultBeaconFetcher(declared);
-    assert.deepEqual(calls, [declared], "only the declared host was fetched — off-host Location never requested");
-    assert.equal(new URL(r.finalUrl).host, "evil.example.com", "off-host target surfaced as finalUrl (for the void verdict)");
-    assert.equal(r.body, "", "off-host body never read");
-    // end-to-end: the host-integrity guard classifies it void (not dark, not discoverable)
-    const probe = await probeBeacon(declared, "score-api", async () => r);
-    assert.equal(classifyProbe(probe), "void");
-  } finally {
-    globalThis.fetch = realFetch;
-  }
+  const transport: HardenTransport = {
+    resolveAll: PUBLIC_RESOLVE,
+    get: async ({ url }) => {
+      calls.push(url);
+      if (url === declared) return { status: 302, location: offHost, body: "" };
+      return { status: 200, location: null, body: VALID_BEACON_BODY }; // reaching here = the vulnerability
+    },
+  };
+  const r = await makeHardenedBeaconFetcher(transport)(declared);
+  assert.deepEqual(calls, [declared], "only the declared host was fetched — off-host Location never requested");
+  assert.equal(new URL(r.finalUrl).host, "evil.example.com", "off-host target surfaced as finalUrl (for the void verdict)");
+  assert.equal(r.body, "", "off-host body never read");
+  // end-to-end: the host-integrity guard classifies it void (not dark, not discoverable)
+  const probe = await probeBeacon(declared, "score-api", async () => r);
+  assert.equal(classifyProbe(probe), "void");
 });
 
-test("defaultBeaconFetcher · same-host redirect IS followed (only off-host is refused — no over-correction)", async () => {
+test("hardenedBeaconFetcher (== defaultBeaconFetcher) · same-host redirect IS followed (only off-host is refused)", async () => {
   const declared = "https://score.0xhoneyjar.xyz/beacon";
   const sameHost = "https://score.0xhoneyjar.xyz/.well-known/beacon.json";
   const body = validBeaconBody("score-api");
   const calls: string[] = [];
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: unknown) => {
-    const u = typeof input === "string" ? input : (input as URL).toString();
-    calls.push(u);
-    if (u === declared) return new Response(null, { status: 301, headers: { location: sameHost } });
-    return new Response(body, { status: 200 });
-  }) as typeof fetch;
-  try {
-    const r = await defaultBeaconFetcher(declared);
-    assert.deepEqual(calls, [declared, sameHost], "the same-host redirect was followed");
-    assert.equal(r.status, 200);
-    assert.equal(r.body, body, "the same-host terminal body was read");
-  } finally {
-    globalThis.fetch = realFetch;
-  }
+  const transport: HardenTransport = {
+    resolveAll: PUBLIC_RESOLVE,
+    get: async ({ url }) => {
+      calls.push(url);
+      if (url === declared) return { status: 301, location: sameHost, body: "" };
+      return { status: 200, location: null, body };
+    },
+  };
+  const r = await makeHardenedBeaconFetcher(transport)(declared);
+  assert.deepEqual(calls, [declared, sameHost], "the same-host redirect was followed");
+  assert.equal(r.status, 200);
+  assert.equal(r.body, body, "the same-host terminal body was read");
 });
 
 test("doctor() · BeaconV2 module → beacon_legacy_v2 warn, NOT error (G-4)", async () => {
