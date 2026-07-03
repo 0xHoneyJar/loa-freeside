@@ -20,6 +20,10 @@ const ALLOWED_BARE_IMPORTS = new Set([
   '@freeside/shadow-audit-protocol',
   'hono',
   'zod',
+  // The ledger's OWN persistence (sandwich-line 6b-2). AC-7 guards against
+  // mutation-capable UPSTREAM clients (discord/identity/sonar writes) — writing
+  // to the building's own Postgres is the store's job, not an upstream mutation.
+  'pg',
 ]);
 
 function walk(dir: string): string[] {

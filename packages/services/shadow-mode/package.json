@@ -11,13 +11,15 @@
   "dependencies": {
     "@freeside/shadow-mode-protocol": "file:../../protocol/shadow-mode",
     "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
-    "hono": "^4.7.0"
+    "hono": "^4.7.0",
+    "pg": "^8.16.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.17",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@types/pg": "^8.11.10"
   },
   "scripts": {
     "test": "vitest run",
