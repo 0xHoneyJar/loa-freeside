@@ -36,13 +36,14 @@ untouched — the only shared change is additive.
   (additive — the ONLY change to `subject.ts`; no new required field on `ShadowSubject`, member rows
   read unchanged).
 - **Store** (`packages/services/shadow-mode/`): sibling table `0003_labelled_collections.sql` —
-  `collection_entities(entity_id PK, chain, contract, labels jsonb, first_seen_at, updated_at)` +
+  `collection_entities(entity_id PK, chain, contract, labels jsonb, first_seen_at, updated_at)` is a
+  **derived projection** (NOT a mutable source — see §11.5) re-folded from the append-only chain, plus
   `collection_label_provenance(entity_id, label, source_type, read_state, ratified_by, ratified_at,
-  event_id)` (append-only). Each entity ALSO appends a `collection.observed` observation to the
-  existing hash chain (community_id = the world, or a `_unbound` sentinel until ratified) — so the
-  entity's history is tamper-evident on the SAME worldline as members. `ILedgerStore` gains
-  `upsertCollectionEntity` / `getCollectionEntity` / `listCollectionEntities` / `labelProvenance` —
-  additive to the port (in-memory + Postgres both implement).
+  event_id)`. Each label change appends a `collection.label.{observed,ratified}` observation to the
+  hash chain keyed by `chain_id = entity_id` (the collection's OWN worldline — §11.5 SKP-003; no
+  `_unbound` world). `ILedgerStore` gains `appendCollectionObservation` (chain write) /
+  `getCollectionEntity` (folds) / `listCollectionEntities` / `labelProvenance` — additive to the port
+  (in-memory + Postgres both implement). No `upsertCollectionEntity` (§11.5 removes it).
 - **AC**: member-subject regression suite stays green (the additive enum + table can't touch it);
   a collection entity round-trips through both stores; its observation verifies on the chain.
 
