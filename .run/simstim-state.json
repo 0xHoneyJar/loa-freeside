@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "simstim_id": "simstim-20260702-923f3fca",
+  "state": "HALTED",
+  "phase": "implementation",
+  "timestamps": {
+    "started": "2026-07-03T05:21:24Z",
+    "last_activity": "2026-07-03T07:06:46Z"
+  },
+  "phases": {
+    "preflight": {
+      "status": "pending"
+    },
+    "discovery": {
+      "status": "completed",
+      "completed_at": "2026-07-03T05:21:25Z"
+    },
+    "flatline_prd": {
+      "status": "completed",
+      "started_at": "2026-07-03T05:21:25Z",
+      "completed_at": "2026-07-03T05:25:55Z"
+    },
+    "architecture": {
+      "status": "completed",
+      "started_at": "2026-07-03T05:26:09Z",
+      "completed_at": "2026-07-03T05:28:09Z"
+    },
+    "flatline_sdd": {
+      "status": "completed",
+      "started_at": "2026-07-03T05:28:09Z",
+      "completed_at": "2026-07-03T05:32:59Z"
+    },
+    "planning": {
+      "status": "completed",
+      "started_at": "2026-07-03T05:33:20Z",
+      "completed_at": "2026-07-03T05:34:24Z"
+    },
+    "flatline_sprint": {
+      "status": "completed",
+      "started_at": "2026-07-03T05:34:24Z",
+      "completed_at": "2026-07-03T05:37:41Z"
+    },
+    "implementation": {
+      "status": "incomplete",
+      "started_at": "2026-07-03T05:38:12Z",
+      "completed_at": "2026-07-03T07:06:37Z"
+    }
+  },
+  "artifacts": {
+    "prd": {
+      "path": "grimoires/loa/prd.md",
+      "checksum": "sha256:2f67b6be19f23dacd0e8b60e084357ce349bc9644a9e21eeb799ac0b2579588a",
+      "added": "2026-07-03T05:25:55Z"
+    },
+    "sdd": {
+      "path": "grimoires/loa/sdd.md",
+      "checksum": "sha256:77cd4977ad187a84adec0bffb685842daf8aed03ff119e9c995fd6b1545a01e0",
+      "added": "2026-07-03T05:33:00Z"
+    },
+    "sprint": {
+      "path": "grimoires/loa/sprint.md",
+      "checksum": "sha256:baa261ce741434d68d87c720119d599c2946d3645c71ca164d4772ca2716265f",
+      "added": "2026-07-03T05:37:41Z"
+    }
+  },
+  "flatline_metrics": {
+    "prd": {
+      "integrated": 12,
+      "disputed": 2,
+      "blockers": 8
+    },
+    "sdd": {
+      "integrated": 14,
+      "disputed": 5,
+      "blockers": 7
+    },
+    "sprint": {
+      "integrated": 9,
+      "disputed": 0,
+      "blockers": 4
+    }
+  },
+  "blocker_overrides": [],
+  "options": {
+    "from": null,
+    "timeout_hours": 24
+  },
+  "blocker_decisions": [
+    {
+      "id": "producer-auth-blocking-invariant",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in PRD: 6b producer-auth is a blocking invariant (no unauthenticated append path, per-producer scoped claims); 6a full chain spec (JCS+sha256, sequence ordering, fail-loud verify, replay determinism); 6b concurrency spec (advisory lock, unique (chain,seq), single-txn append+hash); publication gate k>=5 + field allowlist for landed reports; Cross-Repo Execution Contract table + dependency graph + gate proof contracts.",
+      "timestamp": "2026-07-03T05:25:54Z"
+    },
+    {
+      "id": "hash-chain-spec",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in PRD: 6b producer-auth is a blocking invariant (no unauthenticated append path, per-producer scoped claims); 6a full chain spec (JCS+sha256, sequence ordering, fail-loud verify, replay determinism); 6b concurrency spec (advisory lock, unique (chain,seq), single-txn append+hash); publication gate k>=5 + field allowlist for landed reports; Cross-Repo Execution Contract table + dependency graph + gate proof contracts.",
+      "timestamp": "2026-07-03T05:25:55Z"
+    },
+    {
+      "id": "postgres-concurrency-idempotency",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in PRD: 6b producer-auth is a blocking invariant (no unauthenticated append path, per-producer scoped claims); 6a full chain spec (JCS+sha256, sequence ordering, fail-loud verify, replay determinism); 6b concurrency spec (advisory lock, unique (chain,seq), single-txn append+hash); publication gate k>=5 + field allowlist for landed reports; Cross-Repo Execution Contract table + dependency graph + gate proof contracts.",
+      "timestamp": "2026-07-03T05:25:55Z"
+    },
+    {
+      "id": "privacy-kanon-publication-gate",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in PRD: 6b producer-auth is a blocking invariant (no unauthenticated append path, per-producer scoped claims); 6a full chain spec (JCS+sha256, sequence ordering, fail-loud verify, replay determinism); 6b concurrency spec (advisory lock, unique (chain,seq), single-txn append+hash); publication gate k>=5 + field allowlist for landed reports; Cross-Repo Execution Contract table + dependency graph + gate proof contracts.",
+      "timestamp": "2026-07-03T05:25:55Z"
+    },
+    {
+      "id": "cross-repo-ownership-map",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in PRD: 6b producer-auth is a blocking invariant (no unauthenticated append path, per-producer scoped claims); 6a full chain spec (JCS+sha256, sequence ordering, fail-loud verify, replay determinism); 6b concurrency spec (advisory lock, unique (chain,seq), single-txn append+hash); publication gate k>=5 + field allowlist for landed reports; Cross-Repo Execution Contract table + dependency graph + gate proof contracts.",
+      "timestamp": "2026-07-03T05:25:55Z"
+    },
+    {
+      "id": "6b-merge-surface-slicing",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in SDD: 6b sliced into 3 serialized PRs w/ inventory artifact; AppendGrant capability at store boundary covering all enumerated callers incl migration+tests; JWT iss/aud/exp/skew/claims pinned; advisory-xact-lock txn spec (no gaps, one winner); shadow_chain_state freeze/clear design w/ operator-only audited clear + recovery procedure; no_backfill classifier w/ subscription_started_at + boundary semantics + pure-function tests.",
+      "timestamp": "2026-07-03T05:32:58Z"
+    },
+    {
+      "id": "append-grant-all-callers",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in SDD: 6b sliced into 3 serialized PRs w/ inventory artifact; AppendGrant capability at store boundary covering all enumerated callers incl migration+tests; JWT iss/aud/exp/skew/claims pinned; advisory-xact-lock txn spec (no gaps, one winner); shadow_chain_state freeze/clear design w/ operator-only audited clear + recovery procedure; no_backfill classifier w/ subscription_started_at + boundary semantics + pure-function tests.",
+      "timestamp": "2026-07-03T05:32:58Z"
+    },
+    {
+      "id": "jwt-specifics",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in SDD: 6b sliced into 3 serialized PRs w/ inventory artifact; AppendGrant capability at store boundary covering all enumerated callers incl migration+tests; JWT iss/aud/exp/skew/claims pinned; advisory-xact-lock txn spec (no gaps, one winner); shadow_chain_state freeze/clear design w/ operator-only audited clear + recovery procedure; no_backfill classifier w/ subscription_started_at + boundary semantics + pure-function tests.",
+      "timestamp": "2026-07-03T05:32:59Z"
+    },
+    {
+      "id": "lock-txn-semantics",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in SDD: 6b sliced into 3 serialized PRs w/ inventory artifact; AppendGrant capability at store boundary covering all enumerated callers incl migration+tests; JWT iss/aud/exp/skew/claims pinned; advisory-xact-lock txn spec (no gaps, one winner); shadow_chain_state freeze/clear design w/ operator-only audited clear + recovery procedure; no_backfill classifier w/ subscription_started_at + boundary semantics + pure-function tests.",
+      "timestamp": "2026-07-03T05:32:59Z"
+    },
+    {
+      "id": "chain-freeze-recovery",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in SDD: 6b sliced into 3 serialized PRs w/ inventory artifact; AppendGrant capability at store boundary covering all enumerated callers incl migration+tests; JWT iss/aud/exp/skew/claims pinned; advisory-xact-lock txn spec (no gaps, one winner); shadow_chain_state freeze/clear design w/ operator-only audited clear + recovery procedure; no_backfill classifier w/ subscription_started_at + boundary semantics + pure-function tests.",
+      "timestamp": "2026-07-03T05:32:59Z"
+    },
+    {
+      "id": "no-backfill-classifier",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in SDD: 6b sliced into 3 serialized PRs w/ inventory artifact; AppendGrant capability at store boundary covering all enumerated callers incl migration+tests; JWT iss/aud/exp/skew/claims pinned; advisory-xact-lock txn spec (no gaps, one winner); shadow_chain_state freeze/clear design w/ operator-only audited clear + recovery procedure; no_backfill classifier w/ subscription_started_at + boundary semantics + pure-function tests.",
+      "timestamp": "2026-07-03T05:32:59Z"
+    },
+    {
+      "id": "jwt-algorithm-hygiene",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in sprint.md: pinned alg + kid cache TTL + alg-confusion tests; append-only clear rows + named superuser ceiling; explicit sequencing contract (flag-off code, L-2 exit flips); CHAIN_ADMIN_TOKEN distinct from DATABASE_URL.",
+      "timestamp": "2026-07-03T05:37:40Z"
+    },
+    {
+      "id": "clear-history-immutability",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in sprint.md: pinned alg + kid cache TTL + alg-confusion tests; append-only clear rows + named superuser ceiling; explicit sequencing contract (flag-off code, L-2 exit flips); CHAIN_ADMIN_TOKEN distinct from DATABASE_URL.",
+      "timestamp": "2026-07-03T05:37:40Z"
+    },
+    {
+      "id": "s3t4-l2-l3-sequencing",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in sprint.md: pinned alg + kid cache TTL + alg-confusion tests; append-only clear rows + named superuser ceiling; explicit sequencing contract (flag-off code, L-2 exit flips); CHAIN_ADMIN_TOKEN distinct from DATABASE_URL.",
+      "timestamp": "2026-07-03T05:37:40Z"
+    },
+    {
+      "id": "clear-auth-dedicated-token",
+      "decision": "resolved_by_integration",
+      "rationale": "Cured in sprint.md: pinned alg + kid cache TTL + alg-confusion tests; append-only clear rows + named superuser ceiling; explicit sequencing contract (flag-off code, L-2 exit flips); CHAIN_ADMIN_TOKEN distinct from DATABASE_URL.",
+      "timestamp": "2026-07-03T05:37:41Z"
+    }
+  ],
+  "expected_plan_id": "plan-20260702-923f3fca",
+  "implementation_started_at": "2026-07-03T05:38:12Z",
+  "sync_attempts": 0,
+  "halt_reason": "operator decision point: S1+S2 spine complete + FAGAN-converged; S3 code + operator-gated deploy lanes remain. Resume via /run-resume then /simstim --resume after operator steers the two forks."
+}
