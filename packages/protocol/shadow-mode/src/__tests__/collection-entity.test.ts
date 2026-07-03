@@ -53,6 +53,21 @@ describe('collection observations (SDD §2, §11.5)', () => {
     expect(r.event_id).not.toBe(other.event_id); // ratifier is part of identity
   });
 
+  it('FAGAN HIGH-1: ratifying a DERIVED label is rejected (fail-closed, not an attested no-op)', () => {
+    expect(collectionLabelRatified(ENTITY, 'token_standard', 'erc721', 'operator', NOW)).toBeNull();
+    expect(collectionLabelRatified(ENTITY, 'collection_key', 'apdao-seat', 'operator', NOW)).toBeNull();
+    // subjective labels ARE ratifiable
+    expect(collectionLabelRatified(ENTITY, 'world', 'mibera', 'operator', NOW)).not.toBeNull();
+    expect(collectionLabelRatified(ENTITY, 'role', 'primary', 'operator', NOW)).not.toBeNull();
+  });
+
+  it('FAGAN MEDIUM-1: out-of-vocab token_standard coerced to unknown; empty value rejected', () => {
+    const bad = collectionLabelObserved(CHAIN, CONTRACT, 'token_standard', 'erc999', NOW)!;
+    expect((bad.payload as { value: string }).value).toBe('unknown'); // no type-lie
+    expect(collectionLabelObserved(CHAIN, CONTRACT, 'world', '', NOW)).toBeNull(); // empty is not an observation
+    expect(collectionLabelObserved(CHAIN, CONTRACT, 'world', '   ', NOW)).toBeNull();
+  });
+
   it('classifies derived vs subjective labels', () => {
     expect(isDerivedLabel('token_standard')).toBe(true);
     expect(isDerivedLabel('collection_key')).toBe(true);

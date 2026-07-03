@@ -234,6 +234,13 @@ export class InMemoryLedgerStore implements ILedgerStore {
   }
 
   async getCollectionEntity(entityId: string): Promise<CollectionEntity | undefined> {
+    // Verify-on-read (FAGAN MEDIUM-2): the projection is only trustworthy if its
+    // chain verifies. A tampered chain freezes (verifyChain side-effect) and we
+    // refuse to serve a forged projection — fail loud, never silently.
+    const verdict = await this.verifyChain(entityId);
+    if (!verdict.ok) {
+      throw new ChainFrozenError(entityId, verdict.first_bad_seq);
+    }
     return foldCollectionEntity(this.observationsAtSeq(entityId)) ?? undefined;
   }
 
@@ -244,6 +251,9 @@ export class InMemoryLedgerStore implements ILedgerStore {
         (e) => collectionObservationKind(e.observation) !== null,
       );
       if (!hasCollectionLabel) continue;
+      // Fail-closed: a chain that fails verification is EXCLUDED from the list
+      // (never served), not silently folded.
+      if (!(await this.verifyChain(chainId)).ok) continue;
       const entity = foldCollectionEntity(this.observationsAtSeq(chainId));
       if (entity) out.push(entity);
     }

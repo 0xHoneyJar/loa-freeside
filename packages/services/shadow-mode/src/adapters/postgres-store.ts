@@ -532,6 +532,11 @@ export class PostgresLedgerStore implements ILedgerStore {
   }
 
   async getCollectionEntity(entityId: string): Promise<CollectionEntity | undefined> {
+    // Verify-on-read (FAGAN MEDIUM-2): refuse to serve a tampered projection.
+    const verdict = await this.verifyChain(entityId);
+    if (!verdict.ok) {
+      throw new ChainFrozenError(entityId, verdict.first_bad_seq);
+    }
     return foldCollectionEntity(await this.observationsAtSeq(entityId)) ?? undefined;
   }
 
@@ -542,6 +547,8 @@ export class PostgresLedgerStore implements ILedgerStore {
     );
     const out: CollectionEntity[] = [];
     for (const r of rows) {
+      // Fail-closed: skip any chain that fails verification (never serve forged).
+      if (!(await this.verifyChain(r.community_id)).ok) continue;
       const entity = foldCollectionEntity(await this.observationsAtSeq(r.community_id));
       if (entity) out.push(entity);
     }

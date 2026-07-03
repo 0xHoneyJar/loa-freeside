@@ -26,6 +26,9 @@ import { collectionEntityId } from './identity.js';
 export type TokenStandard = 'erc721' | 'erc1155' | 'unknown';
 export type CollectionLabelName = 'token_standard' | 'collection_key' | 'world' | 'role';
 
+/** The closed token-standard vocabulary — a value outside this is coerced to 'unknown'. */
+const TOKEN_STANDARDS: readonly string[] = ['erc721', 'erc1155', 'unknown'];
+
 /** DERIVED labels — the agent grounds + overwrites these freely (ground truth wins). */
 export const DERIVED_LABELS = ['token_standard', 'collection_key'] as const;
 /** SUBJECTIVE labels — RATIFY-ONLY; the agent proposes, never flips a ratified value. */
@@ -55,7 +58,14 @@ export interface LabelProvenance {
   seq: number;
   ratified_by?: string;
   ratified_at?: string;
-  /** True when a later derive disagreed with a ratified value (SDD §8). */
+  /**
+   * True when a NOVEL post-ratify derive disagreed with the ratified value
+   * (SDD §8). Note the exact contract: `contested` means "a value the operator
+   * has never seen was derived AFTER ratification", NOT "the agent's current
+   * belief disagrees". Re-deriving a value that was already observed before the
+   * ratify dedups (content-addressed event_id) to its original pre-ratify seq,
+   * so it never contests — the operator already adjudicated it.
+   */
   contested?: boolean;
 }
 
@@ -142,13 +152,19 @@ export function collectionLabelObserved(
 ): ShadowObservation | null {
   const entity_id = collectionEntityId(chain, contract);
   if (entity_id === null) return null;
+  // Validate at the trust boundary (FAGAN MEDIUM-1): an empty label value is
+  // never a real observation; an out-of-vocabulary token_standard is coerced to
+  // 'unknown' so `CollectionLabels.token_standard`'s type is never a lie.
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const cleanValue = label === 'token_standard' && !TOKEN_STANDARDS.includes(trimmed) ? 'unknown' : trimmed;
   const payload: CollectionLabelObservedPayload = {
     entity_id,
     // store the NORMALIZED components so the projection needs no re-parse
     chain: entity_id.split(':', 1)[0]!,
     contract: entity_id.slice(entity_id.indexOf(':') + 1),
     label,
-    value,
+    value: cleanValue,
     source_type: 'ai-derived',
   };
   return {
@@ -204,6 +220,12 @@ export function foldCollectionEntity(entries: ObservationAtSeq[]): CollectionEnt
 
   for (const { observation, seq } of labelEntries) {
     const p = observation.payload as CollectionLabelObservedPayload & CollectionLabelRatifiedPayload;
+    // Mechanical contract (FAGAN INFO-4): every entry must belong to ONE entity.
+    // On the store path this always holds (a chain is one entity); the assert
+    // makes a mixed-input misuse fail loud instead of forging a Frankenstein.
+    if (entity_id !== '' && p.entity_id !== entity_id) {
+      throw new Error(`foldCollectionEntity: mixed entity_ids (${entity_id} vs ${p.entity_id})`);
+    }
     entity_id = p.entity_id;
     const isRatified = collectionObservationKind(observation) === 'ratified';
     const target = isRatified ? latestRatified : latestObserved;
@@ -288,6 +310,14 @@ export function collectionLabelRatified(
   ratifiedBy: string,
   nowIso: string,
 ): ShadowObservation | null {
+  // Fail-closed (FAGAN HIGH-1): DERIVED labels are ground truth — you never
+  // ratify them. Minting a ratify for a derived label would append as attested
+  // truth yet the fold (ground-truth-wins) silently ignores it. Reject at
+  // construction so an unsupported ratification fails LOUD, not as a no-op.
+  if (isDerivedLabel(label)) return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  value = trimmed;
   const [chain, contract] = [entity_id.split(':', 1)[0], entity_id.slice(entity_id.indexOf(':') + 1)];
   if (!chain || !contract || collectionEntityId(chain, contract) !== entity_id) return null;
   const payload: CollectionLabelRatifiedPayload = { entity_id, label, value, ratified_by: ratifiedBy };

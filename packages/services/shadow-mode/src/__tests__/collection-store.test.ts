@@ -97,6 +97,18 @@ describe('collection labelled-entity store (S1-T3, SDD §2/§11.5)', () => {
     expect(verdict.ok).toBe(false);
   });
 
+  it('FAGAN MEDIUM-2: getCollectionEntity REFUSES to serve a tampered chain (fail loud)', async () => {
+    const store = new InMemoryLedgerStore();
+    const o = collectionLabelObserved(CHAIN, CONTRACT, 'token_standard', 'erc721', NOW)!;
+    await store.appendObservationIfAbsent(o, collectionProducerGrant());
+    store.unsafeMutateObservationForTest(o.event_id, (obs) => {
+      (obs.payload as { value: string }).value = 'erc1155'; // forge
+    });
+    await expect(store.getCollectionEntity(ENTITY)).rejects.toThrow(/frozen/i);
+    // and it is excluded from the list, never served
+    expect(await store.listCollectionEntities()).toHaveLength(0);
+  });
+
   it('grant scope is enforced: a member-source grant cannot write a collection observation', async () => {
     const store = new InMemoryLedgerStore();
     const o = collectionLabelObserved(CHAIN, CONTRACT, 'token_standard', 'erc721', NOW)!;
