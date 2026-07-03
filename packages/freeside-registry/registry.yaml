@@ -220,6 +220,64 @@ modules:
       (Vercel) and freeside-cli order/kitchen/fulfill verbs. Beacon deferred — not a
       federation cell yet; registry entry is the declaration keystone (transmission.md).
 
+  shadow-mode:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-03"
+    runtime_state: scaffolded
+    notes: |
+      The hash-chained member-graph + collection ledger (packages/services/shadow-mode,
+      in-monolith). Ships a Hono router factory (createShadowRouter) + CLIs (chain-admin,
+      collections) — NO standalone server entry yet, so no live deployment_url. Postgres-
+      native (pg_advisory_xact_lock, jsonb, timestamptz). Registered as the declaration
+      keystone (datastore-legibility A-1); runtime_state + data-store reconciled by
+      `loa doctor` / `loa doctor --data`, not hand-asserted.
+
+  shadow-audit:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-03"
+    runtime_state: scaffolded
+    notes: |
+      The access-audit settle gate (packages/services/shadow-audit, in-monolith Hono +
+      bin/http.ts, GET /healthz, X-API-Key gate). NO database — in-memory event store; its
+      data-store self-report is the absent-store shape (store:none). Deploy status
+      unconfirmed this session — reconciled by `loa doctor`.
+
+  worker:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-03"
+    runtime_state: scaffolded
+    notes: |
+      NATS/queue consumer (apps/worker) — NOT an HTTP app server; raw node:http health
+      port only (/health, /healthz), unauthenticated (Tailscale/network boundary). Uses
+      postgres.js + Drizzle (DATABASE_URL). Its /admin/data-store branch requires a
+      shared-secret gate (datastore-legibility A-4). Deploy status reconciled by probe.
+
+  operator-dash:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-03"
+    runtime_state: scaffolded
+    notes: |
+      Operator dashboard (apps/freeside-operator-dash, Hono, GET /healthz). Reads
+      registry.yaml + probes cells; NO database of its own → absent-store shape
+      (store:none). v0.1 has no auth (runs behind Tailscale/OPERATOR_TOKEN). Registered
+      as declaration keystone; deploy + data-store reconciled by `loa doctor`.
+
   score-api:
     # The runtime building (was 'score-mibera' in pre-2026-05-23 registry). GH repo
     # renamed score-mibera → score-api. The SCHEMA package @freeside/freeside-score
