@@ -84,7 +84,7 @@ line. Rollback = unset flags (behavior returns to stub/operator-advance).
 
 ## 4. FR-4 — the settle gate (G-1 E2E)
 
-Runbook, not code: `grimoires/loa/runbooks/consumption-truth-e2e.md` records each verb call +
+Runbook, not code: `grimoires/loa/cycles/consumption-truth/e2e-runbook.md` records each verb call +
 `probe_meta`/event-trail output. Sequence: (1) dry-run — place fresh OP-chain test order, drive
 via `order place → fulfill watch → kitchen probe/advance` to `fulfilled`; (2) real order
 `6ddc06f5` under the PRD's Live-Order Safety Protocol (evidence per advance; ambiguous → halt;
@@ -151,7 +151,7 @@ per PRD: fix PR on sonar-api OR diagnosis doc + /coord lane + G-1 pivots to the 
 
 ## 8. Sibling fence (G-6, machine-checked)
 
-`tools/check-sibling-fence.sh` (cycle branch): `git diff --name-only origin/main...HEAD` grepped
+`scripts/check-sibling-fence.sh` (cycle branch): `git diff --name-only origin/main...HEAD` grepped
 against the fence list (`packages/freeside-cli/src/verbs/inspect.ts`, `verbs/doctor.ts`,
 `bin/freeside-cli.ts`, `src/lib/harden-beacon-fetch.ts`, `packages/beacon-schema/`) → exit 1 on
 hit. Run in the review gate for every sprint of this cycle. Exit code is the verdict — never piped.

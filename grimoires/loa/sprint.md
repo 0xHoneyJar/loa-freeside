@@ -14,7 +14,7 @@
 fence has teeth. (FR-2, G-6; enables G-1/G-2)
 
 ### S1-T0 — Sibling fence with teeth [G-6]
-`tools/check-sibling-fence.sh` per SDD §8: fence list derived from `gh pr view 422 --json files`
+`scripts/check-sibling-fence.sh` per SDD §8: fence list derived from `gh pr view 422 --json files`
 (record derivation date + head SHA in script header); `git diff --name-only origin/main...HEAD`
 vs fence → exit 1 on hit. **AC**: script exits 0 on current branch; exits 1 when a fence path is
 touched in a test scenario; exit code never piped.
@@ -22,7 +22,7 @@ touched in a test scenario; exit code never piped.
 ### S1-T1 — Shadow-audit deployed auth contract, observed [SDD §2 gate — no probe code before this]
 Read `packages/services/shadow-audit/src/http/audit-router.ts` auth middleware + one live request
 against the deployed shadow-audit URL; record header name, success/401 shapes, and the deployed
-URL in `grimoires/loa/runbooks/consumption-truth-e2e.md` (create scaffold).
+URL in `grimoires/loa/cycles/consumption-truth/e2e-runbook.md` (create scaffold).
 **Credentials rule (blocker cure)**: credentials come ONLY from operator-held env
 (existing Railway service config / operator-provided env var at execution time) — the agent never
 mints, requests, or copies keys elsewhere. If no credential is available to this session, the live
@@ -101,7 +101,7 @@ PR-A opens DRAFT; flips ready when S1 ACs are green + fence exit 0 + local `pnpm
 resolution does NOT block PR-A merge — shadow ships fail-closed dark by design.
 
 ## Fence git semantics (IMP-003)
-`tools/check-sibling-fence.sh` fetches `origin main` before diffing (`git fetch origin main`) and
+`scripts/check-sibling-fence.sh` fetches `origin main` before diffing (`git fetch origin main`) and
 diffs `origin/main...HEAD` (three-dot, merge-base) so a stale local main can't blind the fence.
 
 ## Acceptance for the cycle

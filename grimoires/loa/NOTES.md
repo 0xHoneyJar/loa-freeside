@@ -289,3 +289,12 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - Ordering-service URL: https://ordering-service-production.up.railway.app (healthz ok, postgres store)
 - G-1 fixture: order 6ddc06f5-0c6f-42b8-8377-768a4c2a302e (Azuki) — producing; score=pending, sonar=blocked, worlds_manifest=complete
 - S2 entry gate: PR-A not yet deployed at S2 build time — probe verb built against the SDD contract fixture; differential test env-gated (ORDERING_DIFFERENTIAL=1); gate re-checked before G-1 demo
+
+## Decision Log — cycle consumption-truth S1 (2026-07-02)
+- [RESHAPE, gate-task-triggered] S1-T2 "probeShadow HTTP leg" DEFERRED to a producer-decision bead;
+  S1 ships `SHADOW_PREVIEW_UNAVAILABLE_POLICY=pending|optional` (default pending) instead.
+  Grounds (observed): no deployed shadow-audit (registry-absent, unprobeable); in-process adapter
+  explicitly unwired (composition.ts:61 NoopAudit; M-10); GET /v1/audit REQUIRES owner_wallet the
+  community-onboarding preset does not carry; RunEvent carries no contract identity (no runs-read).
+  #401 is missing a PRODUCER, not a probe. Full contract notes: grimoires/loa/cycles/consumption-truth/e2e-runbook.md.
+  Auth header observed = X-API-Key (NOT Bearer) — recorded for the future probe adapter.

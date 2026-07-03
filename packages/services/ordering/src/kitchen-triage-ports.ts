@@ -1,14 +1,37 @@
 import { StubTriagePorts, type TriagePorts } from './triage-ports.js';
 import { HttpBuildingProbes, httpBuildingProbesFromEnv } from './http-building-probes.js';
 
+/**
+ * What shadow_preview reports while NO shadow-audit producer exists (cycle consumption-truth
+ * S1-T1 finding: no deployed audit surface, in-process adapter unwired, probe contract needs
+ * owner_wallet the preset lacks — see grimoires/loa/cycles/consumption-truth/e2e-runbook.md).
+ *
+ * - `blocked` (default): today's exact behavior — stub `blocked`, operator advances by hand.
+ * - `optional`: fulfillment honestly proceeds WITHOUT a preview ("capability not deployed");
+ *   `canFulfillCommunityOnboarding` already accepts complete|optional. Deliberate operator flip.
+ */
+// loa:shortcut: real probeShadow deferred to producer-decision bead arrakis-r3kr; wire it when a
+// shadow-audit producer (deployed surface + probe-satisfiable read) exists, then retire this knob.
+export type ShadowUnavailablePolicy = 'blocked' | 'optional';
+
+export function shadowUnavailablePolicyFromEnv(): ShadowUnavailablePolicy {
+  return process.env.SHADOW_PREVIEW_UNAVAILABLE_POLICY?.trim() === 'optional' ? 'optional' : 'blocked';
+}
+
 /** Delegates to HTTP building probes when KITCHEN_PROBE_HTTP_ENABLED; else stub fallback (SDD §3.4). */
 export class KitchenTriagePorts implements TriagePorts {
   private readonly fallback: TriagePorts;
   private readonly http: HttpBuildingProbes | null;
+  private readonly shadowPolicy: ShadowUnavailablePolicy;
 
-  constructor(http: HttpBuildingProbes | null, fallback: TriagePorts = new StubTriagePorts()) {
+  constructor(
+    http: HttpBuildingProbes | null,
+    fallback: TriagePorts = new StubTriagePorts(),
+    shadowPolicy: ShadowUnavailablePolicy = 'blocked',
+  ) {
     this.http = http;
     this.fallback = fallback;
+    this.shadowPolicy = shadowPolicy;
   }
 
   sonar = {
@@ -35,7 +58,10 @@ export class KitchenTriagePorts implements TriagePorts {
       this.fallback.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
   };
   shadow = {
-    probe: (chainId: string, contract: string) => this.fallback.shadow.probe(chainId, contract),
+    probe: (chainId: string, contract: string) =>
+      this.shadowPolicy === 'optional'
+        ? Promise.resolve('optional' as const)
+        : this.fallback.shadow.probe(chainId, contract),
   };
 
   get httpProbes(): HttpBuildingProbes | null {
@@ -45,5 +71,15 @@ export class KitchenTriagePorts implements TriagePorts {
 
 export function createKitchenTriagePorts(): TriagePorts {
   const http = httpBuildingProbesFromEnv();
-  return new KitchenTriagePorts(http);
+  const shadowPolicy = shadowUnavailablePolicyFromEnv();
+  if (shadowPolicy === 'optional') {
+    console.warn(
+      '[ordering-service] shadow_preview: no producer configured — policy=optional, fulfillment proceeds without preview',
+    );
+  } else if (http) {
+    console.warn(
+      '[ordering-service] shadow probe: DARK (stub blocked — no shadow-audit producer; see grimoires/loa/cycles/consumption-truth/e2e-runbook.md)',
+    );
+  }
+  return new KitchenTriagePorts(http, undefined, shadowPolicy);
 }
