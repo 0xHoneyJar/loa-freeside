@@ -69,12 +69,17 @@ describe('collection distiller — ground() (S2-T1, SDD §3/§9)', () => {
     expect(std).toBe('unknown');
   });
 
-  it('proposes a world binding by key prefix (unratified)', () => {
+  it('proposes a world binding by key prefix (unratified); the mibera stems are an ALLOWLIST (FAGAN H-1)', () => {
     expect(proposeWorldFromKey('apdao-seat')).toBe('apdao');
     expect(proposeWorldFromKey('puru-apiculture')).toBe('purupuru');
     expect(proposeWorldFromKey('lore-1-introducing-mibera')).toBe('mibera');
     expect(proposeWorldFromKey('mibera')).toBe('mibera');
     expect(proposeWorldFromKey('miladies')).toBe('mibera');
+    expect(proposeWorldFromKey('miparcels')).toBe('mibera');
+    expect(proposeWorldFromKey('mireveal-1-1')).toBe('mibera');
+    // NOT the mibera family — a bare `mi` catch-all would have misclassified these
+    expect(proposeWorldFromKey('mint-pass')).toBeUndefined();
+    expect(proposeWorldFromKey('mirage')).toBeUndefined();
     expect(proposeWorldFromKey('unknownthing')).toBeUndefined();
   });
 

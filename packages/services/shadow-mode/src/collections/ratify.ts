@@ -47,13 +47,16 @@ export function consumeCockpitGrant(opts: CockpitGrantOpts = {}): boolean {
   }
   const now = opts.nowMs ?? Date.now();
   const fresh = now - mtimeMs <= ttl;
-  // one gesture = one write: consume the grant whether fresh or stale
+  // one gesture = one write: consume the grant whether fresh or stale.
+  let removed = true;
   try {
     rmSync(path, { force: true });
   } catch {
-    /* best-effort unlink */
+    removed = false;
   }
-  return fresh;
+  // FAIL-CLOSED (FAGAN M-1): if we could not GUARANTEE the grant is gone, do NOT
+  // authorize — else a fresh grant that failed to unlink would re-authorize.
+  return fresh && removed;
 }
 
 export interface RatifyResult {

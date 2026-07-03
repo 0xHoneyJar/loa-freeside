@@ -97,13 +97,17 @@ export function decodeBool(result: string | null): boolean {
   return hex === '1';
 }
 
-/** Key-prefix world heuristic (proposal only, unratified). */
+/**
+ * Key-prefix world heuristic (proposal only, unratified). EXPLICIT allowlist of
+ * the real mibera-family stems (FAGAN H-1): a bare `mi` catch-all misclassifies
+ * unrelated `mi*` keys (mint-pass, mirage, …) as mibera. Keys are already
+ * `_`→`-` normalized before this runs, so only hyphenated stems appear.
+ */
 export function proposeWorldFromKey(collectionKey: string): string | undefined {
   const k = collectionKey.toLowerCase();
-  if (k.startsWith('puru-') || k.startsWith('puru_')) return 'purupuru';
+  if (k.startsWith('puru-')) return 'purupuru';
   if (k.startsWith('apdao')) return 'apdao';
-  // lore-*, mibera*, mi* (miladies/miparcels/mireveal) → the mibera family
-  if (/^(lore-|mibera|mi)/.test(k)) return 'mibera';
+  if (/^(mibera|miladies|miparcels|mireveal|lore-)/.test(k)) return 'mibera';
   return undefined;
 }
 

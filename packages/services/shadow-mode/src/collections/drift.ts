@@ -18,7 +18,8 @@ export type DriftClass =
   | 'drifted' // a derived label changed → auto-overwritten
   | 'orphaned' // in the SoT, no longer belt-tracked
   | 'unratified' // a subjective label still unratified
-  | 'unknown_standard'; // ERC-165 un-derivable
+  | 'unknown_standard' // ERC-165 un-derivable
+  | 'contested'; // a ratified label disagrees with a re-derive (operator truth preserved)
 
 export interface DriftFinding {
   entity_id: string;
@@ -86,16 +87,19 @@ export async function drift(
       classified = 'unknown_standard';
       detail.push('ERC-165 un-derivable');
     }
-    // re-propose the SUBJECTIVE world (as observed) — the fold decides: matches a
-    // ratified value → dedup no-op; disagrees with a ratified value → contested
-    // (operator truth preserved); updates an unratified proposal otherwise.
-    if (rederived.world_proposed) {
+    // Re-propose the SUBJECTIVE world ONLY when it is NOT operator-settled
+    // (FAGAN B-1): a dumb key heuristic must NEVER re-contest operator truth —
+    // that would flip the coherence sensor red forever. An unratified proposal
+    // is updated freely; an operator-validated world is left alone (a genuine
+    // re-binding is an explicit operator re-ratify, not a drift auto-contest).
+    const worldProv = entity.provenance.find((p) => p.label === 'world');
+    const worldRatified = worldProv?.source_type === 'operator-validated';
+    if (rederived.world_proposed && !worldRatified) {
       const wobs = collectionLabelObserved(entity.chain, entity.contract, 'world', rederived.world_proposed, nowIso);
       if (wobs) await store.appendObservationIfAbsent(wobs, grant);
     }
     // a subjective label present but never operator-validated
-    const worldProv = entity.provenance.find((p) => p.label === 'world');
-    if (entity.labels.world && worldProv?.source_type !== 'operator-validated') {
+    if (entity.labels.world && !worldRatified) {
       if (classified === 'coherent') classified = 'unratified';
       detail.push('world unratified');
     }
@@ -103,12 +107,17 @@ export async function drift(
     findings.push({ entity_id: entity.entity_id, class: classified, ...(detail.length ? { detail: detail.join('; ') } : {}) });
   }
 
-  // re-check for contested labels the fold now flags (a ratified label a re-derive disagreed with)
+  // Re-check for contested labels the fold now flags (a ratified label a
+  // re-derive disagreed with). Update the entity's OWN finding in place (no
+  // duplicate row; correct class) — FAGAN L-1.
   const post = await store.listCollectionEntities();
+  const byId = new Map(findings.map((f) => [f.entity_id, f]));
   for (const entity of post) {
     if (entity.provenance.some((p) => p.contested)) {
-      findings.push({ entity_id: entity.entity_id, class: 'coherent', detail: 'CONTESTED (ratified label disagrees with re-derive)' });
       failed = true;
+      const existing = byId.get(entity.entity_id);
+      if (existing) existing.class = 'contested';
+      else findings.push({ entity_id: entity.entity_id, class: 'contested', detail: 'ratified label disagrees with a re-derive' });
     }
   }
 

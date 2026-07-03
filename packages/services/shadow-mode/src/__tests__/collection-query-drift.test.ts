@@ -97,24 +97,22 @@ describe('collections drift (S3-T3, SDD §8)', () => {
     expect(report.failed).toBe(true);
   });
 
-  it('a ratified world that a NEW re-derive disagrees with → contested + failed (never overwritten)', async () => {
+  it('drift RESPECTS an operator-validated world — a dumb re-derive never re-contests it (FAGAN B-1)', async () => {
     const store = new InMemoryLedgerStore();
     const grant = collectionProducerGrant();
     await seed(store, [MIBERA], new Set()); // world proposed = mibera (heuristic)
     const id = collectionEntityId(MIBERA.chainId, MIBERA.contract)!;
+    // operator ratifies a world the heuristic does NOT guess (apdao ≠ heuristic mibera)
     await withGrant((grantPath) =>
-      ratifyCollectionLabel(store, grant, { entity_id: id, label: 'world', value: 'mibera', ratified_by: 'operator' }, NOW, { grantPath }),
+      ratifyCollectionLabel(store, grant, { entity_id: id, label: 'world', value: 'apdao', ratified_by: 'operator' }, NOW, { grantPath }),
     );
-    // the reverse worlds-lookup now returns a DIFFERENT binding (a genuine, novel drift)
-    const report = await drift(
-      store,
-      grant,
-      { belt: async () => [MIBERA], ethCall: mkEthCall(new Set()), lookupWorld: async () => 'purupuru' },
-      '2026-07-04T00:00:00.000Z',
-    );
-    const entity = await store.getCollectionEntity(id);
-    expect(entity!.labels.world).toBe('mibera'); // operator truth preserved
-    expect(entity!.provenance.find((p) => p.label === 'world')!.contested).toBe(true);
-    expect(report.failed).toBe(true);
+    // drift runs repeatedly — it must NOT re-propose the heuristic world against operator truth
+    for (let i = 0; i < 3; i++) {
+      const report = await drift(store, grant, { belt: async () => [MIBERA], ethCall: mkEthCall(new Set()) }, `2026-07-0${4 + i}T00:00:00.000Z`);
+      const entity = await store.getCollectionEntity(id);
+      expect(entity!.labels.world).toBe('apdao'); // operator truth preserved every run
+      expect(entity!.provenance.find((p) => p.label === 'world')!.contested).toBeUndefined(); // NEVER contested by the heuristic
+      expect(report.findings.some((f) => f.class === 'contested')).toBe(false);
+    }
   });
 });
