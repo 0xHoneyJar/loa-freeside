@@ -107,6 +107,51 @@ fail-closed.
   gap beats a guess; the trigger to push adoption is the operator seeing the `unreported` rows.
 - **Dependency**: reuses collections-sot's `consumeCockpitGrant` (shipped, #430) for FR-4.
 
+## 7.5 Flatline integration (7 blocker-theme resolutions)
+
+The flatline caught three places I over-copied collections-sot without accounting for the differences
+(the registry is git, not a live ledger; `loa` runs on the operator's laptop; a host is not a credential).
+
+- **`host_fp` is a SALTED CORRELATION id, not a secrecy measure (SKP-001, SKP-004, IMP-001/002).**
+  Reframe: the thing that must never leak is the **credential** (user, password, full `DATABASE_URL`)
+  — a database *host* is not a credential. `host_fp` exists to answer "do two cells share a DB?", so
+  it must be stable + collision-resistant, and salted so a public viewer can't casually correlate or
+  brute-force a low-entropy internal name. **Exact definition:** `host_fp =
+  HMAC_SHA256(CLUSTER_FP_SALT, lower("${engine}://${host}:${port}/${db}"))[:16]` — credentials are
+  NOT in the preimage; `CLUSTER_FP_SALT` is a single non-secret-rotating cluster constant (shared so
+  fps are comparable across cells). The preimage is normalized (lowercase, default ports elided). This
+  supersedes R-1's loose "includes engine+host+db" wording. (NFR-1 restated: forbid the *credential*
+  and the *connection string*; the salted host_fp is permitted.)
+
+- **The self-report is on an AUTHENTICATED surface, not the public beacon (SKP-002 ×2, IMP-003).**
+  FR-1 restated: each cell exposes `GET /admin/data-store` (or an auth-gated block on its existing
+  admin/health route) behind **the cell's existing auth** (the per-cell credential the registry header
+  already documents — activities HS256, score static key, etc.). Contract: JSON
+  `{ schema_version, engine, host_fp, reachable, migrations_applied|null }`, 5s timeout, additive
+  versioning. NOT on the public `beacon.json` (engine + reachability + migration-count is topology).
+
+- **`loa doctor --data` reaches cells the SAME way `freeside-cli doctor` already does (SKP-001-CRIT,
+  IMP-004).** It probes each cell's public `deployment_url` + the operator's EXISTING per-cell
+  credential (no Railway API, no new secret — G-3 holds; it reuses cluster auth `loa` already carries).
+  The cell self-reports its OWN `reachable` (it can see its DB); `loa` records reachability *of the
+  cell's report*. A cell `loa` can't reach from the operator's context → `unreachable` (honest, never
+  guessed).
+
+- **Ratified labels live in git; the gate is the operator's COMMIT, not a runtime cockpit grant
+  (SKP-003).** FR-4 restated: the `data_store` label layer lives in `registry.yaml` (git = the
+  operator-signed SoT). The agent PROPOSES a label diff (a candidate PR/edit); the operator RATIFIES
+  by committing/merging it. This is the same agent-proposes/operator-ratifies shape as collections, but
+  the mechanism is git ownership (+ a CODEOWNERS-gated `data_store:` path), NOT `consumeCockpitGrant`
+  (which gates a live ledger write and does not compose with a shared git file). Drop the cockpit-grant
+  reuse.
+
+- **Status precedence (IMP-005), deterministic:** `contested` (derived host_fp ≠ ratified label) >
+  `unreachable` (cell down / not reachable from operator) > `unreported` (no FR-1 endpoint yet) >
+  `coherent`. `loa doctor --data` exits non-zero on any `contested`.
+
+- **`migrations_applied` is nullable (IMP-008)** — a cell whose framework can't cheaply report a
+  migration count returns `null`; it is never fabricated and does not fail the doctor.
+
 ## 8. The convergence (why this is the same thing)
 
 This is the third instance of one pattern: **runtime/ground is the SoT → the agent derives a
