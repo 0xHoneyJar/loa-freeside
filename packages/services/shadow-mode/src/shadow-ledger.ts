@@ -34,6 +34,7 @@ import {
   type CommunityConfigUpdatedPayload,
 } from '@freeside/shadow-mode-protocol';
 import type { ILedgerStore } from './ports/ledger-store.js';
+import type { AppendGrant } from './auth/append-grant.js';
 
 interface CommunityConfig {
   role_rank: Record<string, number>;
@@ -51,8 +52,8 @@ export class ShadowLedger {
   constructor(private readonly store: ILedgerStore) {}
 
   /** Idempotent, atomic, transactional ingest (AC-1). */
-  ingest(event: ShadowEvent): IngestResult {
-    return this.store.withTransaction(() => {
+  async ingest(event: ShadowEvent, grant: AppendGrant): Promise<IngestResult> {
+    return this.store.withTransaction(async () => {
       const observation: ShadowObservation = {
         event_id: event.event_id,
         community_id: event.community_id,
@@ -66,34 +67,34 @@ export class ShadowLedger {
         ingested_at: new Date().toISOString(),
       };
 
-      if (!this.store.appendObservationIfAbsent(observation)) {
+      if (!(await this.store.appendObservationIfAbsent(observation, grant))) {
         return { status: 'duplicate', event_id: event.event_id };
       }
 
       switch (event.name) {
         case 'discord.member.snapshot.v1':
-          this.applyDiscordMemberSnapshot(event);
+          await this.applyDiscordMemberSnapshot(event);
           break;
         case 'identity.wallet.linked.v1':
-          this.applyIdentityWalletLinked(event);
+          await this.applyIdentityWalletLinked(event);
           break;
         case 'identity.account.linked.v1':
-          this.applyIdentityAccountLinked(event);
+          await this.applyIdentityAccountLinked(event);
           break;
         case 'identity.link.revoked.v1':
-          this.applyIdentityLinkRevoked(event);
+          await this.applyIdentityLinkRevoked(event);
           break;
         case 'sonar.wallet.attributed.v1':
-          this.applySonarWalletAttributed(event);
+          await this.applySonarWalletAttributed(event);
           break;
         case 'incumbent.role.observed.v1':
-          this.applyIncumbentRoleObserved(event);
+          await this.applyIncumbentRoleObserved(event);
           break;
         case 'freeside.role.computed.v1':
-          this.applyFreesideRoleComputed(event);
+          await this.applyFreesideRoleComputed(event);
           break;
         case 'community.config.updated.v1':
-          this.applyCommunityConfigUpdated(event);
+          await this.applyCommunityConfigUpdated(event);
           break;
       }
 
@@ -103,10 +104,10 @@ export class ShadowLedger {
 
   // --- projections (read-only) -----------------------------------------------
 
-  getMemberGraph(communityId: string): MemberGraphProjection {
-    const subjects = this.store.subjects(communityId);
-    const edges = this.store.edges(communityId);
-    const divergences = this.store.divergences(communityId);
+  async getMemberGraph(communityId: string): Promise<MemberGraphProjection> {
+    const subjects = await this.store.subjects(communityId);
+    const edges = await this.store.edges(communityId);
+    const divergences = await this.store.divergences(communityId);
     return {
       community_id: communityId,
       subjects,
@@ -123,11 +124,11 @@ export class ShadowLedger {
     };
   }
 
-  getUnresolved(communityId: string): ShadowSubject[] {
-    return this.store.subjects(communityId).filter((s) => s.attribution_quality !== 'verified');
+  async getUnresolved(communityId: string): Promise<ShadowSubject[]> {
+    return (await this.store.subjects(communityId)).filter((s) => s.attribution_quality !== 'verified');
   }
 
-  getDivergences(communityId: string): ShadowDivergence[] {
+  async getDivergences(communityId: string): Promise<ShadowDivergence[]> {
     return this.store.divergences(communityId);
   }
 
@@ -137,25 +138,25 @@ export class ShadowLedger {
 
   // --- apply handlers --------------------------------------------------------
 
-  private applyDiscordMemberSnapshot(
+  private async applyDiscordMemberSnapshot(
     event: EventEnvelope<'discord.member.snapshot.v1', DiscordMemberSnapshotPayload>,
-  ): void {
+  ): Promise<void> {
     const alias = discordAlias(event.payload.discord_user_id);
-    const subject = this.getOrCreateSubject(event.community_id, alias, 'discord_member', event.observed_at);
+    const subject = await this.getOrCreateSubject(event.community_id, alias, 'discord_member', event.observed_at);
     subject.discord_user_id = event.payload.discord_user_id;
     subject.display_name = event.payload.display_name ?? subject.display_name;
     subject.current_roles = dedupe(event.payload.role_ids);
     subject.last_seen_at = event.observed_at;
-    this.store.upsertSubject(subject);
-    this.addAlias(subject, alias);
-    this.addEdge(event, subject.subject_id, 'discord_member_seen', { role_ids: event.payload.role_ids });
-    this.recomputeDivergence(subject);
+    await this.store.upsertSubject(subject);
+    await this.addAlias(subject, alias);
+    await this.addEdge(event, subject.subject_id, 'discord_member_seen', { role_ids: event.payload.role_ids });
+    await this.recomputeDivergence(subject);
   }
 
-  private applyIdentityWalletLinked(
+  private async applyIdentityWalletLinked(
     event: EventEnvelope<'identity.wallet.linked.v1', IdentityWalletLinkedPayload>,
-  ): void {
-    const identity = this.getOrCreateSubject(
+  ): Promise<void> {
+    const identity = await this.getOrCreateSubject(
       event.community_id,
       identityAlias(event.payload.user_id),
       'identity_user',
@@ -166,24 +167,24 @@ export class ShadowLedger {
     identity.attribution_quality = 'verified';
     identity.wallets = addWallet(identity.wallets, event.payload.wallet);
     identity.last_seen_at = event.observed_at;
-    this.store.upsertSubject(identity);
+    await this.store.upsertSubject(identity);
 
-    const existing = this.store.findSubjectByAlias(event.community_id, walletAlias(event.payload.wallet));
-    const conflicted = existing ? this.mergeOrFlagConflict(identity, existing, event, 'wallet') : false;
+    const existing = await this.store.findSubjectByAlias(event.community_id, walletAlias(event.payload.wallet));
+    const conflicted = existing ? await this.mergeOrFlagConflict(identity, existing, event, 'wallet') : false;
 
     // On a contested wallet (another identity already owns it) leave the alias with
     // the original owner; only claim it when there was no conflict.
-    if (!conflicted) this.addAlias(identity, walletAlias(event.payload.wallet));
-    this.addEdge(event, identity.subject_id, 'identity_wallet_linked', {
+    if (!conflicted) await this.addAlias(identity, walletAlias(event.payload.wallet));
+    await this.addEdge(event, identity.subject_id, 'identity_wallet_linked', {
       wallet: event.payload.wallet,
       proof_ref: event.payload.proof_ref,
     });
   }
 
-  private applyIdentityAccountLinked(
+  private async applyIdentityAccountLinked(
     event: EventEnvelope<'identity.account.linked.v1', IdentityAccountLinkedPayload>,
-  ): void {
-    const identity = this.getOrCreateSubject(
+  ): Promise<void> {
+    const identity = await this.getOrCreateSubject(
       event.community_id,
       identityAlias(event.payload.user_id),
       'identity_user',
@@ -193,34 +194,34 @@ export class ShadowLedger {
     identity.kind = 'identity_user';
     identity.attribution_quality = 'verified';
     identity.last_seen_at = event.observed_at;
-    this.store.upsertSubject(identity);
+    await this.store.upsertSubject(identity);
 
     if (event.payload.account_kind === 'discord') {
       identity.discord_user_id = event.payload.external_id;
-      const existing = this.store.findSubjectByAlias(
+      const existing = await this.store.findSubjectByAlias(
         event.community_id,
         discordAlias(event.payload.external_id),
       );
-      const conflicted = existing ? this.mergeOrFlagConflict(identity, existing, event, 'account') : false;
-      if (!conflicted) this.addAlias(identity, discordAlias(event.payload.external_id));
-      this.store.upsertSubject(identity);
+      const conflicted = existing ? await this.mergeOrFlagConflict(identity, existing, event, 'account') : false;
+      if (!conflicted) await this.addAlias(identity, discordAlias(event.payload.external_id));
+      await this.store.upsertSubject(identity);
     }
 
-    this.addEdge(event, identity.subject_id, `identity_${event.payload.account_kind}_linked`, {
+    await this.addEdge(event, identity.subject_id, `identity_${event.payload.account_kind}_linked`, {
       external_id: event.payload.external_id,
       proof_ref: event.payload.proof_ref,
     });
-    this.recomputeDivergence(identity);
+    await this.recomputeDivergence(identity);
   }
 
   /**
    * Revoke a previously verified link (FR-13, flatline SKP-004). MVP guarantees
    * DOWNGRADE + flag, not the full alias re-split cascade.
    */
-  private applyIdentityLinkRevoked(
+  private async applyIdentityLinkRevoked(
     event: EventEnvelope<'identity.link.revoked.v1', IdentityLinkRevokedPayload>,
-  ): void {
-    const identity = this.store.findSubjectByAlias(
+  ): Promise<void> {
+    const identity = await this.store.findSubjectByAlias(
       event.community_id,
       identityAlias(event.payload.user_id),
     );
@@ -228,24 +229,24 @@ export class ShadowLedger {
       identity.attribution_quality = 'observed_only';
       identity.pending_resplit = true;
       identity.last_seen_at = event.observed_at;
-      this.store.upsertSubject(identity);
-      this.addEdge(event, identity.subject_id, 'identity_link_revoked', {
+      await this.store.upsertSubject(identity);
+      await this.addEdge(event, identity.subject_id, 'identity_link_revoked', {
         link_kind: event.payload.link_kind,
         reason: event.payload.reason,
       });
     }
   }
 
-  private applySonarWalletAttributed(
+  private async applySonarWalletAttributed(
     event: EventEnvelope<'sonar.wallet.attributed.v1', SonarWalletAttributedPayload>,
-  ): void {
+  ): Promise<void> {
     const alias = walletAlias(event.payload.wallet);
-    const subject = this.getOrCreateSubject(event.community_id, alias, 'wallet_only', event.observed_at);
+    const subject = await this.getOrCreateSubject(event.community_id, alias, 'wallet_only', event.observed_at);
     subject.wallets = addWallet(subject.wallets, event.payload.wallet);
     subject.last_seen_at = event.observed_at;
-    this.store.upsertSubject(subject);
-    this.addAlias(subject, alias);
-    this.addEdge(event, subject.subject_id, `sonar_${event.payload.edge_kind}`, {
+    await this.store.upsertSubject(subject);
+    await this.addAlias(subject, alias);
+    await this.addEdge(event, subject.subject_id, `sonar_${event.payload.edge_kind}`, {
       wallet: event.payload.wallet,
       contract_address: event.payload.contract_address,
       token_id: event.payload.token_id,
@@ -254,10 +255,10 @@ export class ShadowLedger {
     });
   }
 
-  private applyIncumbentRoleObserved(
+  private async applyIncumbentRoleObserved(
     event: EventEnvelope<'incumbent.role.observed.v1', IncumbentRoleObservedPayload>,
-  ): void {
-    const subject = this.getOrCreateSubject(
+  ): Promise<void> {
+    const subject = await this.getOrCreateSubject(
       event.community_id,
       discordAlias(event.payload.discord_user_id),
       'discord_member',
@@ -266,20 +267,20 @@ export class ShadowLedger {
     subject.discord_user_id = event.payload.discord_user_id;
     subject.incumbent_roles = dedupe(event.payload.role_ids);
     subject.last_seen_at = event.observed_at;
-    this.store.upsertSubject(subject);
-    this.addEdge(event, subject.subject_id, 'incumbent_roles_observed', {
+    await this.store.upsertSubject(subject);
+    await this.addEdge(event, subject.subject_id, 'incumbent_roles_observed', {
       incumbent: event.payload.incumbent,
       role_ids: event.payload.role_ids,
     });
-    this.recomputeDivergence(subject);
+    await this.recomputeDivergence(subject);
   }
 
-  private applyFreesideRoleComputed(
+  private async applyFreesideRoleComputed(
     event: EventEnvelope<'freeside.role.computed.v1', FreesideRoleComputedPayload>,
-  ): void {
+  ): Promise<void> {
     const subject =
-      this.findSubjectByLocator(event.community_id, event.payload.locator) ??
-      this.getOrCreateSubject(
+      (await this.findSubjectByLocator(event.community_id, event.payload.locator)) ??
+      await this.getOrCreateSubject(
         event.community_id,
         // Stable on the locator (NOT event_id) so a re-emitted compute collapses
         // to the same unresolved subject under at-least-once delivery (FAGAN MEDIUM).
@@ -289,12 +290,12 @@ export class ShadowLedger {
       );
     subject.freeside_roles = dedupe(event.payload.role_ids);
     subject.last_seen_at = event.observed_at;
-    this.store.upsertSubject(subject);
-    this.addEdge(event, subject.subject_id, 'freeside_roles_computed', {
+    await this.store.upsertSubject(subject);
+    await this.addEdge(event, subject.subject_id, 'freeside_roles_computed', {
       role_ids: event.payload.role_ids,
       reason: event.payload.reason,
     });
-    this.recomputeDivergence(subject);
+    await this.recomputeDivergence(subject);
   }
 
   private applyCommunityConfigUpdated(
@@ -314,13 +315,13 @@ export class ShadowLedger {
 
   // --- helpers ---------------------------------------------------------------
 
-  private getOrCreateSubject(
+  private async getOrCreateSubject(
     communityId: string,
     alias: string,
     kind: SubjectKind,
     observedAt: string,
-  ): ShadowSubject {
-    const existing = this.store.findSubjectByAlias(communityId, alias);
+  ): Promise<ShadowSubject> {
+    const existing = await this.store.findSubjectByAlias(communityId, alias);
     if (existing) return existing;
     const subject: ShadowSubject = {
       subject_id: `${communityId}:${alias}`,
@@ -335,21 +336,21 @@ export class ShadowLedger {
         kind === 'identity_user' ? 'verified' : kind === 'unresolved' ? 'unresolved' : 'observed_only',
       last_seen_at: observedAt,
     };
-    this.store.upsertSubject(subject);
-    this.addAlias(subject, alias);
+    await this.store.upsertSubject(subject);
+    await this.addAlias(subject, alias);
     return subject;
   }
 
-  private addAlias(subject: ShadowSubject, alias: string): void {
+  private async addAlias(subject: ShadowSubject, alias: string): Promise<void> {
     if (!subject.aliases.includes(alias)) subject.aliases.push(alias);
-    this.store.upsertAlias(subject.community_id, alias, subject.subject_id);
-    this.store.upsertSubject(subject);
+    await this.store.upsertAlias(subject.community_id, alias, subject.subject_id);
+    await this.store.upsertSubject(subject);
   }
 
-  private findSubjectByLocator(
+  private async findSubjectByLocator(
     communityId: string,
     locator: { user_id?: string; discord_user_id?: string; wallet?: WalletRef },
-  ): ShadowSubject | undefined {
+  ): Promise<ShadowSubject | undefined> {
     if (locator.user_id) return this.store.findSubjectByAlias(communityId, identityAlias(locator.user_id));
     if (locator.discord_user_id)
       return this.store.findSubjectByAlias(communityId, discordAlias(locator.discord_user_id));
@@ -366,30 +367,30 @@ export class ShadowLedger {
    */
   /** Returns true if a conflict was flagged (no merge happened) — caller then
    *  leaves the contested alias with the original owner. */
-  private mergeOrFlagConflict(
+  private async mergeOrFlagConflict(
     identity: ShadowSubject,
     existing: ShadowSubject,
     event: ShadowEvent,
     linkKind: 'wallet' | 'account',
-  ): boolean {
+  ): Promise<boolean> {
     if (existing.subject_id === identity.subject_id) return false;
     if (existing.kind === 'identity_user') {
-      this.addEdge(event, identity.subject_id, `identity_conflict_${linkKind}`, {
+      await this.addEdge(event, identity.subject_id, `identity_conflict_${linkKind}`, {
         conflicting_subject_id: existing.subject_id,
         conflicting_identity_user_id: existing.identity_user_id,
       });
       return true; // contested: do NOT re-point the alias to this identity
     }
-    this.mergeSubjects(identity, existing, event.event_id, linkKind);
+    await this.mergeSubjects(identity, existing, event.event_id, linkKind);
     return false;
   }
 
-  private mergeSubjects(
+  private async mergeSubjects(
     preferred: ShadowSubject,
     other: ShadowSubject,
     eventId: string,
     linkKind: 'wallet' | 'account',
-  ): void {
+  ): Promise<void> {
     preferred.wallets = mergeWallets(preferred.wallets, other.wallets);
     preferred.aliases = dedupe([...preferred.aliases, ...other.aliases]);
     preferred.current_roles = dedupe([...preferred.current_roles, ...other.current_roles]);
@@ -405,25 +406,25 @@ export class ShadowLedger {
     ];
 
     for (const alias of other.aliases) {
-      this.store.upsertAlias(preferred.community_id, alias, preferred.subject_id);
+      await this.store.upsertAlias(preferred.community_id, alias, preferred.subject_id);
     }
-    this.store.reassignEdges(other.subject_id, preferred.subject_id);
+    await this.store.reassignEdges(other.subject_id, preferred.subject_id);
     // Drop the absorbed subject's divergence so no row dangles at a deleted
     // subject (in-memory: double-count; Postgres: FK violation aborts the merge).
-    this.store.deleteDivergence(`${other.community_id}:${other.subject_id}`);
-    this.store.deleteSubject(other.subject_id);
-    this.store.upsertSubject(preferred);
-    this.recomputeDivergence(preferred);
+    await this.store.deleteDivergence(`${other.community_id}:${other.subject_id}`);
+    await this.store.deleteSubject(other.subject_id);
+    await this.store.upsertSubject(preferred);
+    await this.recomputeDivergence(preferred);
   }
 
-  private addEdge(
+  private async addEdge(
     event: ShadowEvent,
     subjectId: string,
     edgeKind: string,
     data: Record<string, unknown>,
-  ): void {
+  ): Promise<void> {
     const edgeId = `${event.event_id}:${edgeKind}`;
-    if (this.store.hasEdge(edgeId)) return;
+    if (await this.store.hasEdge(edgeId)) return;
     const edge: ShadowEdge = {
       edge_id: edgeId,
       community_id: event.community_id,
@@ -435,15 +436,15 @@ export class ShadowLedger {
       evidence_ref: event.evidence_ref,
       data,
     };
-    this.store.upsertEdge(edge);
+    await this.store.upsertEdge(edge);
   }
 
-  private recomputeDivergence(subject: ShadowSubject): void {
+  private async recomputeDivergence(subject: ShadowSubject): Promise<void> {
     if (!subject.incumbent_roles.length && !subject.freeside_roles.length) return;
     const config = this.configs.get(subject.community_id);
     const kind = classifyDivergence(subject.incumbent_roles, subject.freeside_roles, config?.role_rank ?? {});
     const divergenceId = `${subject.community_id}:${subject.subject_id}`;
-    this.store.upsertDivergence({
+    await this.store.upsertDivergence({
       divergence_id: divergenceId,
       community_id: subject.community_id,
       subject_id: subject.subject_id,

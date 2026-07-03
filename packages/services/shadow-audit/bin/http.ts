@@ -25,6 +25,8 @@ import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
 import { buildAuditApp, configFromEnv } from '../src/server.js';
 import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-source.js';
+import { loadRegistry } from '../src/collection-sot.js';
+import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
 
 process.on('unhandledRejection', (reason) => {
@@ -78,7 +80,25 @@ if (!Number.isInteger(confirmations) || confirmations < 0) {
   throw new Error(`CONFIRMATIONS must be a non-negative integer (got "${process.env.CONFIRMATIONS}")`);
 }
 
-const { registry, chains } = loadRegistryFromEnv();
+// Settle gate (collections-sot §6): read the RATIFIED ledger snapshot by default;
+// COLLECTION_REGISTRY env is a deprecated break-glass override (wins if set).
+const collapse = loadRegistry({
+  envRegistry: process.env.COLLECTION_REGISTRY,
+  snapshotJson: process.env.COLLECTION_SNAPSHOT_PATH
+    ? readFileSync(process.env.COLLECTION_SNAPSHOT_PATH, 'utf8')
+    : undefined,
+  registryFromEnv: (raw) => {
+    process.env.COLLECTION_REGISTRY = raw; // loadRegistryFromEnv reads process.env
+    return loadRegistryFromEnv();
+  },
+});
+const { registry, chains } = collapse;
+if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
+  console.error(
+    `[shadow-audit-api] settle gate: serving ${collapse.included.length} ratified collection(s); ` +
+      `withheld ${Object.keys(collapse.excluded).length} (${JSON.stringify(collapse.excluded)})`,
+  );
+}
 // BOOT-validate an RPC URL for every registry chain — never boot /healthz-green with a chain that fails
 // every real audit at request time (FAGAN MEDIUM-3).
 const missingRpc = [...chains].filter((c) => !process.env[`RPC_URL_${c}`]);
@@ -91,7 +111,7 @@ const sonar = new SonarClient(
   defaultTransferPageFetcher,
 );
 const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
-const app = buildAuditApp(ownership, configFromEnv());
+const app = buildAuditApp(ownership, configFromEnv(), registry);
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
 serve({ fetch: app.fetch, port }, (info) => {

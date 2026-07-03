@@ -303,3 +303,72 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   dirty-tree fence union + empty-count + dedup. FAGAN-ACCEPTS (rationale): constructor-policy-without-warn
   (factory is the sole production composition path — composition.ts only calls createKitchenTriagePorts);
   test-seam export resetShadowProducerlessWarning (existing codebase pattern, no prod caller).
+
+## Decision Log — cycle sandwich-line S1 (2026-07-03)
+- FAGAN sprint-1: 3 iters. Fixed: reserved genesis namespace · verify-gated clear (both voices
+  converged) · head-integrity on append · serialized txn queue · 409 chain_frozen route · JCS
+  non-plain-object rejection. ACCEPTS w/ rationale: AC-7 regex claim (phantom — regex needs
+  'role' prefix, suite green); full-verify-per-append (O(n) — head-check O(1) + periodic verify;
+  checkpoint requirement carried into S2-T1).
+
+## Decision Log — cycle sandwich-line S2 (2026-07-03)
+- FAGAN S2: 3 iters, verdict converged on the load-bearing critical (AppendGrant _mint
+  forgery) — CLOSED via module-private symbol mint + no package-index export; both voices
+  dropped it by i3. Also fixed: head-check-before-insert (no orphan), boot-gate on append,
+  admin token via env (not argv), non-silent clear, JWT exp-iat≤1h, SvcJwtProducerPolicy +
+  community binding, explicit-opt-in structural policy (no silent unauthed default), idempotent
+  freeze insert, jsonb-roundtrip hash proof (empirically green).
+- FAGAN-ACCEPTS (rationale): (1) PostgresLedgerStore.withTransaction is not one atomic txn across
+  append+projection — NAMED ceiling + gated: the pg store MUST NOT back a live producer this cycle
+  (FR-6 scope: only the flag-gated read-only differential; no NATS consumer). Upgrade trigger =
+  client-scoped txn through ingest before any producer cutover. (2) communities-empty = unrestricted
+  is deliberate (trusted global producers e.g. a cluster-wide sonar indexer); a token that omits it
+  is a config choice, documented. (3) deployed-marker robustness moot — no deployed shadow-mode
+  server this cycle; producerPolicyFromEnv is the future single wiring point, fail-closed by default.
+
+## Decision Log — cycle sandwich-line S3 (2026-07-03)
+- Worlds data-loss fix (Fork-2, slotted ahead): worlds-api PR #15 — PgManifestStore + migration
+  0002 + kill-test (manifest survives redeploy); 55 unit + 3 pg green. Cross-repo, operator merges.
+- Sprint 3 code complete (T1-T4): S3-T1 audit GET /v1/collections capability read (open, rate-limited,
+  key-exempt); S3-T2 ordering probeShadow (validates body, precedence real>policy>stub); S3-T3
+  value-semantics contract test (sonar-replay vs projection agree per standard, per-token-vs-net
+  divergence documented — 6c precondition); S3-T4 differential + no-backfill classifier (flag-gated,
+  salted-hash divergence logs, unknown-time→no_backfill never inflates parity). FAGAN S3: i1 6 findings
+  (1 critical false-positive on unwired-registry — bin/ was outside diff filter), i2 codex APPROVED@0 +
+  cursor 0-findings = converged. shadow-audit 161 + ordering 122 tests green, both typecheck clean.
+- G-1 (consumer 0→≥1) still NOT met: the differential is CODE-complete + flag-gated OFF; it only
+  runs live once shadow-audit deploys (L-2, operator COLLECTION_REGISTRY + test:live) and the flag flips.
+  Remaining L-lanes all operator-gated: L-1 registry mining+verify, L-2 deploy, L-3 sandwich+report, L-5 demo.
+
+## collections-sot checkpoint (2026-07-03)
+- **Base topology (operator: "comprehensive, fix root problems"):** MERGED cycle/sandwich-line
+  (#429 spine) into cycle/collections-sot. #429 was open/REVIEW_REQUIRED but its redness is
+  UNRELATED pre-existing monolith CI (sietch webhook flake being fixed on
+  fix/webhook-insert-failure-retriable-503; aws-embedded-metrics dep). Spine's own unit tests
+  pass. The worktree had a broken PARTIAL leak of the spine (38 tc errors); merge replaced it
+  with the real committed spine. All verified green (protocol 37, service 71, audit 161).
+  → collections-sot now CONTAINS #429. Ship implication: either collections-sot PR supersedes
+  #429, or #429 merges first then collections-sot rebases on main.
+- **Sprint 1 DONE + FAGAN-clean:** S1-T1 identity choke point, S1-T2 CollectionEntity +
+  content-addressed observation factories, S1-T3 store fold (chain=SoT, table=projection).
+  FAGAN caught 1 HIGH (derived-label ratify silently ignored → now fail-closed) + 2 MEDIUM
+  (token_standard validation, verify-on-read) — all fixed + tested.
+- **Next:** S2 (freeside collections sync/propose/ratify distiller) → S3 (query + shadow-audit
+  collapse kill-test + drift). S2 open Q: propose/ratify reach the ledger via store+DATABASE_URL
+  or shadow-mode HTTP API.
+
+## collections-sot COMPLETE (2026-07-03) — all 3 sprints, 295 tests green
+- **S1** identity choke point + CollectionEntity/observation factories + store fold (chain=SoT,
+  projection=fold, verify-on-read). FAGAN: 1 HIGH (derived-ratify silently ignored→fail-closed) + 2 MED fixed.
+- **S2** distiller: ground() (belt + ERC-165 raw eth_call + world heuristic, injectable FR-7 seam) +
+  propose (born-low) + ratify (single-consume cockpit grant, subjective-only). Reproduces the 24-collection proof.
+- **S3** query (lexical + provenance badge, contested-withheld) + SETTLE GATE (shadow-audit reads the
+  ratified snapshot fail-closed, env=break-glass; G-4 kill-test) + drift (re-derive/classify, contested
+  never-overwrites, fails loud). + CLI bin (6 verbs) + live belt/RPC clients.
+- **End-to-end proven:** distill→propose→ratify→snapshot→settle, all trust signals gate correctly.
+- Packages: protocol 37 / shadow-mode 91(+7 pg-skip) / shadow-audit 167, 0 tc errors.
+- **Ships on the merged #429 spine.** Second FAGAN (S2/S3) running. NOT YET pushed/PR'd — operator decides
+  how collections-sot ships vs #429 (supersede, or #429-first-then-rebase).
+- **Remaining (deploy/follow-on, not domain logic):** wire COLLECTION_SNAPSHOT_PATH in the shadow-audit
+  deploy (generate snapshot via `collections export-snapshot` in a build step); the 7 pg-integration tests
+  need a live postgres; QMD-source registration of the entity export (documented seam, next cycle).
