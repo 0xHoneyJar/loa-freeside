@@ -63,6 +63,12 @@ export {
 } from './schemas/edge.js';
 
 export {
+  normalizeChainId,
+  normalizeContractAddress,
+  collectionEntityId,
+} from './schemas/identity.js';
+
+export {
   type DivergenceKind,
   type ShadowDivergence,
   type MemberGraphProjection,
