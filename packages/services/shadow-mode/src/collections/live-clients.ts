@@ -8,12 +8,17 @@
 
 import type { BeltCollection, EthCall, BeltRead } from './distiller.js';
 
-const DEFAULT_BELT_URL = 'https://belt-gateway-production.up.railway.app/graphql';
+// Verified against the live belt-gateway schema 2026-07-03 (GraphQL introspection):
+// endpoint is `/v1/graphql`, the table is `TrackedHolder` (Hasura capital-T
+// singular) with fields { address, chainId, collectionKey, contract, id,
+// tokenCount }. (The earlier `/graphql` + `trackedHolders` guess 404'd / 400'd —
+// caught by the live E2E, not the hermetic fixture.)
+const DEFAULT_BELT_URL = 'https://belt-gateway-production.up.railway.app/v1/graphql';
 const RPC_TIMEOUT_MS = 8_000;
 
 const TRACKED_COLLECTIONS_QUERY = `
   query TrackedCollections {
-    trackedHolders(distinct_on: collectionKey) {
+    TrackedHolder(distinct_on: collectionKey) {
       collectionKey
       chainId
       contract
@@ -29,9 +34,9 @@ export function liveBeltRead(beltUrl: string = DEFAULT_BELT_URL, fetchImpl: type
       body: JSON.stringify({ query: TRACKED_COLLECTIONS_QUERY }),
     });
     if (!res.ok) throw new Error(`belt-gateway ${res.status} ${res.statusText}`);
-    const json = (await res.json()) as { data?: { trackedHolders?: BeltCollection[] }; errors?: unknown };
+    const json = (await res.json()) as { data?: { TrackedHolder?: BeltCollection[] }; errors?: unknown };
     if (json.errors) throw new Error(`belt-gateway GraphQL errors: ${JSON.stringify(json.errors)}`);
-    return (json.data?.trackedHolders ?? []).map((h) => ({
+    return (json.data?.TrackedHolder ?? []).map((h) => ({
       collectionKey: String(h.collectionKey),
       chainId: String(h.chainId),
       contract: String(h.contract),
