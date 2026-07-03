@@ -1,175 +1,137 @@
-# Software Design Document — Agent-First Fulfillment Surface
+# Software Design Document — Consumption Truth
 
-> `/simstim` Phase 3 (simstim-20260701-50e41fd7). Implements the PRD (`grimoires/loa/prd.md`, Flatline-reviewed 2026-07-01: 10 integrated, 4 blockers integrated as minimal floors). Cycle: fulfillment-surface (epic #415, reframed agent-first).
+> Cycle `consumption-truth` · from prd.md (this worktree, flatline-integrated `6bb1b421`).
+> Design is grounded in post-#420/#421 code read 2026-07-02 (file:line below are worktree paths
+> off origin/main). Previous cycle SDD archived: sdd.prev-2026-07-01-fulfillment-surface.md.
 
-## 1. Architecture Overview
+## 1. Architecture overview
 
-No new services. Two existing components gain capabilities; one declaration is added:
+No new services, no new packages. The cycle wires four EXISTING surfaces so consumption becomes
+true: (a) the ordering probe mesh gains its missing `shadow` leg, (b) production flags turn the
+already-built ReProbeWorker on, (c) the inventory read plane gets one canonical URL + fail-loud
+consumers, (d) the FE/BFF repos get keyed orientation files. The settle gate is behavioral: a real
+order driven to `fulfilled` by an agent through `freeside order/kitchen/fulfill`.
 
-```mermaid
-flowchart LR
-  subgraph agent [Agent session — the orchestrator]
-    A[Claude Code / team / workflow]
-  end
-  subgraph cli [freeside-cli — network domain PR-B]
-    V[order / kitchen / fulfill verbs]
-    C[ordering-client.ts<br/>fetch + schema guards + exit codes]
-  end
-  subgraph svc [ordering-service — platform domain PR-A]
-    I[intake.ts routes]
-    O[CommunityOnboardingOrchestrator]
-    P[HttpBuildingProbes]
-    S[(Postgres store<br/>CAS + outbox)]
-  end
-  R[registry.yaml + doctor]
-  A --> V --> C -->|"Bearer SERVICE_TOKEN"| I
-  I --> O --> P
-  O --> S
-  A -.->|"loa census / doctor"| R -.->|"/healthz probe"| I
-  D[freeside-dashboard<br/>existing consumer] -->|unchanged| I
+```
+freeside-cli verbs ──HTTP──▶ ordering-service (Railway)
+                               ├─ ReProbeWorker (ENABLE_REPROBE)            [FR-3]
+                               └─ KitchenTriagePorts ── HttpBuildingProbes
+                                    ├─ probeSonar  ──▶ sonar/kitchen-api    [FR-1 unblocks]
+                                    ├─ probeScore  ──▶ score-api
+                                    ├─ probeWorlds ──▶ worlds-api
+                                    └─ probeShadow ──▶ shadow-audit /v1/audit  [FR-2 NEW]
+dashboard ──▶ buildings.ts ──▶ inventory-api (un-walled reads)              [FR-5]
+Cursor agent ──▶ AGENTS.md (WHO×WHAT + canonical URLs)                      [FR-6]
 ```
 
-The agent session IS the fulfillment orchestrator (PRD §2). The existing in-process `onPlaced` + `ReProbeWorker` remain untouched substrate. The CLI is the execution-layer seam; typed SDK / MCP layer on later (PRD §2 layering doctrine).
+## 2. FR-2 — shadow_preview real probe
 
-## 2. Design Decisions
+**Files** (all `packages/services/ordering/src/`):
+- `http-building-probes.ts` — extend `HttpBuildingProbesConfig` with OPTIONAL
+  `shadowAuditApiUrl?: string`. Add `probeShadow(chainId, contract): Promise<IngredientStatus>`
+  following the exact `probeScore` shape: normalize pair → GET
+  `${shadowAuditApiUrl}/v1/audit?chain_id=&contract_address=` with `authHeaders(serviceToken)` →
+  map response.
+- Status mapping (`mapShadowStatus`, sibling of `mapSonarStatus:29`): HTTP 200 + audit result
+  present → `complete`; 404/no-audit-yet → `pending`; 5xx/network/parse → `blocked`; ambiguous
+  body (200 but undecodable) → `pending` + structured warn log (fail-loud invariant: never
+  fabricate `complete`; PRD Live-Order Safety #4).
+- `kitchen-triage-ports.ts:37-39` — un-hardcode: `shadow.probe` delegates to
+  `this.http?.probeShadow(...)` when the HTTP adapter exists AND it was configured with
+  `shadowAuditApiUrl`; else fallback stub (preserves today's behavior when unset —
+  additive, reversible).
+- `httpBuildingProbesFromEnv()` (`http-building-probes.ts:203`) — read optional
+  `SHADOW_AUDIT_API_URL`; its absence does NOT disable the other probes (unlike the required
+  trio), it only leaves shadow on stub. One warn line when enabled-but-missing.
 
-### D1 — FR-4 probe mechanism: synchronous `POST /v1/orders/:id/reprobe`
+**Contract note**: the audit read endpoint is `GET /v1/audit`
+(`packages/services/shadow-audit/src/http/audit-router.ts` — same contract the dashboard's
+`access-audit/client.ts` consumes). If the deployed shadow-audit requires an API key
+(`SHADOW_AUDIT_API_KEY` per its DEPLOY.md), pass it as its own header — verify the deployed
+auth header name BEFORE coding (observed-not-claimed).
 
-New token-gated endpoint that invokes the orchestrator's existing probe path (`process()` → triage ports → `mergeProbedIngredients`, monotonic [CODE:src/community-onboarding-orchestrator.ts]) **synchronously** and returns the refreshed record with per-ingredient probe metadata.
+**Tests**: mapping table (200-with-result/404/5xx/ambiguous-body), fromEnv with/without
+`SHADOW_AUDIT_API_URL`, triage-port delegation vs stub fallback — in the existing ordering test
+dir (`__tests__/` pattern from #420). Reuse the existing `fetchImpl` injection seam — no new
+mocking machinery.
 
-- Meets the PRD freshness requirement (live probe on demand, never interval leftovers; max-staleness 60s).
-- **Alternative rejected**: surfacing `ReProbeWorker` last-run state — serves stale truth, illegal per FR-4.
-- **Alternative rejected**: CLI probing buildings directly — duplicates `HttpBuildingProbes`, bypasses monotonic merge, leaks building endpoints into the network domain.
+## 3. FR-3 — production flag truth (deploy, [OPERATOR-BOUNDED])
 
-**Failure semantics** [FLATLINE IMP-001, 915]: `401` bad/missing token · `404` unknown order · `409` order terminal · `429` cooldown active · `200` always when probes ran — per-ingredient probe failure/timeout is reported IN the body as `status: "ambiguous"` with the error class, never a 5xx (a building being down is a probe *result*, not a service error); `5xx` reserved for store failures.
+No code. Railway ordering service env: verify then set `ENABLE_REPROBE=true`
+(`bin/http.ts:52`), `KITCHEN_PROBE_HTTP_ENABLED=true` + the four
+`SERVICE_TOKEN`/`SONAR_API_URL`/`SCORE_API_URL`/`WORLDS_API_URL` (fromEnv hard-requires all
+four, `http-building-probes.ts:206-214`) + new `SHADOW_AUDIT_API_URL`. NOTE: DEPLOY.md says
+`SONAR_API_URL` points at kitchen-api-production — confirm the live probe contract
+(`/v1/collections/:chain/:contract/status`) resolves on that host before flipping.
+**Verification (observed)**: `freeside kitchen probe <order-id>` then `freeside order status
+<order-id>` shows fresh `probe_meta` timestamps; Railway logs show ReProbeWorker 15-min cadence
+line. Rollback = unset flags (behavior returns to stub/operator-advance).
 
-**Load bounds** [FLATLINE SKP-001a integrated]: global request timeout 30s; probe fan-out concurrency ≤3; per-order reprobe cooldown 10s (second call within window → `429` + `retry_after`); per-probe timeout 10s with cancellation (AbortController passed to fetch). Test: a hung building endpoint cannot hold the request past the global timeout or starve other orders.
+## 4. FR-4 — the settle gate (G-1 E2E)
 
-**probe_meta schema work** [FLATLINE IMP-002, 917 — "no migration" ≠ "no schema work"]: additive field on the order record JSON, exact shape `{[ingredient]: {status, probed_at_unix, source: "reprobe"|"interval"|"enqueue"}}`; typed in `@freeside/ordering-protocol`; written by BOTH the reprobe endpoint and `ReProbeWorker` (one write path — the shared merge helper); legacy rows read as `probe_meta: {}`; included in the public projection (D7).
+Runbook, not code: `grimoires/loa/runbooks/consumption-truth-e2e.md` records each verb call +
+`probe_meta`/event-trail output. Sequence: (1) dry-run — place fresh OP-chain test order, drive
+via `order place → fulfill watch → kitchen probe/advance` to `fulfilled`; (2) real order
+`6ddc06f5` under the PRD's Live-Order Safety Protocol (evidence per advance; ambiguous → halt;
+operator gates irreversible seams). Exit codes are the honesty surface (fulfilled→0/failed→6/
+timeout→5 per #421) — the runbook quotes them.
 
-**Concurrency semantics** [FLATLINE IMP-003, 877]: reprobe merge and agent advance can race. Rules: advance uses the existing `store.transition` CAS [CODE:src/store.ts:180-201] and wins; a reprobe whose merge loses CAS retries the merge once against the fresh record (monotonic merge cannot downgrade [CODE:mergeProbedIngredients:50], so retry is safe); a second CAS loss returns the fresh record as-is. CLI surfaces CAS-lost advances as exit 4 with the current server state in the error JSON — the agent re-reads and decides.
+## 5. FR-5 — inventory read plane
 
-### D2 — CLI shape: verb modules + one client, zero new deps
+- **5a (operator, infra)**: Railway edge wall off for `/health`, `/.well-known/beacon.json`,
+  `/holdings/:wallet`, `/profile/:address` AFTER the Privacy Gate passes (enumerate LIVE response
+  fields first — PRD gate). DNS `inventory.0xhoneyjar.xyz` → Railway service. Rate-limit stays.
+- **5b (inventory-api repo)**: merge #18 (beacon serving); registry.yaml `beacon_url` corrected to
+  the resolvable host; `src/app.ts` docstring drift fix (routes list omits `/profile`).
+- **5c (dashboard repo)**: `src/lib/inventory-api/client.ts` — replace silent `null`/`[]` with a
+  typed result `{ ok: true, data } | { ok: false, status, reason }`; callers render an explicit
+  error/empty distinction; one structured `console.error` per failure (BR-003 class kill). Default
+  URL moves to `buildings.ts` (FR-6) sourced from the registry-canonical deployment URL.
+- **Drift test**: a unit test in dashboard asserting `BUILDINGS.inventory` matches the canonical
+  URL constant; loa-freeside side asserts registry.yaml `deployment_url`/`beacon_url` for
+  inventory resolve (HTTP 200 beacon) in the existing doctor/registry test lane.
 
-`packages/freeside-cli/src/verbs/{order,kitchen,fulfill}.ts` + `src/lib/ordering-client.ts`, wired into the existing `switch(verb)` dispatch [CODE:bin/freeside-cli.ts:45]. Client uses Node ≥18 global `fetch`; config from `ORDERING_SERVICE_URL` + `ORDERING_SERVICE_TOKEN` env (NFR-1, same seam as dashboard). Hand-rolled TS types + runtime shape guards (no zod — CLI stays zero-dep); the service keeps Zod on its side.
+## 6. FR-6 — keyed orientation (Cursor surface)
 
-### D3 — Server-derived evidence + actor identity (revised at Flatline SDD gate, operator-approved 2026-07-01)
+Additive files only, one PR per repo:
+- `freeside-dashboard/AGENTS.md` (NEW) + repair `freeside-characters/AGENTS.md:1`
+  (`@.Codex/loa/Codex.loa.md` → the repo's real CLAUDE.loa twin, or inline the intro).
+  Content contract (same skeleton both repos): (1) WHO×WHAT ladder verbatim (WHO
+  person→account→inventory × WHAT L0 sonar→L1 score→L2 member-graph→L3 audit); (2) this repo's
+  rung + role (dashboard = projection BFF: client components fetch `/api/*` ONLY; characters =
+  L2 consumer backend); (3) buildings-consumed table with CANONICAL URLs from
+  `loa-freeside/packages/freeside-registry/registry.yaml` incl. the sonar belt-gateway
+  read-plane warning; (4) rules: read via BFF, write to the owning `*-api`, never fan out
+  client-side, never hand-mirror another building's schema without a `DO NOT EDIT` + source
+  pointer.
+- `buildings.ts` per repo: single exported map `{ building: { baseUrl, source: 'registry.yaml' } }`;
+  dashboard (~3 call sites), characters (~10 incl. `packages/persona-engine/src/config.ts:47-52`).
+  Mechanical, behavior-preserving (same URLs, one home). `// loa:shortcut: registry drift-check is
+  manual (snapshot comment); automate when the beacon orientation packet (PR #422 sibling) ships`.
 
-**Evidence is server-derived, never client-supplied** [FLATLINE SKP-002 + IMP-004 integrated]: on advance, the server snapshots its own latest `probe_meta[ingredient]` (D1) into the `operator_audit` entry it already appends [CODE:src/community-onboarding-orchestrator.ts:180-203]. The probe→advance chain is unfakeable and deterministic — no CLI evidence flag exists. If no `probe_meta` exists for the ingredient (never probed / legacy order), the audit entry records `evidence: null` — an advance without probe grounding is visible as such (the HITL escape hatch, PRD FR-5).
+## 7. FR-1 — sonar #120 diagnosis spike (cross-repo, timebox 1 day)
 
-**Actor identity is server-derived** [FLATLINE SKP-003/SKP-001b integrated]: the server records `token_label` resolved from which credential authenticated the request (one single-purpose token today → one label; labels multiply when tokens do, NFR-8a). `AdvanceIngredientBodySchema` [CODE:src/intake.ts:57] gains one optional field: `caller_note?: string` (≤120 chars) — untrusted display metadata, stored separately from the authoritative `token_label`, never audit authority.
+Not designed here beyond the spike protocol: compare chain-1 vs chain-10 Envio `config.yaml`
+source blocks (HyperSync endpoint, start_block, address registration for Azuki), inspect
+TrackedErc721 registration rows, targeted reinit with debug logging if config diverges. Exit
+per PRD: fix PR on sonar-api OR diagnosis doc + /coord lane + G-1 pivots to the OP-chain order.
 
-Backward compatible: dashboard's existing calls stay legal (recorded with `token_label`, `caller_note: null`, `evidence` per probe_meta state).
+## 8. Sibling fence (G-6, machine-checked)
 
-### D4 — Fail-closed at boot: route non-mounting (FR-10a)
+`tools/check-sibling-fence.sh` (cycle branch): `git diff --name-only origin/main...HEAD` grepped
+against the fence list (`packages/freeside-cli/src/verbs/inspect.ts`, `verbs/doctor.ts`,
+`bin/freeside-cli.ts`, `src/lib/harden-beacon-fetch.ts`, `packages/beacon-schema/`) → exit 1 on
+hit. Run in the review gate for every sprint of this cycle. Exit code is the verdict — never piped.
 
-Deployed marker: `RAILWAY_ENVIRONMENT` set OR `NODE_ENV=production`. In `bin/http.ts` composition: if deployed AND `SERVICE_TOKEN` unset → intake receives no orchestrator dep → write routes (`advance-ingredient`, `reprobe`) never mount (mounting is already conditional [CODE:src/intake.ts:149]); `/healthz` reports `write_routes: "disabled_no_token"`; boot log is loud. Reads stay available.
+## 9. Security
 
-- **Alternative rejected**: refuse to boot — takes reads and the dashboard down over a write-path misconfiguration.
-- All POST routes are token-gated in deployed mode, including `reprobe` (it triggers outbound HTTP to buildings — abusable unauthenticated).
+No new authN surfaces. probeShadow reuses the bearer service-token seam. FR-5a exposes only
+Privacy-Gate-passed fields; rate-limit retained. SERVICE_TOKEN never logged (existing posture,
+#420 token-rotation runbook applies). No secrets in AGENTS.md/buildings.ts (URLs only, public).
 
-### D5 — Registry: `ordering` module entry
+## 10. Test strategy
 
-Add to `packages/freeside-registry/registry.yaml` following the existing module shape: `deployment_url` (Railway), probe path `/healthz`, HTTP 200 = healthy, non-200/timeout(5s)/refused = down (FR-9a). **Precondition (sprint task 0)**: verify the live URL — DEPLOY.md cites `kitchen-api-production-1937.up.railway.app`, unverified this session.
-
-### D7 — Canonical public projection [FLATLINE IMP-006, 827]
-
-One exported `toPublicOrder(record)` projection in the service is the SINGLE shape returned by `GET /v1/orders/:id`, the advance response, and the reprobe response — today intake hand-assembles similar-but-divergent field lists per route [CODE:src/intake.ts:130-145 vs :185-195]. The projection is the redaction boundary (internal fields like raw refusal causes stay out) and the thing CLI schemas + contract tests pin. Divergent per-route shapes are a defect class this eliminates.
-
-### D8 — Auth matrix [FLATLINE IMP-005, 770]
-
-| Env | SERVICE_TOKEN | GET routes | POST advance / reprobe | /healthz `write_routes` |
-|-----|---------------|------------|------------------------|--------------------------|
-| local/dev (no deployed marker) | unset | open | open (convenience, in-memory store) | `"open_dev"` |
-| local/dev | set | open | Bearer required | `"token"` |
-| deployed (`RAILWAY_ENVIRONMENT` or `NODE_ENV=production`) | unset | open | **not mounted** (FR-10a) | `"disabled_no_token"` |
-| deployed | set | open | Bearer required | `"token"` |
-
-Boot test matrix covers all four rows (FR-10b covers row 3).
-
-### D6 — Contracts: schemas in the CLI package, one exit-code table
-
-- Per-verb success/error JSON schemas as exported TS types + runtime guards in `src/lib/ordering-schemas.ts` (FR-7a). Error JSON: `{error, http_status?, order_id?, hint?}` — token never present (NFR-1 redaction test).
-- One exit-code constant table (FR-7b): `0` ok/fulfilled · `1` usage · `2` unreachable/transient-exhausted · `3` HTTP/API error · `4` ambiguous/blocked/CAS-lost · `5` watch timeout · `6` order failed.
-- Contract tests run against an in-repo fixture Hono server replaying recorded service responses (NFR-6) — plus one differential check of fixture vs deployed `GET /v1/orders/:id` shape to prevent fixture tautology.
-
-## 3. Component Design
-
-### 3.1 freeside-cli verbs (PR-B, network)
-
-| Verb | Client call | Output (single-line JSON) | Exit |
-|------|------------|---------------------------|------|
-| `order place --preset <p> --inputs <@f\|json>` | `POST /v1/orders` | `{order_id, state}` | 0/1/2/3 |
-| `order status <id>` | `GET /v1/orders/:id` | full record projection `{order_id, state, ingredients, fulfillment, world_slug?}` | 0/2/3 |
-| `order ingredients <id>` | `GET /v1/orders/:id` | `{order_id, ingredients: {name: {status, probed_at_unix?, blocked_on?}}}` | 0/2/3 |
-| `kitchen probe <id> [--ingredient <i>]` | `POST /v1/orders/:id/reprobe` | `{order_id, probes: {name: {status, probed_at_unix, source, freshness: "fresh"\|"ambiguous"}}}` | 0/2/3/**4** if any ambiguous |
-| `kitchen advance <id> --ingredient <i> --status <s> [--note <text>]` | `POST /v1/orders/:id/advance-ingredient` — evidence + actor are server-derived (D3); `--note` maps to untrusted `caller_note` | `{order_id, state, ingredients, operator_audit_tail}` | 0/1/2/3/**4** CAS-lost |
-| `fulfill watch <id> [--interval 15] [--timeout 1800] [--once]` | `GET /v1/orders/:id` loop | one JSON line per change; final `{order_id, state, world_slug?}` | 0 fulfilled / 5 timeout / **6** failed |
-
-Client-side bounds (FR-5): `--status` ∈ server enum, `--ingredient` ∈ the order's ingredient set — rejected before any request. No evidence flag exists: the probe→advance evidence chain is entirely server-side (D3). The agent's flow is `kitchen probe` → read result → `kitchen advance`; the server grounds the audit trail itself.
-
-Preset source of truth (FR-1): the CLI imports preset names/input schemas from `@freeside/ordering-protocol` — wait, that is a **platform** package; a network-domain import would cross the firewall at build time. **Resolution**: the CLI ships NO preset table; unknown-preset errors are served by the service (400 + available presets in error body), which the CLI surfaces verbatim. Client-side ingredient-set bounds come from the order record itself (`ingredients` keys), not a hardcoded list.
-
-### 3.2 ordering-service changes (PR-A, platform)
-
-1. `POST /v1/orders/:id/reprobe` — token-gated; body `{ingredient?: string}` (absent = all pending/in_progress); runs the probe path synchronously; 10s per-probe timeout → ingredient reported `ambiguous` on timeout/error (never coerced); returns record + `probe_meta`.
-2. `AdvanceIngredientBodySchema` + `operator_audit` extension (D3).
-3. Fail-closed boot (D4) + `/healthz` `write_routes` field.
-4. Unknown-preset 400 body lists available presets (FR-1 support).
-5. `docs/runbooks/ordering-token-rotation.md` (NFR-8c).
-
-### 3.3 Registry (PR-B)
-
-Ordering module entry (D5) + doctor probe test (mocked 200 → ok, mocked timeout → error) per FR-9a.
-
-## 4. Data Model
-
-No new tables. Additive JSON on the order record: `probe_meta` (D1). `operator_audit` entries gain server-written `token_label` + `evidence` (probe_meta snapshot or null) + optional client `caller_note` (D3). All backward-compatible with existing rows (absent = legacy).
-
-## 5. Security
-
-| Control | Where | Test |
-|---------|-------|------|
-| Fail-closed write routes (FR-10a) | `bin/http.ts` composition | Integration: boot deployed-mode env without token → POST routes 404, healthz shows disabled (FR-10b) |
-| Token on all POSTs incl. reprobe | `intake.ts` | 401 without/with-wrong Bearer |
-| Single-purpose token (NFR-8a) | runbook + DEPLOY.md | doc review |
-| Actor identity server-derived (NFR-8b) [SKP-003] | advance handler resolves `token_label`; client `caller_note` stored as untrusted metadata | unit: audit entry carries token_label regardless of body; caller_note never substitutes |
-| Evidence unfakeable (FR-5) [SKP-002] | server snapshots own probe_meta at advance; no client evidence field exists | unit: audit evidence == server probe_meta at advance time; never-probed → evidence null |
-| Reprobe load bounds [SKP-001a] | global 30s timeout, fan-out ≤3, 10s/probe + abort, 10s per-order cooldown → 429 | integration: hung building endpoint cannot exceed global timeout; second reprobe within cooldown → 429 |
-| Redaction (NFR-1) | CLI client error paths | unit: error JSON + thrown messages never contain token value |
-| Bounded mutation (FR-5) | CLI pre-flight + server Zod | unit both sides |
-
-## 6. Testing (NFR-6 per-PR floor)
-
-- **PR-A (platform)**: vitest — fail-closed boot matrix (all 4 D8 rows), reprobe endpoint (fresh / timeout→ambiguous / monotonic-merge / CAS-race retry per D1 / cooldown 429 / global-timeout), advance audit entry (token_label + probe_meta snapshot + caller_note; legacy body still valid; never-probed → evidence null), projection stability (all three routes return the D7 shape), unknown-preset 400 body.
-- **PR-B (network)**: vitest — contract tests per verb against fixture server (schema + exit code per row of §3.1), watch change-detection/`--once`/timeout, redaction, bounds rejection, registry doctor probe classification; one differential fixture-vs-deployed shape check (guarded by env flag, skipped in CI without network).
-- **G-1 acceptance**: the PRD §9 demo script against the deployed service — operator-run, recorded in the PR body.
-
-## 7. Delivery Plan (ADR-007)
-
-| PR | Domain | Contents | Depends on |
-|----|--------|----------|-----------|
-| **PR-A** | `platform/ordering` | D1 reprobe + D3 advance extension + D4 fail-closed + runbook + tests | — (deploy after merge) |
-| **PR-B** | `network/freeside-cli` | verbs + client + schemas/exit codes + registry entry + doctor test | PR-A **deployed** (reprobe verb); place/status/watch work against current service |
-
-Sequence: task 0 (probe live deployment URL) → PR-A → Railway deploy → PR-B → G-1 demo. No cross-domain PR; no cross-domain beads dependency (the PR-B→PR-A ordering is sequencing, not a beads `blocked-by`).
-
-## 8. Traceability
-
-| PRD | Design | Test |
-|-----|--------|------|
-| FR-1..3 | §3.1 rows 1-3 + FR-1 resolution | PR-B contract tests |
-| FR-4 (+SKP-002b) | D1, §3.2.1 | PR-A reprobe tests; PR-B probe verb test |
-| FR-5 (+IMP-008/012, SKP-011, SDD SKP-002/003) | D3 server-derived evidence + token_label, §3.1 bounds | both sides |
-| FR-6 (+IMP-007) | §3.1 watch row | PR-B watch tests |
-| FR-7a/b (+IMP-001/002) | D6, D7 projection | PR-B contract tests; PR-A projection stability |
-| FR-8 | verbs are pure functions over client — veve-declarable later; no loa dependency now | design review |
-| FR-9/9a (+IMP-010) | D5, §3.3 | doctor probe test |
-| FR-10a/b (+SKP-002a) | D4 | fail-closed boot matrix |
-| NFR-1/8 (+SKP-001) | D3 actor, §5 | redaction + audit tests; runbook |
-| NFR-7 (+IMP-004) | D3 backward-compat; dashboard path untouched | post-deploy smoke (PRD NFR-7) |
-
-## 9. Open Items (SDD-resolved from PRD; none block sprint planning)
-
-- ~~FR-4 mechanism~~ → D1. ~~Fail-closed shape~~ → D4. ~~Preset ownership vs firewall~~ → §3.1 resolution (service-served preset errors; no cross-domain import).
-- Deferred (unchanged from PRD §7): #401 shadow probe, lifecycle publisher, PhaseGateRunner, typed SDK/MCP.
+Unit: probe mapping + fromEnv + delegation (FR-2), dashboard client fail-loud (FR-5c), buildings
+map (FR-6). Integration (observed, not fixture): kitchen probe against deployed shadow-audit on a
+staging order; beacon 200 check post-#18. Settle: the FR-4 runbook with quoted event trail — the
+differential vs the REAL thing. Every non-trivial branch above leaves a runnable check.
