@@ -198,7 +198,7 @@ Directory structure:
 | `grimoires/` | 1030 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
 | `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
 | `lib/` | 1 | Source code | \u2014 |
-| `packages/` | 23938 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
+| `packages/` | 25455 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
 | `scripts/` | 37 | Utility scripts | \u2014 |
 | `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
 | `spec/` | 10 | Test suites | \u2014 |
@@ -243,15 +243,15 @@ Available commands:
 - `npm run build:hounfour` — scripts/rebuild-hounfour-dist.sh
 - `npm run postinstall` — scripts/rebuild-hounfour-dist.sh
 <!-- ground-truth-meta
-head_sha: 1ff89af91827876d50ea1d82ea30e450b6d82039
-generated_at: 2026-07-03T04:05:28Z
+head_sha: 7af874e496239f831ba0d2b2d549fc85c59b9571
+generated_at: 2026-07-03T04:14:25Z
 generator: butterfreezone-gen v1.0.0
 sections:
   agent_context: 297035f834f57b204990f2e8156610c8b1fceb882d67ac458b3d6d6d3fcef0ff
   capabilities: bcb60f6d7c8b95aa0202469861bdf6195dcf3a605601899ee0ef7d59f81ad5b2
   architecture: 80ec77393aa96a34c52e58f24d4a4f00402a5354b9e3ba08f2054675d72f0072
   interfaces: aef7759afb21bb6110e38c64b1d6473ca8ac51b4884c8d3825854d217e96621f
-  module_map: 1d999df177a0d43218b1104bb1e8c5a07dd4579ce4daa75a15766e110b97667f
+  module_map: 5679bbca91484e570ba30a4c23194b4a5e9ba41f503e07dc797c1327a477b2b5
   verification: 235e427a5e4622616e25013e1c6a1d2e519e30631887bdecf49b26540eb92726
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: b54c7d13ab5a794bc7020f58f7ec91c1147264d5ea11fe3799af423cdb89a85c
