@@ -1,173 +1,162 @@
-# Software Design Document — Consumption Truth
+# Software Design Document — The Sandwich Line
 
-> Cycle `consumption-truth` · from prd.md (this worktree, flatline-integrated `6bb1b421`).
-> Design is grounded in post-#420/#421 code read 2026-07-02 (file:line below are worktree paths
-> off origin/main). Previous cycle SDD archived: sdd.prev-2026-07-01-fulfillment-surface.md.
+> Cycle `sandwich-line` · implements prd.md (flatline-integrated `592aa170`). Grounded in code
+> reads 2026-07-03 (worktree off origin/main). Previous SDD archived:
+> sdd.prev-2026-07-02-consumption-truth.md.
 
 ## 1. Architecture overview
 
-No new services, no new packages. The cycle wires four EXISTING surfaces so consumption becomes
-true: (a) the ordering probe mesh gains its missing `shadow` leg, (b) production flags turn the
-already-built ReProbeWorker on, (c) the inventory read plane gets one canonical URL + fail-loud
-consumers, (d) the FE/BFF repos get keyed orientation files. The settle gate is behavioral: a real
-order driven to `fulfilled` by an agent through `freeside order/kitchen/fulfill`.
+Two parallel serialized tracks + two independent lanes:
 
 ```
-freeside-cli verbs ──HTTP──▶ ordering-service (Railway)
-                               ├─ ReProbeWorker (ENABLE_REPROBE)            [FR-3]
-                               └─ KitchenTriagePorts ── HttpBuildingProbes
-                                    ├─ probeSonar  ──▶ sonar/kitchen-api    [FR-1 unblocks]
-                                    ├─ probeScore  ──▶ score-api
-                                    ├─ probeWorlds ──▶ worlds-api
-                                    └─ probeShadow ──▶ shadow-audit /v1/audit  [FR-2 NEW]
-dashboard ──▶ buildings.ts ──▶ inventory-api (un-walled reads)              [FR-5]
-Cursor agent ──▶ AGENTS.md (WHO×WHAT + canonical URLs)                      [FR-6]
+TRACK A (audit chain):  FR-1a mine registry → FR-1 deploy shadow-audit-api (Railway cell)
+                          → FR-2 capability read + probeShadow → FR-3 dashboard env + report
+TRACK B (the spine):    FR-6a chain spec → FR-6b Postgres+auth → FR-6c differential consumer
+LANE W (worlds):        FR-4 manifest durability  [CROSS-REPO freeside-worlds]
+LANE D (demo):          FR-5 pivot order → fulfilled   ·   sonar #120 spike [1d timebox]
 ```
 
-## 2. FR-2 — shadow_preview real probe
+## 2. FR-1 — deploy shadow-audit-api
 
-**Files** (all `packages/services/ordering/src/`):
-- `http-building-probes.ts` — extend `HttpBuildingProbesConfig` with OPTIONAL
-  `shadowAuditApiUrl?: string`. Add `probeShadow(chainId, contract): Promise<IngredientStatus>`
-  following the exact `probeScore` shape: normalize pair → GET
-  `${shadowAuditApiUrl}/v1/audit?chain_id=&contract_address=` with `authHeaders(serviceToken)` →
-  map response.
-- Status mapping (`mapShadowStatus`, sibling of `mapSonarStatus:29`): HTTP 200 + audit result
-  present → `complete`; 404/no-audit-yet → `pending`; 5xx/network/parse → `blocked`; ambiguous
-  body (200 but undecodable) → `pending` + structured warn log (fail-loud invariant: never
-  fabricate `complete`; PRD Live-Order Safety #4).
-- `kitchen-triage-ports.ts:37-39` — un-hardcode: `shadow.probe` delegates to
-  `this.http?.probeShadow(...)` when the HTTP adapter exists AND it was configured with
-  `shadowAuditApiUrl`; else fallback stub (preserves today's behavior when unset —
-  additive, reversible).
-- `httpBuildingProbesFromEnv()` (`http-building-probes.ts:203`) — read optional
-  `SHADOW_AUDIT_API_URL`; its absence does NOT disable the other probes (unlike the required
-  trio), it only leaves shadow on stub. One warn line when enabled-but-missing.
+Everything is built (PR #387); this is config + infra + registry:
+- Railway: new project/service `shadow-audit-api`, root `packages/services/shadow-audit`
+  (its Dockerfile + railway.toml exist; healthcheck `/healthz`). Runs via tsx (no build step).
+- Env (all boot-throw verified in probe report): `COLLECTION_REGISTRY` (JSON, strict zod),
+  `RPC_URL_<chain>` per registry chain, `OPERATED_COMMUNITIES`, `CTA_PRODUCT`/`CTA_CONVERSATION`,
+  `SHADOW_AUDIT_API_KEY` (SET — dashboard sends X-API-Key), optional `AUDIT_K` (runtime floor),
+  `BELT_GATEWAY_URL` default is correct, `ROLE_SNAPSHOT_PATH` optional (external-mode refused
+  without it — acceptable for internal-look reports? NO: internal reports need roles → mount the
+  snapshot file or ship it in-image; decide at task time from what `role-source.ts` loads).
+- Gate: `pnpm -C packages/adapters test:live` against deployed config; output quoted in runbook
+  (per-collection live anchors). Deploy does NOT flip user-facing anything until green.
+- Registry cell: `shadow-audit-api` entry with deployment_url + honest beacon note (beacon serving
+  not built — do not declare a beacon_url that 404s; note instead).
 
-**Contract resolution is a gating pre-task (blocker cure, SKP-001)**: S1's FIRST task resolves the
-deployed shadow-audit auth contract by observation (read `audit-router.ts` auth middleware + one
-live probe against the deployed service) and records header name + example status codes in the
-runbook BEFORE `probeShadow` is coded. The adapter takes the header name from config
-(`shadowAuditAuthHeader`, default `Authorization: Bearer`), so a different observed contract is a
-config value, not a code change. Fail-closed: until the contract is verified, `SHADOW_AUDIT_API_URL`
-stays unset and shadow remains on stub — the feature cannot ship on a guessed contract.
+### FR-1a — registry mining (the operator-challenged task)
+Sources in priority order: freeside-worlds manifests (mibera.yaml etc. via gh — local behind),
+mibera-honeyroad scripts (Mibera `0x6666397dfe9a8c469bf65dc744cb1c733416c420` CONFIRMED),
+cubquests/badge configs across 0xHoneyJar repos (gh search), belt-gateway entity metadata,
+on-chain verification (`cast call <addr> name()` per candidate — chain truth is the tiebreak).
+Output: `COLLECTION_REGISTRY` JSON + a provenance table (address → sources found) in the runbook
+→ ONE operator verification pass. **Tooling-gap finding fires if <8 collections minable**: file
+issue "canonical collections config belongs in a registry building" with the provenance table as
+evidence. Subset rule: deploy proceeds at ≥2 verified (PRD).
 
-**Full status mapping (blocker cure, SKP-002)** — deterministic, total:
+## 3. FR-2 — capability read + probeShadow
 
-| Observation | IngredientStatus | Note |
-|---|---|---|
-| 200 + decodable audit result | `complete` | |
-| 200 + missing/partial/undecodable body | `pending` + warn | never fabricate complete |
-| 404 | `pending` | audit not produced yet |
-| 401 / 403 | `blocked` + loud log `reason=auth_misconfig` | distinct from outage |
-| 429 | `pending` | reprobe cadence retries; not a block |
-| 5xx / network error | `blocked` `reason=upstream` | |
-| timeout (AbortSignal, 10s like siblings) | `blocked` `reason=timeout` | |
-| redirects | follow (fetch default); map FINAL status | |
+- Audit side (`packages/services/shadow-audit/src/http/audit-router.ts` + server wiring): add
+  `GET /v1/collections/:chain/:contract` → 200 `{collection, standard}` if the normalized pair is
+  in the registry, else 404. OPEN (no auth) — returns membership + static config only, no member
+  data. Route-posture test asserts the security boundary map (PRD §Security boundary).
+- Ordering side (`packages/services/ordering/src/http-building-probes.ts`): `probeShadow` via the
+  established sibling shape — config `shadowAuditApiUrl` (+ optional auth header, default
+  `x-api-key`, unused for this open route), mapping = existing `mapLookupStatus` (200→complete,
+  404→pending, else blocked) + timeout/redirect rows from the consumption-truth table.
+  `kitchen-triage-ports.ts`: shadow delegates to `http.probeShadow` when `shadowAuditApiUrl`
+  configured; the producerless policy path remains as fallback UNTIL the knob-retirement exit
+  criteria (3 consecutive real probes in deployed logs) → then the knob + env var + DARK log are
+  removed in one PR. Semantics note: "complete" here = "the audit CAN cover this collection"
+  (capability), which is exactly what shadow_preview gates — the preview becomes producible.
+- Tests: route (in-registry/not/malformed), probe mapping rows, delegation-with-url vs policy
+  fallback, feature-dark unchanged when unset.
 
-**Tests**: the mapping table above 1:1 (every row is a test case), fromEnv with/without
-`SHADOW_AUDIT_API_URL`, triage-port delegation vs stub fallback — in the existing ordering test
-dir (`__tests__/` pattern from #420). Reuse the existing `fetchImpl` injection seam — no new
-mocking machinery.
+## 4. FR-3 — the sandwich
 
-## 3. FR-3 — production flag truth (deploy, [OPERATOR-BOUNDED])
+- Vercel env on freeside-dashboard: `SHADOW_AUDIT_API_URL` + `SHADOW_AUDIT_API_KEY` → redeploy
+  (same op as the inventory re-point; client `access-audit/client.ts` is contract-parity-tested).
+- The report: run ONE real audit for an operated community via the dashboard/API, then author
+  `grimoires/loa/cycles/sandwich-line/first-audit-report.md` meeting the PUBLICATION GATE
+  (k≥5 bucketing, field allowlist, operator sign-off line = the publication act). Landing it
+  flips oracle C4/C5 (`grimoires/loa/context/audit-mvp-oracle.mjs` re-run recorded).
 
-No code. Railway ordering service env: verify then set `ENABLE_REPROBE=true`
-(`bin/http.ts:52`), `KITCHEN_PROBE_HTTP_ENABLED=true` + the four
-`SERVICE_TOKEN`/`SONAR_API_URL`/`SCORE_API_URL`/`WORLDS_API_URL` (fromEnv hard-requires all
-four, `http-building-probes.ts:206-214`) + new `SHADOW_AUDIT_API_URL`. NOTE: DEPLOY.md says
-`SONAR_API_URL` points at kitchen-api-production — confirm the live probe contract
-(`/v1/collections/:chain/:contract/status`) resolves on that host before flipping.
-**Verification (observed)**: `freeside kitchen probe <order-id>` then `freeside order status
-<order-id>` shows fresh `probe_meta` timestamps; Railway logs show ReProbeWorker 15-min cadence
-line. Rollback = unset flags (behavior returns to stub/operator-advance).
+## 5. FR-4 — worlds manifest durability [CROSS-REPO]
 
-## 4. FR-4 — the settle gate (G-1 E2E)
+Local checkout is BEHIND main — read merged PR #13 code via gh at task time. Design intent
+(assumption-guarded in PRD): swap `FileManifestStore` (`packages/config-service/src/manifest/
+store.ts`) for a Postgres-backed store reusing the service's existing durable ConfigStore
+connection + migration pattern; the yaml write remains an optional git-artifact export, NOT the
+source of truth. Kill-test: place/lookup → redeploy service → lookup still 200 (recorded in
+runbook). Fallback if the pg path resists reuse: git-committed manifests via a bot PR (the other
+durable option) — decided at task time, surfaced in the /coord PR description.
 
-Runbook, not code: `grimoires/loa/cycles/consumption-truth/e2e-runbook.md` records each verb call +
-`probe_meta`/event-trail output. Sequence: (1) dry-run — place fresh OP-chain test order, drive
-via `order place → fulfill watch → kitchen probe/advance` to `fulfilled`; (2) real order
-`6ddc06f5` under the PRD's Live-Order Safety Protocol (evidence per advance; ambiguous → halt;
-operator gates irreversible seams). Exit codes are the honesty surface (fulfilled→0/failed→6/
-timeout→5 per #421) — the runbook quotes them.
+## 6. FR-5 — demo order (pivot subject)
 
-**Idempotency / replay / abort (blocker cure, SKP-005)**: `advance-ingredient` is CAS-guarded
-per-ingredient (#420 store semantics) — a replayed advance against an already-advanced ingredient
-is rejected by the CAS precondition, not double-applied; the dry-run EXPLICITLY replays one
-advance and quotes the rejection as evidence. Abort at any point leaves the order in per-ingredient
-persistent states, each individually valid; recovery = `kitchen probe` recomputes from building
-ground truth (probes are read-only). A partially-advanced order is therefore a NORMAL state, not a
-corruption — the loop resumes by re-probing, never by replaying writes. Irreversible seams
-(bot install, DNS, announcements) sit OUTSIDE the verb loop and are operator-gated per the PRD.
+Subject selection at task time: belt CollectionStat (chain 80094) top collections → candidate
+must ALSO pass score/worlds probes (PRD assumption 3). Then the consumption-truth E2E runbook
+procedure re-runs end-to-end (place → probes → advances-with-evidence → fulfilled), zero-spend,
+same abort conditions. Evidence appended to `grimoires/loa/cycles/sandwich-line/e2e-demo.md`.
+KEEPER settle-check armed: a note in the report naming the watch ("next order's contact field").
+sonar #120 spike: separate lane, sonar-api repo via /coord, 1-day timebox, exit = fix PR or
+diagnosis doc; NEVER blocks this track.
 
-## 5. FR-5 — inventory read plane
+## 7. FR-6 — the spine (packages/{protocol,services}/shadow-mode)
 
-- **5a (operator, infra)**: Railway edge wall off for `/health`, `/.well-known/beacon.json`,
-  `/holdings/:wallet`, `/profile/:address` AFTER the Privacy Gate passes. DNS
-  `inventory.0xhoneyjar.xyz` → Railway service. Rate-limit stays.
-  - **Privacy Gate mechanics (blocker cure, SKP-004/006)**: (1) *Evidence*: quote the LIVE JSON of
-    one `/holdings/:wallet` + one `/profile/:address` response (behind the wall, via key or Railway
-    shell) into the runbook. (2) *Criteria*: ALLOWED = wallet address, contract address, chain id,
-    token ids/counts, token metadata/image URLs, timestamps. FORBIDDEN = email, social/discord/
-    telegram ids, session/auth material, internal notes, any field naming a PERSON rather than a
-    wallet. (3) *No redaction path*: if any FORBIDDEN field appears, the endpoint STAYS walled
-    (deletion-over-denylist — we do not ship a field-filter this cycle) and posture falls back to
-    health+beacon-only. (4) *Approval artifact*: operator sign-off line in the runbook quoting the
-    field inventory — the un-wall action is operator-executed, so the sign-off IS the act.
-- **5b (inventory-api repo)**: merge #18 (beacon serving); registry.yaml `beacon_url` corrected to
-  the resolvable host; `src/app.ts` docstring drift fix (routes list omits `/profile`).
-- **5c (dashboard repo)**: `src/lib/inventory-api/client.ts` — replace silent `null`/`[]` with a
-  typed result `{ ok: true, data } | { ok: false, status, reason }`; callers render an explicit
-  error/empty distinction; one structured `console.error` per failure (BR-003 class kill). Default
-  URL moves to `buildings.ts` (FR-6) sourced from the registry-canonical deployment URL.
-- **Drift test**: a unit test in dashboard asserting `BUILDINGS.inventory` matches the canonical
-  URL constant; loa-freeside side asserts registry.yaml `deployment_url`/`beacon_url` for
-  inventory resolve (HTTP 200 beacon) in the existing doctor/registry test lane.
+### 6a — hash chain (store-layer, protocol schemas FROZEN)
+The chain lives in the STORE layer so the privacy-reviewed protocol v1 schemas stay untouched:
+- New table (extend `sql/0001_shadow_mode.sql` lineage with `0002_shadow_chain.sql`):
+  `shadow_chain(chain_id text, seq bigint, event_id text UNIQUE FK→shadow_observations,
+  prev_hash text, hash text, chain_version text, PRIMARY KEY(chain_id, seq))`.
+- `hash = sha256(JCS({chain_version, chain_id, seq, prev_hash, observation}))` — JCS per the
+  estate convention (RFC 8785; reuse/port the canonicalization approach of
+  `.claude/adapters/loa_cheval/jcs.py` into a small TS `jcs.ts` in the protocol package with
+  cross-vectors tested against known JCS test vectors; never `JSON.stringify` order-luck).
+- Genesis: seq=0 sentinel event per chain (`chain.genesis` synthetic observation, prev_hash =
+  64 zeros). Ordering = seq (monotonic, store-assigned under lock); timestamps are payload.
+- `verifyChain(chainId, fromSeq?)`: recompute every hash; ANY mismatch → returns the first bad
+  seq + emits fail-loud alarm + sets a `chain_frozen` flag the append path checks (appends
+  rejected until operator ack clears it). Deterministic replay test = fixture chain re-verified
+  byte-exact. Tamper test = flip one byte in a stored payload → verify fails at that seq.
+- In-memory store gains the same chain logic (one shared pure `chainLink()` function; stores
+  only persist).
 
-## 6. FR-6 — keyed orientation (Cursor surface)
+### 6b — PostgresLedgerStore + producer-auth (BLOCKING invariant)
+- **Port async-ification (the honest wide refactor):** `ILedgerStore` is synchronous today
+  (in-memory-shaped: `appendObservationIfAbsent(...): boolean`, `withTransaction<T>(fn:()=>T)`).
+  A real Postgres adapter cannot be sync. Change the port to async (`Promise<...>`), update the
+  reducer/service call-sites (mechanical, contained in the package), in-memory adapter wraps
+  sync in resolved promises. This is the largest mechanical surface of 6b — named, not hidden.
+- PostgresLedgerStore implements the async port over `sql/0001` + `0002`: append = ONE
+  transaction { advisory lock on chain_id → insert observation ON CONFLICT DO NOTHING → if
+  inserted: seq = max+1, compute hash, insert chain row }. Duplicate (chain_id,seq) is
+  structurally impossible under the lock; duplicate event_id returns false (existing idempotency
+  contract). Concurrent-append test via two parallel clients.
+- **Producer auth**: the append path (HTTP/NATS ingest — `src/http` ingest routes) verifies a
+  svc-JWT (existing substrate: `packages/adapters/agent/jwt-service.ts` conventions) whose
+  claims carry `producer_id` + allowed `sources[]`/`event_names[]`; `StaticProducerPolicy` is
+  replaced by `JwtProducerPolicy` implementing the existing `IProducerPolicy` port. No token or
+  out-of-scope append → 401/403 + logged. There is NO code path that reaches
+  `appendObservationIfAbsent` without a verified principal in the durable configuration.
+  Unauthorized-producer test included.
 
-Additive files only, one PR per repo:
-- `freeside-dashboard/AGENTS.md` (NEW) + repair `freeside-characters/AGENTS.md:1`
-  (`@.Codex/loa/Codex.loa.md` → the repo's real CLAUDE.loa twin, or inline the intro).
-  Content contract (same skeleton both repos): (1) WHO×WHAT ladder verbatim (WHO
-  person→account→inventory × WHAT L0 sonar→L1 score→L2 member-graph→L3 audit); (2) this repo's
-  rung + role (dashboard = projection BFF: client components fetch `/api/*` ONLY; characters =
-  L2 consumer backend); (3) buildings-consumed table with CANONICAL URLs from
-  `loa-freeside/packages/freeside-registry/registry.yaml` incl. the sonar belt-gateway
-  read-plane warning; (4) rules: read via BFF, write to the owning `*-api`, never fan out
-  client-side, never hand-mirror another building's schema without a `DO NOT EDIT` + source
-  pointer.
-- `buildings.ts` per repo: single exported map `{ building: { baseUrl, source: 'registry.yaml' } }`;
-  dashboard (~3 call sites), characters (~10 incl. `packages/persona-engine/src/config.ts:47-52`).
-  Mechanical, behavior-preserving (same URLs, one home). `// loa:shortcut: registry drift-check is
-  manual (snapshot comment); automate when the beacon orientation packet (PR #422 sibling) ships`.
+### 6c — differential consumer (decision-grade)
+Wire `makeProjectionOwnershipSource` (shadow-audit, built+tested, unwired) as the SHADOW side of
+a differential in the deployed audit service: on each audit run, BOTH sources compute the holder
+set; comparison = per-(collection, snapshot) set equality; divergence = symmetric difference
+COUNTS + hashed wallet ids (never raw lists) logged + posted to the ops webhook. Parity bar for
+the record: 3 consecutive parity runs on ≥2 collections (recorded in the cycle report; cutover
+explicitly out of cycle). PRECONDITION task: the FAGAN HIGH-3 value-semantics contract test
+(token-standard value semantics pinned cross-package) — 6c does not merge before it.
+NOTE: the projection source has no backfill (deploy-time subscription) — early runs will show
+expected divergence on pre-subscription history; the differential report must CLASSIFY
+"no-backfill window" divergences separately from true mismatches (else the parity bar is
+unreachable and the signal is noise).
 
-## 7. FR-1 — sonar #120 diagnosis spike (cross-repo, timebox 1 day)
+### 6d — doctrine note
+`packages/protocol/shadow-mode/README.md` section "The spine thesis": all projections (Discord
+permissions, rosters, audits) derive from THIS chain; each new projection ships shadow-first vs
+the incumbent; hash chain = the verification root. ~20 lines, links the PRD.
 
-Not designed here beyond the spike protocol: compare chain-1 vs chain-10 Envio `config.yaml`
-source blocks (HyperSync endpoint, start_block, address registration for Azuki), inspect
-TrackedErc721 registration rows, targeted reinit with debug logging if config diverges. Exit
-per PRD: fix PR on sonar-api OR diagnosis doc + /coord lane + G-1 pivots to the OP-chain order.
+## 8. Security
 
-## 8. Sibling fence (G-6, machine-checked)
+Producer-auth invariant (6b) · route-posture map asserted by test (FR-2) · publication gate k≥5
+enforced editorially + checked in review (the landed report) · secrets only via Railway/Vercel
+env (never in registry/provenance tables — addresses are public data) · svc-JWT keys via existing
+substrate, never minted ad-hoc.
 
-`scripts/check-sibling-fence.sh` (cycle branch): `git diff --name-only origin/main...HEAD` grepped
-against the fence list (`packages/freeside-cli/src/verbs/inspect.ts`, `verbs/doctor.ts`,
-`bin/freeside-cli.ts`, `src/lib/harden-beacon-fetch.ts`, `packages/beacon-schema/`) → exit 1 on
-hit. Run in the review gate for every sprint of this cycle. Exit code is the verdict — never piped.
-Fence-list freshness (disputed IMP-008, accepted): the list is derived from `gh pr view 422
---json files` at S1 start and the script header records the derivation date + PR head SHA; if #422
-merges or its file set changes, re-derive (one command, documented in the script header).
+## 9. Test strategy
 
-## 9. Security
-
-No new authN surfaces. probeShadow reuses the bearer service-token seam. FR-5a exposes only
-Privacy-Gate-passed fields; rate-limit retained. SERVICE_TOKEN never logged (existing posture,
-#420 token-rotation runbook applies). No secrets in AGENTS.md/buildings.ts (URLs only, public).
-
-## 10. Test strategy
-
-Unit: probe mapping + fromEnv + delegation (FR-2), dashboard client fail-loud (FR-5c), buildings
-map (FR-6). Integration (observed, not fixture): kitchen probe against deployed shadow-audit on a
-staging order; beacon 200 check post-#18. Settle: the FR-4 runbook with quoted event trail — the
-differential vs the REAL thing. Every non-trivial branch above leaves a runnable check.
+Chain: tamper/replay/version/concurrency/unauthorized-producer (6a/6b, one test per PRD AC).
+Probe: mapping rows + delegation + dark-unchanged (FR-2). Parity: HIGH-3 contract test (6c
+precondition) + differential classifier unit tests. Live: `test:live` output quoted (FR-1);
+kill-test redeploy survival (FR-4); E2E runbook evidence (FR-5). Every "works" claim in the cycle
+report traces to one of these artifacts.
