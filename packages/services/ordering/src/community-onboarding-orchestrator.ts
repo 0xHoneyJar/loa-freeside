@@ -70,16 +70,19 @@ export function mergeProbedIngredients(
   return merged;
 }
 
-/** probe_meta entries for a set of raw probe results (SDD D1 — raw probe truth, pre-merge). */
+/** probe_meta entries for a set of raw probe results (SDD D1 — raw probe truth, pre-merge).
+ *  `reasons` carries per-ingredient rule provenance (e.g. shadow policy) into the durable trail. */
 export function probeMetaEntries(
   probed: Partial<CommunityOnboardingIngredients>,
   atUnix: number,
   source: ProbeSource,
+  reasons?: Partial<Record<string, string>>,
 ): OrderProbeMeta {
   const meta: OrderProbeMeta = {};
   for (const [key, status] of Object.entries(probed)) {
     if (status === undefined) continue;
-    meta[key] = { status, probed_at_unix: atUnix, source };
+    const reason = reasons?.[key];
+    meta[key] = { status, probed_at_unix: atUnix, source, ...(reason ? { reason } : {}) };
   }
   return meta;
 }
@@ -156,7 +159,7 @@ export class CommunityOnboardingOrchestrator {
       const ingredients = mergeProbedIngredients(record.ingredients, probed.ingredients);
       const probe_meta: OrderProbeMeta = {
         ...record.probe_meta,
-        ...probeMetaEntries(probed.ingredients, Math.floor(this.deps.now() / 1000), 'interval'),
+        ...probeMetaEntries(probed.ingredients, Math.floor(this.deps.now() / 1000), 'interval', probed.reasons),
       };
       let fulfillment = record.fulfillment;
       if (probed.world_slug) {
@@ -217,7 +220,7 @@ export class CommunityOnboardingOrchestrator {
           // freshness path is `reprobe()`, not the interval tick (SDD D1).
           const probe_meta: OrderProbeMeta = {
             ...record.probe_meta,
-            ...probeMetaEntries(probed.ingredients, Math.floor(this.deps.now() / 1000), 'interval'),
+            ...probeMetaEntries(probed.ingredients, Math.floor(this.deps.now() / 1000), 'interval', probed.reasons),
           };
           record = await this.deps.store.patchRecord(orderId, { ingredients: merged, fulfillment, probe_meta });
         }
@@ -351,6 +354,7 @@ export class CommunityOnboardingOrchestrator {
     // Probe with fan-out ≤3, 10s per probe.
     const probes: Record<string, ReprobeIngredientOutcome> = {};
     const probedStatuses: Partial<CommunityOnboardingIngredients> = {};
+    const probeReasons: Partial<Record<string, string>> = {};
     let worldSlug: string | undefined;
     for (let i = 0; i < targets.length; i += REPROBE_FANOUT) {
       const batch = targets.slice(i, i + REPROBE_FANOUT);
@@ -373,7 +377,7 @@ export class CommunityOnboardingOrchestrator {
             }
             return;
           }
-          const port = this.probePortFor(key);
+          const port = this.probePortFor(key, probeReasons);
           const res = await probeWithTimeout(
             () => port(inputs.chain_id, inputs.contract_address),
             REPROBE_PER_PROBE_TIMEOUT_MS,
@@ -393,7 +397,7 @@ export class CommunityOnboardingOrchestrator {
     const merged = mergeProbedIngredients(fresh.ingredients, probedStatuses);
     const probe_meta: OrderProbeMeta = {
       ...fresh.probe_meta,
-      ...probeMetaEntries(probedStatuses, Math.floor(this.deps.now() / 1000), 'reprobe'),
+      ...probeMetaEntries(probedStatuses, Math.floor(this.deps.now() / 1000), 'reprobe', probeReasons),
     };
     let fulfillment = fresh.fulfillment;
     if (worldSlug && !fulfillment?.world_slug) {
@@ -419,7 +423,10 @@ export class CommunityOnboardingOrchestrator {
     return { ok: true, record, probes };
   }
 
-  private probePortFor(key: IngredientKey): (chainId: string, contract: string) => Promise<IngredientStatus> {
+  private probePortFor(
+    key: IngredientKey,
+    reasons?: Partial<Record<string, string>>,
+  ): (chainId: string, contract: string) => Promise<IngredientStatus> {
     switch (key) {
       case 'sonar':
         return (c, a) => this.deps.triage.sonar.probe(c, a);
@@ -430,8 +437,22 @@ export class CommunityOnboardingOrchestrator {
       case 'discord_observer':
         return (c, a) => this.deps.triage.discord?.probe(c, a) ?? Promise.resolve('optional' as const);
       case 'shadow_preview':
-        return (c, a) => this.deps.triage.shadow.probe(c, a);
+        return (c, a) => this.probeShadowWithReason(c, a, reasons);
     }
+  }
+
+  /** Shadow probe via the detail port when present, capturing rule provenance for probe_meta. */
+  private async probeShadowWithReason(
+    chainId: string,
+    contract: string,
+    reasons?: Partial<Record<string, string>>,
+  ): Promise<IngredientStatus> {
+    if (this.deps.triage.shadow.probeDetail) {
+      const detail = await this.deps.triage.shadow.probeDetail(chainId, contract);
+      if (detail.reason && reasons) reasons['shadow_preview'] = detail.reason;
+      return detail.status;
+    }
+    return this.deps.triage.shadow.probe(chainId, contract);
   }
 
   private buildFulfillment(
@@ -451,16 +472,21 @@ export class CommunityOnboardingOrchestrator {
   private async probeIngredients(
     chainId: string,
     contract: string,
-  ): Promise<{ ingredients: CommunityOnboardingIngredients; world_slug?: string }> {
+  ): Promise<{
+    ingredients: CommunityOnboardingIngredients;
+    world_slug?: string;
+    reasons: Partial<Record<string, string>>;
+  }> {
     const worldsDetail = this.deps.triage.worlds.probeDetail
       ? await this.deps.triage.worlds.probeDetail(chainId, contract)
       : { status: await this.deps.triage.worlds.probe(chainId, contract) };
 
+    const reasons: Partial<Record<string, string>> = {};
     const [sonar, score, discord_observer, shadow_preview] = await Promise.all([
       this.deps.triage.sonar.probe(chainId, contract),
       this.deps.triage.score.probe(chainId, contract),
       this.deps.triage.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
-      this.deps.triage.shadow.probe(chainId, contract),
+      this.probeShadowWithReason(chainId, contract, reasons),
     ]);
 
     return {
@@ -472,6 +498,7 @@ export class CommunityOnboardingOrchestrator {
         shadow_preview,
       },
       world_slug: worldsDetail.world_slug,
+      reasons,
     };
   }
 

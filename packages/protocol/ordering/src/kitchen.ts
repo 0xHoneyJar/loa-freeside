@@ -41,6 +41,10 @@ export const IngredientProbeMeta = z
     status: IngredientStatus,
     probed_at_unix: z.number().int(),
     source: ProbeSource,
+    /** Why the status was produced when it did not come from a real probe
+     *  (e.g. `policy_optional_no_producer`) — the durable trail records the rule
+     *  that permitted the transition, not just the state. */
+    reason: z.string().optional(),
   })
   .strict();
 export type IngredientProbeMeta = z.infer<typeof IngredientProbeMeta>;

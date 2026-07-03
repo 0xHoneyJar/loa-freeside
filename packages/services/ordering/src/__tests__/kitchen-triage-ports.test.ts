@@ -69,6 +69,40 @@ describe('KitchenTriagePorts shadow policy', () => {
   });
 });
 
+describe('shadow probeDetail — rule provenance for the durable trail', () => {
+  it('carries the policy reason when the policy fires', async () => {
+    const ports = new KitchenTriagePorts(null, undefined, 'optional');
+    await expect(ports.shadow.probeDetail(CHAIN, CONTRACT)).resolves.toEqual({
+      status: 'optional',
+      reason: 'policy_optional_no_producer',
+    });
+  });
+
+  it('carries no reason when the status comes from the fallback', async () => {
+    const ports = new KitchenTriagePorts(null);
+    await expect(ports.shadow.probeDetail(CHAIN, CONTRACT)).resolves.toEqual({ status: 'blocked' });
+  });
+});
+
+describe('probeMetaEntries reason threading', () => {
+  it('attaches reason only for keys that have one', async () => {
+    const { probeMetaEntries } = await import('../community-onboarding-orchestrator.js');
+    const meta = probeMetaEntries(
+      { sonar: 'pending', shadow_preview: 'optional' },
+      1234,
+      'interval',
+      { shadow_preview: 'policy_optional_no_producer' },
+    );
+    expect(meta['shadow_preview']).toEqual({
+      status: 'optional',
+      probed_at_unix: 1234,
+      source: 'interval',
+      reason: 'policy_optional_no_producer',
+    });
+    expect(meta['sonar']).toEqual({ status: 'pending', probed_at_unix: 1234, source: 'interval' });
+  });
+});
+
 describe('createKitchenTriagePorts darkness observability', () => {
   afterEach(() => {
     delete process.env.SHADOW_PREVIEW_UNAVAILABLE_POLICY;

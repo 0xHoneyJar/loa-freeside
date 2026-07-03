@@ -1,4 +1,4 @@
-import { StubTriagePorts, type TriagePorts } from './triage-ports.js';
+import { StubTriagePorts, type ShadowProbeDetail, type TriagePorts } from './triage-ports.js';
 import { HttpBuildingProbes, httpBuildingProbesFromEnv } from './http-building-probes.js';
 
 /**
@@ -68,6 +68,12 @@ export class KitchenTriagePorts implements TriagePorts {
       this.shadowPolicy === 'optional' && this.shadowProducerless
         ? Promise.resolve('optional' as const)
         : this.fallback.shadow.probe(chainId, contract),
+    // Detail variant carries WHY into the durable trail (probe_meta.reason) when the status
+    // came from the policy rule rather than a real probe.
+    probeDetail: async (chainId: string, contract: string): Promise<ShadowProbeDetail> =>
+      this.shadowPolicy === 'optional' && this.shadowProducerless
+        ? { status: 'optional', reason: 'policy_optional_no_producer' }
+        : { status: await this.fallback.shadow.probe(chainId, contract) },
   };
 
   get httpProbes(): HttpBuildingProbes | null {

@@ -14,12 +14,12 @@ capability_requirements:
   - git: read_write
   - shell: execute
   - github_api: read_write (scope: external)
-version: v7.18.0
+version: v7.51.5
 installation_mode: unknown
 trust_level: L3-hardened
 -->
 
-# loa-freeside
+# cycle-consumption-truth
 
 <!-- provenance: CODE-FACTUAL -->
 Multi-model agent economy infrastructure platform.
@@ -29,14 +29,23 @@ The framework provides 40 specialized skills, built with TypeScript/JavaScript, 
 ## Key Capabilities
 <!-- provenance: CODE-FACTUAL -->
 
-# API Surface
-## REST API (themes/sietch/src/api/) — 80+ routes
-### Selected Routes
-# Discovery
-# Authn
-# Agent gateway (proxy to packages/adapters/agent)
-# Admin / Governance (per-guild)
-# Sessions
+### Straylight governance — quarantined by tools/governance-doctor.sh
+### API Surface
+#### REST API (themes/sietch/src/api/) — 80+ routes
+- File — Domain
+- `routes.ts` — Top-level mounting
+- `admin.routes.ts` — Admin / governance operations
+- `badge.routes.ts` — Badge CRUD + evaluation
+- `billing.routes.ts` — Fiat billing
+- `crypto-billing.routes.ts` — NowPayments + on-chain billing
+- `telegram.routes.ts` — Telegram-specific endpoints
+- `server.ts` — HTTP bootstrap
+- `middleware.ts` — Auth, CORS, rate limit, request-id
+- `errors.ts` — Error→HTTP mapping
+##### Selected Routes
+### Discovery
+### Authn
+### Agent gateway (proxy to packages/adapters/agent)
 
 ## Architecture
 <!-- provenance: CODE-FACTUAL -->
@@ -44,8 +53,8 @@ The architecture follows a three-zone model: System (`.claude/`) contains framew
 ```mermaid
 graph TD
     apps[apps]
+    compositions[compositions]
     config[config]
-    cycles[cycles]
     decisions[decisions]
     docs[docs]
     drizzle[drizzle]
@@ -53,8 +62,8 @@ graph TD
     grimoires[grimoires]
     Root[Project Root]
     Root --> apps
+    Root --> compositions
     Root --> config
-    Root --> cycles
     Root --> decisions
     Root --> docs
     Root --> drizzle
@@ -69,13 +78,9 @@ Directory structure:
 ./apps/ingestor
 ./apps/mcp-gateway
 ./apps/worker
+./compositions
+./compositions/discovery
 ./config
-./cycles
-./cycles/cycle-5665977641
-./cycles/cycle-566598a009
-./cycles/cycle-56660021a3
-./cycles/cycle-5666010bb6
-./cycles/cycle-566603cf31
 ./decisions
 ./docs
 ./docs/api
@@ -92,28 +97,32 @@ Directory structure:
 ./drizzle/migrations
 ./evals
 ./evals/baselines
+./evals/environment-design
 ./evals/fixtures
+./evals/graders
+./evals/harness
+./evals/results
 ```
 
 ## Interfaces
 <!-- provenance: CODE-FACTUAL -->
 ### HTTP Routes
 
-- **DELETE** `/sandbox/:sandboxId/reset` (`./themes/sietch/src/api/middleware/auth.ts:417`)
-- **GET** `/.well-known/beacon-schema/v2.json` (`./apps/mcp-gateway/src/app.ts:242`)
-- **GET** `/.well-known/federation.json` (`./apps/mcp-gateway/src/app.ts:211`)
-- **GET** `/` (`./apps/freeside-operator-dash/src/app.ts:178`)
-- **GET** `/` (`./apps/mcp-gateway/src/app.ts:287`)
-- **GET** `/admin/stats` (`./themes/sietch/src/api/middleware.ts:397`)
-- **GET** `/api/state` (`./apps/freeside-operator-dash/src/app.ts:188`)
-- **GET** `/config` (`./themes/sietch/src/api/middleware/dashboardAuth.ts:125`)
-- **GET** `/healthz` (`./apps/freeside-operator-dash/src/app.ts:184`)
-- **GET** `/healthz` (`./apps/mcp-gateway/src/app.ts:206`)
-- **GET** `/internal/federation.json` (`./apps/mcp-gateway/src/app.ts:221`)
-- **GET** `/protected` (`./themes/sietch/src/api/middleware/auth.ts:176`)
+- **GET** `/.well-known/beacon-schema/v2.json` (`./apps/mcp-gateway/src/app.ts:243`)
+- **GET** `/.well-known/federation.json` (`./apps/mcp-gateway/src/app.ts:212`)
+- **GET** `/` (`./apps/freeside-operator-dash/src/app.ts:204`)
+- **GET** `/` (`./apps/mcp-gateway/src/app.ts:288`)
+- **GET** `/` (`./packages/services/ordering/src/frontend.ts:25`)
+- **GET** `/api/events` (`./apps/freeside-operator-dash/src/app.ts:263`)
+- **GET** `/api/state` (`./apps/freeside-operator-dash/src/app.ts:214`)
+- **GET** `/healthz` (`./apps/freeside-operator-dash/src/app.ts:210`)
+- **GET** `/healthz` (`./apps/mcp-gateway/src/app.ts:207`)
+- **GET** `/internal/federation.json` (`./apps/mcp-gateway/src/app.ts:222`)
 - **GET** `/quote` (`./packages/routes/x402.routes.ts:92`)
-- **GET** `/schema/federation.json` (`./apps/mcp-gateway/src/app.ts:236`)
-- **GET** `/schema/tenant.json` (`./apps/mcp-gateway/src/app.ts:234`)
+- **GET** `/schema/federation.json` (`./apps/mcp-gateway/src/app.ts:237`)
+- **GET** `/schema/tenant.json` (`./apps/mcp-gateway/src/app.ts:235`)
+- **GET** `/schema/tenants.json` (`./apps/mcp-gateway/src/app.ts:236`)
+- **GET** `/status.json` (`./apps/mcp-gateway/src/app.ts:245`)
 
 ### CLI Commands
 
@@ -145,10 +154,10 @@ Directory structure:
 - **/enhancing-prompts** — Enhancing Prompts
 - **/eval-running** — Eval Running Skill
 - **/flatline-knowledge** — Provides optional NotebookLM integration for the Flatline Protocol, enabling external knowledge retrieval from curated AI-powered notebooks.
-- **/flatline-reviewer** — Uflatline reviewer
-- **/flatline-scorer** — Uflatline scorer
-- **/flatline-skeptic** — Uflatline skeptic
-- **/gpt-reviewer** — Ugpt reviewer
+- **/flatline-reviewer** — Flatline reviewer
+- **/flatline-scorer** — Flatline scorer
+- **/flatline-skeptic** — Flatline skeptic
+- **/gpt-reviewer** — Gpt reviewer
 - **/implementing-tasks** — Sprint Task Implementer
 - **/managing-credentials** — /loa-credentials — Credential Management
 - **/mounting-framework** — Mounting the Loa Framework
@@ -165,7 +174,7 @@ Directory structure:
 
 - **/cost-budget-enforcer** — Daily token-cap enforcement for autonomous Loa cycles. Replaces the
 - **/cross-repo-status-reader** — Read structured cross-repo state for ≤50 repos in parallel via `gh api`, with TTL cache + stale fallback, BLOCKER extraction from each repo's `grimoires/loa/NOTES.md` tail, and per-source error capture so one repo's failure does not abort the full read. The operator-visibility primitive for the Agent-Network Operator (P1).
-- **/flatline-attacker** — Uflatline attacker
+- **/flatline-attacker** — Flatline attacker
 - **/graduated-trust** — The L4 primitive maintains a per-(scope, capability, actor) trust ledger
 - **/hitl-jury-panel** — Replace `AskUserQuestion`-class decisions during operator absence with a panel of ≥3 deliberately-diverse panelists. Each panelist (model + persona) returns a view and reasoning; the skill logs all views BEFORE selection, then picks one binding view via a deterministic seed derived from `(decision_id, context_hash)`. Provides an autonomous adjudication primitive without compromising auditability.
 - **/loa-setup** — /loa setup — Onboarding Wizard
@@ -179,29 +188,29 @@ Directory structure:
 <!-- provenance: CODE-FACTUAL -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `apps/` | 10167 | Documentation | \u2014 |
+| `apps/` | 242 | Documentation | \u2014 |
+| `compositions/` | 3 | Compositions | \u2014 |
 | `config/` | 1 | Configuration files | \u2014 |
-| `cycles/` | 19 | Documentation | \u2014 |
-| `decisions/` | 9 | Documentation | \u2014 |
-| `docs/` | 52 | Documentation | \u2014 |
-| `drizzle/` | 1 | Udrizzle | \u2014 |
-| `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1051 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 260 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
+| `decisions/` | 12 | Documentation | \u2014 |
+| `docs/` | 53 | Documentation | \u2014 |
+| `drizzle/` | 1 | Drizzle | \u2014 |
+| `evals/` | 137 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
+| `grimoires/` | 1030 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
 | `lib/` | 1 | Source code | \u2014 |
-| `packages/` | 62610 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
-| `scripts/` | 34 | Utility scripts | \u2014 |
+| `packages/` | 23938 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
+| `scripts/` | 37 | Utility scripts | \u2014 |
 | `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
 | `spec/` | 10 | Test suites | \u2014 |
-| `tests/` | 660 | Test suites | \u2014 |
-| `themes/` | 48300 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
-| `tools/` | 27 | Shell scripts and utilities | \u2014 |
+| `tests/` | 737 | Test suites | \u2014 |
+| `themes/` | 1116 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
+| `tools/` | 58 | Test suites | \u2014 |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L3 — Property-Based**
-- 670 test files across 2 suites
-- CI/CD: GitHub Actions (30 workflows)
+- 758 test files across 2 suites
+- CI/CD: GitHub Actions (36 workflows)
 - Security: SECURITY.md present
 
 ## Agents
@@ -225,6 +234,7 @@ The project defines 1 specialized agent persona.
 - `fast-check`
 - `jose`
 - `supertest`
+- `vitest`
 
 ## Quick Start
 <!-- provenance: OPERATIONAL -->
@@ -233,17 +243,17 @@ Available commands:
 - `npm run build:hounfour` — scripts/rebuild-hounfour-dist.sh
 - `npm run postinstall` — scripts/rebuild-hounfour-dist.sh
 <!-- ground-truth-meta
-head_sha: 4dd0fcd1d7599de035d603beabce0fbd641bd245
-generated_at: 2026-05-26T06:39:03Z
+head_sha: 1ff89af91827876d50ea1d82ea30e450b6d82039
+generated_at: 2026-07-03T04:05:28Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: cd7ccd4fa045eaf66cb73711b7857996ff696f79dc7cb188beb1ede706a3da0d
-  capabilities: 08a161a6712c3c6585cba69ccfc18111d790cf0d30601fe8be7808a727375bbd
-  architecture: 18dd9b27b2bad865480264a8382b313162a920fca5d0d1061795096edef85922
-  interfaces: 5330f86f741f2dac9139fac019a8bc3c965d7053667f15f53220c5ca6ebff607
-  module_map: f4e1734548f4ccb091ab9bf3e8e10233491498b4bd379e2ed2fd6016a40d727f
-  verification: 681f7ee648791960e93704fe8ab77a67294712e3a43d7869f2e8926314fb08ae
+  agent_context: 297035f834f57b204990f2e8156610c8b1fceb882d67ac458b3d6d6d3fcef0ff
+  capabilities: bcb60f6d7c8b95aa0202469861bdf6195dcf3a605601899ee0ef7d59f81ad5b2
+  architecture: 80ec77393aa96a34c52e58f24d4a4f00402a5354b9e3ba08f2054675d72f0072
+  interfaces: aef7759afb21bb6110e38c64b1d6473ca8ac51b4884c8d3825854d217e96621f
+  module_map: 1d999df177a0d43218b1104bb1e8c5a07dd4579ce4daa75a15766e110b97667f
+  verification: 235e427a5e4622616e25013e1c6a1d2e519e30631887bdecf49b26540eb92726
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
-  ecosystem: 41df6a594f66dfdccfc9516499e4826c04118fae1a2850465624443977bfd207
+  ecosystem: b54c7d13ab5a794bc7020f58f7ec91c1147264d5ea11fe3799af423cdb89a85c
   quick_start: f0f00b450676e8357d71bf0d73d9040bda778c7dd172e9a463067ca34b35fe59
 -->

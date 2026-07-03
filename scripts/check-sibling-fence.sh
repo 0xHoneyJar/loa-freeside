@@ -22,6 +22,13 @@ FENCE=(
   "packages/freeside-cli/tests/inspect.test.ts"
 )
 
+# Self-retirement: once #422 merges, its paths are no longer contested — the fence is scaffolding
+# debris. Skip silently if gh is unavailable (offline/CI without auth): the fence still guards.
+if pr_state=$(gh pr view 422 --json state --jq .state 2>/dev/null) && [[ "$pr_state" == "MERGED" ]]; then
+  echo "sibling fence: RETIRED — PR #422 merged; remove scripts/check-sibling-fence.sh"
+  exit 0
+fi
+
 # Fail closed on fetch failure — a stale local origin/main can blind the fence (FAGAN i2).
 # Explicit offline escape: FENCE_ALLOW_STALE=1 (dev only, never CI).
 if ! git fetch origin main --quiet 2>/dev/null; then

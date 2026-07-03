@@ -5,6 +5,13 @@ export interface WorldsProbeDetail {
   world_slug?: string;
 }
 
+export interface ShadowProbeDetail {
+  status: IngredientStatus;
+  /** Present when the status came from a rule rather than a real probe
+   *  (e.g. `policy_optional_no_producer`) — flows into probe_meta.reason. */
+  reason?: string;
+}
+
 /**
  * Ingredient fulfillment ports for preset #2 (SDD §3.2.4).
  * MVP stubs return `pending` on probe; operator advance-ingredient unblocks fulfillment.
@@ -25,6 +32,7 @@ export interface TriagePorts {
   };
   shadow: {
     probe(chainId: string, contract: string): Promise<IngredientStatus>;
+    probeDetail?(chainId: string, contract: string): Promise<ShadowProbeDetail>;
   };
 }
 
