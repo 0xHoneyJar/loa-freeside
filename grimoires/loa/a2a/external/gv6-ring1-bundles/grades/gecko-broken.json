@@ -2,7 +2,7 @@
   "bundle": "gecko-broken",
   "score": "6/9",
   "passed": 6,
-  "rubric_hash": "sha256:c181978e4e8f2bce65171f57eb0fe6da4f1c0a52ec46118c1443ef92d52af9df",
+  "rubric_hash": "sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370",
   "checks": [
     {
       "check_id": "C1",
@@ -50,7 +50,7 @@
       "check_id": "C8",
       "name": "genome_chain_verifies",
       "status": "fail",
-      "reason": "link 1: stored genome_hash != recompute"
+      "reason": "bundle dialect: link 1: stored genome_hash != recompute"
     },
     {
       "check_id": "C9",

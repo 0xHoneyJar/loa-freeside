@@ -36,11 +36,20 @@ The 9 checks:
   C7 grounding file exists (reality.md axis; an honest absence stub marked
      "ABSENT IN SOURCE" is a FAIL — honesty changes the verdict's meaning,
      not its direction)
-  C8 genome hash chain verifies, recomputed from genesis:
-       link.genome_hash == sha256hex(jcs(link minus its genome_hash field))
-       link.parent_hash == previous link's genome_hash (first: "GENESIS")
+  C8 genome hash chain verifies, recomputed from genesis. TWO dialects, each
+     with its exact minting recipe (rubric v1.0.1 — the fleet sweep caught the
+     v1.0.0 seam where a canonical chain would fail spuriously):
+       * canonical LEARNINGS dialect (any line carries distill_status):
+         delegated to the vendored genome-chain.py — distilled clews in
+         genome_seq order, link = compute_link(parent, entry) =
+         "sha256:" + sha256hex(jcs({parent, entry minus bookkeeping})),
+         parent = "genesis" at depth 1. Zero distilled links = vacuous pass
+         (canonical verifier semantics), stated in the reason.
+       * bundle dialect (theatre exemplars):
+         link.genome_hash == sha256hex(jcs(link minus its genome_hash field)),
+         link.parent_hash == previous link's genome_hash (first: "GENESIS").
      jcs = loa_cheval.jcs.canonicalize (RFC 8785) — the same core as the
-     audit-envelope, genome, and GV6 cert chains. Tamper = fail.
+     audit-envelope, genome, and GV6 cert chains. Tamper = fail in both.
   C9 proof-of-run: verdict == "valid_run" AND content_hash_verified recomputes
      over the core members AND verifier_type is present. verifier_type is
      REQUIRED so a self-baseline can never pass silently — the Echelon §6.6
@@ -115,6 +124,33 @@ def _canon_bytes(value) -> bytes:
 def genome_link_hash(link: dict) -> str:
     body = {k: v for k, v in link.items() if k != "genome_hash"}
     return _sha256_hex(_canon_bytes(body))
+
+
+def _canonical_genome():
+    """The vendored genome-chain.py (same dir), imported once — never reinvent."""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "genome-chain.py"
+    spec = importlib.util.spec_from_file_location("genome_chain", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _verify_canonical_chain(genome_path: Path) -> "tuple[bool, str]":
+    """LEARNINGS-dialect verify, delegated to genome-chain.py's recipe."""
+    gc = _canonical_genome()
+    distilled = gc._read_distilled(genome_path)
+    if not distilled:
+        return True, "canonical dialect: 0 distilled links — vacuously valid (no earned authority yet)"
+    parent, problems = gc.GENESIS, []
+    for i, entry in enumerate(distilled):
+        recomputed = gc.compute_link(parent, entry)
+        if entry.get("genome_hash") != recomputed:
+            problems.append(f"distilled link {i + 1}: stored genome_hash != recompute")
+        parent = entry.get("genome_hash")
+    if problems:
+        return False, "canonical dialect: " + "; ".join(problems)
+    return True, f"canonical dialect: {len(distilled)}-link chain recomputes from genesis"
 
 
 def _sot_vocabulary() -> "set[str] | None":
@@ -257,22 +293,27 @@ def grade(bundle: Path) -> dict:
     else:
         check("C7", "grounding_file_exists", True, "reality.md present")
 
-    # C8 — genome hash chain
+    # C8 — genome hash chain (two dialects; see module docstring)
     genome = bundle / "genome.jsonl"
     if not genome.is_file():
         check("C8", "genome_chain_verifies", False, "genome.jsonl absent")
     else:
-        problems, parent = [], "GENESIS"
-        for i, raw in enumerate(l for l in genome.read_text().splitlines() if l.strip()):
-            link = json.loads(raw)
-            if link.get("parent_hash") != parent:
-                problems.append(f"link {i + 1}: parent_hash != previous genome_hash")
-            recomputed = genome_link_hash(link)
-            if link.get("genome_hash") != recomputed:
-                problems.append(f"link {i + 1}: stored genome_hash != recompute")
-            parent = link.get("genome_hash")
-        check("C8", "genome_chain_verifies", not problems,
-              "chain recomputes from genesis" if not problems else "; ".join(problems))
+        lines = [json.loads(l) for l in genome.read_text().splitlines() if l.strip()]
+        if any("distill_status" in l for l in lines):
+            ok, reason = _verify_canonical_chain(genome)
+            check("C8", "genome_chain_verifies", ok, reason)
+        else:
+            problems, parent = [], "GENESIS"
+            for i, link in enumerate(lines):
+                if link.get("parent_hash") != parent:
+                    problems.append(f"link {i + 1}: parent_hash != previous genome_hash")
+                recomputed = genome_link_hash(link)
+                if link.get("genome_hash") != recomputed:
+                    problems.append(f"link {i + 1}: stored genome_hash != recompute")
+                parent = link.get("genome_hash")
+            check("C8", "genome_chain_verifies", not problems,
+                  "bundle dialect: chain recomputes from genesis"
+                  if not problems else "bundle dialect: " + "; ".join(problems))
 
     # C9 — proof-of-run
     por_path = bundle / "proof-of-run.json"

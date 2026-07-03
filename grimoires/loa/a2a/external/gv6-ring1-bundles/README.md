@@ -14,9 +14,19 @@ the reference construct, a mid-tier construct, and a deliberately broken one.
 ## The rubric
 
 `evals/environment-design/construct-rubric.py` — the C1–C9 deterministic rubric.
-**`rubric_hash = sha256:c181978e4e8f2bce65171f57eb0fe6da4f1c0a52ec46118c1443ef92d52af9df`**
+**`rubric_hash = sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370`**
 (the sha256 of that file's committed bytes; every `registration.json` here carries
 it, so any party re-derives a verdict against the exact rubric that graded it):
+
+> **Rubric changelog** (a rubric bump is a recorded seam event, never silent):
+> - **v1.0.1** `sha256:1374c7c4…93ce370` — C8 handles BOTH chain dialects: canonical
+>   `LEARNINGS.jsonl` distilled-clew chains (delegated to the vendored
+>   `genome-chain.py` recipe — `compute_link(parent, entry)`, bookkeeping stripped,
+>   `genome_seq` order, zero-distilled = vacuous pass) and the bundle-dialect links
+>   used by these theatre exemplars. Caught by a 51-construct fleet sweep: v1.0.0
+>   would have spuriously failed the first bundle carrying a real construct genome.
+> - **v1.0.0** `sha256:c181978e…d52af9df` — initial pin (bundle dialect only), as
+>   posted in the theatre-1 handover.
 
 ```
 python3 evals/environment-design/construct-rubric.py grade --bundle <dir> --json

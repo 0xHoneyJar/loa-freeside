@@ -1,6 +1,6 @@
 # content_hash recipe (== construct-rubric.py C9)
 
-`bundle_schema_version` 1.0.0 · rubric: `sha256:c181978e4e8f2bce65171f57eb0fe6da4f1c0a52ec46118c1443ef92d52af9df`
+`bundle_schema_version` 1.0.0 · rubric: `sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370`
 
 ```
 core = [manifest.json, reality.md, handoff.md] + SKILL.md (root, if present)

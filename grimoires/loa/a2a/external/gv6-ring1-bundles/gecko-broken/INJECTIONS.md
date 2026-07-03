@@ -1,10 +1,8 @@
 # INJECTIONS — broken bundle
 
-Base: an exact copy of the `gecko` bundle (manifest slug stays `gecko`, v0.1.0 —
-it IS a tampered copy of gecko; that is the theatre). The **registration** slug is
-`gecko-broken` so the registry identity never collides with the clean gecko bundle.
-Exactly three violations were injected, each targeting a distinct rubric check.
-Everything else is byte-identical to gecko in intent.
+Base: an exact copy of the `gecko` bundle (slug `gecko`, v0.1.0). Exactly three
+violations were injected, each targeting a distinct rubric check. Everything else
+is byte-identical to gecko in intent.
 
 ## (a) write / agent conflict → fails check 4
 
