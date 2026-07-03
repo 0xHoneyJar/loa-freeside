@@ -372,3 +372,27 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - **Remaining (deploy/follow-on, not domain logic):** wire COLLECTION_SNAPSHOT_PATH in the shadow-audit
   deploy (generate snapshot via `collections export-snapshot` in a build step); the 7 pg-integration tests
   need a live postgres; QMD-source registration of the entity export (documented seam, next cycle).
+
+## datastore-legibility bridge — S1 foundation built (2026-07-03, RESUMABLE)
+- Bridge `bridge-20260703-fbeb2d` (depth 3), branch cycle/datastore-legibility.
+- DONE + committed + tested: S1-T1 (register shadow-mode/shadow-audit/worker/operator-dash as
+  registry modules, 10 registry tests) · S1-T2 (host_fp salted-correlation helper in
+  packages/adapters/storage/host-fp.ts, 9 tests; creds excluded from preimage, fail-closed salt).
+- REMAINING S1: S1-T3 (ordering GET /admin/data-store authed self-report — wire into ordering Hono
+  app + a PostgresOrderStore.dataStoreFacts() method) · S1-T4 (freeside-cli doctor --data mode
+  reusing hardenedBeaconFetcher). Then S2 (fan-out + registry data_store label layer) · S3
+  (projection + drift-loud + git-commit --propose ratify) · bridgebuilder review iterations (×3).
+- RESUME: `/run-bridge --resume` (bridge state + beads arrakis-knaa..uqj0 + run-state persist).
+  Beads S1-T3=arrakis-knaa, S1-T4=arrakis-0muf, S2-T1=824h, S2-T2=68eb, S3-T1=prx8, S3-T2=30tk, S3-T3=uqj0.
+
+## Autopoiesis cycle — architect open-question resolutions (2026-07-03, live-tree grounded)
+- **OQ-1 RESOLVED (branch protection)**: default `github.token` CANNOT read/write branch protection —
+  `administration` is not a grantable GITHUB_TOKEN scope (confirmed `immune-doctors.yml:33-38`). Existing
+  pattern: `IMMUNE_DOCTOR_GH_TOKEN` fine-grained PAT (Administration:read), gated on `ref=main && non-PR`
+  (pwn-request defense, `immune-doctors.yml:75-82`). → FR-1d required-check migration + FR-4 promotion are
+  NOT PR-time CI actions; design as a gated main-branch job with an admin-WRITE PAT, or operator-run.
+- **OQ-2 RESOLVED (S2 smoke consumers)**: `@freeside/cluster-fp` ← `packages/services/ordering`;
+  `@freeside/adapters` ← `packages/services/shadow-audit` (the KNOWN-BROKEN import path — how the break bites);
+  `@freeside/ordering-protocol` ← `packages/services/ordering`.
+- **OQ-5 STILL OPEN (upstream loa path)**: which repo/path owns `bridge-orchestrator.sh` — needs the loa repo;
+  defer to FR-3b issue-filing time (FR-3b acceptance = issue filed, does NOT block S3).
