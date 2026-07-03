@@ -69,6 +69,26 @@ export {
 } from './schemas/identity.js';
 
 export {
+  type TokenStandard,
+  type CollectionLabelName,
+  type LabelSourceType,
+  type CollectionLabels,
+  type LabelProvenance,
+  type CollectionEntity,
+  type CollectionLabelObservedPayload,
+  type CollectionLabelRatifiedPayload,
+  DERIVED_LABELS,
+  SUBJECTIVE_LABELS,
+  isDerivedLabel,
+  COLLECTION_OBSERVED_NAME,
+  COLLECTION_RATIFIED_NAME,
+  observedEventId,
+  ratifiedEventId,
+  collectionLabelObserved,
+  collectionLabelRatified,
+} from './schemas/collection-entity.js';
+
+export {
   type DivergenceKind,
   type ShadowDivergence,
   type MemberGraphProjection,

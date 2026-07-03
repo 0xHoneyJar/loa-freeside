@@ -9,7 +9,15 @@
 
 import type { WalletRef } from './common.js';
 
-export type SubjectKind = 'identity_user' | 'discord_member' | 'wallet_only' | 'unresolved';
+// 'collection' is a SIBLING labelled-entity kind (SDD §2) — additive; it never
+// appears on a member `ShadowSubject` (collection entities are their own type,
+// `CollectionEntity`). Present here so the kind space is single-sourced.
+export type SubjectKind =
+  | 'identity_user'
+  | 'discord_member'
+  | 'wallet_only'
+  | 'unresolved'
+  | 'collection';
 
 export type AttributionQuality = 'verified' | 'observed_only' | 'unresolved';
 
