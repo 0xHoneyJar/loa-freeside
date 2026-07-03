@@ -74,6 +74,12 @@ describe('JwtProducerPolicy → AppendGrant', () => {
     await expect(policy().authorize(token)).rejects.toThrow(GrantError);
   });
 
+  it('rejects a token whose lifetime exceeds 1h (exp - iat)', async () => {
+    // 2h token — passes signature/aud but the exp-iat bound rejects it.
+    const token = await mint({ producer_id: 'x', sources: ['discord'], event_names: ['discord.member.snapshot.v1'] }, { exp: '2h' });
+    await expect(policy().authorize(token)).rejects.toThrow(/lifetime|1h/);
+  });
+
   it('rejects malformed claims', async () => {
     const token = await mint({ producer_id: 'x' }); // missing sources/event_names
     await expect(policy().authorize(token)).rejects.toThrow(/claims shape/);
@@ -107,5 +113,32 @@ describe('AppendGrant boundary (capability, not data)', () => {
   it('a properly scoped grant passes', () => {
     const grant = testGrant(['discord'], ['discord.member.snapshot.v1']);
     expect(() => assertGrant(grant, 'discord', 'discord.member.snapshot.v1')).not.toThrow();
+  });
+});
+
+describe('SvcJwtProducerPolicy (deployed HTTP auth cannot be bypassed)', () => {
+  it('no bearer token → no_token (never mints a grant)', async () => {
+    const { SvcJwtProducerPolicy } = await import('../adapters/svc-jwt-policy.js');
+    const policy = new SvcJwtProducerPolicy(new JwtProducerPolicy({ issuer: ISSUER, jwks }));
+    const r = await policy.verifyProducer({ source: 'discord', name: 'discord.member.snapshot.v1', communityId: 'demo' } as never);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('no_token');
+  });
+
+  it('valid token → grant scoped to the event', async () => {
+    const { SvcJwtProducerPolicy } = await import('../adapters/svc-jwt-policy.js');
+    const policy = new SvcJwtProducerPolicy(new JwtProducerPolicy({ issuer: ISSUER, jwks }));
+    const token = await mint({ producer_id: 'discord-bot', sources: ['discord'], event_names: ['discord.member.snapshot.v1'] });
+    const r = await policy.verifyProducer({ source: 'discord', name: 'discord.member.snapshot.v1', communityId: 'demo', bearerToken: token } as never);
+    expect(r.ok).toBe(true);
+  });
+
+  it('token scoped to a DIFFERENT event → unauthorized_source', async () => {
+    const { SvcJwtProducerPolicy } = await import('../adapters/svc-jwt-policy.js');
+    const policy = new SvcJwtProducerPolicy(new JwtProducerPolicy({ issuer: ISSUER, jwks }));
+    const token = await mint({ producer_id: 'sonar', sources: ['sonar'], event_names: ['sonar.wallet.attributed.v1'] });
+    const r = await policy.verifyProducer({ source: 'discord', name: 'discord.member.snapshot.v1', communityId: 'demo', bearerToken: token } as never);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('unauthorized_source');
   });
 });

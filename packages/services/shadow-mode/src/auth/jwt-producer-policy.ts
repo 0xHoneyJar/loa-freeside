@@ -60,6 +60,12 @@ export class JwtProducerPolicy {
         maxTokenAge: '1h',
       });
       payload = verified.payload;
+      // maxTokenAge bounds how OLD a token is; also cap total lifetime exp-iat ≤ 1h
+      // so a far-future exp can't grant a long-lived credential (FAGAN S2).
+      const { iat, exp } = verified.payload;
+      if (typeof iat !== 'number' || typeof exp !== 'number' || exp - iat > 3600) {
+        throw new Error('token lifetime exceeds 1h (exp - iat)');
+      }
     } catch (err) {
       throw new GrantError(`producer token rejected: ${err instanceof Error ? err.message : 'verify failed'}`);
     }

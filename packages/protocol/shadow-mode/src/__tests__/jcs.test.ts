@@ -65,7 +65,7 @@ describe('rejections (fail-loud)', () => {
     expect(() => jcsCanonicalize({ x: new Set() })).toThrow(JcsError);
     class Foo { a = 1; }
     expect(() => jcsCanonicalize({ x: new Foo() })).toThrow(JcsError);
-    expect(jcsCanonicalize({ x: Object.create(null) ? { a: 1 } : {} })).toBe('{"x":{"a":1}}');
+    expect(jcsCanonicalize({ x: Object.assign(Object.create(null), { a: 1 }) })).toBe('{"x":{"a":1}}');
   });
 
   it('rejects bigint/function/symbol/top-level undefined', () => {

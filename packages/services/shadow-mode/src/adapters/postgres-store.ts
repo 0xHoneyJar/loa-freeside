@@ -96,6 +96,8 @@ export class PostgresLedgerStore implements ILedgerStore {
       const sql = readFileSync(join(__dirname, '..', '..', 'sql', file), 'utf8');
       await this.pool.query(sql);
     }
+    // A fresh/migrated DB is verified before it serves appends (FAGAN S2 boot gate).
+    await this.assertChainsVerified();
   }
 
   /**
@@ -116,6 +118,9 @@ export class PostgresLedgerStore implements ILedgerStore {
   }
 
   async appendObservationIfAbsent(observation: ShadowObservation, grant: AppendGrant): Promise<boolean> {
+    if (!this.booted) {
+      throw new Error('PostgresLedgerStore.appendObservationIfAbsent called before assertChainsVerified()/migrate() — boot integrity gate');
+    }
     assertGrant(grant, observation.source, observation.name);
     if (observation.event_id.startsWith('genesis:')) {
       throw new Error(`event_id namespace 'genesis:' is reserved (got ${observation.event_id})`);
@@ -135,6 +140,29 @@ export class PostgresLedgerStore implements ILedgerStore {
       if (frozen.rows[0]) {
         await client.query('rollback');
         throw new ChainFrozenError(chainId, Number(frozen.rows[0].first_bad_seq));
+      }
+
+      // HEAD-integrity check runs BEFORE inserting the new observation, so a
+      // tampered head can never leave an orphan observation committed (FAGAN S2).
+      const head = await client.query(
+        `select * from shadow_chain where chain_id = $1 order by seq desc limit 1`,
+        [chainId],
+      );
+      let prev: ChainLink | null = head.rows[0] ? rowToLink(head.rows[0]) : null;
+      if (prev) {
+        const headObs = await client.query('select * from shadow_observations where event_id = $1', [prev.event_id]);
+        const ok =
+          headObs.rows[0] &&
+          prev.hash ===
+            computeLinkHash(prev.chain_id, prev.seq, prev.prev_hash, rowToObservation(headObs.rows[0]), prev.chain_version);
+        if (!ok) {
+          await client.query('rollback'); // drop the append cleanly — no orphan
+          await this.pool.query(
+            `insert into shadow_chain_state (chain_id, frozen_reason, first_bad_seq) values ($1,'hash_mismatch',$2)`,
+            [chainId, prev.seq],
+          );
+          throw new ChainFrozenError(chainId, prev.seq);
+        }
       }
 
       const inserted = await client.query(
@@ -160,12 +188,6 @@ export class PostgresLedgerStore implements ILedgerStore {
         await client.query('rollback');
         return false;
       }
-
-      const head = await client.query(
-        `select * from shadow_chain where chain_id = $1 order by seq desc limit 1`,
-        [chainId],
-      );
-      let prev: ChainLink | null = head.rows[0] ? rowToLink(head.rows[0]) : null;
 
       if (!prev) {
         // Lazy genesis inside the same transaction (seq 0 sentinel).
@@ -195,21 +217,6 @@ export class PostgresLedgerStore implements ILedgerStore {
           [chainId, genesis.event_id, GENESIS_PREV_HASH, gHash],
         );
         prev = { chain_id: chainId, seq: 0, event_id: genesis.event_id, prev_hash: GENESIS_PREV_HASH, hash: gHash, chain_version: 'shadow.chain.v1' };
-      } else {
-        // O(1) head-integrity check before extending (mirrors the in-memory store).
-        const headObs = await client.query('select * from shadow_observations where event_id = $1', [prev.event_id]);
-        const ok =
-          headObs.rows[0] &&
-          prev.hash ===
-            computeLinkHash(prev.chain_id, prev.seq, prev.prev_hash, rowToObservation(headObs.rows[0]), prev.chain_version);
-        if (!ok) {
-          await client.query(
-            `insert into shadow_chain_state (chain_id, frozen_reason, first_bad_seq) values ($1,'hash_mismatch',$2)`,
-            [chainId, prev.seq],
-          );
-          await client.query('commit'); // persist the freeze, drop the append
-          throw new ChainFrozenError(chainId, prev.seq);
-        }
       }
 
       const seq = prev.seq + 1;
@@ -269,6 +276,9 @@ export class PostgresLedgerStore implements ILedgerStore {
   }
 
   async clearChainFreeze(chainId: string, clearedBy: string, rationale: string): Promise<void> {
+    if (!(await this.isChainFrozen(chainId))) {
+      throw new Error(`clear refused: chain ${chainId} has no active freeze`);
+    }
     // Clear only if the chain verifies green post-repair (never a silent reopen).
     const links = (
       await this.pool.query('select * from shadow_chain where chain_id = $1 order by seq asc', [chainId])
@@ -284,19 +294,26 @@ export class PostgresLedgerStore implements ILedgerStore {
         `clear refused: chain ${chainId} still fails verification at seq ${verdict.first_bad_seq} (${verdict.reason}) — repair or fork-ack`,
       );
     }
-    await this.pool.query(
+    const res = await this.pool.query(
       `update shadow_chain_state set cleared_at = now(), cleared_by = $2, clear_rationale = $3
        where id = (select id from shadow_chain_state where chain_id = $1 and cleared_at is null order by id desc limit 1)`,
       [chainId, clearedBy, rationale],
     );
+    if (res.rowCount !== 1) throw new Error(`clear failed: no uncleared freeze row for chain ${chainId}`);
   }
 
   async withTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
-    // Chain appends carry their own transaction (advisory-locked). The reducer's
-    // projection writes ride the pool with per-statement atomicity.
-    // loa:shortcut: cross-statement projection rollback is NOT provided yet —
-    // acceptable while the only durable producer is the flag-gated differential
-    // path; provide a client-scoped transaction before any NATS producer cutover.
+    // Chain appends carry their OWN advisory-locked transaction. The reducer's
+    // projection writes currently ride the pool per-statement.
+    // loa:shortcut: this is NOT one atomic transaction across append + projection.
+    // Known failure: if the append commits but a projection upsert then fails,
+    // the next redelivery short-circuits at the duplicate-event_id check and the
+    // projection is NEVER re-applied — chain ahead of projection. This is why the
+    // Postgres store MUST NOT back a LIVE producer this cycle (FR-6 scope: the
+    // only durable path is the flag-gated, read-only differential; no NATS
+    // consumer). Upgrade trigger (REQUIRED before any live producer / NATS
+    // cutover): thread a client-scoped transaction through ShadowLedger.ingest so
+    // append + all projection writes commit or roll back together.
     return await fn();
   }
 

@@ -9,11 +9,12 @@
  *
  *   chain-admin verify  <chain_id>
  *   chain-admin status  <chain_id>
- *   chain-admin clear   <chain_id> --by <who> --rationale "<why>"
+ *   chain-admin clear   <chain_id> --token <CHAIN_ADMIN_TOKEN> --by <who> --rationale "<why>"
  */
 
 import pg from 'pg';
 import { PostgresLedgerStore } from '../src/adapters/postgres-store.js';
+import { timingSafeEqual } from 'node:crypto';
 
 function fail(msg: string): never {
   console.error(`chain-admin: ${msg}`);
@@ -41,8 +42,12 @@ async function main(): Promise<void> {
     }
     if (cmd === 'clear') {
       // The one destructive/recovery capability: a dedicated token, NOT db access.
-      const token = process.env.CHAIN_ADMIN_TOKEN?.trim();
-      if (!token) fail('CHAIN_ADMIN_TOKEN required for clear (db access alone does not suffice)');
+      const expected = process.env.CHAIN_ADMIN_TOKEN?.trim();
+      if (!expected) fail('CHAIN_ADMIN_TOKEN must be set for clear (db access alone does not suffice)');
+      const presented = argValue(rest, '--token');
+      if (!presented || !timingSafeEqualStr(presented, expected)) {
+        fail('clear denied: --token does not match CHAIN_ADMIN_TOKEN');
+      }
       const by = argValue(rest, '--by');
       const rationale = argValue(rest, '--rationale');
       if (!by || !rationale) fail('clear requires --by <who> and --rationale "<why>"');
@@ -54,6 +59,12 @@ async function main(): Promise<void> {
   } finally {
     await pool.end();
   }
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
 function argValue(args: string[], flag: string): string | undefined {
