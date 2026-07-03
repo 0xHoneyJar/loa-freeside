@@ -47,16 +47,26 @@ pg tests behind `PG_TEST_URL` env with a loud skip). **AC**: concurrent-append t
 no fork/gap), duplicate-replay test, freeze-row blocks append test.
 
 ### S2-T2 — freeze/clear surface [SDD 6a freeze design]
-Operator-only clear action (CLI script in the package `bin/chain-admin.ts` — authenticated by
-DATABASE_URL possession + logged rationale row), recovery procedure in package README. **AC**:
-clear writes cleared_by+rationale; partial verify can freeze but never clear.
+Operator-only clear action (CLI script in the package `bin/chain-admin.ts`) authenticated by a
+DEDICATED `CHAIN_ADMIN_TOKEN` secret (distinct from DATABASE_URL — db access alone must NOT
+suffice for clear; blocker cure SKP-002). Clear events are APPEND-ONLY admin-audit rows (the
+code exposes no UPDATE/DELETE on them; blocker cure SKP-003 — same-principal tampering remains
+a named MVP ceiling: `// loa:shortcut: db superuser can still mutate rows; move admin audit to
+the hash chain itself when the chain hosts system events`). Recovery procedure in package
+README. **AC**: clear without CHAIN_ADMIN_TOKEN rejected; clear writes cleared_by+rationale as
+an append-only row; partial verify can freeze but never clear.
 
 ### S2-T3 — AppendGrant + JwtProducerPolicy [SDD 6b-3]
 Capability-gated append (WeakSet-identity `AppendGrant`, mintable by `JwtProducerPolicy.
 authorize` | operator-migration factory | test factory behind test marker); JWT validation per
-SDD (pinned iss/aud, exp ≤1h, skew ±60s, zod claims). `StaticProducerPolicy` retired from the
-durable path. **AC**: four-case unauthorized test (no token / expired / out-of-scope / forged
-grant); grant-less append does not typecheck (compile-time assertion via tsd or a type test).
+SDD (pinned iss/aud, exp ≤1h, skew ±60s, zod claims) **plus algorithm hygiene (blocker cure
+SKP-005)**: accepted algorithm pinned to the substrate's (verify what `jwt-service.ts` issues —
+expected EdDSA/RS256; hard-reject `none` and any HS* to kill algorithm-confusion), key
+resolution by `kid` against the substrate's key set with bounded cache TTL (≤5min) so rotation
+takes effect promptly; rotation/revocation = substrate key rotation. `StaticProducerPolicy`
+retired from the durable path. **AC**: four-case unauthorized test + two algorithm cases
+(alg=none, alg=HS256 with the public key as secret — both rejected); grant-less append does not
+typecheck (compile-time assertion via tsd or a type test).
 
 ## Sprint 3: consumption seams (FR-2 + 6c code, `shared/shadow-audit` + `platform/ordering`)
 
@@ -80,6 +90,20 @@ boundary cases tested); differential runner comparing sonar-replay vs projection
 salted-hash divergence logging + ops webhook post; wiring FLAG-GATED (`SHADOW_DIFFERENTIAL_
 ENABLED`, default off — turns on in L-3 once deployed against the live host). **AC**: classifier
 unit tests; runner tests with fixture sources; structured log contract fields exact.
+
+## Sequencing contract (blocker cure SKP-001 + IMP-001)
+
+S3-T4 lands CODE with `SHADOW_DIFFERENTIAL_ENABLED=off` — it depends on NOTHING outside Sprint 3.
+The flag flip is an L-2 EXIT criterion (deploy green → flip → observe one `differential.run` log
+line). L-3 depends only on L-2 (not on S3-T4's flag). Explicit order: [S1→S2→S3 code] ∥ [L-1 →
+L-2(+flag flip) → L-3]; L-4, L-5 fully parallel. Per-lane owner + unblock signal: L-1 unblocks
+on operator verification reply; L-2 on L-1 + operator test:live authorization; L-3 on L-2 green.
+Live-run evidence contract (IMP-005): the differential's acceptance evidence = the structured
+`differential.run` log line (collection, true_mismatch, no_backfill, verdict) quoted in the
+runbook — a smoke curl does NOT satisfy it. Knob retirement (IMP-002): evidence = 3 consecutive
+`capability.probe` hits in deployed ordering logs quoted in the runbook → removal PR same cycle
+or a bead with the quoted evidence attached. Persistence invariants + FR-4
+rollback: SDD §6b-2 / §7.5 govern; sprint tasks cite them rather than restate.
 
 ## L-lanes (NOT run-mode executable)
 
