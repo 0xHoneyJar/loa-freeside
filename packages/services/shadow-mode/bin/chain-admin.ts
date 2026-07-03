@@ -42,11 +42,13 @@ async function main(): Promise<void> {
     }
     if (cmd === 'clear') {
       // The one destructive/recovery capability: a dedicated token, NOT db access.
+      // The dedicated secret (distinct from DATABASE_URL). Presented via a second
+      // env var so it never appears in argv / process listings (FAGAN S2).
       const expected = process.env.CHAIN_ADMIN_TOKEN?.trim();
+      const presented = process.env.CHAIN_ADMIN_TOKEN_PRESENTED?.trim();
       if (!expected) fail('CHAIN_ADMIN_TOKEN must be set for clear (db access alone does not suffice)');
-      const presented = argValue(rest, '--token');
       if (!presented || !timingSafeEqualStr(presented, expected)) {
-        fail('clear denied: --token does not match CHAIN_ADMIN_TOKEN');
+        fail('clear denied: CHAIN_ADMIN_TOKEN_PRESENTED does not match CHAIN_ADMIN_TOKEN');
       }
       const by = argValue(rest, '--by');
       const rationale = argValue(rest, '--rationale');

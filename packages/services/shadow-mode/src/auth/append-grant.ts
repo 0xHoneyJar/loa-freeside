@@ -1,29 +1,31 @@
 /**
  * AppendGrant — the store-boundary append capability (SDD sandwich-line §6b-3).
  *
- * The durable append path takes a grant mintable ONLY here (WeakSet identity —
- * the estate's forgeable-reflectable-symbol cure): a forged plain object fails
- * the registry check even if structurally identical. Enumerated minters:
- * JwtProducerPolicy.authorize (verified producers), operatorMigrationGrant
- * (migration/replay, loudly labeled), testGrant (test-marker gated).
+ * Unforgeable by construction: the constructor + registry are module-private,
+ * and minting requires a module-private symbol NO external consumer can obtain.
+ * Even a package that imports `AppendGrant` (for `instanceof`/type) cannot
+ * produce a registered grant — there is no reachable mint. Minters live in this
+ * module: `mintGrant` (used by the in-package policies), `operatorMigrationGrant`
+ * (migration/replay, loudly labeled), `testGrant` (test-runner gated).
  */
 
 const REGISTRY = new WeakSet<AppendGrant>();
+/** Module-private mint token — unexported, so `mintGrant` is the only door. */
+const MINT = Symbol('shadow-mode.append-grant.mint');
 
 export class AppendGrant {
-  private constructor(
+  /** Constructor is guarded by the module-private symbol — not callable outside. */
+  constructor(
+    token: symbol,
     public readonly producerId: string,
-    /** Allowed observation sources (e.g. 'discord', 'sonar'). Empty = none. */
     public readonly sources: readonly string[],
-    /** Allowed event names. Empty = none. */
     public readonly eventNames: readonly string[],
-  ) {}
-
-  /** Internal mint — module-private via the minters below. */
-  static _mint(producerId: string, sources: string[], eventNames: string[]): AppendGrant {
-    const grant = new AppendGrant(producerId, [...sources], [...eventNames]);
-    REGISTRY.add(grant);
-    return grant;
+    /** Communities this grant may write to. Empty = unrestricted (test/migration). */
+    public readonly communities: readonly string[] = [],
+  ) {
+    if (token !== MINT) {
+      throw new GrantError('AppendGrant is not constructable outside its module');
+    }
   }
 
   allows(source: string, eventName: string): boolean {
@@ -31,25 +33,42 @@ export class AppendGrant {
     const evtOk = this.eventNames.includes('*') || this.eventNames.includes(eventName);
     return srcOk && evtOk;
   }
+
+  allowsCommunity(communityId: string): boolean {
+    return this.communities.length === 0 || this.communities.includes(communityId);
+  }
 }
 
 export class GrantError extends Error {}
 
+/** In-module mint (NOT exported from the package index). */
+export function mintGrant(
+  producerId: string,
+  sources: string[],
+  eventNames: string[],
+  communities: string[] = [],
+): AppendGrant {
+  const grant = new AppendGrant(MINT, producerId, [...sources], [...eventNames], [...communities]);
+  REGISTRY.add(grant);
+  return grant;
+}
+
 /** Store-boundary check: identity (unforgeable) + scope. */
-export function assertGrant(grant: AppendGrant, source: string, eventName: string): void {
+export function assertGrant(grant: AppendGrant, source: string, eventName: string, communityId?: string): void {
   if (!(grant instanceof AppendGrant) || !REGISTRY.has(grant)) {
     throw new GrantError('append refused: grant is not a minted AppendGrant');
   }
   if (!grant.allows(source, eventName)) {
-    throw new GrantError(
-      `append refused: producer ${grant.producerId} not scoped for ${source}/${eventName}`,
-    );
+    throw new GrantError(`append refused: producer ${grant.producerId} not scoped for ${source}/${eventName}`);
+  }
+  if (communityId !== undefined && !grant.allowsCommunity(communityId)) {
+    throw new GrantError(`append refused: producer ${grant.producerId} not scoped for community ${communityId}`);
   }
 }
 
 /** Migration/replay principal — every use is loudly attributable in logs. */
 export function operatorMigrationGrant(sources: string[], eventNames: string[]): AppendGrant {
-  return AppendGrant._mint('operator-migration', sources, eventNames);
+  return mintGrant('operator-migration', sources, eventNames);
 }
 
 /** Test seam — refuses outside a test runner (SDD: test-marker gated). */
@@ -57,5 +76,5 @@ export function testGrant(sources: string[] = ['*'], eventNames: string[] = ['*'
   if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {
     throw new GrantError('testGrant is only mintable under a test runner');
   }
-  return AppendGrant._mint('test', sources, eventNames);
+  return mintGrant('test', sources, eventNames);
 }

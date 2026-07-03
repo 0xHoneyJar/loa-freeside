@@ -19,8 +19,9 @@ export class SvcJwtProducerPolicy implements IProducerPolicy {
     if (!ctx.bearerToken) return { ok: false, reason: 'no_token' };
     try {
       const grant = await this.jwt.authorize(ctx.bearerToken);
-      // Defense in depth: the token's scope must also cover THIS event.
+      // Defense in depth: the token's scope must cover THIS event AND community.
       if (!grant.allows(ctx.source, ctx.name)) return { ok: false, reason: 'unauthorized_source' };
+      if (!grant.allowsCommunity(ctx.communityId)) return { ok: false, reason: 'cross_community' };
       return { ok: true, grant };
     } catch {
       return { ok: false, reason: 'token_rejected' };
@@ -36,5 +37,15 @@ export class SvcJwtProducerPolicy implements IProducerPolicy {
  */
 export function producerPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): IProducerPolicy {
   const jwt = jwtProducerPolicyFromEnv(env);
-  return jwt ? new SvcJwtProducerPolicy(jwt) : new StaticProducerPolicy();
+  if (jwt) return new SvcJwtProducerPolicy(jwt);
+  // A DEPLOYED server without producer-JWT config is fail-closed: the structural
+  // StaticProducerPolicy is NOT a transport-auth boundary, so refuse to run it as
+  // the deployed default (FAGAN S2: silent downgrade would leave HTTP unauthed).
+  const deployed = Boolean(env.RAILWAY_ENVIRONMENT?.trim()) || env.NODE_ENV === 'production';
+  if (deployed) {
+    throw new Error(
+      'producer-auth not configured (PRODUCER_JWT_ISSUER + PRODUCER_JWKS[_URL]) but environment is deployed — refusing to run HTTP ingress on structural-only StaticProducerPolicy',
+    );
+  }
+  return new StaticProducerPolicy();
 }

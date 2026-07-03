@@ -20,7 +20,7 @@ export { StaticProducerPolicy } from './adapters/static-producer-policy.js';
 export { AllowAllPolicy } from './adapters/allow-all-policy.js';
 export { SvcJwtProducerPolicy, producerPolicyFromEnv } from './adapters/svc-jwt-policy.js';
 export { JwtProducerPolicy } from './auth/jwt-producer-policy.js';
-export { AppendGrant, operatorMigrationGrant } from './auth/append-grant.js';
+export { AppendGrant } from './auth/append-grant.js';
 export { buildAccessAuditReport, staleRiskBand } from './access-audit.js';
 export { createShadowRouter, type ShadowRouterDeps } from './http/shadow-router.js';
 export { demoEvents } from './fixtures.js';

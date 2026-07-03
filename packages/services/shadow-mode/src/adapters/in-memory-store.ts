@@ -45,7 +45,7 @@ export class InMemoryLedgerStore implements ILedgerStore {
   private readonly freezeLog = new Map<string, FreezeState[]>();
 
   async appendObservationIfAbsent(observation: ShadowObservation, grant: AppendGrant): Promise<boolean> {
-    assertGrant(grant, observation.source, observation.name);
+    assertGrant(grant, observation.source, observation.name, observation.community_id);
     if (this.observations.has(observation.event_id)) return false;
     const chainId = observation.community_id;
     // Reserved namespace: the synthetic genesis id can never arrive as user input

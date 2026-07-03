@@ -142,3 +142,32 @@ describe('SvcJwtProducerPolicy (deployed HTTP auth cannot be bypassed)', () => {
     if (!r.ok) expect(r.reason).toBe('unauthorized_source');
   });
 });
+
+describe('AppendGrant is unforgeable (FAGAN S2 critical)', () => {
+  it('AppendGrant has no public mint and cannot be constructed externally', async () => {
+    const mod = await import('../auth/append-grant.js');
+    expect((mod.AppendGrant as unknown as { _mint?: unknown })._mint).toBeUndefined();
+    // Direct construction with a fake token is rejected.
+    expect(() => new (mod.AppendGrant as unknown as new (...a: unknown[]) => unknown)(Symbol('fake'), 'x', ['*'], ['*'])).toThrow();
+    // Package index does not export mintGrant.
+    const idx = await import('../index.js');
+    expect((idx as Record<string, unknown>).mintGrant).toBeUndefined();
+    expect((idx as Record<string, unknown>).operatorMigrationGrant).toBeUndefined();
+  });
+
+  it('a JWT with communities claim binds cross-community appends', async () => {
+    const { SvcJwtProducerPolicy } = await import('../adapters/svc-jwt-policy.js');
+    const policy = new SvcJwtProducerPolicy(new JwtProducerPolicy({ issuer: ISSUER, jwks }));
+    const token = await mint({ producer_id: 'p', sources: ['discord'], event_names: ['discord.member.snapshot.v1'], communities: ['azuki'] });
+    const ok = await policy.verifyProducer({ source: 'discord', name: 'discord.member.snapshot.v1', communityId: 'azuki', bearerToken: token } as never);
+    expect(ok.ok).toBe(true);
+    const bad = await policy.verifyProducer({ source: 'discord', name: 'discord.member.snapshot.v1', communityId: 'mibera', bearerToken: token } as never);
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.reason).toBe('cross_community');
+  });
+
+  it('producerPolicyFromEnv refuses to run structural-only when deployed', async () => {
+    const { producerPolicyFromEnv } = await import('../adapters/svc-jwt-policy.js');
+    expect(() => producerPolicyFromEnv({ RAILWAY_ENVIRONMENT: 'production' } as NodeJS.ProcessEnv)).toThrow(/producer-auth not configured/);
+  });
+})

@@ -12,7 +12,7 @@
 
 import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
-import { AppendGrant, GrantError } from './append-grant.js';
+import { GrantError, mintGrant, type AppendGrant } from './append-grant.js';
 
 export const PINNED_ALG = 'ES256';
 export const PRODUCER_AUDIENCE = 'shadow-mode-ledger';
@@ -21,6 +21,7 @@ const ClaimsSchema = z.object({
   producer_id: z.string().min(1),
   sources: z.array(z.string().min(1)).min(1),
   event_names: z.array(z.string().min(1)).min(1),
+  communities: z.array(z.string().min(1)).optional(),
 });
 
 export interface JwtProducerPolicyConfig {
@@ -73,7 +74,17 @@ export class JwtProducerPolicy {
     if (!claims.success) {
       throw new GrantError('producer token rejected: claims shape invalid');
     }
-    return AppendGrant._mint(claims.data.producer_id, claims.data.sources, claims.data.event_names);
+    return mintGrant(claims.data.producer_id, claims.data.sources, claims.data.event_names, claims.data.communities ?? []);
+  }
+}
+
+function parseJwks(raw: string): { keys: unknown[] } {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.keys)) throw new Error('missing keys[]');
+    return parsed;
+  } catch (err) {
+    throw new Error(`PRODUCER_JWKS is not valid JWKS JSON: ${err instanceof Error ? err.message : 'parse error'}`);
   }
 }
 
@@ -85,6 +96,6 @@ export function jwtProducerPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): 
   return new JwtProducerPolicy({
     issuer,
     jwksUrl: jwksUrl || undefined,
-    jwks: jwksInline ? JSON.parse(jwksInline) : undefined,
+    jwks: jwksInline ? parseJwks(jwksInline) : undefined,
   });
 }

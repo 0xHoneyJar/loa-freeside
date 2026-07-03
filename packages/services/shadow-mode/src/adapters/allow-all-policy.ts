@@ -7,7 +7,7 @@
  */
 
 import type { IProducerPolicy, PolicyContext, PolicyResult } from '../ports/producer-policy.js';
-import { AppendGrant } from '../auth/append-grant.js';
+import { mintGrant } from '../auth/append-grant.js';
 
 export class AllowAllPolicy implements IProducerPolicy {
   constructor() {
@@ -20,6 +20,6 @@ export class AllowAllPolicy implements IProducerPolicy {
   }
 
   verifyProducer(ctx: PolicyContext): PolicyResult {
-    return { ok: true, grant: AppendGrant._mint('allow-all-test', [ctx.source], [ctx.name]) };
+    return { ok: true, grant: mintGrant('allow-all-test', [ctx.source], [ctx.name]) };
   }
 }

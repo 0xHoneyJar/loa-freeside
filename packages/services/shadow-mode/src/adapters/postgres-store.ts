@@ -121,7 +121,7 @@ export class PostgresLedgerStore implements ILedgerStore {
     if (!this.booted) {
       throw new Error('PostgresLedgerStore.appendObservationIfAbsent called before assertChainsVerified()/migrate() — boot integrity gate');
     }
-    assertGrant(grant, observation.source, observation.name);
+    assertGrant(grant, observation.source, observation.name, observation.community_id);
     if (observation.event_id.startsWith('genesis:')) {
       throw new Error(`event_id namespace 'genesis:' is reserved (got ${observation.event_id})`);
     }
@@ -156,11 +156,14 @@ export class PostgresLedgerStore implements ILedgerStore {
           prev.hash ===
             computeLinkHash(prev.chain_id, prev.seq, prev.prev_hash, rowToObservation(headObs.rows[0]), prev.chain_version);
         if (!ok) {
-          await client.query('rollback'); // drop the append cleanly — no orphan
-          await this.pool.query(
+          // Freeze INSIDE the advisory-locked transaction (the new observation
+          // has NOT been inserted yet, so there is no orphan to roll back). This
+          // serializes freeze-writes per chain — no duplicate freeze rows race.
+          await client.query(
             `insert into shadow_chain_state (chain_id, frozen_reason, first_bad_seq) values ($1,'hash_mismatch',$2)`,
             [chainId, prev.seq],
           );
+          await client.query('commit');
           throw new ChainFrozenError(chainId, prev.seq);
         }
       }
