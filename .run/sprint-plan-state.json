@@ -1,11 +1,11 @@
 {
   "plan_id": "plan-collections-sot",
   "target": "sprint-plan",
-  "state": "RUNNING",
+  "state": "JACKED_OUT",
   "sprints": {
     "total": 3,
-    "completed": 1,
-    "current": "sprint-2",
+    "completed": 3,
+    "current": null,
     "list": [
       {
         "id": "sprint-1",
@@ -15,11 +15,11 @@
       },
       {
         "id": "sprint-2",
-        "status": "in_progress"
+        "status": "completed"
       },
       {
         "id": "sprint-3",
-        "status": "pending"
+        "status": "completed"
       }
     ]
   },
@@ -32,6 +32,7 @@
   "metrics": {
     "total_cycles": 1,
     "total_files_changed": 5,
-    "fagan_s1": "1 HIGH + 2 MEDIUM fixed"
+    "fagan_s1": "1 HIGH + 2 MEDIUM fixed",
+    "tests": "protocol 37 + shadow-mode 91 + shadow-audit 167 = 295 green, 0 tc errors"
   }
 }

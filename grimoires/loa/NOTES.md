@@ -356,3 +356,19 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - **Next:** S2 (freeside collections sync/propose/ratify distiller) → S3 (query + shadow-audit
   collapse kill-test + drift). S2 open Q: propose/ratify reach the ledger via store+DATABASE_URL
   or shadow-mode HTTP API.
+
+## collections-sot COMPLETE (2026-07-03) — all 3 sprints, 295 tests green
+- **S1** identity choke point + CollectionEntity/observation factories + store fold (chain=SoT,
+  projection=fold, verify-on-read). FAGAN: 1 HIGH (derived-ratify silently ignored→fail-closed) + 2 MED fixed.
+- **S2** distiller: ground() (belt + ERC-165 raw eth_call + world heuristic, injectable FR-7 seam) +
+  propose (born-low) + ratify (single-consume cockpit grant, subjective-only). Reproduces the 24-collection proof.
+- **S3** query (lexical + provenance badge, contested-withheld) + SETTLE GATE (shadow-audit reads the
+  ratified snapshot fail-closed, env=break-glass; G-4 kill-test) + drift (re-derive/classify, contested
+  never-overwrites, fails loud). + CLI bin (6 verbs) + live belt/RPC clients.
+- **End-to-end proven:** distill→propose→ratify→snapshot→settle, all trust signals gate correctly.
+- Packages: protocol 37 / shadow-mode 91(+7 pg-skip) / shadow-audit 167, 0 tc errors.
+- **Ships on the merged #429 spine.** Second FAGAN (S2/S3) running. NOT YET pushed/PR'd — operator decides
+  how collections-sot ships vs #429 (supersede, or #429-first-then-rebase).
+- **Remaining (deploy/follow-on, not domain logic):** wire COLLECTION_SNAPSHOT_PATH in the shadow-audit
+  deploy (generate snapshot via `collections export-snapshot` in a build step); the 7 pg-integration tests
+  need a live postgres; QMD-source registration of the entity export (documented seam, next cycle).
