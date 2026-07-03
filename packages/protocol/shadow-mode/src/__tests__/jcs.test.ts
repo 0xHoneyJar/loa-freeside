@@ -62,6 +62,7 @@ describe('rejections (fail-loud)', () => {
   it('rejects bigint/function/symbol/top-level undefined', () => {
     expect(() => jcsCanonicalize({ x: 1n })).toThrow(JcsError);
     expect(() => jcsCanonicalize({ x: () => 0 })).toThrow(JcsError);
+    expect(() => jcsCanonicalize({ x: Symbol('s') })).toThrow(JcsError);
     expect(() => jcsCanonicalize(undefined)).toThrow(JcsError);
   });
 });

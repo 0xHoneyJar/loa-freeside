@@ -19,6 +19,7 @@ import type {
 import {
   ChainFrozenError,
   chainLink,
+  computeLinkHash,
   genesisObservation,
   verifyChain as verifyLinks,
   type ChainLink,
@@ -45,9 +46,29 @@ export class InMemoryLedgerStore implements ILedgerStore {
   async appendObservationIfAbsent(observation: ShadowObservation): Promise<boolean> {
     if (this.observations.has(observation.event_id)) return false;
     const chainId = observation.community_id;
+    // Reserved namespace: the synthetic genesis id can never arrive as user input
+    // (FAGAN: a colliding event_id would corrupt a fresh chain's seq-0 anchor).
+    if (observation.event_id.startsWith('genesis:')) {
+      throw new Error(`event_id namespace 'genesis:' is reserved (got ${observation.event_id})`);
+    }
     const active = this.activeFreeze(chainId);
     if (active) throw new ChainFrozenError(chainId, active.first_bad_seq);
     let links = this.chains.get(chainId);
+    const head = links?.[links.length - 1];
+    if (head) {
+      // O(1) incremental integrity: re-verify the HEAD link before extending it
+      // (full-chain verification stays a periodic/read-side act — SDD fail-loud).
+      const headObs = this.observations.get(head.event_id);
+      const headOk =
+        headObs !== undefined &&
+        head.hash === computeLinkHash(head.chain_id, head.seq, head.prev_hash, headObs, head.chain_version);
+      if (!headOk) {
+        const log = this.freezeLog.get(chainId) ?? [];
+        log.push({ first_bad_seq: head.seq, reason: 'hash_mismatch' });
+        this.freezeLog.set(chainId, log);
+        throw new ChainFrozenError(chainId, head.seq);
+      }
+    }
     if (!links) {
       // Lazy genesis: seq 0 is the sentinel; the incoming observation is seq 1.
       const genesis = genesisObservation(chainId, observation.ingested_at);
@@ -83,6 +104,17 @@ export class InMemoryLedgerStore implements ILedgerStore {
   async clearChainFreeze(chainId: string, clearedBy: string, rationale: string): Promise<void> {
     const active = this.activeFreeze(chainId);
     if (!active) return;
+    // A clear reopens appends ONLY if the chain verifies green post-repair
+    // (FAGAN, both voices): the operator restores the payload first, then clears.
+    // A still-invalid chain refuses the clear — fork-ack (re-anchor a new chain)
+    // is the documented alternative, never a silent reopen.
+    const links = this.chains.get(chainId) ?? [];
+    const verdict = verifyLinks(links, (eventId) => this.observations.get(eventId));
+    if (!verdict.ok) {
+      throw new Error(
+        `clear refused: chain ${chainId} still fails verification at seq ${verdict.first_bad_seq} (${verdict.reason}) — repair or fork-ack`,
+      );
+    }
     // Append-only: the clear is recorded ON the freeze entry, never deleted.
     active.cleared = { cleared_by: clearedBy, rationale };
   }
@@ -108,14 +140,18 @@ export class InMemoryLedgerStore implements ILedgerStore {
     if (o) mutate(o);
   }
 
+  /** Tail of the transaction queue — units of work run strictly one-at-a-time. */
+  private txTail: Promise<unknown> = Promise.resolve();
+
   async withTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
-    // Single-threaded synchronous: no partial-await window (no concurrent
-    // interleaving). loa:shortcut: this does NOT roll back already-applied
-    // mutations if fn throws mid-way — the in-memory adapter has no undo log.
-    // Apply handlers run only on Zod-validated input so no throw path is known,
-    // but the Postgres adapter MUST provide real transactional rollback.
-    // Upgrade trigger: the Postgres adapter, or any apply handler that can throw.
-    return await fn();
+    // Async apply handlers CAN interleave at await points, so the adapter
+    // serializes units of work through a promise queue (FAGAN: the old
+    // "no partial-await window" claim stopped being true when the port went
+    // async). loa:shortcut: still NO rollback of already-applied mutations if
+    // fn throws mid-way — the Postgres adapter MUST provide real rollback.
+    const run = this.txTail.then(fn);
+    this.txTail = run.catch(() => undefined); // a failed txn never wedges the queue
+    return run;
   }
 
   async getSubject(subjectId: string): Promise<ShadowSubject | undefined> {

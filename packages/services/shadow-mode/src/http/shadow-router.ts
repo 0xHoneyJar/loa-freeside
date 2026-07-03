@@ -10,6 +10,7 @@
 import { Hono } from 'hono';
 import { ShadowEventSchema } from '@freeside/shadow-mode-protocol';
 import type { ShadowLedger } from '../shadow-ledger.js';
+import { ChainFrozenError } from '../chain.js';
 import type { IProducerPolicy } from '../ports/producer-policy.js';
 import { buildAccessAuditReport } from '../access-audit.js';
 
@@ -40,7 +41,14 @@ export function createShadowRouter({ ledger, policy }: ShadowRouterDeps): Hono {
       return c.json({ error: 'unauthorized', reason: verdict.reason }, 401);
     }
 
-    return c.json(await ledger.ingest(event), 202);
+    try {
+      return c.json(await ledger.ingest(event), 202);
+    } catch (err) {
+      if (err instanceof ChainFrozenError) {
+        return c.json({ error: 'chain_frozen', chain_id: err.chainId, first_bad_seq: err.firstBadSeq }, 409);
+      }
+      throw err;
+    }
   });
 
   app.get('/communities/:id/member-graph', async (c) =>

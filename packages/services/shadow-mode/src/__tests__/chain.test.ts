@@ -113,6 +113,10 @@ describe('InMemoryLedgerStore chain integration', () => {
     expect(verdict.ok).toBe(false);
     expect(await store.isChainFrozen('azuki')).toBe(true);
     await expect(store.appendObservationIfAbsent(obs('e2'))).rejects.toThrow(ChainFrozenError);
+    // hardened behavior: clear requires the chain to verify green — repair first
+    store.unsafeMutateObservationForTest('e1', (o) => {
+      (o.payload as { n: string }).n = 'e1';
+    });
     await store.clearChainFreeze('azuki', 'operator', 'test recovery — payload restored');
     expect(await store.isChainFrozen('azuki')).toBe(false);
   });
@@ -124,5 +128,57 @@ describe('InMemoryLedgerStore chain integration', () => {
     expect((await store.getChainHead('azuki'))?.seq).toBe(1);
     expect((await store.getChainHead('mibera'))?.seq).toBe(1);
     expect(await store.verifyChain('mibera')).toEqual({ ok: true, length: 2 });
+  });
+});
+
+describe('FAGAN hardening (sprint-1 review)', () => {
+  it("rejects user observations in the reserved genesis: namespace", async () => {
+    const store = new InMemoryLedgerStore();
+    await expect(
+      store.appendObservationIfAbsent({ ...obs('x'), event_id: 'genesis:azuki' }),
+    ).rejects.toThrow(/reserved/);
+  });
+
+  it('clear is refused while the chain still fails verification', async () => {
+    const store = new InMemoryLedgerStore();
+    await store.appendObservationIfAbsent(obs('e1'));
+    store.unsafeMutateObservationForTest('e1', (o) => {
+      (o.payload as { n: string }).n = 'tampered';
+    });
+    await store.verifyChain('azuki');
+    await expect(store.clearChainFreeze('azuki', 'operator', 'premature')).rejects.toThrow(/clear refused/);
+    // repair the payload, then the clear succeeds
+    store.unsafeMutateObservationForTest('e1', (o) => {
+      (o.payload as { n: string }).n = 'e1';
+    });
+    await store.clearChainFreeze('azuki', 'operator', 'payload restored');
+    expect(await store.isChainFrozen('azuki')).toBe(false);
+    await expect(store.appendObservationIfAbsent(obs('e2'))).resolves.toBe(true);
+  });
+
+  it('append freezes on a tampered HEAD without an explicit verify call', async () => {
+    const store = new InMemoryLedgerStore();
+    await store.appendObservationIfAbsent(obs('e1'));
+    store.unsafeMutateObservationForTest('e1', (o) => {
+      (o.payload as { n: string }).n = 'tampered';
+    });
+    await expect(store.appendObservationIfAbsent(obs('e2'))).rejects.toThrow(ChainFrozenError);
+    expect(await store.isChainFrozen('azuki')).toBe(true);
+  });
+
+  it('withTransaction serializes concurrent units of work', async () => {
+    const store = new InMemoryLedgerStore();
+    const order: number[] = [];
+    await Promise.all([
+      store.withTransaction(async () => {
+        order.push(1);
+        await new Promise((r) => setTimeout(r, 10));
+        order.push(2);
+      }),
+      store.withTransaction(async () => {
+        order.push(3);
+      }),
+    ]);
+    expect(order).toEqual([1, 2, 3]);
   });
 });
