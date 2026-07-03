@@ -40,6 +40,18 @@ describe('KitchenTriagePorts shadow policy', () => {
     await expect(ports.shadow.probe(CHAIN, CONTRACT)).resolves.toBe('optional');
   });
 
+  it('policy cannot mask a REAL shadow producer (custom fallback wins)', async () => {
+    const realProducer = {
+      sonar: { probe: async () => 'pending' as const },
+      score: { probe: async () => 'pending' as const },
+      worlds: { probe: async () => 'pending' as const },
+      discord: { probe: async () => 'optional' as const },
+      shadow: { probe: async () => 'complete' as const },
+    };
+    const ports = new KitchenTriagePorts(null, realProducer, 'optional');
+    await expect(ports.shadow.probe(CHAIN, CONTRACT)).resolves.toBe('complete');
+  });
+
   it('policy does not affect the other ingredient probes', async () => {
     const ports = new KitchenTriagePorts(null, undefined, 'optional');
     await expect(ports.sonar.probe(CHAIN, CONTRACT)).resolves.toBe('pending');

@@ -58,8 +58,10 @@ export class KitchenTriagePorts implements TriagePorts {
       this.fallback.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
   };
   shadow = {
+    // Policy applies ONLY when no real shadow producer exists (the default stub). A custom
+    // fallback or future http probeShadow leg always wins — policy can never mask a real probe.
     probe: (chainId: string, contract: string) =>
-      this.shadowPolicy === 'optional'
+      this.shadowPolicy === 'optional' && this.fallback instanceof StubTriagePorts
         ? Promise.resolve('optional' as const)
         : this.fallback.shadow.probe(chainId, contract),
   };
