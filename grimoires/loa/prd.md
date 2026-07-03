@@ -88,16 +88,34 @@ projections).
   [CROSS-REPO sonar-api], never blocking.
 - **FR-6 (G-1, the priority-1 build):** Evolve `packages/{protocol,services}/shadow-mode` into
   THE spine (operator decision: worldline-style):
-  - **6a — hash chain**: append-only events gain hash-chaining (each event carries
-    `prev_hash`/`hash`; chain verification function; conservation check à la worldline/MINKOWSKI —
-    consult the construct's chain patterns and the estate's existing L1-L7 audit-chain lib
-    conventions rather than inventing).
-  - **6b — durability**: PostgresLedgerStore against the existing `sql/0001_shadow_mode.sql`
-    seam + producer-auth floor (svc-JWT substrate per #316 fast-follow notes).
-  - **6c — first consumer, differential-only**: wire shadow-audit's built-but-unwired
-    `makeProjectionOwnershipSource` as a SHADOW comparison against the live sonar-replay source
-    (both run, divergences logged + surfaced — the shadow-the-incumbent mechanic applied to our
-    own spine first). Precondition: the FAGAN HIGH-3 value-semantics contract test.
+  - **6a — hash chain, fully specified (blocker cure SKP-001/002-chain):** every event carries
+    `prev_hash`/`hash` where `hash = sha256(JCS(event-sans-hash-fields))` — canonicalization is
+    JCS (RFC 8785, the estate's existing convention: `lib/jcs.sh` / never `jq -S`), algorithm
+    pinned, `chain_version` field on every event; genesis = a named sentinel event; ordering =
+    monotonic per-chain sequence number (NOT wall-clock — timestamps are payload, sequence is
+    order); replay determinism = re-verifying the chain from genesis MUST reproduce every hash
+    byte-exactly; verification failure = fail-LOUD read-side alarm + appends freeze until
+    operator ack (tamper-evidence, never silent repair); migration = existing in-memory events
+    replay into the chain at cutover with a recorded genesis anchor. AC: a verify function +
+    tamper test (mutate one byte → chain rejects), replay-determinism test, version-bump test.
+  - **6b — durability WITH producer-auth as a BLOCKING invariant (blocker cure SKP-002/003-auth,
+    CRITICAL):** PostgresLedgerStore against the `sql/0001_shadow_mode.sql` seam. There is NO
+    unauthenticated append path in the durable store: every append requires a verified svc-JWT
+    whose claims scope the producer to its declared source streams (authz model = per-producer
+    allowlist of event types/sources; unknown producer or out-of-scope append = rejected +
+    logged). Concurrency/idempotency spec: single-writer append per chain via transaction-scoped
+    advisory lock; idempotency key = (chain_id, sequence) unique constraint (duplicate append =
+    rejected, not silently deduped); appends and hash computation inside ONE transaction so a
+    fork/gap is structurally impossible. AC: concurrent-append test (two writers → one wins, no
+    fork), duplicate-replay test, unauthorized-producer test.
+  - **6c — first consumer, differential-only, decision-grade (IMP-003):** wire shadow-audit's
+    built-but-unwired `makeProjectionOwnershipSource` as a SHADOW comparison against the live
+    sonar-replay source. Comparison semantics defined up front: per-(collection, snapshot) holder-
+    set equality; divergence = symmetric difference with counts; threshold: 0 divergence = parity,
+    >0 = logged + surfaced on the ops channel with the differing wallets' hashes (not raw lists);
+    3 consecutive parity runs on 2+ collections = the differential's exit bar (recorded, feeds a
+    FUTURE cutover decision — not this cycle). Precondition: the FAGAN HIGH-3 value-semantics
+    contract test.
   - **6d — projection thesis recorded**: a short doctrine note in the protocol README naming the
     intent — Discord permissions + rosters + audits all derive from THIS chain, shadow-run vs
     incumbent SaaS — so future projections inherit the frame (the propagation-doctrine pattern).
@@ -107,8 +125,42 @@ projections).
 Observed-not-claimed (deploy truth via live probes/logs quoted in the runbook; the report is a
 real community's data, not fixture) · fail-loud (boot throws stay; no new fail-soft) · shadow-
 never-cutover (6c compares, never replaces, this cycle) · cross-repo via /coord, operator merges ·
-privacy: RunEvent stays member-data-free; audit reports respect k-anonymity floors (AUDIT_K≥1
-enforced).
+**privacy floor for LANDED artifacts (blocker cure SKP-005)**: RunEvent stays member-data-free;
+the deployed service enforces AUDIT_K (runtime floor), but any report that LANDS ON MAIN meets a
+STRICTER publication gate — cohort counts bucketed with **k≥5** (smaller cohorts render as "<5"),
+field allowlist = aggregate counts, bucketed distributions, collection/chain identifiers ONLY (no
+wallet addresses, no joinable timestamps, no rare-trait singletons), and the operator sign-off
+line in the report is the publication act. A report that can single out a member does not land.
+
+## Security boundary (disputed IMP-011, accepted)
+
+Explicit surface map for the deployed audit: `GET /v1/audit` (k-anon aggregate) = X-API-Key when
+`SHADOW_AUDIT_API_KEY` set (we set it); `GET /v1/collections/:chain/:contract` (FR-2 capability
+read) = OPEN by design, returns membership 200/404 and NO data; `POST /v1/audit` (named) =
+signature-verified (AssociationVerifier) always. The boundary is documented in DEPLOY.md and
+asserted by a route-posture test.
+
+## Cross-Repo Execution Contract (blocker cure SKP-001-ownership + IMP-001/IMP-010)
+
+| Lane | Repo(s) | Owner | Merge gate |
+|------|---------|-------|-----------|
+| Audit chain FR-1→2→3 (serialized) | loa-freeside + Railway/Vercel env | this session (env acts [OPERATOR-BOUNDED] where access lacks) | operator |
+| Spine FR-6a→6b→6c (serialized; parallel to audit chain) | loa-freeside `shared/shadow-mode` | this session | operator |
+| Worlds FR-4 | freeside-worlds (config-service) | this session via /coord PR | operator |
+| Demo FR-5 | deployed services via CLI (no code) + sonar-api #120 spike lane | this session; spike timeboxed 1d | n/a / operator |
+
+Dependency graph: FR-1a → FR-1 → {FR-2, FR-3}; FR-6a → 6b → 6c (6c also depends FR-1 deploy for
+its comparison host); FR-4, FR-5 independent. `test:live` proof contract (IMP-005): the gate is
+the existing `pnpm -C packages/adapters test:live` suite run against the DEPLOYED config —
+evidence = its output quoted in the runbook naming each collection's live anchor, not a smoke
+curl. G-1 counting rule (IMP-002): G-1 is MET only if 6a+6b+6c all land; 6a+6b alone = "spine
+durable, unconsumed" and the cycle report MUST say so explicitly. Subset rule (IMP-006): FR-1 may
+deploy with ≥2 operator-verified collections (Mibera + one more); below that, deploy waits.
+Manifest recovery statement (IMP-008): manifests already vanished (pre-FR-4 redeploys) are
+UNRECOVERABLE and re-derivable only by re-running orders — FR-4 protects the future, the PRD
+claims nothing about the past. Knob-retirement exit criteria (IMP-012): the policy knob is
+removed only after probeShadow serves 3 consecutive real probes in deployed logs; the env var is
+then deleted from Railway + code in the same PR (no dormant flag).
 
 ## Assumptions (falsifiable)
 
