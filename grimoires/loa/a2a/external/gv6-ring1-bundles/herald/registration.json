@@ -1,0 +1,24 @@
+{
+  "bundle_schema_version": "1.0.0",
+  "slug": "herald",
+  "version": "0.1.0",
+  "content_hash": "80f611e491d62d6ad2389b9394e8d57c22adc97cc926f9fc9572578e5065f1ce",
+  "skill_manifest": [
+    {
+      "command": "grounding-announcements",
+      "domain": "operations"
+    },
+    {
+      "command": "synthesizing-voice",
+      "domain": "operations"
+    },
+    {
+      "command": "chronicling-changes",
+      "domain": "operations"
+    }
+  ],
+  "domain_claims": [
+    "operations"
+  ],
+  "rubric_hash": "sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370"
+}
