@@ -413,3 +413,15 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   2. flip-promote "PAT leak" = FALSE POSITIVE — PAT value never echoed (only var-name in REFUSED msgs + `<your-pat>` template).
 - Confirmed green in clean env: validator REJECTS missing/invalid exit_code; flip-ready precondition guards the gh API; transitive scope walk correct. S1 = 50 tests + lint, no findings.
 - NOTE: the two dispatched review agents stalled (~7min, no output) — root cause = they ran Bash repros hitting the `continue` alias → nested `claude --continue` hangs. Stopped them; did the review inline in clean bash instead.
+
+### S2+S3 fan-out complete + E2E evidence (autopoiesis, 2026-07-03)
+- **S2 Consumption Doctor** — `tools/consumption-doctor.sh` (dist→build+import / src→resolve+import under real consumer resolution; consumable/unconsumable/no-consumer). 5 bats green. Real-tree G-2: `@freeside/adapters`→flag (dist unbuilt), `@freeside/ordering-protocol`→pass. (cluster-fp re-home was DSL-branch work, absent here — doctor reports the real tree, not the AC's assumed list.)
+- **S3 False-Green Sensor** — `tools/false-green-sensor.sh` (JACKED_OUT+0/0/0→suspect; absent/partial/malformed→insufficient, missing≠zero, untrusted-body counters-only). 10 bats green. Grounds arrakis-run-bridge-resume-silent-noop-flzl. **S3-T1 salvaged** from a stalled agent (it wrote a correct sensor before hanging on the `continue` alias during a repro); S3-T2 bats authored fresh.
+- **S3-T3 upstream issue**: filed 0xHoneyJar/loa#1174 (bridge-orchestrator silent-JACKED_OUT with reproduction). FR-3b DONE (does not block on the fix landing).
+- **S3-T5 E2E — all 4 goals validated (re-runnable commands, clean-shell `env -i bash`):**
+  - G-1: `SCOPE_DIFF_CMD='printf "packages/services/ordering/src/x.ts\n"' tools/scope-checks-sensor.sh` → pass (1 pkg/1 cmd); lockfile → full.
+  - G-2: `tools/consumption-doctor.sh @freeside/adapters` → flag(2); `... @freeside/ordering-protocol` → pass(0).
+  - G-3: false-green replay no-op → suspect(2); real-work state → pass(0).
+  - G-4: flip-report on a seeded-qualifier last-10 ledger → flip-ready (operator promotion→blocking proven in s1-acceptance).
+- Full cycle: 65 tests green (56 bats + 9 sh); ground-truth lint green (8 instruments grounded, 3 test fixtures suppressed).
+- Deferred (unchanged): immune-check.sh local doctors[] extension for all 3 sensors — same rationale as S1 (tested-file refactor; sensors fully consumable via CI + --probe/--json).

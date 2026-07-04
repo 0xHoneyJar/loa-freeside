@@ -84,3 +84,19 @@ tools/flip-report.sh:
 tools/flip-promote.sh:
   - "flip-report.sh"
   - "branches/main/protection"
+
+# ── Autopoiesis S2/S3 ───────────────────────────────────────────────────────
+
+# The consumption doctor (S2). Ground truth = the REAL consumer's node_modules
+# resolution of the package + the package's own exports/main entry on disk — it
+# asks "can a real consumer import this", never a self-declared "healthy".
+tools/consumption-doctor.sh:
+  - "node_modules/"
+  - ".exports"
+
+# The false-green sensor (S3). Ground truth = the on-disk .run completion state
+# bodies (counters only) — bridge-state.json + sprint-plan-state.json — plus the
+# live git commit count; re-derives real work from three independent counters.
+tools/false-green-sensor.sh:
+  - "bridge-state.json"
+  - "sprint-plan-state.json"
