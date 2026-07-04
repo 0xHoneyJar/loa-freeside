@@ -145,6 +145,41 @@ function getRawBody(req: Request): Buffer | undefined {
 }
 
 // --------------------------------------------------------------------------
+// Per-IP rate limiting (CodeQL: route performs DB access + authorization)
+// --------------------------------------------------------------------------
+
+/** Webhook rate limit: 100 requests per minute per source IP. */
+export const WEBHOOK_RATE_LIMIT_MAX = 100;
+export const WEBHOOK_RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_BUCKET_CAP = 10_000; // bound memory under source-IP churn
+
+/**
+ * Fixed-window in-memory limiter. Signature verification is CPU work and the
+ * happy path hits Postgres/Redis, so unauthenticated callers must be bounded
+ * BEFORE any of that runs. Per-process state is acceptable here: NOWPayments
+ * IPN traffic is low-rate and the limiter is a DoS bound, not a billing
+ * control (idempotency is enforced downstream by the dedupe key).
+ */
+function createIpRateLimiter(max: number, windowMs: number) {
+  const buckets = new Map<string, { count: number; windowStart: number }>();
+  return (ip: string, now: number): boolean => {
+    const bucket = buckets.get(ip);
+    if (!bucket || now - bucket.windowStart >= windowMs) {
+      if (buckets.size >= RATE_BUCKET_CAP) {
+        for (const [key, b] of buckets) {
+          if (now - b.windowStart >= windowMs) buckets.delete(key);
+        }
+        if (buckets.size >= RATE_BUCKET_CAP) buckets.clear();
+      }
+      buckets.set(ip, { count: 1, windowStart: now });
+      return true;
+    }
+    bucket.count += 1;
+    return bucket.count <= max;
+  };
+}
+
+// --------------------------------------------------------------------------
 // Router
 // --------------------------------------------------------------------------
 
@@ -152,6 +187,16 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
   const router = Router();
   const { pool, redis, ipnSecret, logger, featureBillingEnabled } = deps;
   const webhookMaxAgeMs = deps.webhookMaxAgeMs ?? DEFAULT_WEBHOOK_MAX_AGE_MS;
+  const allowRequest = createIpRateLimiter(WEBHOOK_RATE_LIMIT_MAX, WEBHOOK_RATE_LIMIT_WINDOW_MS);
+
+  router.use('/nowpayments', (req: Request, res: Response, next) => {
+    if (!allowRequest(req.ip ?? 'unknown', Date.now())) {
+      logger.warn({ ip: req.ip }, 'webhook rate limit exceeded');
+      res.status(429).json({ status: 'rate_limited' });
+      return;
+    }
+    next();
+  });
 
   /**
    * POST /webhooks/nowpayments — NOWPayments IPN callback

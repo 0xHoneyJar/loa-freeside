@@ -456,3 +456,37 @@ describe('POST /webhooks/nowpayments — webhook_events INSERT failure (#326)', 
     expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Per-IP rate limiting (CodeQL: unauthenticated route performs DB access)
+// ---------------------------------------------------------------------------
+
+describe('POST /webhooks/nowpayments — per-IP rate limiting', () => {
+  it('returns 429 once the per-IP window budget is exhausted, before any processing', async () => {
+    const { WEBHOOK_RATE_LIMIT_MAX } = await import('./webhooks.routes.js');
+    const { pool } = makeFakePool({ status: 'finished' });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody({
+      payment_id: 900001,
+      payment_status: 'finished',
+      order_id: 'order-rl',
+      price_amount: 100,
+      price_currency: 'usd',
+      updated_at: Date.now(),
+    });
+
+    let limited = 0;
+    for (let i = 0; i < WEBHOOK_RATE_LIMIT_MAX + 5; i++) {
+      const res = await post(app, raw, sig);
+      if (res.status === 429) {
+        limited += 1;
+        expect(res.body).toEqual({ status: 'rate_limited' });
+      }
+    }
+    expect(limited).toBe(5);
+
+    // Processing side effects happened at most once (dedupe) and the
+    // rate-limited requests never reached the handler.
+    expect(processPaymentForLedger.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+});

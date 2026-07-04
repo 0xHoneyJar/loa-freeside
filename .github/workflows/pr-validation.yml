@@ -213,10 +213,16 @@ jobs:
           #
           # Known unfixable transitive vulns (node-vault → postman-request → form-data/qs/tough-cookie)
           # are excluded via JSON filtering. node-vault is unmaintained; replacement tracked in backlog.
+          #
+          # @trigger.dev/sdk chain (@trigger.dev/core → @opentelemetry/sdk-node): the only fix is
+          # the breaking v3→v4 SDK migration (npm marks it isSemVerMajor). Telemetry-side exposure,
+          # not a request-serving surface. Remove from this list when the trigger.dev v4 migration
+          # lands. Everything else was remediated 2026-07-04 (criticals via npm audit fix;
+          # undici→6.27.0 and ws→8.21.0 via overrides).
           AUDIT_JSON=$(npm audit --omit=dev --json 2>/dev/null || true)
 
           # Count high+critical vulns, excluding known unfixable packages
-          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request|node-vault"
+          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request|node-vault|@trigger.dev/sdk|@trigger.dev/core|@opentelemetry/sdk-node"
           HIGH_CRIT=$(echo "$AUDIT_JSON" | jq -r "
             [.vulnerabilities // {} | to_entries[] |
              select(.value.severity == \"high\" or .value.severity == \"critical\") |
