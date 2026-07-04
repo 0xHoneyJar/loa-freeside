@@ -1973,14 +1973,14 @@
           "local": "S2",
           "theme": "Consumption Doctor",
           "epic": "arrakis-96wh",
-          "status": "planned"
+          "status": "done"
         },
         {
           "number": 409,
           "local": "S3",
           "theme": "False-Green Sensor + upstream issue + E2E",
           "epic": "arrakis-edbg",
-          "status": "planned"
+          "status": "done"
         }
       ]
     }
