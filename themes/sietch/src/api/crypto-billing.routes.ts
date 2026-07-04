@@ -422,6 +422,20 @@ cryptoBillingRouter.post('/webhook', webhookRateLimiter, webhookPaymentThrottle,
     // Process the event through CryptoWebhookService (handles LVVER pattern)
     const result = await cryptoWebhookService.processEvent(event);
 
+    // A stale signed event that could not be durably recorded must NOT be
+    // acked — a 200 here would silently drop it from the reconciliation
+    // trail. 503 is retriable: NOWPayments redelivers on non-2xx.
+    if (result.status === 'quarantine_failed') {
+      res.status(503).json({
+        received: false,
+        status: result.status,
+        payment_id: result.paymentId,
+        payment_status: result.paymentStatus,
+        message: result.error,
+      });
+      return;
+    }
+
     // Return appropriate response
     res.json({
       received: true,

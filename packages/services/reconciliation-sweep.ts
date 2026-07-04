@@ -101,8 +101,10 @@ const TERMINAL_FAILED = ['failed', 'expired', 'refunded'];
 /**
  * Run the NOWPayments reconciliation sweep.
  *
- * Queries crypto_payments WHERE status IN ('waiting', 'confirming')
- * AND created_at < now() - minAgeMins. For each:
+ * Queries crypto_payments for every non-terminal status — including
+ * partially_paid, which can still receive a delayed `finished` webhook that
+ * the freshness gate quarantines — AND created_at < now() - minAgeMins.
+ * For each:
  *   1. Poll NOWPayments API for current status
  *   2. If finished + no credit_lots row: trigger idempotent mint
  *   3. If failed/expired: update crypto_payments status
@@ -129,7 +131,7 @@ export async function runReconciliationSweep(
   }>(
     `SELECT payment_id, community_id, status, price_amount, order_id
      FROM crypto_payments
-     WHERE status IN ('waiting', 'confirming', 'confirmed', 'sending')
+     WHERE status IN ('waiting', 'confirming', 'confirmed', 'sending', 'partially_paid')
        AND created_at < NOW() - $1 * INTERVAL '1 minute'
      ORDER BY created_at ASC
      LIMIT $2`,

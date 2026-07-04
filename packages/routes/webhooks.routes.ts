@@ -44,6 +44,7 @@
 
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Router, type Request, type Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { processPaymentForLedger, verifyPaymentExists } from '../services/nowpayments-handler.js';
@@ -151,33 +152,6 @@ function getRawBody(req: Request): Buffer | undefined {
 /** Webhook rate limit: 100 requests per minute per source IP. */
 export const WEBHOOK_RATE_LIMIT_MAX = 100;
 export const WEBHOOK_RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_BUCKET_CAP = 10_000; // bound memory under source-IP churn
-
-/**
- * Fixed-window in-memory limiter. Signature verification is CPU work and the
- * happy path hits Postgres/Redis, so unauthenticated callers must be bounded
- * BEFORE any of that runs. Per-process state is acceptable here: NOWPayments
- * IPN traffic is low-rate and the limiter is a DoS bound, not a billing
- * control (idempotency is enforced downstream by the dedupe key).
- */
-function createIpRateLimiter(max: number, windowMs: number) {
-  const buckets = new Map<string, { count: number; windowStart: number }>();
-  return (ip: string, now: number): boolean => {
-    const bucket = buckets.get(ip);
-    if (!bucket || now - bucket.windowStart >= windowMs) {
-      if (buckets.size >= RATE_BUCKET_CAP) {
-        for (const [key, b] of buckets) {
-          if (now - b.windowStart >= windowMs) buckets.delete(key);
-        }
-        if (buckets.size >= RATE_BUCKET_CAP) buckets.clear();
-      }
-      buckets.set(ip, { count: 1, windowStart: now });
-      return true;
-    }
-    bucket.count += 1;
-    return bucket.count <= max;
-  };
-}
 
 // --------------------------------------------------------------------------
 // Router
@@ -187,16 +161,22 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
   const router = Router();
   const { pool, redis, ipnSecret, logger, featureBillingEnabled } = deps;
   const webhookMaxAgeMs = deps.webhookMaxAgeMs ?? DEFAULT_WEBHOOK_MAX_AGE_MS;
-  const allowRequest = createIpRateLimiter(WEBHOOK_RATE_LIMIT_MAX, WEBHOOK_RATE_LIMIT_WINDOW_MS);
 
-  router.use('/nowpayments', (req: Request, res: Response, next) => {
-    if (!allowRequest(req.ip ?? 'unknown', Date.now())) {
+  // Per-IP fixed-window limiter, mounted BEFORE signature verification and
+  // any Postgres/Redis work. Per-process state is acceptable: NOWPayments IPN
+  // traffic is low-rate and this is a DoS bound, not a billing control
+  // (idempotency is enforced downstream by the dedupe key). Behind a proxy,
+  // the app must set `trust proxy` for req.ip to be the real client.
+  router.use('/nowpayments', rateLimit({
+    windowMs: WEBHOOK_RATE_LIMIT_WINDOW_MS,
+    limit: WEBHOOK_RATE_LIMIT_MAX,
+    standardHeaders: false,
+    legacyHeaders: false,
+    handler: (req: Request, res: Response) => {
       logger.warn({ ip: req.ip }, 'webhook rate limit exceeded');
       res.status(429).json({ status: 'rate_limited' });
-      return;
-    }
-    next();
-  });
+    },
+  }));
 
   /**
    * POST /webhooks/nowpayments — NOWPayments IPN callback
@@ -323,7 +303,9 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         // Stale event: quarantine. Record it durably (distinct dedupe slot so
         // it never blocks fresh processing) for the reconciliation sweep,
         // then ack — provider retries of a stale event stay stale, so a
-        // non-2xx would only generate retry noise.
+        // non-2xx would only generate retry noise. But if the durable record
+        // itself fails, we must NOT ack: a 200 would silently drop the event
+        // from the reconciliation trail. Return retriable 503 instead.
         try {
           await pool.query(
             `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
@@ -332,7 +314,12 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
             [`${paymentId}:${payload.payment_status}:stale`, JSON.stringify(payload)],
           );
         } catch (err) {
-          logger.error({ paymentId, err }, 'Failed to record quarantined stale webhook');
+          logger.error(
+            { paymentId, err },
+            'Failed to record quarantined stale webhook — returning retriable 503',
+          );
+          res.status(503).json({ status: 'error', reason: 'quarantine_record_failed' });
+          return;
         }
         logger.warn(
           {

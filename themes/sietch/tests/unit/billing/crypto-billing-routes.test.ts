@@ -73,7 +73,10 @@ vi.mock('../../../src/db/billing-queries.js', () => ({
   logBillingAuditEvent: vi.fn(),
 }));
 
+import express from 'express';
+import request from 'supertest';
 import { cryptoBillingRouter } from '../../../src/api/crypto-billing.routes.js';
+import { cryptoWebhookService } from '../../../src/services/billing/index.js';
 
 describe('Crypto Billing Routes', () => {
   beforeEach(() => {
@@ -175,6 +178,96 @@ describe('Crypto Billing Routes', () => {
           methods: expect.arrayContaining(['post']),
         })
       );
+    });
+  });
+
+  // ===========================================================================
+  // App-mounted webhook endpoint — hardened-path contract
+  //
+  // Proves the endpoint production traffic actually hits (server.ts mounts
+  // cryptoBillingRouter at /api/crypto with express.raw for /webhook)
+  // exercises the hardened semantics: verified events flow through
+  // cryptoWebhookService.processEvent, quarantine-record failure is a
+  // retriable 503, and durable quarantine is an acked 200.
+  // ===========================================================================
+
+  describe('POST /api/crypto/webhook (app-mounted)', () => {
+    function makeApp() {
+      const app = express();
+      // Mirror server.ts raw-body config for the webhook path
+      app.use('/api/crypto/webhook', express.raw({
+        type: 'application/json',
+        verify: (req: any, _res, buf) => {
+          req.rawBody = buf;
+        },
+      }));
+      app.use('/api/crypto', cryptoBillingRouter);
+      return app;
+    }
+
+    const mockedService = vi.mocked(cryptoWebhookService);
+
+    beforeEach(() => {
+      mockedService.verifySignature.mockReturnValue({
+        paymentId: '12345',
+        status: 'finished',
+        actuallyPaid: 0.0025,
+        payCurrency: 'btc',
+        priceAmount: 99,
+        orderId: 'order_test',
+        timestamp: new Date(),
+        rawData: {},
+      } as any);
+    });
+
+    async function post(app: ReturnType<typeof makeApp>) {
+      return request(app)
+        .post('/api/crypto/webhook')
+        .set('content-type', 'application/json')
+        .set('x-nowpayments-sig', 'a'.repeat(128))
+        .send(JSON.stringify({ payment_id: 12345, payment_status: 'finished' }));
+    }
+
+    it('routes verified events through cryptoWebhookService.processEvent and acks', async () => {
+      mockedService.processEvent.mockResolvedValue({
+        status: 'processed',
+        paymentId: '12345',
+        paymentStatus: 'finished',
+      } as any);
+
+      const res = await post(makeApp());
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ received: true, status: 'processed' });
+      expect(mockedService.processEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('acks a durably quarantined stale event with 200', async () => {
+      mockedService.processEvent.mockResolvedValue({
+        status: 'quarantined',
+        paymentId: '12345',
+        paymentStatus: 'finished',
+        message: 'Event timestamp too old - quarantined for reconciliation',
+      } as any);
+
+      const res = await post(makeApp());
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ received: true, status: 'quarantined' });
+    });
+
+    it('returns retriable 503 when a stale event cannot be durably recorded', async () => {
+      mockedService.processEvent.mockResolvedValue({
+        status: 'quarantine_failed',
+        paymentId: '12345',
+        paymentStatus: 'finished',
+        error: 'Stale event could not be durably recorded',
+      } as any);
+
+      const res = await post(makeApp());
+
+      expect(res.status).toBe(503);
+      expect(res.body).toMatchObject({ received: false, status: 'quarantine_failed' });
     });
   });
 });

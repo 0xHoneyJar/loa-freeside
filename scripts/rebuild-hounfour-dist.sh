@@ -24,6 +24,20 @@ REPO="https://github.com/0xHoneyJar/loa-hounfour.git"
 TAG="[rebuild-hounfour-dist]"
 ROOT_DIR=$(pwd -P)
 
+# In strict mode (FREESIDE_REBUILD_STRICT=1 — set by postinstall when the
+# install opted in via FREESIDE_REBUILD_HOUNFOUR_ON_INSTALL) a rebuild
+# FAILURE fails the install instead of silently keeping the stale dist.
+# "Nothing to do" skips (no SHA pin, package absent, dist already fresh)
+# remain soft exits in both modes.
+rebuild_failure() {
+  echo "$TAG WARNING: $1"
+  if [[ "${FREESIDE_REBUILD_STRICT:-0}" == "1" || "${FREESIDE_REBUILD_STRICT:-}" == "true" ]]; then
+    echo "$TAG STRICT: rebuild failure fails the install (FREESIDE_REBUILD_STRICT set)"
+    exit 1
+  fi
+  exit 0
+}
+
 # =============================================================================
 # Step 0: Extract the commit SHA from root package.json
 # =============================================================================
@@ -113,8 +127,7 @@ echo "$TAG Source SHA valid: $HAS_VALID_SOURCE_SHA"
 # =============================================================================
 
 if ! command -v git &>/dev/null; then
-  echo "$TAG WARNING: git not available — cannot rebuild from source"
-  exit 0
+  rebuild_failure "git not available — cannot rebuild from source"
 fi
 
 # =============================================================================
@@ -136,13 +149,11 @@ git fetch --depth 1 origin "$COMMIT_SHA" 2>/dev/null || {
   cd "$BUILD_DIR"
   rm -rf repo
   git clone "$REPO" repo 2>/dev/null || {
-    echo "$TAG WARNING: git clone failed — cannot rebuild"
-    exit 0
+    rebuild_failure "git clone failed — cannot rebuild"
   }
   cd repo
   git checkout "$COMMIT_SHA" 2>/dev/null || {
-    echo "$TAG WARNING: Could not checkout $COMMIT_SHA — cannot rebuild"
-    exit 0
+    rebuild_failure "Could not checkout $COMMIT_SHA — cannot rebuild"
   }
 }
 
@@ -177,15 +188,13 @@ if [[ -f "package-lock.json" ]]; then
   npm ci --ignore-scripts --registry https://registry.npmjs.org 2>/dev/null || {
     echo "$TAG WARNING: npm ci failed, falling back to npm install --ignore-scripts..."
     npm install --ignore-scripts --registry https://registry.npmjs.org 2>/dev/null || {
-      echo "$TAG WARNING: npm install failed — cannot rebuild"
-      exit 0
+      rebuild_failure "npm install failed — cannot rebuild"
     }
   }
 else
   echo "$TAG No package-lock.json found — using npm install --ignore-scripts..."
   npm install --ignore-scripts --registry https://registry.npmjs.org 2>/dev/null || {
-    echo "$TAG WARNING: npm install failed — cannot rebuild"
-    exit 0
+    rebuild_failure "npm install failed — cannot rebuild"
   }
 fi
 
@@ -199,8 +208,7 @@ if [[ -x "node_modules/.bin/tsc" ]]; then
 elif command -v npx &>/dev/null; then
   TSC="npx tsc"
 else
-  echo "$TAG WARNING: No TypeScript compiler found — cannot rebuild"
-  exit 0
+  rebuild_failure "No TypeScript compiler found — cannot rebuild"
 fi
 
 # Use tsconfig.build.json if available, otherwise default tsconfig.json
@@ -213,8 +221,7 @@ fi
 
 echo "$TAG Compiling TypeScript (SOURCE_DATE_EPOCH=0)..."
 $TSC $TSCONFIG 2>/dev/null || {
-  echo "$TAG WARNING: TypeScript compilation failed — cannot rebuild"
-  exit 0
+  rebuild_failure "TypeScript compilation failed — cannot rebuild"
 }
 
 # =============================================================================
@@ -222,8 +229,7 @@ $TSC $TSCONFIG 2>/dev/null || {
 # =============================================================================
 
 if [[ ! -d "dist" ]]; then
-  echo "$TAG WARNING: No dist/ produced — cannot rebuild"
-  exit 0
+  rebuild_failure "No dist/ produced — cannot rebuild"
 fi
 
 NEW_VERSION=$(grep -oP "CONTRACT_VERSION\s*=\s*'[^']+'" "dist/version.js" 2>/dev/null | grep -oP "'[^']+'" | tr -d "'" || echo "unknown")

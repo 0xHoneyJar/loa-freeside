@@ -27,10 +27,14 @@ if (optIn !== '1' && optIn !== 'true') {
   process.exit(0);
 }
 
+// Opt-in installs are strict: a rebuild FAILURE (missing git, failed clone,
+// failed npm install, failed tsc) must fail the install rather than leave a
+// stale dist behind. The rebuild script honors FREESIDE_REBUILD_STRICT.
+const env = { ...process.env, FREESIDE_REBUILD_STRICT: '1' };
 const override = process.env.FREESIDE_POSTINSTALL_REBUILD_CMD;
 const result = override
-  ? spawnSync(override, { stdio: 'inherit', shell: true })
-  : spawnSync('bash', ['scripts/rebuild-hounfour-dist.sh'], { stdio: 'inherit' });
+  ? spawnSync(override, { stdio: 'inherit', shell: true, env })
+  : spawnSync('bash', ['scripts/rebuild-hounfour-dist.sh'], { stdio: 'inherit', env });
 
 if (result.error) {
   console.error(`[postinstall] rebuild failed to start: ${result.error.message}`);

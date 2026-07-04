@@ -5,6 +5,16 @@ Operational contract for `POST /webhooks/nowpayments`
 dedupe semantics, freshness quarantine, and reconciliation behavior demanded
 by issues #324, #325, #326, and #327.
 
+> **Production mounting (honest state).** The monolith's live NOWPayments
+> endpoint is `POST /api/crypto/webhook` — `themes/sietch/src/api/
+> crypto-billing.routes.ts` → `CryptoWebhookService` (raw-body HMAC, LVVER
+> lock, Redis+DB `(payment_id, status)` dedupe, freshness gate with durable
+> quarantine, and 503 `quarantine_failed` when the quarantine record cannot
+> be written). `packages/routes/webhooks.routes.ts` is the extracted-platform
+> (Postgres) implementation of the same contract; it is not yet mounted by
+> the sietch app and is kept contract-equivalent by its test suite. Route
+> hardening changes must land in BOTH paths until the extraction completes.
+
 ## Response-code contract
 
 NOWPayments retries IPN delivery on any **non-2xx** response (bounded retry
@@ -21,6 +31,7 @@ schedule with backoff). The handler uses that deliberately:
 | 404 `error` / `unknown_payment` | signature valid but no `crypto_payments` row yet (webhook raced payment creation) | **yes** — retriable, event is NOT recorded/deduped | yes |
 | 500 `error` / `raw_body_unavailable` | server misconfiguration: raw-body capture middleware missing | yes (and page the operator — this is a deploy bug) | yes |
 | 503 `error` / `internal` | `webhook_events` INSERT (first durable capture) failed transiently | **yes** — this is the #326 fix; a 200 here would silently drop payments | yes |
+| 503 `error` / `quarantine_record_failed` | stale event's durable quarantine record could not be written | **yes** — acking an unrecorded stale event would drop it from the reconciliation trail | yes |
 | 503 `disabled` | `FEATURE_BILLING_ENABLED` is false | yes | yes |
 
 ## Dedupe identity (#324)
@@ -61,7 +72,9 @@ schedule with backoff). The handler uses that deliberately:
   `webhook_events` under `event_id='<payment_id>:<status>:stale'` (a distinct
   dedupe slot that never blocks fresh processing), logged with
   `providerTimestamp`, `receivedAt`, `ageMs`, and `freshness: 'stale'`, then
-  acked 200 `quarantined`.
+  acked 200 `quarantined`. If the durable record itself fails, the event is
+  **not** acked: 503 `quarantine_record_failed` (retriable) so the provider
+  redelivers.
 - **Missing** `updated_at` is accepted and logged with
   `freshness: 'missing_timestamp'`. Policy rationale: the timestamp lives
   inside the signed payload, so an attacker cannot strip it without
@@ -87,8 +100,11 @@ The webhook path is best-effort real-time; the reconciliation sweep
 3. **Dropped durable capture** — a 503 storm (persistent `webhook_events`
    INSERT failure) means DB trouble; NOWPayments retries cover the transient
    case, and the sweep's stuck-payment query
-   (`idx_crypto_payments_reconciliation`, statuses `waiting`/`confirming`)
-   covers exhaustion of the provider retry schedule.
+   (`idx_crypto_payments_reconciliation`, statuses `waiting`/`confirming`/
+   `confirmed`/`sending`/`partially_paid` — migration 0019) covers exhaustion
+   of the provider retry schedule. `partially_paid` is included because it can
+   still receive a delayed `finished` webhook that the freshness gate
+   quarantines; the sweep is that payment's only recovery path.
 
 ## Alerting hooks
 

@@ -201,15 +201,37 @@ describe('CryptoWebhookService', () => {
     // -------------------------------------------------------------------------
 
     describe('timestamp check', () => {
-      it('should reject stale events', async () => {
+      it('should quarantine stale events with a durable record', async () => {
         const staleEvent = createTestEvent({
           timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
         });
 
         const result = await cryptoWebhookService.processEvent(staleEvent);
 
-        expect(result.status).toBe('failed');
-        expect(result.error).toContain('too old');
+        expect(result.status).toBe('quarantined');
+        expect(result.message).toContain('too old');
+        // Durable record for the reconciliation sweep
+        expect(mockedBillingQueries.logBillingAuditEvent).toHaveBeenCalledWith(
+          'crypto_webhook_quarantined_stale',
+          expect.objectContaining({ paymentId: staleEvent.paymentId }),
+        );
+        // No processing side effects
+        expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
+      });
+
+      it('should return quarantine_failed when the durable record cannot be written', async () => {
+        mockedBillingQueries.logBillingAuditEvent.mockImplementationOnce(() => {
+          throw new Error('disk full');
+        });
+        const staleEvent = createTestEvent({
+          timestamp: new Date(Date.now() - 15 * 60 * 1000),
+        });
+
+        const result = await cryptoWebhookService.processEvent(staleEvent);
+
+        expect(result.status).toBe('quarantine_failed');
+        expect(result.error).toContain('durably recorded');
+        expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
       });
 
       it('should accept events within age limit', async () => {

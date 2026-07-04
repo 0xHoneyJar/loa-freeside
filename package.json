@@ -21,6 +21,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "aws-embedded-metrics": "^4.2.1"
+    "aws-embedded-metrics": "^4.2.1",
+    "express-rate-limit": "^8.5.2"
   }
 }

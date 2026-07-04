@@ -276,6 +276,30 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
     expect(staleLog?.[0]).toHaveProperty('receivedAt');
   });
 
+  it('returns retriable 503 when the stale quarantine record cannot be written', async () => {
+    const stale = {
+      payment_id: 224,
+      payment_status: 'finished',
+      order_id: 'order-2b',
+      updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    };
+    const { pool, webhookEvents } = makeFakePool({ failInsertTimes: 1 });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(stale);
+
+    const res1 = await post(app, raw, sig);
+    expect(res1.status).toBe(503);
+    expect(res1.body).toEqual({ status: 'error', reason: 'quarantine_record_failed' });
+    expect(webhookEvents.has('nowpayments:224:finished:stale')).toBe(false);
+
+    // Provider retry after the transient failure records the quarantine.
+    const res2 = await post(app, raw, sig);
+    expect(res2.status).toBe(200);
+    expect(res2.body).toEqual({ status: 'quarantined', reason: 'stale_timestamp' });
+    expect(webhookEvents.has('nowpayments:224:finished:stale')).toBe(true);
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
+  });
+
   it('processes an event with a missing timestamp (documented policy) and logs the verdict', async () => {
     const noTs = { payment_id: 223, payment_status: 'confirming', order_id: 'order-3' };
     const { pool } = makeFakePool();

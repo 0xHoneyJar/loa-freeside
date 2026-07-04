@@ -70,8 +70,14 @@ const PROCESSED_EVENT_CACHE_TTL = 24 * 60 * 60;
  * Crypto webhook processing result
  */
 export interface CryptoWebhookResult {
-  /** Processing status */
-  status: 'processed' | 'duplicate' | 'skipped' | 'failed';
+  /**
+   * Processing status.
+   * - 'quarantined': stale signed event, durably recorded for reconciliation,
+   *   safe to ack (a provider retry would still be stale).
+   * - 'quarantine_failed': stale signed event that could NOT be durably
+   *   recorded — the route must return a retriable 503, never ack.
+   */
+  status: 'processed' | 'duplicate' | 'skipped' | 'failed' | 'quarantined' | 'quarantine_failed';
   /** Payment ID */
   paymentId: string;
   /** Payment status */
@@ -212,13 +218,37 @@ class CryptoWebhookService {
             ageMs: eventAge,
             maxAgeMs: MAX_EVENT_AGE_MS,
           },
-          'Rejecting stale crypto webhook event (potential replay attack)'
+          'Quarantining stale crypto webhook event (potential replay attack)'
         );
+        // Durably record the quarantined event so the reconciliation sweep
+        // can recover the payment. If the record itself fails, the event
+        // must NOT be acked (the caller returns a retriable 503).
+        try {
+          logBillingAuditEvent('crypto_webhook_quarantined_stale', {
+            paymentId,
+            paymentStatus,
+            eventTimestamp: event.timestamp.toISOString(),
+            ageMs: eventAge,
+            maxAgeMs: MAX_EVENT_AGE_MS,
+            paymentProvider: 'nowpayments',
+          });
+        } catch (recordErr) {
+          logger.error(
+            { paymentId, paymentStatus, error: (recordErr as Error).message },
+            'Failed to durably record quarantined stale webhook'
+          );
+          return {
+            status: 'quarantine_failed',
+            paymentId,
+            paymentStatus,
+            error: 'Stale event could not be durably recorded',
+          };
+        }
         return {
-          status: 'failed',
+          status: 'quarantined',
           paymentId,
           paymentStatus,
-          error: 'Event timestamp too old - possible replay attack',
+          message: 'Event timestamp too old - quarantined for reconciliation',
         };
       }
 
