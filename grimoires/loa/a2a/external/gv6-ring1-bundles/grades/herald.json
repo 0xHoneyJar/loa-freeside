@@ -1,7 +1,7 @@
 {
   "bundle": "herald",
-  "score": "8/9",
-  "passed": 8,
+  "score": "9/9",
+  "passed": 9,
   "rubric_hash": "sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370",
   "checks": [
     {
@@ -43,8 +43,8 @@
     {
       "check_id": "C7",
       "name": "grounding_file_exists",
-      "status": "fail",
-      "reason": "reality.md is an honest absence stub \u2014 no grounding file in source"
+      "status": "pass",
+      "reason": "reality.md present"
     },
     {
       "check_id": "C8",

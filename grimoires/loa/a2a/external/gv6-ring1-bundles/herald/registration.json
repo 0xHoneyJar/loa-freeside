@@ -2,7 +2,7 @@
   "bundle_schema_version": "1.0.0",
   "slug": "herald",
   "version": "0.1.0",
-  "content_hash": "80f611e491d62d6ad2389b9394e8d57c22adc97cc926f9fc9572578e5065f1ce",
+  "content_hash": "486d3e35a047b19dcacbc7281a8dc2ac8c8d3d83e3139e66ca9aedc4c8a82d05",
   "skill_manifest": [
     {
       "command": "grounding-announcements",

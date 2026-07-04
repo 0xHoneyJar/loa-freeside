@@ -8,7 +8,7 @@ the reference construct, a mid-tier construct, and a deliberately broken one.
 | Bundle | Source | Score (C1–C9) | Fails | Why |
 |---|---|---|---|---|
 | `gecko/` | construct-gecko (the reference grounded construct) | **9/9** | — | reference-grade; its `reality.md` IS the `identity/environment.md` shape |
-| `herald/` | construct-herald | **8/9** | C7 | ships no `identity/environment.md`; `reality.md` is an honest absence stub |
+| `herald/` | construct-herald | **9/9** | — | grounded 2026-07-03 (C7 rollout): real thin-layer `identity/environment.md` citing the shared ground; was 8/9 pre-grounding |
 | `gecko-broken/` | gecko copy + 3 injections | **6/9** | C3, C4, C8 | invented `model_tier: quantum` · Write-capability routed through read-only `agent: Explore` · genome link 1 tampered post-mint (see its `INJECTIONS.md`) |
 
 ## The rubric
