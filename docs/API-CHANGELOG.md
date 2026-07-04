@@ -10,6 +10,17 @@ For the full route index, see [API-REFERENCE.md](API-REFERENCE.md).
 Each entry follows:
 
 ```
+## [7.59.0] — 2026-07-04 — world-freeside-dashboard terraform + @freeside/cli scaffold
+
+## Disclosure
+
+### Added
+
+- **shared/evals**: GV6 Ring 1 theatre — C1-C9 rubric + three admission bundles (echelon-core#178) (#436)
+
+_Source: PR #178_
+
+
 ## [YYYY-MM-DD] — Summary
 
 ### Added / Changed / Deprecated / Removed
