@@ -20,6 +20,10 @@ set -euo pipefail
 OUTPUT_FORMAT="markdown"
 SINGLE_CELL=""
 GITHUB_DIR="${GITHUB_DIR:-$HOME/Documents/GitHub}"
+# Registry used to resolve a cell's git_url so in-monolith cells (git_url=loa-freeside,
+# e.g. events-api) are handled without a separate sibling repo (bead
+# arrakis-cluster-compliance-audit-crash-88ah). Overridable for hermetic tests.
+AUDIT_REGISTRY_FILE="${AUDIT_REGISTRY_FILE:-$GITHUB_DIR/packages/freeside-registry/registry.yaml}"
 
 # Cell roster + fs paths (parallel arrays for bash 3.2 compatibility)
 CELL_SLUGS=(identity-api sonar-api storage-api mint-api activities-api inventory-api score-api mediums-api)
@@ -53,8 +57,32 @@ cell_dir_for() {
   echo ""
 }
 
+# Resolve a cell's declared git_url from the registry (pure-awk parse, no yq dep).
+# Empty when the registry is unreadable or the slug is absent.
+git_url_for() {
+  local target="$1"
+  [ -f "$AUDIT_REGISTRY_FILE" ] || { echo ""; return; }
+  awk -v want="$target" '
+    /^  [A-Za-z0-9_.-]+:[ \t]*$/ { cur=$0; sub(/^  /,"",cur); sub(/:.*/,"",cur); next }
+    cur==want && /^    git_url:/ { u=$0; sub(/^[ \t]*git_url:[ \t]*/,"",u); print u; exit }
+  ' "$AUDIT_REGISTRY_FILE"
+}
+
 probe_cell() {
   local slug="$1"
+
+  # In-monolith cells (git_url=loa-freeside, e.g. events-api) have no separate
+  # repo or mount to audit. Emit a valid, honest record so the aggregating jq
+  # never sees malformed JSON (bead arrakis-cluster-compliance-audit-crash-88ah).
+  local url
+  url="$(git_url_for "$slug")"
+  case "$url" in
+    *"/loa-freeside" | *"/loa-freeside.git")
+      echo "$slug|IN_MONOLITH|(monolith)|in-monolith|—|Y|Y|Y|Y|?|clean"
+      return
+      ;;
+  esac
+
   local dir
   dir="$(cell_dir_for "$slug")"
   local full="$GITHUB_DIR/$dir"
@@ -122,36 +150,40 @@ done
 
 # Output
 if [ "$OUTPUT_FORMAT" = "json" ]; then
-  echo "{"
-  echo "  \"audit_ts\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
-  echo "  \"cells\": ["
-  first=1
-  for line in "${RESULTS[@]}"; do
+  # Build each per-cell record with jq (JSON-safe: --arg escapes any field
+  # content), then validate with `jq empty` BEFORE aggregation. A record that
+  # somehow fails validation becomes a degraded error entry — it never aborts
+  # the whole audit (bead arrakis-cluster-compliance-audit-crash-88ah). This
+  # replaces a raw heredoc whose string interpolation could emit invalid JSON
+  # that crashed the downstream `jq --argjson` consumer.
+  cell_objs=()
+  for line in ${RESULTS[@]+"${RESULTS[@]}"}; do
     IFS='|' read -r slug fs def pat siz sub cmd gr bd pm drft <<< "$line"
-    if [ $first -eq 1 ]; then
-      first=0
-    else
-      echo ","
+    obj=$(jq -n \
+      --arg slug "$slug" \
+      --arg fs "$fs" \
+      --arg defbr "$def" \
+      --arg pat "$pat" \
+      --arg siz "$siz" \
+      --arg pm "$pm" \
+      --arg drft "$drft" \
+      --argjson sub "$([ "$sub" = "Y" ] && echo true || echo false)" \
+      --argjson cmd "$([ "$cmd" = "Y" ] && echo true || echo false)" \
+      --argjson gr "$([ "$gr" = "Y" ] && echo true || echo false)" \
+      --argjson bd "$([ "$bd" = "Y" ] && echo true || echo false)" \
+      '{slug: $slug, fs_path: $fs, default_branch: $defbr, mount_pattern: $pat,
+        mount_size_human: $siz, substantive: $sub, claude_md_present: $cmd,
+        grimoires_loa_present: $gr, beads_present: $bd, package_manager: $pm,
+        drift_findings: $drft}')
+    if ! printf '%s' "$obj" | jq empty 2>/dev/null; then
+      obj=$(jq -n --arg slug "$slug" \
+        '{slug: $slug, status: "ERROR", error: "per-cell record failed JSON validation"}')
     fi
-    cat <<JSON
-    {
-      "slug": "$slug",
-      "fs_path": "$fs",
-      "default_branch": "$def",
-      "mount_pattern": "$pat",
-      "mount_size_human": "$siz",
-      "substantive": $([ "$sub" = "Y" ] && echo "true" || echo "false"),
-      "claude_md_present": $([ "$cmd" = "Y" ] && echo "true" || echo "false"),
-      "grimoires_loa_present": $([ "$gr" = "Y" ] && echo "true" || echo "false"),
-      "beads_present": $([ "$bd" = "Y" ] && echo "true" || echo "false"),
-      "package_manager": "$pm",
-      "drift_findings": "$drft"
-    }
-JSON
+    cell_objs+=("$obj")
   done
-  echo ""
-  echo "  ]"
-  echo "}"
+  printf '%s\n' ${cell_objs[@]+"${cell_objs[@]}"} | jq -s \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{audit_ts: $ts, cells: .}'
 else
   echo "# Cluster Cell Audit — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo ""

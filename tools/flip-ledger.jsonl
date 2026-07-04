@@ -1,0 +1,37 @@
+# tools/flip-ledger.jsonl — the anti-rot flip ledger (SDD §3.2, FR-4a-d).
+#
+# Append-only, git-tracked, NEVER truncated. This file is the durable evidence trail for every
+# advisory-sensor promotion: an advisory immune sensor earns blocking (required-check) authority
+# ONLY after it proves itself here, and can never rot back into a numb always-green gate because
+# every promotion is grounded in an operator-adjudicated true-catch recorded below.
+#
+# WRITE MODEL — main-branch single writer (SDD §3.2, R-9):
+#   * Evaluation entries are appended ONLY on the linear main history (post-merge), never by a
+#     PR-time run. No two PRs ever touch this file concurrently -> no merge conflicts by construction.
+#   * Adjudication (unadjudicated -> true-catch|false-positive) is an OPERATOR GIT COMMIT: the
+#     operator edits the entry's `outcome` and commits it. Provenance = git authorship. A sensor
+#     can NEVER self-adjudicate — `adjudicated_by` is a real git author, never the sensor.
+#   * Tamper-evidence = the branch-protected main commit history (reflog/PR trail). No separate
+#     signing layer; the git history IS the audit.
+#
+# EVALUATION RECORD SHAPE (one sensor run outcome):
+#   {"ts":"<ISO-8601 UTC>","sensor":"<sensor-name>","seeded":<bool>,
+#    "outcome":"true-catch|false-positive|clean|unadjudicated",
+#    "adjudicated_by":"<git author or null>","pr":<number-or-null>}
+#     - seeded:true            -> a deliberate break-then-revert fixture the sensor MUST catch (the
+#                                 seeded qualifier, FR-4c). Only a seeded:true + true-catch can flip.
+#     - outcome:clean          -> the sensor ran and found nothing (auto-resolved, no adjudication).
+#     - outcome:unadjudicated  -> a flag awaiting the operator's verdict; BLOCKS promotion.
+#     - outcome:true-catch     -> operator confirmed the flag was a real problem.
+#     - outcome:false-positive -> operator confirmed the flag was wrong; the sensor cried wolf.
+#
+# PROMOTION EVENT SHAPE (written by tools/flip-promote.sh on an operator promote/rollback):
+#   {"ts":"<ISO-8601 UTC>","sensor":"<sensor-name>","event":"promote|remove",
+#    "blocking":<bool>,"adjudicated_by":"<git author>","pr":null}
+#
+# flip-report.sh reads the LAST N=10 evaluation entries per sensor for the rolling-window state
+# (calibrating | flip-ready | blocking); older entries stay here forever as provenance.
+#
+# --- example (commented; the live ledger starts empty -> every sensor is `calibrating` at K=0/10) ---
+# {"ts":"2026-07-03T00:00:00Z","sensor":"scope-checks","seeded":true,"outcome":"true-catch","adjudicated_by":"soju","pr":407}
+# {"ts":"2026-07-03T00:01:00Z","sensor":"scope-checks","event":"promote","blocking":true,"adjudicated_by":"soju","pr":null}
