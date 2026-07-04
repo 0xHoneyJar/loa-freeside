@@ -61,3 +61,26 @@ tools/instrument-truth-sensor.mjs:
 tools/governance-doctor.sh:
   - "grimoires/loa/reality"
   - "git log"
+
+# ── Autopoiesis S1 (Trustworthy Green settle gate + flip mechanism) ──────────
+
+# The scoped-required-checks sensor (S1-T2). Ground truth = the LIVE changed-file
+# set (`git diff --name-only`, seam SCOPE_DIFF_CMD) reverse-walked over every
+# packages/**/package.json by tools/lib/scope-classify.sh — never a self-declared
+# package list. Name matches *-sensor.* so the lint forces this registration.
+tools/scope-checks-sensor.sh:
+  - "scope-classify.sh"
+  - "--name-only"
+
+# The anti-rot flip state machine (S1-T5). Ground truth = the git-tracked
+# append-only tools/flip-ledger.jsonl (real seeded/true-catch/adjudication history),
+# re-derived over a rolling last-N window — never a self-reported "ready" flag.
+tools/flip-report.sh:
+  - "flip-ledger.jsonl"
+
+# The operator-run required-list migration (S1-T6). Ground truth = flip-report.sh's
+# re-derived state (must be flip-ready) + the LIVE branch-protection required list
+# read/written via the gh api — never a self-asserted promotion.
+tools/flip-promote.sh:
+  - "flip-report.sh"
+  - "branches/main/protection"

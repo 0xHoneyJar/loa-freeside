@@ -396,3 +396,13 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
   `@freeside/ordering-protocol` ← `packages/services/ordering`.
 - **OQ-5 STILL OPEN (upstream loa path)**: which repo/path owns `bridge-orchestrator.sh` — needs the loa repo;
   defer to FR-3b issue-filing time (FR-3b acceptance = issue filed, does NOT block S3).
+
+## Bridge reconciliation — 2026-07-03 (autopoiesis)
+- Prior `/run-bridge` JACKED_OUT as silent no-op (bridge-20260703-fbeb2d): 0 sprints/0 findings — hit stale HALTED DSL run-state (the `arrakis-run-bridge-resume-silent-noop-flzl` bug).
+- Two plans were tangled: run-state=plan-datastore-legibility (HALTED, S2/S3 op-gated) vs on-disk sprint.md=autopoiesis (uncommitted).
+- Operator chose: drive **autopoiesis** on a **fresh branch off main**.
+- Actions: preserved uncommitted plan (f0c16945) → new branch `cycle/autopoiesis` off origin/main (40bf29e7, single-domain, path-domain-check clean) → archived stale run-state to `.run/*.prev-dsl-*` → fresh bridge `bridge-20260703-5f9926`.
+- DSL cycle left intact: `cycle/datastore-legibility` branch + open PRs #433/#434 untouched.
+
+### S1 Decision Log (autopoiesis, 2026-07-03)
+- **[ACCEPTED-DEFERRED] immune-check.sh local doctors[] extension (part of S1-T8).** The sprint asked to also add scope-checks as a 4th doctor in the LOCAL banner `tools/immune-check.sh`. Deferred: that file's aggregation + its 106-line test are tightly coupled to exactly 3 doctors (a 3×3 severity matrix); adding a 4th is a refactor of working, tested code with real regression risk to the estate-immune banner — out of proportion to its value (a local convenience view). The sensor is fully **consumable** without it: its own `--probe`/`--json`, the ground-truth lint registration, and the new advisory `scope-checks` job in `.github/workflows/immune-doctors.yml` (the CI surface where "green means something" actually bites). Upgrade trigger: when immune-check.sh next gets a structural touch, generalize its doctor loop to N doctors + fixture-parametrize the test, then fold scope-checks/consumption/false-green in together.

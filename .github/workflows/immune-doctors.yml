@@ -246,3 +246,53 @@ jobs:
             echo "::warning title=M0 fixture regressed::tools/check-instrument-ground-truth.test.sh failed — the lint may no longer catch a planted liar. (informational; does not block this PR)"
           fi
           exit 0
+
+  # ── Autopoiesis S1: scoped-required-checks sensor (advisory, NEVER a required gate) ──
+  # Reports which packages + transitive dependents a PR actually touches, and the concrete
+  # `pnpm --filter` commands that would exercise them — or fallback-to-full on a cross-cutting
+  # change. SOFT by design (same rationale as gate-freeze): a NEW blocking check would deepen
+  # the very freeze this campaign cures. The verdict rides the summary + a ::notice::, never a red X.
+  scope-checks:
+    name: scope-checks (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history so the sensor can diff base...head
+
+      - name: Probe the scoped required-check set (read-only; never blocks)
+        run: |
+          set +e   # advisory: the sensor's exit is reported, never fails the job
+          BASE="origin/${{ github.base_ref || 'main' }}"
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref || 'main' }}" 2>/dev/null || true
+          tools/scope-checks-sensor.sh --base "$BASE" --json > scope.json 2> scope.err
+          sensor_exit=$?
+
+          # Guarantee a valid-JSON artifact even if the sensor crashed (surface it, never bank a silent green).
+          if ! jq -e . scope.json >/dev/null 2>&1; then
+            jq -n --arg err "$(tail -c 2000 scope.err 2>/dev/null)" --argjson ex "${sensor_exit:-1}" \
+              '{sensor:"scope-checks", verdict:"ERROR", exit_code:$ex, evidence:{stderr:$err}}' > scope.json
+          fi
+
+          VERDICT=$(jq -r '.verdict // "ERROR"' scope.json)
+          NPKG=$(jq -r '.evidence.packages | length' scope.json 2>/dev/null || echo 0)
+          {
+            echo "## Immune Doctors · scope-checks — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "**verdict=$VERDICT** (exit $sensor_exit) · $NPKG package(s) in scope"
+            echo ""
+            echo '```json'
+            jq '.evidence' scope.json 2>/dev/null || cat scope.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Scoped checks::verdict=$VERDICT · $NPKG package(s) in scope (informational; does not block this PR)"
+
+          # Validate the record against the shared schema (NFR-7) — informational.
+          if node tools/validate-immune-verdict.mjs "$(cat scope.json)" >/dev/null 2>&1; then
+            echo "::notice::scope-checks record conforms to immune-verdict.schema.json"
+          else
+            echo "::warning title=Verdict schema drift::scope-checks --json did not validate against immune-verdict.schema.json"
+          fi
+
+          exit 0
