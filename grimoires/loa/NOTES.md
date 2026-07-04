@@ -406,3 +406,10 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 
 ### S1 Decision Log (autopoiesis, 2026-07-03)
 - **[ACCEPTED-DEFERRED] immune-check.sh local doctors[] extension (part of S1-T8).** The sprint asked to also add scope-checks as a 4th doctor in the LOCAL banner `tools/immune-check.sh`. Deferred: that file's aggregation + its 106-line test are tightly coupled to exactly 3 doctors (a 3×3 severity matrix); adding a 4th is a refactor of working, tested code with real regression risk to the estate-immune banner — out of proportion to its value (a local convenience view). The sensor is fully **consumable** without it: its own `--probe`/`--json`, the ground-truth lint registration, and the new advisory `scope-checks` job in `.github/workflows/immune-doctors.yml` (the CI surface where "green means something" actually bites). Upgrade trigger: when immune-check.sh next gets a structural touch, generalize its doctor loop to N doctors + fixture-parametrize the test, then fold scope-checks/consumption/false-green in together.
+
+### S1 review outcome (autopoiesis, 2026-07-03)
+- Adversarial self-review (2 lenses: scope/shell + flip/security) surfaced 2 flags; BOTH resolved as artifacts, no real defects:
+  1. scope_for_diff "false-narrow transitive walk" = FALSE ALARM — test subshell inherited `continue`→`claude --continue` alias (see [[continue-alias-shell-contamination]]); clean-bash repro returns the full transitive closure; bats (clean shell) always passed.
+  2. flip-promote "PAT leak" = FALSE POSITIVE — PAT value never echoed (only var-name in REFUSED msgs + `<your-pat>` template).
+- Confirmed green in clean env: validator REJECTS missing/invalid exit_code; flip-ready precondition guards the gh API; transitive scope walk correct. S1 = 50 tests + lint, no findings.
+- NOTE: the two dispatched review agents stalled (~7min, no output) — root cause = they ran Bash repros hitting the `continue` alias → nested `claude --continue` hangs. Stopped them; did the review inline in clean bash instead.
