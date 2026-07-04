@@ -47,4 +47,12 @@ setup() {
   echo "$output" | node "$ROOT/tools/validate-immune-verdict.mjs"
 }
 
+@test "real resolution: consumer declares dep but workspace NOT installed (no symlink) -> insufficient (exit 1), never a false flag" {
+  # No CONSUMPTION_PROBE_CMD -> the real node_modules resolution path runs. @freeside/fx-lib is
+  # declared by @freeside/fx-app but there is no node_modules symlink (nothing pnpm-installed).
+  run env CONSUMPTION_ROOT="$T" "$DOC" @freeside/fx-lib --json
+  [ "$status" -eq 1 ]
+  echo "$output" | jq -e '.verdict == "insufficient"'
+}
+
 # immune-lint:allow — bats test fixture for consumption-doctor.sh, not an instrument itself.

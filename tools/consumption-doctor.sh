@@ -87,18 +87,23 @@ _consumers_of() {
   done <<< "$(find "$PKG_ROOT/packages" -name package.json -not -path '*/node_modules/*' 2>/dev/null)"
 }
 
-# Is NAME importable under CONSUMER_DIR's resolution? 0=yes. Seam wins for tests.
+# Consumability of NAME under CONSUMER_DIR's resolution. Returns a 3-way code so
+# eval_pkg can tell "not installed" (insufficient) from "unconsumable" (flag) — the same
+# insufficient-vs-verdict honesty false-green-sensor enforces (never a false flag):
+#   0 = consumable      (resolves + declared entry present / importable)
+#   1 = unconsumable    (resolves, but entry missing / not importable — e.g. dist unbuilt)
+#   2 = not-resolvable  (no node_modules link — workspace not installed; can't ground)
 _importable() { # name consumer_dir ship entry
   local name="$1" consumer="$2" ship="$3" entry="$4"
   if [[ -n "${CONSUMPTION_PROBE_CMD:-}" ]]; then
     PKG="$name" CONSUMER="$consumer" SHIP="$ship" ENTRY="$entry" bash -c "$CONSUMPTION_PROBE_CMD"
-    return $?
+    [[ $? -eq 0 ]] && return 0 || return 1           # seam: consumable(0) / unconsumable(1)
   fi
   # Real resolution: the package as the consumer sees it (pnpm node_modules symlink).
   local link="$consumer/node_modules/$name" pkgdir
-  [[ -e "$link" ]] || return 1                       # not resolvable from this consumer
-  pkgdir="$(cd "$link" 2>/dev/null && pwd -P)" || return 1
-  [[ -n "$pkgdir" && -f "$pkgdir/$entry" ]]          # declared entry exists under resolved dir
+  [[ -e "$link" ]] || return 2                        # no link -> not installed -> can't ground
+  pkgdir="$(cd "$link" 2>/dev/null && pwd -P)" || return 2
+  [[ -n "$pkgdir" && -f "$pkgdir/$entry" ]] && return 0 || return 1  # resolves; entry present?
 }
 
 # Evaluate ONE package -> prints "verdict exit_code detail consumer" via globals
@@ -111,13 +116,21 @@ eval_pkg() { # name -> sets EV_VERDICT EV_EXIT EV_DETAIL EV_CONSUMER
   if [[ "${#consumers[@]}" -eq 0 ]]; then
     EV_VERDICT=no-consumer; EV_EXIT=0; EV_DETAIL="zero real consumers (ship=$ship)"; EV_CONSUMER=""; return
   fi
-  # Consumable iff at least one real consumer can import it; else unconsumable (flag).
+  # Consumable iff >=1 real consumer imports it. Distinguish unconsumable (resolves but
+  # entry missing -> flag) from not-installed (nothing resolves -> insufficient, never a false flag).
+  local rc any_resolvable=0
   for c in "${consumers[@]}"; do
-    if _importable "$name" "$c" "$ship" "$entry"; then
+    _importable "$name" "$c" "$ship" "$entry"; rc=$?
+    if [[ "$rc" -eq 0 ]]; then
       EV_VERDICT=pass; EV_EXIT=0; EV_DETAIL="consumable via $(basename "$c") (ship=$ship, entry=$entry)"; EV_CONSUMER="$c"; return
     fi
+    [[ "$rc" -eq 1 ]] && any_resolvable=1
   done
-  EV_VERDICT=flag; EV_EXIT=2; EV_DETAIL="unconsumable — no real consumer can import $entry (ship=$ship; dist unbuilt?)"; EV_CONSUMER="${consumers[0]}"
+  if [[ "$any_resolvable" -eq 1 ]]; then
+    EV_VERDICT=flag; EV_EXIT=2; EV_DETAIL="unconsumable — resolvable but entry not importable ($entry; ship=$ship; dist unbuilt?)"; EV_CONSUMER="${consumers[0]}"
+  else
+    EV_VERDICT=insufficient; EV_EXIT=1; EV_DETAIL="not resolvable from any consumer ($entry; workspace not installed?)"; EV_CONSUMER="${consumers[0]}"
+  fi
 }
 
 emit_one() { # name verdict exit detail consumer
