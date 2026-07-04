@@ -10,6 +10,17 @@ For the full route index, see [API-REFERENCE.md](API-REFERENCE.md).
 Each entry follows:
 
 ```
+## [7.58.0] — 2026-07-04 — world-freeside-dashboard terraform + @freeside/cli scaffold
+
+## Disclosure
+
+### Added
+
+- **shared/evals**: GV6 cert_hash vector-parity gate (echelon-core#178 Ring 0) (#435)
+
+_Source: PR #178_
+
+
 ## [YYYY-MM-DD] — Summary
 
 ### Added / Changed / Deprecated / Removed
