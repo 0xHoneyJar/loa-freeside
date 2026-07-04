@@ -129,17 +129,18 @@ modules:
   inventory-api:
     git_url: https://github.com/0xHoneyJar/inventory-api.git
     beacon_url: https://inventory.0xhoneyjar.xyz/.well-known/beacon.json
-    deployment_url: https://inventory-mcp-production.up.railway.app
+    deployment_url: https://inventory-api-production-3f25.up.railway.app
     visibility: internal
     owner: 0xHoneyJar
     added: "2026-05-18"
     runtime_state: deployed
     notes: |
       sonar⨝codex inventory/collections read API + ACVP completeness.
-      Deployed as MCP server at inventory-mcp-production.up.railway.app (returns
-      401 — auth-gated, requires API key). Per memory the inventory-api npm
-      library has live read counts; the MCP server is the federation-facing
-      shape. visibility: internal because of the auth gate.
+      Live HTTP read API at inventory-api-production-3f25.up.railway.app
+      (/health 200, /holdings + /profile open — privacy-gated fields verified
+      chain-derived 2026-07-03). The older inventory-mcp-production deployment
+      is edge-walled (401 on every path incl /health) — NOT the read plane.
+      Beacon 404 until inventory-api#18 merges.
 
   ledger-api:
     git_url: https://github.com/0xHoneyJar/ledger-api.git

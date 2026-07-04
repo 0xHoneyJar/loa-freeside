@@ -92,6 +92,14 @@ test("isBlockedAddress: IPv4-mapped IPv6 is unwrapped and blocked in BOTH dotted
   assert.equal(isBlockedAddress("not-an-ip"), true); // non-IP literal → fail-closed
 });
 
+test("isBlockedAddress: IPv4-embedding transition addresses are unwrapped/blocked (BC-B-006, loa-cli parity)", () => {
+  assert.equal(isBlockedAddress("2002:7f00:0001::"), true); // 6to4 embedding 127.0.0.1
+  assert.equal(isBlockedAddress("64:ff9b::a9fe:a9fe"), true); // NAT64 embedding 169.254.169.254 metadata
+  assert.equal(isBlockedAddress("2001:0::1"), true); // Teredo 2001:0::/32 blocked outright
+  assert.equal(isBlockedAddress("2002:0808:0808::"), false); // public 6to4 (embeds 8.8.8.8) → allowed
+  assert.equal(isBlockedAddress("2001:0db8::1"), false); // 2001:db8:: is NOT Teredo → allowed
+});
+
 // ── fetcher integration: pre-fetch rejects return before any socket (network-free) ──
 
 test("hardenedBeaconFetcher rejects http scheme before opening a socket", async () => {

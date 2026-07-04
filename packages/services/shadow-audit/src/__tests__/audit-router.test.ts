@@ -206,3 +206,40 @@ describe('GET /v1/audit/view (thin dashboard HTML)', () => {
     expect(html).toContain('/talk'); // conversation CTA
   });
 });
+
+describe('GET /v1/collections/:chain/:contract — capability read (FR-2)', () => {
+  const registry = (m: Record<string, { collection: string; standard: 'erc721' | 'erc1155' }>) =>
+    ({ chain, contract }: { chain: string; contract: string }) =>
+      m[`${chain}/${contract}`.toLowerCase()];
+
+  it('200 {collection, standard} for an in-registry pair', async () => {
+    const app = createAuditRouter(
+      makeDeps({ collectionRegistry: registry({ '1/0xabc': { collection: 'azuki', standard: 'erc721' } }) }),
+    );
+    const res = await app.request('/v1/collections/1/0xABC');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ chain: '1', contract: '0xABC', collection: 'azuki', standard: 'erc721' });
+  });
+
+  it('404 for an unknown pair', async () => {
+    const app = createAuditRouter(
+      makeDeps({ collectionRegistry: registry({ '1/0xabc': { collection: 'azuki', standard: 'erc721' } }) }),
+    );
+    const res = await app.request('/v1/collections/1/0xDEAD');
+    expect(res.status).toBe(404);
+  });
+
+  it('503 when no registry is wired (never a false 200)', async () => {
+    const app = createAuditRouter(makeDeps()); // collectionRegistry undefined
+    const res = await app.request('/v1/collections/1/0xABC');
+    expect(res.status).toBe(503);
+  });
+
+  it('returns NO member data (membership + static config only)', async () => {
+    const app = createAuditRouter(
+      makeDeps({ collectionRegistry: registry({ '10/0xed5a': { collection: 'op-thing', standard: 'erc1155' } }) }),
+    );
+    const body = (await (await app.request('/v1/collections/10/0xED5A')).json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(['chain', 'collection', 'contract', 'standard']);
+  });
+});

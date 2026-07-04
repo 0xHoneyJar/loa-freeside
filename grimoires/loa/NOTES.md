@@ -290,8 +290,138 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - G-1 fixture: order 6ddc06f5-0c6f-42b8-8377-768a4c2a302e (Azuki) — producing; score=pending, sonar=blocked, worlds_manifest=complete
 - S2 entry gate: PR-A not yet deployed at S2 build time — probe verb built against the SDD contract fixture; differential test env-gated (ORDERING_DIFFERENTIAL=1); gate re-checked before G-1 demo
 
-### beacon-consumer Sprint 1 — checkpoint (2026-07-02)
-- Branch feature/beacon-consumer-s1 (off cycle/beacon-consumer, off origin/main). PRD+SDD+sprint flatline-reviewed+committed on cycle branch; beads arrakis-beacon-consumer-rgey.1..6.
-- **S1-T1 DONE + green**: packages/beacon-schema/src/orientation-packet.ts (OrientationPacket type, total buildOrientationPacket w/ missing-field policy, BEACON_EXIT table) + 5 node:test cases (57 total green). Bead .1 closed.
-- **Remaining S1-T2..T6** (resume /run-resume or /implement sprint-1): T2 conformance-vector suite (beacon-schema/test-vectors/orientation-conformance.json — bypass+family cases); T3 **SECURITY-CRITICAL** hardenBeaconFetch (canonical IDNA/dot-boundary host allowlist, complete v4+v6 private/metadata/IPv4-mapped CIDR set, IP-pinned fetch via undici Agent closing DNS-rebind TOCTOU + TLS-SNI, or documented residual+operator-accept); T4 inspect un-stub reusing doctor probeBeacon/classifyProbe (map RemoteVerdict discoverable/dark/void → the 5-class BeaconClassification: status0→unreachable, redirectedOff→void, 2xx+valid+slug-match→valid, 2xx+valid+slug-mismatch/404→dark, 2xx+!valid→invalid); T5 CLAUDE.md inspect-only pointer; T6 verify.
-- Deliberately paused: S1-T3 SSRF is security-critical; not rushing IP-pin/rebind-defense at a marathon-session tail.
+## Decision Log — cycle consumption-truth S1 (2026-07-02)
+- [RESHAPE, gate-task-triggered] S1-T2 "probeShadow HTTP leg" DEFERRED to a producer-decision bead;
+  S1 ships `SHADOW_PREVIEW_UNAVAILABLE_POLICY=pending|optional` (default pending) instead.
+  Grounds (observed): no deployed shadow-audit (registry-absent, unprobeable); in-process adapter
+  explicitly unwired (composition.ts:61 NoopAudit; M-10); GET /v1/audit REQUIRES owner_wallet the
+  community-onboarding preset does not carry; RunEvent carries no contract identity (no runs-read).
+  #401 is missing a PRODUCER, not a probe. Full contract notes: grimoires/loa/cycles/consumption-truth/e2e-runbook.md.
+  Auth header observed = X-API-Key (NOT Bearer) — recorded for the future probe adapter.
+- FAGAN convergence (3 iters, cap): i1 codex-major fixed (policy-masks-producer); i2 cursor 2-major fixed
+  (injection-based producer signal; fail-closed fence fetch) + 2 cleanups; i3 codex APPROVED, took
+  dirty-tree fence union + empty-count + dedup. FAGAN-ACCEPTS (rationale): constructor-policy-without-warn
+  (factory is the sole production composition path — composition.ts only calls createKitchenTriagePorts);
+  test-seam export resetShadowProducerlessWarning (existing codebase pattern, no prod caller).
+
+## Decision Log — cycle sandwich-line S1 (2026-07-03)
+- FAGAN sprint-1: 3 iters. Fixed: reserved genesis namespace · verify-gated clear (both voices
+  converged) · head-integrity on append · serialized txn queue · 409 chain_frozen route · JCS
+  non-plain-object rejection. ACCEPTS w/ rationale: AC-7 regex claim (phantom — regex needs
+  'role' prefix, suite green); full-verify-per-append (O(n) — head-check O(1) + periodic verify;
+  checkpoint requirement carried into S2-T1).
+
+## Decision Log — cycle sandwich-line S2 (2026-07-03)
+- FAGAN S2: 3 iters, verdict converged on the load-bearing critical (AppendGrant _mint
+  forgery) — CLOSED via module-private symbol mint + no package-index export; both voices
+  dropped it by i3. Also fixed: head-check-before-insert (no orphan), boot-gate on append,
+  admin token via env (not argv), non-silent clear, JWT exp-iat≤1h, SvcJwtProducerPolicy +
+  community binding, explicit-opt-in structural policy (no silent unauthed default), idempotent
+  freeze insert, jsonb-roundtrip hash proof (empirically green).
+- FAGAN-ACCEPTS (rationale): (1) PostgresLedgerStore.withTransaction is not one atomic txn across
+  append+projection — NAMED ceiling + gated: the pg store MUST NOT back a live producer this cycle
+  (FR-6 scope: only the flag-gated read-only differential; no NATS consumer). Upgrade trigger =
+  client-scoped txn through ingest before any producer cutover. (2) communities-empty = unrestricted
+  is deliberate (trusted global producers e.g. a cluster-wide sonar indexer); a token that omits it
+  is a config choice, documented. (3) deployed-marker robustness moot — no deployed shadow-mode
+  server this cycle; producerPolicyFromEnv is the future single wiring point, fail-closed by default.
+
+## Decision Log — cycle sandwich-line S3 (2026-07-03)
+- Worlds data-loss fix (Fork-2, slotted ahead): worlds-api PR #15 — PgManifestStore + migration
+  0002 + kill-test (manifest survives redeploy); 55 unit + 3 pg green. Cross-repo, operator merges.
+- Sprint 3 code complete (T1-T4): S3-T1 audit GET /v1/collections capability read (open, rate-limited,
+  key-exempt); S3-T2 ordering probeShadow (validates body, precedence real>policy>stub); S3-T3
+  value-semantics contract test (sonar-replay vs projection agree per standard, per-token-vs-net
+  divergence documented — 6c precondition); S3-T4 differential + no-backfill classifier (flag-gated,
+  salted-hash divergence logs, unknown-time→no_backfill never inflates parity). FAGAN S3: i1 6 findings
+  (1 critical false-positive on unwired-registry — bin/ was outside diff filter), i2 codex APPROVED@0 +
+  cursor 0-findings = converged. shadow-audit 161 + ordering 122 tests green, both typecheck clean.
+- G-1 (consumer 0→≥1) still NOT met: the differential is CODE-complete + flag-gated OFF; it only
+  runs live once shadow-audit deploys (L-2, operator COLLECTION_REGISTRY + test:live) and the flag flips.
+  Remaining L-lanes all operator-gated: L-1 registry mining+verify, L-2 deploy, L-3 sandwich+report, L-5 demo.
+
+## collections-sot checkpoint (2026-07-03)
+- **Base topology (operator: "comprehensive, fix root problems"):** MERGED cycle/sandwich-line
+  (#429 spine) into cycle/collections-sot. #429 was open/REVIEW_REQUIRED but its redness is
+  UNRELATED pre-existing monolith CI (sietch webhook flake being fixed on
+  fix/webhook-insert-failure-retriable-503; aws-embedded-metrics dep). Spine's own unit tests
+  pass. The worktree had a broken PARTIAL leak of the spine (38 tc errors); merge replaced it
+  with the real committed spine. All verified green (protocol 37, service 71, audit 161).
+  → collections-sot now CONTAINS #429. Ship implication: either collections-sot PR supersedes
+  #429, or #429 merges first then collections-sot rebases on main.
+- **Sprint 1 DONE + FAGAN-clean:** S1-T1 identity choke point, S1-T2 CollectionEntity +
+  content-addressed observation factories, S1-T3 store fold (chain=SoT, table=projection).
+  FAGAN caught 1 HIGH (derived-label ratify silently ignored → now fail-closed) + 2 MEDIUM
+  (token_standard validation, verify-on-read) — all fixed + tested.
+- **Next:** S2 (freeside collections sync/propose/ratify distiller) → S3 (query + shadow-audit
+  collapse kill-test + drift). S2 open Q: propose/ratify reach the ledger via store+DATABASE_URL
+  or shadow-mode HTTP API.
+
+## collections-sot COMPLETE (2026-07-03) — all 3 sprints, 295 tests green
+- **S1** identity choke point + CollectionEntity/observation factories + store fold (chain=SoT,
+  projection=fold, verify-on-read). FAGAN: 1 HIGH (derived-ratify silently ignored→fail-closed) + 2 MED fixed.
+- **S2** distiller: ground() (belt + ERC-165 raw eth_call + world heuristic, injectable FR-7 seam) +
+  propose (born-low) + ratify (single-consume cockpit grant, subjective-only). Reproduces the 24-collection proof.
+- **S3** query (lexical + provenance badge, contested-withheld) + SETTLE GATE (shadow-audit reads the
+  ratified snapshot fail-closed, env=break-glass; G-4 kill-test) + drift (re-derive/classify, contested
+  never-overwrites, fails loud). + CLI bin (6 verbs) + live belt/RPC clients.
+- **End-to-end proven:** distill→propose→ratify→snapshot→settle, all trust signals gate correctly.
+- Packages: protocol 37 / shadow-mode 91(+7 pg-skip) / shadow-audit 167, 0 tc errors.
+- **Ships on the merged #429 spine.** Second FAGAN (S2/S3) running. NOT YET pushed/PR'd — operator decides
+  how collections-sot ships vs #429 (supersede, or #429-first-then-rebase).
+- **Remaining (deploy/follow-on, not domain logic):** wire COLLECTION_SNAPSHOT_PATH in the shadow-audit
+  deploy (generate snapshot via `collections export-snapshot` in a build step); the 7 pg-integration tests
+  need a live postgres; QMD-source registration of the entity export (documented seam, next cycle).
+
+## datastore-legibility bridge — S1 foundation built (2026-07-03, RESUMABLE)
+- Bridge `bridge-20260703-fbeb2d` (depth 3), branch cycle/datastore-legibility.
+- DONE + committed + tested: S1-T1 (register shadow-mode/shadow-audit/worker/operator-dash as
+  registry modules, 10 registry tests) · S1-T2 (host_fp salted-correlation helper in
+  packages/adapters/storage/host-fp.ts, 9 tests; creds excluded from preimage, fail-closed salt).
+- REMAINING S1: S1-T3 (ordering GET /admin/data-store authed self-report — wire into ordering Hono
+  app + a PostgresOrderStore.dataStoreFacts() method) · S1-T4 (freeside-cli doctor --data mode
+  reusing hardenedBeaconFetcher). Then S2 (fan-out + registry data_store label layer) · S3
+  (projection + drift-loud + git-commit --propose ratify) · bridgebuilder review iterations (×3).
+- RESUME: `/run-bridge --resume` (bridge state + beads arrakis-knaa..uqj0 + run-state persist).
+  Beads S1-T3=arrakis-knaa, S1-T4=arrakis-0muf, S2-T1=824h, S2-T2=68eb, S3-T1=prx8, S3-T2=30tk, S3-T3=uqj0.
+
+## Autopoiesis cycle — architect open-question resolutions (2026-07-03, live-tree grounded)
+- **OQ-1 RESOLVED (branch protection)**: default `github.token` CANNOT read/write branch protection —
+  `administration` is not a grantable GITHUB_TOKEN scope (confirmed `immune-doctors.yml:33-38`). Existing
+  pattern: `IMMUNE_DOCTOR_GH_TOKEN` fine-grained PAT (Administration:read), gated on `ref=main && non-PR`
+  (pwn-request defense, `immune-doctors.yml:75-82`). → FR-1d required-check migration + FR-4 promotion are
+  NOT PR-time CI actions; design as a gated main-branch job with an admin-WRITE PAT, or operator-run.
+- **OQ-2 RESOLVED (S2 smoke consumers)**: `@freeside/cluster-fp` ← `packages/services/ordering`;
+  `@freeside/adapters` ← `packages/services/shadow-audit` (the KNOWN-BROKEN import path — how the break bites);
+  `@freeside/ordering-protocol` ← `packages/services/ordering`.
+- **OQ-5 STILL OPEN (upstream loa path)**: which repo/path owns `bridge-orchestrator.sh` — needs the loa repo;
+  defer to FR-3b issue-filing time (FR-3b acceptance = issue filed, does NOT block S3).
+
+## Bridge reconciliation — 2026-07-03 (autopoiesis)
+- Prior `/run-bridge` JACKED_OUT as silent no-op (bridge-20260703-fbeb2d): 0 sprints/0 findings — hit stale HALTED DSL run-state (the `arrakis-run-bridge-resume-silent-noop-flzl` bug).
+- Two plans were tangled: run-state=plan-datastore-legibility (HALTED, S2/S3 op-gated) vs on-disk sprint.md=autopoiesis (uncommitted).
+- Operator chose: drive **autopoiesis** on a **fresh branch off main**.
+- Actions: preserved uncommitted plan (f0c16945) → new branch `cycle/autopoiesis` off origin/main (40bf29e7, single-domain, path-domain-check clean) → archived stale run-state to `.run/*.prev-dsl-*` → fresh bridge `bridge-20260703-5f9926`.
+- DSL cycle left intact: `cycle/datastore-legibility` branch + open PRs #433/#434 untouched.
+
+### S1 Decision Log (autopoiesis, 2026-07-03)
+- **[ACCEPTED-DEFERRED] immune-check.sh local doctors[] extension (part of S1-T8).** The sprint asked to also add scope-checks as a 4th doctor in the LOCAL banner `tools/immune-check.sh`. Deferred: that file's aggregation + its 106-line test are tightly coupled to exactly 3 doctors (a 3×3 severity matrix); adding a 4th is a refactor of working, tested code with real regression risk to the estate-immune banner — out of proportion to its value (a local convenience view). The sensor is fully **consumable** without it: its own `--probe`/`--json`, the ground-truth lint registration, and the new advisory `scope-checks` job in `.github/workflows/immune-doctors.yml` (the CI surface where "green means something" actually bites). Upgrade trigger: when immune-check.sh next gets a structural touch, generalize its doctor loop to N doctors + fixture-parametrize the test, then fold scope-checks/consumption/false-green in together.
+
+### S1 review outcome (autopoiesis, 2026-07-03)
+- Adversarial self-review (2 lenses: scope/shell + flip/security) surfaced 2 flags; BOTH resolved as artifacts, no real defects:
+  1. scope_for_diff "false-narrow transitive walk" = FALSE ALARM — test subshell inherited `continue`→`claude --continue` alias (see [[continue-alias-shell-contamination]]); clean-bash repro returns the full transitive closure; bats (clean shell) always passed.
+  2. flip-promote "PAT leak" = FALSE POSITIVE — PAT value never echoed (only var-name in REFUSED msgs + `<your-pat>` template).
+- Confirmed green in clean env: validator REJECTS missing/invalid exit_code; flip-ready precondition guards the gh API; transitive scope walk correct. S1 = 50 tests + lint, no findings.
+- NOTE: the two dispatched review agents stalled (~7min, no output) — root cause = they ran Bash repros hitting the `continue` alias → nested `claude --continue` hangs. Stopped them; did the review inline in clean bash instead.
+
+### S2+S3 fan-out complete + E2E evidence (autopoiesis, 2026-07-03)
+- **S2 Consumption Doctor** — `tools/consumption-doctor.sh` (dist→build+import / src→resolve+import under real consumer resolution; consumable/unconsumable/no-consumer). 5 bats green. Real-tree G-2: `@freeside/adapters`→flag (dist unbuilt), `@freeside/ordering-protocol`→pass. (cluster-fp re-home was DSL-branch work, absent here — doctor reports the real tree, not the AC's assumed list.)
+- **S3 False-Green Sensor** — `tools/false-green-sensor.sh` (JACKED_OUT+0/0/0→suspect; absent/partial/malformed→insufficient, missing≠zero, untrusted-body counters-only). 10 bats green. Grounds arrakis-run-bridge-resume-silent-noop-flzl. **S3-T1 salvaged** from a stalled agent (it wrote a correct sensor before hanging on the `continue` alias during a repro); S3-T2 bats authored fresh.
+- **S3-T3 upstream issue**: filed 0xHoneyJar/loa#1174 (bridge-orchestrator silent-JACKED_OUT with reproduction). FR-3b DONE (does not block on the fix landing).
+- **S3-T5 E2E — all 4 goals validated (re-runnable commands, clean-shell `env -i bash`):**
+  - G-1: `SCOPE_DIFF_CMD='printf "packages/services/ordering/src/x.ts\n"' tools/scope-checks-sensor.sh` → pass (1 pkg/1 cmd); lockfile → full.
+  - G-2: `tools/consumption-doctor.sh @freeside/adapters` → flag(2); `... @freeside/ordering-protocol` → pass(0).
+  - G-3: false-green replay no-op → suspect(2); real-work state → pass(0).
+  - G-4: flip-report on a seeded-qualifier last-10 ledger → flip-ready (operator promotion→blocking proven in s1-acceptance).
+- Full cycle: 65 tests green (56 bats + 9 sh); ground-truth lint green (8 instruments grounded, 3 test fixtures suppressed).
+- Deferred (unchanged): immune-check.sh local doctors[] extension for all 3 sensors — same rationale as S1 (tested-file refactor; sensors fully consumable via CI + --probe/--json).

@@ -63,6 +63,35 @@ export {
 } from './schemas/edge.js';
 
 export {
+  normalizeChainId,
+  normalizeContractAddress,
+  collectionEntityId,
+} from './schemas/identity.js';
+
+export {
+  type TokenStandard,
+  type CollectionLabelName,
+  type LabelSourceType,
+  type CollectionLabels,
+  type LabelProvenance,
+  type CollectionEntity,
+  type CollectionLabelObservedPayload,
+  type CollectionLabelRatifiedPayload,
+  DERIVED_LABELS,
+  SUBJECTIVE_LABELS,
+  isDerivedLabel,
+  COLLECTION_OBSERVED_NAME,
+  COLLECTION_RATIFIED_NAME,
+  observedEventId,
+  ratifiedEventId,
+  collectionLabelObserved,
+  collectionLabelRatified,
+  foldCollectionEntity,
+  collectionObservationKind,
+  type ObservationAtSeq,
+} from './schemas/collection-entity.js';
+
+export {
   type DivergenceKind,
   type ShadowDivergence,
   type MemberGraphProjection,
@@ -75,3 +104,5 @@ export {
   type TopicSegments,
   SHADOW_EVENT_TOPICS,
 } from './topics.js';
+
+export { JcsError, jcsBytes, jcsCanonicalize } from './jcs.js';
