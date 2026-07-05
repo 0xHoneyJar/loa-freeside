@@ -19,7 +19,7 @@ import {
 } from './orchestrator-events.js';
 import { reprobeIntervalMs } from './reprobe-worker.js';
 import type { OrderStore } from './store.js';
-import type { TriagePorts } from './triage-ports.js';
+import type { DiscordChannelHealth, TriagePorts } from './triage-ports.js';
 
 type IngredientKey = keyof CommunityOnboardingIngredients;
 
@@ -84,7 +84,9 @@ export interface FulfillmentOrchestratorDeps {
   now: () => number;
   /** Credential label recorded on advance audit entries. */
   tokenLabel?: string;
-  /** Optional Discord channel-health port (D13.2). When absent, health gate is skipped with a warning (AC-10). */
+  /** @deprecated The channel-health gate moved to CommunityOnboardingOrchestrator.advanceIngredient
+   *  (T-2/FR-1 choke point) — wire discordHealth on the onboarding orchestrator instead. Kept so
+   *  existing composition call-sites keep typechecking; ignored here. */
   discordHealth?: {
     checkChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth>;
   };
@@ -111,7 +113,12 @@ export class FulfillmentOrchestrator {
    *  that metadata stays 'pending' after the initial dispatch. Self-resolves to 'optional' when
    *  count reaches maxPendingTicks. loa:shortcut: in-memory; stales harmlessly on restart. */
   private readonly metadataPendingTicks = new Map<string, number>();
-  private readonly maxPendingTicks = Number(process.env.METADATA_PROBE_MAX_PENDING_TICKS ?? 3);
+  // Malformed env must not silently disable the backstop (NaN >= n is always false);
+  // clamp to >=1 so 0 cannot self-resolve before the first counted tick.
+  private readonly maxPendingTicks = (() => {
+    const raw = Number(process.env.METADATA_PROBE_MAX_PENDING_TICKS ?? 3);
+    return Number.isInteger(raw) && raw >= 1 ? raw : 3;
+  })();
 
   async processOrder(orderId: string): Promise<void> {
     let record = await this.deps.store.get(orderId);
@@ -156,7 +163,7 @@ export class FulfillmentOrchestrator {
         // T-1: adopt canonical slug only from a successful dispatch (res.ok guard prevents a
         // failed dispatch from overwriting a previously probed slug with a transient error value).
         if (ingredient === 'worlds_manifest' && res.ok && res.world_slug) canonicalSlug = res.world_slug;
-        if (ingredient === 'score' && res.world_slug && canonicalSlug && res.world_slug !== canonicalSlug) {
+        if (ingredient === 'score' && res.ok && res.world_slug && canonicalSlug && res.world_slug !== canonicalSlug) {
           await this.emit(orderId, ORCHESTRATOR_SUBJECTS.slug_divergence, SlugDivergenceSchema.parse({
             order_id: orderId,
             worlds_slug: canonicalSlug,
@@ -167,29 +174,36 @@ export class FulfillmentOrchestrator {
         if (res.ok) await this.markInProgress(orderId, ingredient);
       }
 
-      // CONDITIONAL DISPATCH: metadata_snapshot (D12.3, T-3) ───────────────────
-      // Not in DISPATCH_ORDER — score must complete first. Persistent-404 backstop: after
-      // maxPendingTicks ticks, self-resolve to 'optional' so the order is not stalled forever.
-      if (probe.statuses.metadata_snapshot === 'pending' && this.deps.triage.metadata) {
-        const pendingCount = this.metadataPendingTicks.get(orderId) ?? 0;
-        if (pendingCount >= this.maxPendingTicks) {
-          // Persistent-404 self-resolve (FR-3): enough ticks have passed, advance to optional.
-          const result = await this.deps.onboarding.advanceIngredient(
-            orderId, 'metadata_snapshot', 'optional', undefined,
-            { tokenLabel: this.deps.tokenLabel, callerNote: 'fulfillment-orchestrator:persistent-404-self-resolve' },
-          );
-          if (result.ok) {
-            await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
-              order_id: orderId,
-              ingredient: 'metadata_snapshot',
-              status: 'optional',
-              world_slug: undefined,
-              at_unix: this.nowUnix(),
-            }));
-          }
+    }
+
+    // METADATA_SNAPSHOT: conditional dispatch + persistent-404 backstop (D12.3, T-3) ──
+    // Deliberately OUTSIDE the `if (this.deps.dispatch)` guard: a dispatch-null
+    // composition is the canonical stall this backstop exists to break (FAGAN
+    // convergent major). Ticks are counted whenever metadata is pending with score
+    // complete, dispatch or not; dispatch itself fires at most once (first tick).
+    if (probe.statuses.metadata_snapshot === 'pending' && this.deps.triage.metadata) {
+      const pendingCount = this.metadataPendingTicks.get(orderId) ?? 0;
+      if (pendingCount >= this.maxPendingTicks) {
+        // Persistent-404 self-resolve (FR-3): enough ticks have passed, advance to optional.
+        const result = await this.deps.onboarding.advanceIngredient(
+          orderId, 'metadata_snapshot', 'optional', undefined,
+          { tokenLabel: this.deps.tokenLabel, callerNote: 'fulfillment-orchestrator:persistent-404-self-resolve' },
+        );
+        if (result.ok) {
+          await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
+            order_id: orderId,
+            ingredient: 'metadata_snapshot',
+            status: 'optional',
+            world_slug: undefined,
+            at_unix: this.nowUnix(),
+          }));
           this.metadataPendingTicks.delete(orderId);
-        } else if (pendingCount === 0 && probe.statuses.score === 'complete' && this.deps.dispatch.snapshotMetadata) {
-          // First pending tick: dispatch normally (existing path, D12.3).
+        }
+        // On failure the counter is KEPT: deleting would reset to 0 and re-fire the
+        // one-shot dispatch below on the next tick (FAGAN convergent major).
+      } else if (probe.statuses.score === 'complete') {
+        if (pendingCount === 0 && this.deps.dispatch?.snapshotMetadata) {
+          // First counted tick: dispatch once (existing path, D12.3).
           const res = await this.deps.dispatch.snapshotMetadata(payload);
           await this.emit(orderId, ORCHESTRATOR_SUBJECTS.dispatch, OrchestratorDispatchSchema.parse({
             order_id: orderId,
@@ -201,12 +215,14 @@ export class FulfillmentOrchestrator {
             at_unix: this.nowUnix(),
           }));
           if (res.ok) await this.markInProgressKey(orderId, 'metadata_snapshot');
-          this.metadataPendingTicks.set(orderId, 1);
-        } else if (pendingCount > 0) {
-          // Ticks 2..maxPendingTicks-1: no re-dispatch, just increment the counter.
-          this.metadataPendingTicks.set(orderId, pendingCount + 1);
         }
+        // Count the tick regardless of dispatch availability.
+        this.metadataPendingTicks.set(orderId, pendingCount + 1);
       }
+    } else {
+      // Metadata resolved (or port absent — the structural-absence path owns that):
+      // drop the counter so long-lived workers do not leak an entry per settled order.
+      this.metadataPendingTicks.delete(orderId);
     }
 
     // ADVANCE satisfied ingredients ─────────────────────────────────────────
@@ -257,7 +273,10 @@ export class FulfillmentOrchestrator {
         callerNote: 'fulfillment-orchestrator',
       });
       if (!advResult.ok) {
-        // Gate rejection (e.g., discord health check failed) or transient terminal race.
+        // Terminal race is benign — the order settled between our read and the call;
+        // escalating it would page an operator about a SUCCESS (FAGAN).
+        if (advResult.error === 'order already terminal') return;
+        // Gate rejection (e.g., discord health check failed): real, escalate.
         await this.escalate(orderId, ingredient, advResult.error ?? `${ingredient} advance rejected`);
         continue;
       }

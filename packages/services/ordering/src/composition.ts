@@ -81,20 +81,23 @@ export function orchestratorEnabled(): boolean {
  * the HTTP probes and escalation from the GitHub port (both null-safe for CI/dev).
  */
 export async function createFulfillmentOrchestratorWorker(): Promise<FulfillmentOrchestratorWorker> {
-  const { store } = await createOrderingComposition();
+  const { store, enqueue } = await createOrderingComposition();
   const triage = createKitchenTriagePorts();
   const dispatch = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
   const discordHealth = triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined;
 
   // Create a dedicated onboarding orchestrator with discordHealth wired in (T-2, FR-1).
   // The gate lives in advanceIngredient, so the orchestrator the fulfillment worker uses
-  // must carry the port — it cannot reuse the intake orchestrator's instance.
+  // must carry the port — it cannot reuse the intake orchestrator's instance. It MUST
+  // mirror the intake instance's side-effect deps (enqueue) or worker-driven advances
+  // silently lose ingredient enqueue behavior (FAGAN: dropped composition deps).
   const onboarding = new CommunityOnboardingOrchestrator({
     store,
     resolver: new ConfigCapabilityResolver(triageCapabilityConfig()),
     triage,
     now: () => Date.now(),
     discordHealth,
+    enqueue,
   });
 
   const fulfillment = new FulfillmentOrchestrator({

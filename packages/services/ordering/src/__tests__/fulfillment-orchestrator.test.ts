@@ -477,17 +477,21 @@ describe('FulfillmentOrchestrator — discord channel-health gate (T-4)', () => 
 
   // ── AC-1: spy called exactly once (gate is in advanceIngredient) ─────────────
   it('AC-1: checkChannelHealth spy called once before orchestrator.advance for discord_observer', async () => {
-    const spy = vi.fn().mockResolvedValue({ healthy: true });
+    // ONE ordered log for both the health check and the emitted events, so the
+    // before-relation is actually asserted (not merely both-happened).
+    const callOrder: string[] = [];
+    const spy = vi.fn().mockImplementation(async () => {
+      callOrder.push('HEALTH_CHECK');
+      return { healthy: true };
+    });
     const { store, orchestrator } = await discordHarness({
       discordStatus: 'complete',
       discordHealth: { checkChannelHealth: spy },
     });
-    const eventsBeforeAdvance: string[] = [];
-    // Track order of events by intercepting emit — proxy the store's appendEvent.
-    const callOrder: string[] = [];
     const origAppend = store.appendEvent.bind(store);
     store.appendEvent = async (orderId, event) => {
-      callOrder.push(event.subject as string);
+      const ingredient = (event.payload as { ingredient?: string } | undefined)?.ingredient;
+      callOrder.push(`${event.subject as string}:${ingredient ?? '-'}`);
       return origAppend(orderId, event);
     };
 
@@ -495,11 +499,11 @@ describe('FulfillmentOrchestrator — discord channel-health gate (T-4)', () => 
 
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith('8453', CONTRACT);
-    const advIdx = callOrder.indexOf(ORCHESTRATOR_SUBJECTS.advance);
-    // Spy was called before the advance event was emitted (verified via call ordering).
+    const healthIdx = callOrder.indexOf('HEALTH_CHECK');
+    const advIdx = callOrder.indexOf(`${ORCHESTRATOR_SUBJECTS.advance}:discord_observer`);
+    expect(healthIdx).toBeGreaterThanOrEqual(0);
     expect(advIdx).toBeGreaterThanOrEqual(0);
-    expect(callOrder.some((s) => s === ORCHESTRATOR_SUBJECTS.advance)).toBe(true);
-    void eventsBeforeAdvance; // silence lint
+    expect(healthIdx).toBeLessThan(advIdx);
   });
 
   // ── AC-2: healthy=false → no advance, escalate instead ──────────────────────
@@ -541,19 +545,24 @@ describe('FulfillmentOrchestrator — canonicalSlug guard (T-1, AC-6, AC-7)', ()
   });
 
   it('AC-7: successful worlds dispatch (ok=true) correctly populates canonicalSlug', async () => {
-    const dispatch = new FakeDispatch('real-slug', undefined);
+    // Adoption is observable via slug_divergence: score dispatch returns a DIFFERENT
+    // slug in the same tick, so the divergence event can only fire if the worlds slug
+    // was actually adopted into canonicalSlug (previously this test asserted nothing
+    // beyond "worlds was dispatched" — FAGAN vacuity finding).
+    const dispatch = new FakeDispatch('real-slug', 'other-slug');
     const triage = new MutableTriage();
     triage.worldsStatus = 'in_progress';
     const { store, orchestrator } = await producingHarness({ triage, dispatch });
     triage.worldsStatus = 'pending';
-    triage.scoreStatus = 'complete';
+    triage.scoreStatus = 'pending';
     triage.sonarStatus = 'complete';
 
     await orchestrator.processOrder('ord_fo');
-    // worlds dispatched and returned real-slug — should be adopted (mark in_progress, no slug in store yet,
-    // but next tick after worlds complete the fulfillment would carry it).
-    // Verify no rogue-slug was adopted via the dispatch log.
     expect(dispatch.calls).toContain('worlds_manifest');
+    const divergences = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.slug_divergence);
+    expect(divergences).toHaveLength(1);
+    expect((divergences[0] as { worlds_slug?: string }).worlds_slug).toBe('real-slug');
+    expect((divergences[0] as { score_slug?: string }).score_slug).toBe('other-slug');
   });
 });
 

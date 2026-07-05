@@ -45,6 +45,9 @@ const REPROBE_COOLDOWN_MS = Number(process.env.REPROBE_COOLDOWN_MS ?? 10_000);
 const REPROBE_PER_PROBE_TIMEOUT_MS = Number(process.env.REPROBE_PER_PROBE_TIMEOUT_MS ?? 10_000);
 const REPROBE_FANOUT = 3;
 
+// Once-per-process guard for the D13.3 port-absent warning (sits on the advance path).
+let warnedDiscordHealthAbsent = false;
+
 export function canFulfillCommunityOnboarding(
   ingredients: CommunityOnboardingIngredients,
   fulfillment?: CommunityOnboardingOutput,
@@ -277,18 +280,24 @@ export class CommunityOnboardingOrchestrator {
     // DISCORD CHANNEL-HEALTH GATE (T-2, FR-1) ────────────────────────────────
     // Fires only when advancing discord_observer to 'complete'. Advancing to 'optional' is
     // unconditional (PRD Assumption 5). Port absent → advance proceeds (D13.3 fallback).
-    if (ingredient === 'discord_observer' && status === 'complete' && this.deps.discordHealth) {
-      let health: DiscordChannelHealth;
-      try {
-        health = await this.deps.discordHealth.checkChannelHealth(
-          parsedInputs.data.chain_id,
-          parsedInputs.data.contract_address,
-        );
-      } catch (e) {
-        health = { healthy: false, reason: `probe error: ${e instanceof Error ? e.message : String(e)}` };
-      }
-      if (!health.healthy) {
-        return { ok: false, error: `discord channel-health check failed: ${health.reason ?? 'unhealthy'}` };
+    if (ingredient === 'discord_observer' && status === 'complete') {
+      if (this.deps.discordHealth) {
+        let health: DiscordChannelHealth;
+        try {
+          health = await this.deps.discordHealth.checkChannelHealth(
+            parsedInputs.data.chain_id,
+            parsedInputs.data.contract_address,
+          );
+        } catch (e) {
+          health = { healthy: false, reason: `probe error: ${e instanceof Error ? e.message : String(e)}` };
+        }
+        if (!health.healthy) {
+          return { ok: false, error: `discord channel-health check failed: ${health.reason ?? 'unhealthy'}` };
+        }
+      } else if (!warnedDiscordHealthAbsent) {
+        // D13.3 observability: the unguarded advance must not be silent (once per process).
+        warnedDiscordHealthAbsent = true;
+        console.warn('[community-onboarding] discord_observer: discordHealth port absent, advancing without channel-health check (D13.3)');
       }
     }
 
