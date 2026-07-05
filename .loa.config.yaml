@@ -1544,10 +1544,10 @@ run_bridge:
 spiral:
   enabled: true
   default_max_cycles: 3 # safety clamp: 50
-  budget_cents: 6000 # $60 total ceiling (safety clamp: $100)
+  budget_cents: 8000 # $80 total ceiling (safety clamp: $100) — raised 2026-07-05: $20/cycle starved REVIEW on the zero-operator-fulfill cycle ($22 > $17 gate floor)
   wall_clock_seconds: 28800 # 8h (safety clamp: 24h)
-  max_budget_per_cycle_usd: 20 # ≥ phase-budget sum + bridgebuilder headroom
-  max_total_budget_usd: 60
+  max_budget_per_cycle_usd: 35 # ≥ phase-budget sum + bridgebuilder headroom (was 20; impl alone hit $8 and fix loops overshot the review reserve)
+  max_total_budget_usd: 80
   flatline: # kaironic convergence — halt when findings-rate plateaus
     min_new_findings_per_cycle: 3
     consecutive_low_cycles: 2
@@ -1558,7 +1558,7 @@ spiral:
     advisor_model: opus # review + audit judgment
     max_phase_retries: 3
     planning_budget_usd: 2
-    implement_budget_usd: 8 # real work needs headroom (default 5 was tight)
+    implement_budget_usd: 12 # real work needs headroom (was 8 — the zero-operator-fulfill impl hit the cap exactly)
     review_budget_usd: 3
     audit_budget_usd: 3 # reserved — never starved by earlier phases
     bb_fix_budget_usd: 3
