@@ -63,7 +63,11 @@ async function withServer(script: Script, fn: (baseUrl: string, hits: string[]) 
   }
 }
 
-/** Run a verb with env + captured stdout lines. */
+/**
+ * Run a verb with env + captured stdout lines.
+ * Sets ORDERING_SERVICE_URL_UNSAFE_HTTP=1 to bypass the HTTPS check for test
+ * HTTP servers — this is test infrastructure only, never in production.
+ */
 async function runVerb(
   verb: (args: string[]) => Promise<number>,
   args: string[],
@@ -72,7 +76,9 @@ async function runVerb(
 ): Promise<{ code: number; lines: unknown[] }> {
   const prevUrl = process.env.ORDERING_SERVICE_URL;
   const prevTok = process.env.ORDERING_SERVICE_TOKEN;
+  const prevUnsafeHttp = process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP;
   process.env.ORDERING_SERVICE_URL = baseUrl;
+  process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP = "1";
   if (opts.token !== undefined) process.env.ORDERING_SERVICE_TOKEN = opts.token;
   else delete process.env.ORDERING_SERVICE_TOKEN;
 
@@ -88,6 +94,43 @@ async function runVerb(
     console.log = origLog;
     if (prevUrl === undefined) delete process.env.ORDERING_SERVICE_URL;
     else process.env.ORDERING_SERVICE_URL = prevUrl;
+    if (prevUnsafeHttp === undefined) delete process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP;
+    else process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP = prevUnsafeHttp;
+    if (prevTok === undefined) delete process.env.ORDERING_SERVICE_TOKEN;
+    else process.env.ORDERING_SERVICE_TOKEN = prevTok;
+  }
+}
+
+/**
+ * Like runVerb but does NOT set ORDERING_SERVICE_URL_UNSAFE_HTTP — used for HTTPS
+ * enforcement tests where the protocol check must fire.
+ */
+async function runVerbExact(
+  verb: (args: string[]) => Promise<number>,
+  args: string[],
+  url: string,
+  opts: { token?: string } = {},
+): Promise<{ code: number; lines: unknown[] }> {
+  const prevUrl = process.env.ORDERING_SERVICE_URL;
+  const prevTok = process.env.ORDERING_SERVICE_TOKEN;
+  const prevUnsafeHttp = process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP;
+  process.env.ORDERING_SERVICE_URL = url;
+  delete process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP;
+  if (opts.token !== undefined) process.env.ORDERING_SERVICE_TOKEN = opts.token;
+  else delete process.env.ORDERING_SERVICE_TOKEN;
+
+  const lines: unknown[] = [];
+  const origLog = console.log;
+  console.log = (m?: unknown) => lines.push(typeof m === "string" ? JSON.parse(m) : m);
+  try {
+    const code = await verb(args);
+    return { code, lines };
+  } finally {
+    console.log = origLog;
+    if (prevUrl === undefined) delete process.env.ORDERING_SERVICE_URL;
+    else process.env.ORDERING_SERVICE_URL = prevUrl;
+    if (prevUnsafeHttp === undefined) delete process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP;
+    else process.env.ORDERING_SERVICE_URL_UNSAFE_HTTP = prevUnsafeHttp;
     if (prevTok === undefined) delete process.env.ORDERING_SERVICE_TOKEN;
     else process.env.ORDERING_SERVICE_TOKEN = prevTok;
   }
@@ -130,6 +173,25 @@ test("error envelope: every failure path emits {error, ...} single object (FR-7a
     const env = lines[0] as { error: string; http_status: number };
     assert.equal(env.error, "order not found");
     assert.equal(env.http_status, 404);
+  });
+});
+
+// ─── S2-T1 additions: URL config validation (AC-29, AC-30) ───────────────────
+
+test("url-config: http:// URL → exit 1, error mentions https, no HTTP call (AC-29)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code, lines } = await runVerbExact(kitchenVerb, ["probe", "ord-fx-1"], baseUrl, { token: TOKEN });
+    assert.equal(code, EXIT.USAGE);
+    assert.match((lines[0] as { error: string }).error, /https/i);
+    assert.equal(hits.length, 0, "no HTTP call should be made for http:// URL");
+  });
+});
+
+test("url-config: unparseable URL → exit 1, no HTTP call (AC-30)", async () => {
+  await withServer(new Map(), async (_baseUrl, hits) => {
+    const { code } = await runVerbExact(orderVerb, ["status", "ord-fx-1"], "not a url");
+    assert.equal(code, EXIT.USAGE);
+    assert.equal(hits.length, 0, "no HTTP call should be made for invalid URL");
   });
 });
 
@@ -365,9 +427,20 @@ test("fulfill watch: failed → exit 6", async () => {
 });
 
 test("fulfill watch: --timeout hits → timeout line, exit 5", async () => {
+  // Rewritten for T-2: uses integer args and injected now to simulate elapsed time.
+  // --timeout 2 --interval 1 satisfies the interval < timeout guard.
+  // nowFn returns T0 on call 0 (startedAt), T0+2000 on all subsequent calls —
+  // simulates 2 s elapsed after first poll, exceeding the 2 s timeout.
   const script: Script = new Map([["GET /v1/orders/ord-fx-1", [{ status: 200, body: makeOrder() }]]]);
   await withServer(script, async (baseUrl) => {
-    const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--timeout", "0.001", "--interval", "0.001"], baseUrl);
+    const T0 = Date.now();
+    let nowCalls = 0;
+    const nowFn = (): number => (nowCalls++ === 0 ? T0 : T0 + 2000);
+    const { code, lines } = await runVerb(
+      (a) => fulfillVerb(a, noSleep, nowFn),
+      ["watch", "ord-fx-1", "--timeout", "2", "--interval", "1"],
+      baseUrl,
+    );
     assert.equal(code, EXIT.WATCH_TIMEOUT);
     const last = lines.at(-1) as { watch: string };
     assert.equal(last.watch, "timeout");
@@ -386,9 +459,132 @@ test("fulfill watch: --once prints snapshot and exits 0 without polling", async 
 
 test("fulfill watch: transient failures exhausted → exit 2, surfaced (G-5)", async () => {
   // Unreachable base URL (closed port) — every poll is a transport failure.
-  const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--interval", "0.001"], "http://127.0.0.1:9");
+  const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--interval", "1"], "http://127.0.0.1:9");
   assert.equal(code, EXIT.UNREACHABLE);
   assert.match((lines.at(-1) as { hint: string }).hint, /consecutive poll failures/);
+});
+
+// ─── S2-T4 additions: integer flag validation (AC-31–AC-35) ──────────────────
+
+test("fulfill watch: --timeout 0 → exit 1, no HTTP call (AC-31)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--timeout", "0"], baseUrl);
+    assert.equal(code, EXIT.USAGE);
+    assert.match((lines[0] as { error: string }).error, /must be > 0/);
+    assert.equal(hits.length, 0);
+  });
+});
+
+test("fulfill watch: --timeout -5 → exit 1, no HTTP call (AC-32)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--timeout", "-5"], baseUrl);
+    assert.equal(code, EXIT.USAGE);
+    assert.equal(hits.length, 0);
+  });
+});
+
+test("fulfill watch: --timeout abc → exit 1, names --timeout (AC-33)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--timeout", "abc"], baseUrl);
+    assert.equal(code, EXIT.USAGE);
+    assert.match((lines[0] as { error: string }).error, /--timeout/);
+    assert.equal(hits.length, 0);
+  });
+});
+
+test("fulfill watch: --interval 0 → exit 1, no HTTP call (AC-34)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--interval", "0"], baseUrl);
+    assert.equal(code, EXIT.USAGE);
+    assert.equal(hits.length, 0);
+  });
+});
+
+test("fulfill watch: --timeout 10 --interval 10 → exit 1, interval must be less than timeout (AC-35)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code, lines } = await runVerb(
+      (a) => fulfillVerb(a, noSleep),
+      ["watch", "ord-fx-1", "--timeout", "10", "--interval", "10"],
+      baseUrl,
+    );
+    assert.equal(code, EXIT.USAGE);
+    assert.match((lines[0] as { error: string }).error, /--interval must be less than --timeout/);
+    assert.equal(hits.length, 0);
+  });
+});
+
+// ─── S2-T3 additions: per-request timeout testability (AC-39) ────────────────
+
+test("ordering-client: per-request timeout → exit 2, UNREACHABLE (AC-39)", async () => {
+  // Custom server that delays 500 ms before responding — simulates a slow service.
+  const slowServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+    setTimeout(() => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(makeOrder()));
+    }, 500);
+  });
+  await new Promise<void>((r) => slowServer.listen(0, "127.0.0.1", r));
+  const { port } = slowServer.address() as AddressInfo;
+
+  const prevTimeout = process.env.ORDERING_REQUEST_TIMEOUT_MS;
+  process.env.ORDERING_REQUEST_TIMEOUT_MS = "50";
+  try {
+    const { code, lines } = await runVerb(orderVerb, ["status", "slow-ord"], `http://127.0.0.1:${port}`);
+    assert.equal(code, EXIT.UNREACHABLE);
+    assert.match((lines[0] as { error: string }).error, /timed out/);
+  } finally {
+    if (prevTimeout === undefined) delete process.env.ORDERING_REQUEST_TIMEOUT_MS;
+    else process.env.ORDERING_REQUEST_TIMEOUT_MS = prevTimeout;
+    await new Promise<void>((r) => slowServer.close(() => r()));
+  }
+});
+
+// ─── S2-T4 additions: missing assertion coverage (AC-19, AC-26, AC-27, AC-37, AC-38) ──
+
+test("url-safety: order_id with / is encodeURIComponent-escaped (AC-19)", async () => {
+  // If the server receives GET /v1/orders/abc/123 (unencoded) it returns 404.
+  // Correct encoding → GET /v1/orders/abc%2F123 → 200.
+  const script: Script = new Map([["GET /v1/orders/abc%2F123", [{ status: 200, body: makeOrder({ order_id: "abc/123" }) }]]]);
+  await withServer(script, async (baseUrl, hits) => {
+    const { code } = await runVerb(orderVerb, ["status", "abc/123"], baseUrl);
+    assert.equal(code, EXIT.OK);
+    assert.equal(hits[0], "GET /v1/orders/abc%2F123");
+  });
+});
+
+test("order place: malformed inline JSON → exit 1 (AC-26 / AC-37)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code } = await runVerb(orderVerb, ["place", "--preset", "x", "--inputs", '{"bad: json'], baseUrl);
+    assert.equal(code, EXIT.USAGE);
+    assert.equal(hits.length, 0);
+  });
+});
+
+test("order place: @missing-file → exit 1, names file (AC-27)", async () => {
+  await withServer(new Map(), async (baseUrl, hits) => {
+    const { code, lines } = await runVerb(
+      orderVerb,
+      ["place", "--preset", "x", "--inputs", "@/tmp/__loa_nonexistent_fixture__.json"],
+      baseUrl,
+    );
+    assert.equal(code, EXIT.USAGE);
+    assert.ok(
+      JSON.stringify(lines[0]).includes("__loa_nonexistent_fixture__"),
+      "error should name the missing file path",
+    );
+    assert.equal(hits.length, 0);
+  });
+});
+
+test("fulfill watch: poll response missing state → exit 3, ErrorEnvelope (AC-38)", async () => {
+  // Body matches order shape except missing 'state' — fails isPublicOrder guard.
+  const body = { order_id: "ord-fx-1", product: "x", placed_at_unix: 0, updated_at_unix: 0 };
+  const script: Script = new Map([["GET /v1/orders/ord-fx-1", [{ status: 200, body }]]]);
+  await withServer(script, async (baseUrl) => {
+    const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--once"], baseUrl);
+    assert.equal(code, EXIT.API_ERROR);
+    assert.match((lines[0] as { error: string }).error, /contract/);
+  });
 });
 
 // ─── S2-T6: differential vs deployed (env-gated, anti-fixture-tautology) ─────

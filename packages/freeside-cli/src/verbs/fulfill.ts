@@ -12,11 +12,16 @@ import { EXIT, emit, emitError, isPublicOrder, type ExitCode, type PublicOrder }
 
 const MAX_TRANSIENT = 3;
 
-const flagNum = (args: string[], name: string, dflt: number): number => {
+/** Parse a positive integer flag; returns the integer or an error descriptor. */
+function parseIntFlag(args: string[], name: string, dflt: number): number | { error: string } {
   const i = args.indexOf(name);
-  const v = i >= 0 ? Number(args[i + 1]) : NaN;
-  return Number.isFinite(v) && v > 0 ? v : dflt;
-};
+  if (i < 0) return dflt;
+  const raw = args[i + 1] ?? "";
+  const v = Number(raw);
+  if (!Number.isInteger(v) || isNaN(v)) return { error: `${name} must be a positive integer` };
+  if (v <= 0) return { error: `${name} must be > 0` };
+  return v;
+}
 
 function snapshotLine(order: PublicOrder): Record<string, unknown> {
   return {
@@ -29,7 +34,11 @@ function snapshotLine(order: PublicOrder): Record<string, unknown> {
 
 const changeKey = (order: PublicOrder): string => JSON.stringify([order.state, order.ingredients ?? {}]);
 
-export async function fulfillVerb(args: string[], sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<ExitCode> {
+export async function fulfillVerb(
+  args: string[],
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  now: () => number = () => Date.now(),
+): Promise<ExitCode> {
   const sub = args[0];
   if (sub !== "watch") return emitError({ error: `usage: fulfill watch <order_id> [--interval <s>] [--timeout <s>] [--once]` }, EXIT.USAGE);
   const orderId = args[1];
@@ -38,11 +47,24 @@ export async function fulfillVerb(args: string[], sleep: (ms: number) => Promise
   const cfg = configFromEnv();
   if (!cfg.ok) return emitError(cfg.envelope, cfg.code);
 
-  const intervalMs = flagNum(args, "--interval", 15) * 1000;
-  const timeoutMs = flagNum(args, "--timeout", 1800) * 1000;
+  const intervalRaw = parseIntFlag(args, "--interval", 15);
+  if (typeof intervalRaw === "object") return emitError({ error: intervalRaw.error }, EXIT.USAGE);
+  const intervalMs = intervalRaw * 1000;
+
+  const timeoutRaw = parseIntFlag(args, "--timeout", 1800);
+  if (typeof timeoutRaw === "object") return emitError({ error: timeoutRaw.error }, EXIT.USAGE);
+  const timeoutMs = timeoutRaw * 1000;
+
+  if (intervalMs >= timeoutMs) {
+    return emitError(
+      { error: "--interval must be less than --timeout", hint: `--interval ${intervalRaw} is not less than --timeout ${timeoutRaw}` },
+      EXIT.USAGE,
+    );
+  }
+
   const once = args.includes("--once");
 
-  const startedAt = Date.now();
+  const startedAt = now();
   let lastKey: string | undefined;
   let transientFailures = 0;
 
@@ -75,8 +97,8 @@ export async function fulfillVerb(args: string[], sleep: (ms: number) => Promise
     if (once) return EXIT.OK;
     if (order.state === "fulfilled") return EXIT.OK;
     if (order.state === "failed") return EXIT.ORDER_FAILED;
-    if (Date.now() - startedAt >= timeoutMs) {
-      emit({ order_id: orderId, watch: "timeout", elapsed_s: Math.round((Date.now() - startedAt) / 1000) });
+    if (now() - startedAt >= timeoutMs) {
+      emit({ order_id: orderId, watch: "timeout", elapsed_s: Math.round((now() - startedAt) / 1000) });
       return EXIT.WATCH_TIMEOUT;
     }
     await sleep(intervalMs);
