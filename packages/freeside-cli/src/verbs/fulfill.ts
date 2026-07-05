@@ -17,8 +17,9 @@ function parseIntFlag(args: string[], name: string, dflt: number): number | { er
   const i = args.indexOf(name);
   if (i < 0) return dflt;
   const raw = args[i + 1] ?? "";
+  if (raw === "" || raw.startsWith("--")) return { error: `${name} requires a value` };
   const v = Number(raw);
-  if (!Number.isInteger(v) || isNaN(v)) return { error: `${name} must be a positive integer` };
+  if (!Number.isInteger(v)) return { error: `${name} must be a positive integer` };
   if (v <= 0) return { error: `${name} must be > 0` };
   return v;
 }
@@ -47,22 +48,26 @@ export async function fulfillVerb(
   const cfg = configFromEnv();
   if (!cfg.ok) return emitError(cfg.envelope, cfg.code);
 
+  const intervalExplicit = args.includes("--interval");
   const intervalRaw = parseIntFlag(args, "--interval", 15);
   if (typeof intervalRaw === "object") return emitError({ error: intervalRaw.error }, EXIT.USAGE);
-  const intervalMs = intervalRaw * 1000;
 
   const timeoutRaw = parseIntFlag(args, "--timeout", 1800);
   if (typeof timeoutRaw === "object") return emitError({ error: timeoutRaw.error }, EXIT.USAGE);
   const timeoutMs = timeoutRaw * 1000;
 
-  if (intervalMs >= timeoutMs) {
+  const once = args.includes("--once");
+
+  // The guard only rejects when the CONFLICT is user-authored: both flags explicit.
+  // A lone `--timeout 10` clamps the default interval to fit instead of failing,
+  // and --once polls zero times so neither value matters (FAGAN Phase-B review).
+  if (!once && intervalExplicit && intervalRaw * 1000 >= timeoutMs) {
     return emitError(
       { error: "--interval must be less than --timeout", hint: `--interval ${intervalRaw} is not less than --timeout ${timeoutRaw}` },
       EXIT.USAGE,
     );
   }
-
-  const once = args.includes("--once");
+  const intervalMs = intervalExplicit ? intervalRaw * 1000 : Math.min(intervalRaw * 1000, Math.max(1000, Math.floor(timeoutMs / 2)));
 
   const startedAt = now();
   let lastKey: string | undefined;

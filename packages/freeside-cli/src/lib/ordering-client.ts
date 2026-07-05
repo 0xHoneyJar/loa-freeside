@@ -51,13 +51,17 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env):
   }
 
   // T-1: plaintext transport is unconditionally refused for write verbs (SDD D-3.1).
-  // ORDERING_SERVICE_URL_UNSAFE_HTTP=1 skips this check in test infrastructure only.
-  if (parsed.protocol !== "https:" && !env.ORDERING_SERVICE_URL_UNSAFE_HTTP) {
+  // The ONLY exception is http to a LOOPBACK host with ORDERING_SERVICE_URL_UNSAFE_HTTP=1
+  // (local test servers). A remote http URL is refused even with the env set, so the
+  // bypass is unreachable against any production host (FAGAN convergent major).
+  const loopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]" || parsed.hostname === "::1";
+  const testBypass = parsed.protocol === "http:" && loopback && Boolean(env.ORDERING_SERVICE_URL_UNSAFE_HTTP);
+  if (parsed.protocol !== "https:" && !testBypass) {
     return {
       ok: false,
       code: EXIT.USAGE,
       envelope: {
-        error: "ORDERING_SERVICE_URL must use https",
+        error: "ORDERING_SERVICE_URL must use https (http allowed only for loopback test servers with ORDERING_SERVICE_URL_UNSAFE_HTTP=1)",
         hint: "export ORDERING_SERVICE_URL=https://ordering-service-production.up.railway.app",
       },
     };

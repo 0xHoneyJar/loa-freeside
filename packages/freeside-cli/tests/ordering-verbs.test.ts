@@ -601,3 +601,34 @@ test("differential: fixture PublicOrder shape matches the DEPLOYED service", { s
   const unknownToFixture = liveKeys.filter((k) => !fixtureKeys.includes(k) && !["resolved_buildings", "result_ref", "output", "refusal", "fulfillment", "ingredient_jobs"].includes(k));
   assert.deepEqual(unknownToFixture, [], `live service returns keys the fixture never models: ${unknownToFixture.join(",")}`);
 });
+
+// ─── FAGAN Phase-B review pins (loopback-only bypass · watch flag semantics) ──
+
+test("url-config: remote http URL refused even with UNSAFE_HTTP set (fail-closed)", async () => {
+  const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--once"], "http://ordering.example.com");
+  assert.equal(code, EXIT.USAGE);
+  assert.match((lines[0] as { error: string }).error, /https/i);
+});
+
+test("fulfill watch: lone --timeout below default interval clamps instead of failing", async () => {
+  const fulfilled = makeOrder({ state: "fulfilled", fulfillment: { world_slug: "azuki", contact_email: "x@y.z", chain_id: "1", contract_address: "0x1" } });
+  const script: Script = new Map([
+    ["GET /v1/orders/ord-fx-1", [{ status: 200, body: fulfilled }]],
+  ]);
+  await withServer(script, async (baseUrl) => {
+    const { code } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--timeout", "10"], baseUrl);
+    assert.equal(code, EXIT.OK, "a lone --timeout smaller than the default interval must not be a usage error");
+  });
+});
+
+test("fulfill watch: explicit --interval >= --timeout stays a usage error", async () => {
+  const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--interval", "20", "--timeout", "10"], "https://ordering.example.com");
+  assert.equal(code, EXIT.USAGE);
+  assert.match((lines[0] as { error: string }).error, /--interval must be less than --timeout/);
+});
+
+test("fulfill watch: flag missing its value → explicit 'requires a value' error", async () => {
+  const { code, lines } = await runVerb((a) => fulfillVerb(a, noSleep), ["watch", "ord-fx-1", "--interval", "--once"], "https://ordering.example.com");
+  assert.equal(code, EXIT.USAGE);
+  assert.match((lines[0] as { error: string }).error, /requires a value/);
+});
