@@ -221,6 +221,10 @@ describe('CommunityOnboardingOrchestrator.reprobe', () => {
         probeDetail: vi.fn(async () => ({ status: 'complete' as const, world_slug: 'pythenians' })),
       },
       shadow: { probe: vi.fn(async () => 'complete' as const) },
+      // metadata_snapshot joined the preset (sprint-24 / #416). This harness runs no
+      // fulfillment worker (whose audited self-resolve owns structural absence), so the
+      // port must satisfy directly for the order to fulfil in one pass.
+      metadata: { probe: vi.fn(async () => 'complete' as const) },
     });
     const { store, orchestrator } = harness(triage);
     // All-complete probes fulfil in a single process pass.

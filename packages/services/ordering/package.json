@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "start": "tsx bin/http.ts",
     "dev": "tsx watch bin/http.ts",
-    "worker": "tsx bin/worker.ts"
+    "worker": "tsx bin/worker.ts",
+    "orchestrator": "tsx bin/fulfillment-orchestrator.ts"
   },
   "license": "AGPL-3.0",
   "dependencies": {

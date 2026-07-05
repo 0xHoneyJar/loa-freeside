@@ -13,12 +13,16 @@ export interface GitHubIssuePort {
     labels: string[];
     idempotencyKey: string;
   }): Promise<GitHubIssueResult>;
+  /** Comment on an existing tracking issue (the orchestrator's escalation surface, D-2). */
+  addComment(args: { repo: string; issueNumber: number; body: string; idempotencyKey: string }): Promise<void>;
 }
 
 export class RecordingGitHubIssuePort implements GitHubIssuePort {
   readonly issues: Array<{ repo: string; title: string; body: string; labels: string[]; idempotencyKey: string }> = [];
+  readonly comments: Array<{ repo: string; issueNumber: number; body: string; idempotencyKey: string }> = [];
   private seq = 1;
   private readonly byKey = new Map<string, GitHubIssueResult>();
+  private readonly commentKeys = new Set<string>();
 
   async ensureIssue(args: {
     repo: string;
@@ -35,6 +39,12 @@ export class RecordingGitHubIssuePort implements GitHubIssuePort {
     const result = { url: `https://github.com/${args.repo}/issues/${number}`, number };
     this.byKey.set(args.idempotencyKey, result);
     return result;
+  }
+
+  async addComment(args: { repo: string; issueNumber: number; body: string; idempotencyKey: string }): Promise<void> {
+    if (this.commentKeys.has(args.idempotencyKey)) return;
+    this.commentKeys.add(args.idempotencyKey);
+    this.comments.push(args);
   }
 }
 
@@ -80,6 +90,22 @@ export class FetchGitHubIssuePort implements GitHubIssuePort {
     }
     const created = (await createRes.json()) as { html_url: string; number: number };
     return { url: created.html_url, number: created.number };
+  }
+
+  // loa:shortcut: no server-side comment dedup — the orchestrator dedupes per process
+  // (in-memory escalation set), so re-comment only happens after a restart. Add a
+  // `since`-scoped comment search here if restart-storms ever double-comment in practice.
+  async addComment(args: { repo: string; issueNumber: number; body: string; idempotencyKey: string }): Promise<void> {
+    const [owner, repo] = args.repo.split('/');
+    if (!owner || !repo) throw new Error(`invalid repo: ${args.repo}`);
+    const res = await this.fetchImpl(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${args.issueNumber}/comments`,
+      { method: 'POST', headers: this.headers(), body: JSON.stringify({ body: args.body }) },
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`GitHub issue comment failed: ${res.status} ${text}`);
+    }
   }
 
   private headers(): Record<string, string> {
