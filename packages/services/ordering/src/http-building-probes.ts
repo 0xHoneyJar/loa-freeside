@@ -24,6 +24,13 @@ export interface HttpEnqueuePayload {
   source: string;
 }
 
+/** Result of an idempotent upstream dispatch. `world_slug` is present when the surface
+ *  returns one (worlds manifest always; score register when it echoes its internal slug). */
+export interface DispatchResult {
+  ok: boolean;
+  world_slug?: string;
+}
+
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
@@ -157,8 +164,21 @@ export class HttpBuildingProbes {
   }
 
   async enqueueSonar(payload: HttpEnqueuePayload): Promise<boolean> {
+    return (await this.ingestSonar(payload)).ok;
+  }
+
+  async enqueueScore(payload: HttpEnqueuePayload): Promise<boolean> {
+    return (await this.registerScore(payload)).ok;
+  }
+
+  async enqueueWorlds(payload: HttpEnqueuePayload): Promise<boolean> {
+    return (await this.manifestWorlds(payload)).ok;
+  }
+
+  /** POST sonar ingest. Poll-only surface — no slug is produced. */
+  async ingestSonar(payload: HttpEnqueuePayload): Promise<DispatchResult> {
     const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
-    if (!normalized) return false;
+    if (!normalized) return { ok: false };
 
     const url = `${trimBase(this.config.sonarApiUrl)}/v1/collections/${normalized.chainId}/${normalized.contract}/ingest`;
     try {
@@ -172,15 +192,17 @@ export class HttpBuildingProbes {
           community_name: payload.displayName,
         }),
       });
-      return res.status === 200 || res.status === 202;
+      return { ok: res.status === 200 || res.status === 202 };
     } catch {
-      return false;
+      return { ok: false };
     }
   }
 
-  async enqueueScore(payload: HttpEnqueuePayload): Promise<boolean> {
+  /** POST score register. Echoes score's INTERNAL `world_slug` — surfaced only for the
+   *  D-5 divergence check; worlds-api remains canonical. */
+  async registerScore(payload: HttpEnqueuePayload): Promise<DispatchResult> {
     const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
-    if (!normalized) return false;
+    if (!normalized) return { ok: false };
 
     const url = `${trimBase(this.config.scoreApiUrl)}/v1/communities/register`;
     try {
@@ -196,15 +218,16 @@ export class HttpBuildingProbes {
           source: payload.source,
         }),
       });
-      return res.status === 200 || res.status === 201;
+      return { ok: res.status === 200 || res.status === 201, world_slug: await this.readWorldSlug(res) };
     } catch {
-      return false;
+      return { ok: false };
     }
   }
 
-  async enqueueWorlds(payload: HttpEnqueuePayload): Promise<boolean> {
+  /** POST worlds manifest. Source of the CANONICAL `world_slug` (D-5). */
+  async manifestWorlds(payload: HttpEnqueuePayload): Promise<DispatchResult> {
     const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
-    if (!normalized) return false;
+    if (!normalized) return { ok: false };
 
     const url = `${trimBase(this.config.worldsApiUrl)}/v1/worlds/manifest`;
     try {
@@ -220,10 +243,17 @@ export class HttpBuildingProbes {
           source: payload.source,
         }),
       });
-      return res.status === 200 || res.status === 201;
+      return { ok: res.status === 200 || res.status === 201, world_slug: await this.readWorldSlug(res) };
     } catch {
-      return false;
+      return { ok: false };
     }
+  }
+
+  private async readWorldSlug(res: Response): Promise<string | undefined> {
+    const body = await this.readJson(res);
+    return typeof body === 'object' && body !== null && typeof (body as { world_slug?: string }).world_slug === 'string'
+      ? (body as { world_slug: string }).world_slug
+      : undefined;
   }
 
   private normalizePair(chainId: string, contract: string): { chainId: string; contract: string } | null {
