@@ -313,7 +313,9 @@ function makeMemberLeaveHandler() {
       discordId: user_id,
     });
 
-    if (outcome === 'unknown_profile' || outcome === 'unknown_guild' as never) {
+    // unknown_guild is handled earlier by getCommunityByGuildId — markProfileInactive
+    // can only return deactivated | already_inactive | unknown_profile.
+    if (outcome === 'unknown_profile') {
       log.warn({ event: 'memberLeave', guildId: guild_id, discordId: user_id, outcome });
     } else {
       log.info({ event: 'memberLeave', guildId: guild_id, discordId: user_id, outcome });
