@@ -5,7 +5,7 @@ import { type CapabilityResolver } from './resolver.js';
 import { type AuditPort, type OperatedCommunityRegistry } from './audit-acl.js';
 import type { PrivateOpsPublisher } from './private-ops.js';
 import { AccessRiskAuditOrchestrator } from './access-risk-audit-orchestrator.js';
-import { CommunityOnboardingOrchestrator } from './community-onboarding-orchestrator.js';
+import { CommunityOnboardingOrchestrator, type CommunityOnboardingOrchestratorDeps } from './community-onboarding-orchestrator.js';
 import type { TriagePorts } from './triage-ports.js';
 import { StubTriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
@@ -37,6 +37,10 @@ export interface OrchestratorDeps {
   enqueue?: IngredientEnqueueService;
   /** Optional private ops channel (SDD §13 M-8). */
   opsChannel?: PrivateOpsPublisher;
+  /** Discord channel-health port — the advanceIngredient gate (T-2/FR-1) needs it on
+   *  EVERY CommunityOnboardingOrchestrator instance, intake included, or the choke
+   *  point has teeth only on the worker path. */
+  discordHealth?: CommunityOnboardingOrchestratorDeps['discordHealth'];
 }
 
 export class OrderOrchestrator {
@@ -60,6 +64,7 @@ export class OrderOrchestrator {
       ...shared,
       triage: deps.triage ?? new StubTriagePorts(),
       enqueue: deps.enqueue,
+      discordHealth: deps.discordHealth,
     });
   }
 

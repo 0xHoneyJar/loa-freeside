@@ -66,6 +66,9 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
     now: () => Date.now(),
     triage,
     enqueue,
+    // The advanceIngredient health gate must have teeth on the INTAKE path too —
+    // without this, the service/merge write path bypasses the choke point (BB #443).
+    discordHealth: triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined,
   });
 
   return { store, orchestrator, enqueue };

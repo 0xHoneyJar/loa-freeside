@@ -122,7 +122,12 @@ export class FulfillmentOrchestrator {
 
   async processOrder(orderId: string): Promise<void> {
     let record = await this.deps.store.get(orderId);
-    if (!record || record.product !== 'community-onboarding' || isTerminal(record.state)) return;
+    if (!record || record.product !== 'community-onboarding' || isTerminal(record.state)) {
+      // Order settled (or gone) with a pending metadata counter → drop the entry
+      // so long-lived workers do not leak one per terminal order (BB #443).
+      this.metadataPendingTicks.delete(orderId);
+      return;
+    }
 
     // Lifecycle: drive placed/routing → producing via the existing state machine (idempotent CAS).
     if (record.state === 'placed' || record.state === 'routing') {
