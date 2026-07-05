@@ -13,6 +13,7 @@ import { IngredientEnqueueService } from './ingredient-enqueue.js';
 import { createKitchenTriagePorts, KitchenTriagePorts } from './kitchen-triage-ports.js';
 import { createOrderStore } from './store-factory.js';
 import { FulfillmentOrchestrator, FulfillmentOrchestratorWorker } from './fulfillment-orchestrator.js';
+import { CommunityOnboardingOrchestrator } from './community-onboarding-orchestrator.js';
 
 class NoopAudit implements AuditPort {
   async invoke(): Promise<AuditServiceResult> {
@@ -65,6 +66,9 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
     now: () => Date.now(),
     triage,
     enqueue,
+    // The advanceIngredient health gate must have teeth on the INTAKE path too —
+    // without this, the service/merge write path bypasses the choke point (BB #443).
+    discordHealth: triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined,
   });
 
   return { store, orchestrator, enqueue };
@@ -80,15 +84,29 @@ export function orchestratorEnabled(): boolean {
  * the HTTP probes and escalation from the GitHub port (both null-safe for CI/dev).
  */
 export async function createFulfillmentOrchestratorWorker(): Promise<FulfillmentOrchestratorWorker> {
-  const { store, orchestrator } = await createOrderingComposition();
+  const { store, enqueue } = await createOrderingComposition();
   const triage = createKitchenTriagePorts();
   const dispatch = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
   const discordHealth = triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined;
 
+  // Create a dedicated onboarding orchestrator with discordHealth wired in (T-2, FR-1).
+  // The gate lives in advanceIngredient, so the orchestrator the fulfillment worker uses
+  // must carry the port — it cannot reuse the intake orchestrator's instance. It MUST
+  // mirror the intake instance's side-effect deps (enqueue) or worker-driven advances
+  // silently lose ingredient enqueue behavior (FAGAN: dropped composition deps).
+  const onboarding = new CommunityOnboardingOrchestrator({
+    store,
+    resolver: new ConfigCapabilityResolver(triageCapabilityConfig()),
+    triage,
+    now: () => Date.now(),
+    discordHealth,
+    enqueue,
+  });
+
   const fulfillment = new FulfillmentOrchestrator({
     store,
     triage,
-    onboarding: orchestrator.communityOnboarding,
+    onboarding,
     dispatch,
     github: createGitHubIssuePort(),
     now: () => Date.now(),

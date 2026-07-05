@@ -57,8 +57,11 @@ export class KitchenTriagePorts implements TriagePorts {
     } else if (!metadataEnabled) {
       // Deliberate opt-out: report 'optional' so canFulfill gate passes (D11.4).
       this.metadata = { probe: async () => 'optional' as const };
+    } else if (this.fallback.metadata) {
+      // HTTP probes off but fallback carries a metadata port — honor it (T-4b, FR-4b).
+      this.metadata = this.fallback.metadata;
     } else {
-      // HTTP probes off or score-api not configured: metadata port absent → NF-6 (stays pending).
+      // HTTP probes off and no fallback metadata port: absent → NF-6 (stays pending).
       this.metadata = undefined;
     }
 

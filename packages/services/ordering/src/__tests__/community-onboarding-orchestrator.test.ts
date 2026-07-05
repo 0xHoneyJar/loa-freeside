@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ORDER_LIFECYCLE_SUBJECTS, INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS } from '@freeside/ordering-protocol';
 import { OrderOrchestrator } from '../orchestrator.js';
 import { InMemoryOrderStore, type NewOrder } from '../store.js';
 import { ConfigCapabilityResolver, type CapabilityConfig } from '../resolver.js';
 import { StubTriagePorts } from '../triage-ports.js';
-import { canFulfillCommunityOnboarding, mergeProbedIngredients } from '../community-onboarding-orchestrator.js';
+import { canFulfillCommunityOnboarding, CommunityOnboardingOrchestrator, mergeProbedIngredients } from '../community-onboarding-orchestrator.js';
 import type { AuditPort } from '../audit-acl.js';
 import type { AuditServiceResult } from '@freeside/shadow-audit-service';
 import type { Cta } from '@freeside/shadow-audit-protocol';
@@ -172,5 +172,70 @@ describe('canFulfillCommunityOnboarding — metadata_snapshot gate (T-5)', () =>
 
   it('returns true when metadata_snapshot is optional (NF-6 disabled path)', () => {
     expect(canFulfillCommunityOnboarding({ ...base, metadata_snapshot: 'optional' }, fulfillment)).toBe(true);
+  });
+});
+
+// ── T-2: discord health gate in advanceIngredient (AC-3, AC-4) ────────────────
+
+function discordAdvanceHarness(discordHealth?: {
+  checkChannelHealth(chainId: string, contract: string): Promise<{ healthy: boolean; reason?: string }>;
+}) {
+  const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+  const orchestrator = new CommunityOnboardingOrchestrator({
+    store,
+    resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
+    triage: new StubTriagePorts(),
+    now: () => 1_700_000_000_000,
+    discordHealth,
+  });
+  return { store, orchestrator };
+}
+
+async function placedAndProducing(store: ReturnType<typeof harness>['store'], orchestratorInstance: InstanceType<typeof CommunityOnboardingOrchestrator>) {
+  await store.placeOrder(communityOrder('ord_dc_1'), {
+    subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+    payload: { order_id: 'ord_dc_1', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+  });
+  await orchestratorInstance.process('ord_dc_1', (await store.get('ord_dc_1'))!);
+  return store.get('ord_dc_1');
+}
+
+describe('CommunityOnboardingOrchestrator — discord health gate in advanceIngredient (T-2, AC-3, AC-4)', () => {
+  it('AC-3: advanceIngredient discord_observer→complete with unhealthy port returns ok:false and does not patch the store', async () => {
+    const spy = vi.fn().mockResolvedValue({ healthy: false, reason: 'channel archived' });
+    const { store, orchestrator } = discordAdvanceHarness({ checkChannelHealth: spy });
+    const initial = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+    // Use own store, orchestrator has its own store.
+    await store.placeOrder(communityOrder('ord_dc_1'), {
+      subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+      payload: { order_id: 'ord_dc_1', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+    });
+    await orchestrator.process('ord_dc_1', (await store.get('ord_dc_1'))!);
+    const recordBefore = await store.get('ord_dc_1');
+
+    const result = await orchestrator.advanceIngredient('ord_dc_1', 'discord_observer', 'complete');
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('discord channel-health check failed');
+    // Store must be IDENTICAL before and after the rejected advance.
+    const recordAfter = await store.get('ord_dc_1');
+    expect(recordAfter?.ingredients).toEqual(recordBefore?.ingredients);
+    expect(recordAfter?.operator_audit).toEqual(recordBefore?.operator_audit);
+    void initial;
+  });
+
+  it('AC-4: advanceIngredient discord_observer→optional passes unconditionally (no health check)', async () => {
+    const spy = vi.fn();
+    const { store, orchestrator } = discordAdvanceHarness({ checkChannelHealth: spy });
+    await store.placeOrder(communityOrder('ord_dc_2'), {
+      subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+      payload: { order_id: 'ord_dc_2', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+    });
+    await orchestrator.process('ord_dc_2', (await store.get('ord_dc_2'))!);
+
+    const result = await orchestrator.advanceIngredient('ord_dc_2', 'discord_observer', 'optional');
+
+    expect(result.ok).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

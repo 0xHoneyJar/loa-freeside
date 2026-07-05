@@ -18,7 +18,7 @@ import type { OrderStore, OrderRecord } from './store.js';
 import { type CapabilityResolver, type ResolvedEndpoint, CapabilityUnresolvedError } from './resolver.js';
 import type { PrivateOpsPublisher } from './private-ops.js';
 import type { ProcessResult } from './orchestrator.js';
-import type { TriagePorts } from './triage-ports.js';
+import type { DiscordChannelHealth, TriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
 import { fireEnqueue } from './ingredient-enqueue.js';
 import type { OperatorAuditEntry, OrderProbeMeta, ProbeSource } from './kitchen-types.js';
@@ -30,6 +30,10 @@ export interface CommunityOnboardingOrchestratorDeps {
   now: () => number;
   opsChannel?: PrivateOpsPublisher;
   enqueue?: IngredientEnqueueService;
+  /** Optional Discord channel-health port (T-2, FR-1). Gate fires on discord_observer→complete. */
+  discordHealth?: {
+    checkChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth>;
+  };
 }
 
 type IngredientKey = keyof CommunityOnboardingIngredients;
@@ -40,6 +44,9 @@ const REQUIRED_INGREDIENTS: IngredientKey[] = ['sonar', 'score', 'worlds_manifes
 const REPROBE_COOLDOWN_MS = Number(process.env.REPROBE_COOLDOWN_MS ?? 10_000);
 const REPROBE_PER_PROBE_TIMEOUT_MS = Number(process.env.REPROBE_PER_PROBE_TIMEOUT_MS ?? 10_000);
 const REPROBE_FANOUT = 3;
+
+// Once-per-process guard for the D13.3 port-absent warning (sits on the advance path).
+let warnedDiscordHealthAbsent = false;
 
 export function canFulfillCommunityOnboarding(
   ingredients: CommunityOnboardingIngredients,
@@ -267,6 +274,33 @@ export class CommunityOnboardingOrchestrator {
     if (record.product !== 'community-onboarding') return { ok: false, error: 'not a community-onboarding order' };
     if (isTerminal(record.state)) return { ok: false, error: 'order already terminal' };
 
+    const parsedInputs = CommunityOnboardingInputs.safeParse(record.inputs);
+    if (!parsedInputs.success) return { ok: false, error: 'invalid order inputs' };
+
+    // DISCORD CHANNEL-HEALTH GATE (T-2, FR-1) ────────────────────────────────
+    // Fires only when advancing discord_observer to 'complete'. Advancing to 'optional' is
+    // unconditional (PRD Assumption 5). Port absent → advance proceeds (D13.3 fallback).
+    if (ingredient === 'discord_observer' && status === 'complete') {
+      if (this.deps.discordHealth) {
+        let health: DiscordChannelHealth;
+        try {
+          health = await this.deps.discordHealth.checkChannelHealth(
+            parsedInputs.data.chain_id,
+            parsedInputs.data.contract_address,
+          );
+        } catch (e) {
+          health = { healthy: false, reason: `probe error: ${e instanceof Error ? e.message : String(e)}` };
+        }
+        if (!health.healthy) {
+          return { ok: false, error: `discord channel-health check failed: ${health.reason ?? 'unhealthy'}` };
+        }
+      } else if (!warnedDiscordHealthAbsent) {
+        // D13.3 observability: the unguarded advance must not be silent (once per process).
+        warnedDiscordHealthAbsent = true;
+        console.warn('[community-onboarding] discord_observer: discordHealth port absent, advancing without channel-health check (D13.3)');
+      }
+    }
+
     const ingredients: CommunityOnboardingIngredients = {
       ...(record.ingredients ?? INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS),
       [ingredient]: status,
@@ -280,9 +314,6 @@ export class CommunityOnboardingOrchestrator {
     ) {
       ingredients.shadow_preview = 'pending';
     }
-
-    const parsedInputs = CommunityOnboardingInputs.safeParse(record.inputs);
-    if (!parsedInputs.success) return { ok: false, error: 'invalid order inputs' };
 
     let fulfillment = record.fulfillment;
     if (worldSlug) {

@@ -36,8 +36,6 @@ const ALL_INGREDIENTS: readonly IngredientKey[] = [
 /** Dispatch order — WORLDS-FIRST so the canonical slug is sourced before score register (D-5). */
 const DISPATCH_ORDER: readonly EnqueueIngredientKey[] = ['worlds_manifest', 'score', 'sonar'];
 
-// Once-per-process guard for the D13.3 fallback warning (it sits in the per-tick advance loop).
-let warnedDiscordHealthAbsent = false;
 
 /**
  * The single decision table (SDD §4.1 / task 23.2). Ingredient status → orchestrator action:
@@ -86,7 +84,9 @@ export interface FulfillmentOrchestratorDeps {
   now: () => number;
   /** Credential label recorded on advance audit entries. */
   tokenLabel?: string;
-  /** Optional Discord channel-health port (D13.2). When absent, health gate is skipped with a warning (AC-10). */
+  /** @deprecated The channel-health gate moved to CommunityOnboardingOrchestrator.advanceIngredient
+   *  (T-2/FR-1 choke point) — wire discordHealth on the onboarding orchestrator instead. Kept so
+   *  existing composition call-sites keep typechecking; ignored here. */
   discordHealth?: {
     checkChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth>;
   };
@@ -109,9 +109,25 @@ export class FulfillmentOrchestrator {
    *  `idempotency_key` so a consumer can dedupe. */
   private readonly escalated = new Set<string>();
 
+  /** Consecutive pending-tick counter for metadata_snapshot (T-3, FR-3). Incremented each tick
+   *  that metadata stays 'pending' after the initial dispatch. Self-resolves to 'optional' when
+   *  count reaches maxPendingTicks. loa:shortcut: in-memory; stales harmlessly on restart. */
+  private readonly metadataPendingTicks = new Map<string, number>();
+  // Malformed env must not silently disable the backstop (NaN >= n is always false);
+  // clamp to >=1 so 0 cannot self-resolve before the first counted tick.
+  private readonly maxPendingTicks = (() => {
+    const raw = Number(process.env.METADATA_PROBE_MAX_PENDING_TICKS ?? 3);
+    return Number.isInteger(raw) && raw >= 1 ? raw : 3;
+  })();
+
   async processOrder(orderId: string): Promise<void> {
     let record = await this.deps.store.get(orderId);
-    if (!record || record.product !== 'community-onboarding' || isTerminal(record.state)) return;
+    if (!record || record.product !== 'community-onboarding' || isTerminal(record.state)) {
+      // Order settled (or gone) with a pending metadata counter → drop the entry
+      // so long-lived workers do not leak one per terminal order (BB #443).
+      this.metadataPendingTicks.delete(orderId);
+      return;
+    }
 
     // Lifecycle: drive placed/routing → producing via the existing state machine (idempotent CAS).
     if (record.state === 'placed' || record.state === 'routing') {
@@ -138,48 +154,80 @@ export class FulfillmentOrchestrator {
     // DISPATCH (worlds-first) ────────────────────────────────────────────────
     let canonicalSlug = probe.worldSlug;
     const payload = this.payloadFor(orderId, inputs);
-    for (const ingredient of DISPATCH_ORDER) {
-      if (probe.statuses[ingredient] !== 'pending') continue;
-      const res = this.deps.dispatch ? await this.dispatchOne(ingredient, payload) : { ok: false };
-      await this.emit(orderId, ORCHESTRATOR_SUBJECTS.dispatch, OrchestratorDispatchSchema.parse({
-        order_id: orderId,
-        ingredient,
-        ok: res.ok,
-        idempotency_key: ingredientJobIdempotencyKey(orderId, ingredient),
-        at_unix: this.nowUnix(),
-      }));
-      if (ingredient === 'worlds_manifest' && res.world_slug) canonicalSlug = res.world_slug;
-      if (ingredient === 'score' && res.world_slug && canonicalSlug && res.world_slug !== canonicalSlug) {
-        await this.emit(orderId, ORCHESTRATOR_SUBJECTS.slug_divergence, SlugDivergenceSchema.parse({
+    if (this.deps.dispatch) {
+      for (const ingredient of DISPATCH_ORDER) {
+        if (probe.statuses[ingredient] !== 'pending') continue;
+        const res = await this.dispatchOne(ingredient, payload);
+        await this.emit(orderId, ORCHESTRATOR_SUBJECTS.dispatch, OrchestratorDispatchSchema.parse({
           order_id: orderId,
-          worlds_slug: canonicalSlug,
-          score_slug: res.world_slug,
+          ingredient,
+          ok: res.ok,
+          idempotency_key: ingredientJobIdempotencyKey(orderId, ingredient),
           at_unix: this.nowUnix(),
         }));
+        // T-1: adopt canonical slug only from a successful dispatch (res.ok guard prevents a
+        // failed dispatch from overwriting a previously probed slug with a transient error value).
+        if (ingredient === 'worlds_manifest' && res.ok && res.world_slug) canonicalSlug = res.world_slug;
+        if (ingredient === 'score' && res.ok && res.world_slug && canonicalSlug && res.world_slug !== canonicalSlug) {
+          await this.emit(orderId, ORCHESTRATOR_SUBJECTS.slug_divergence, SlugDivergenceSchema.parse({
+            order_id: orderId,
+            worlds_slug: canonicalSlug,
+            score_slug: res.world_slug,
+            at_unix: this.nowUnix(),
+          }));
+        }
+        if (res.ok) await this.markInProgress(orderId, ingredient);
       }
-      if (res.ok) await this.markInProgress(orderId, ingredient);
+
     }
 
-    // CONDITIONAL DISPATCH: metadata_snapshot (D12.3) ─────────────────────────
-    // Not in DISPATCH_ORDER — score must complete first. metadata port absence = no dispatch (NF-6).
-    if (
-      probe.statuses.metadata_snapshot === 'pending' &&
-      probe.statuses.score === 'complete' &&
-      this.deps.triage.metadata &&
-      this.deps.dispatch?.snapshotMetadata
-    ) {
-      const res = await this.deps.dispatch.snapshotMetadata(payload);
-      await this.emit(orderId, ORCHESTRATOR_SUBJECTS.dispatch, OrchestratorDispatchSchema.parse({
-        order_id: orderId,
-        ingredient: 'metadata_snapshot',
-        ok: res.ok,
-        // Hand-built: ingredientJobIdempotencyKey's EnqueueIngredientKey type does not
-        // include metadata_snapshot (dispatch here is direct HTTP, not kitchen enqueue).
-        // Same `${orderId}:${ingredient}` shape by construction.
-        idempotency_key: `${orderId}:metadata_snapshot`,
-        at_unix: this.nowUnix(),
-      }));
-      if (res.ok) await this.markInProgressKey(orderId, 'metadata_snapshot');
+    // METADATA_SNAPSHOT: conditional dispatch + persistent-404 backstop (D12.3, T-3) ──
+    // Deliberately OUTSIDE the `if (this.deps.dispatch)` guard: a dispatch-null
+    // composition is the canonical stall this backstop exists to break (FAGAN
+    // convergent major). Ticks are counted whenever metadata is pending with score
+    // complete, dispatch or not; dispatch itself fires at most once (first tick).
+    if (probe.statuses.metadata_snapshot === 'pending' && this.deps.triage.metadata) {
+      const pendingCount = this.metadataPendingTicks.get(orderId) ?? 0;
+      if (pendingCount >= this.maxPendingTicks) {
+        // Persistent-404 self-resolve (FR-3): enough ticks have passed, advance to optional.
+        const result = await this.deps.onboarding.advanceIngredient(
+          orderId, 'metadata_snapshot', 'optional', undefined,
+          { tokenLabel: this.deps.tokenLabel, callerNote: 'fulfillment-orchestrator:persistent-404-self-resolve' },
+        );
+        if (result.ok) {
+          await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
+            order_id: orderId,
+            ingredient: 'metadata_snapshot',
+            status: 'optional',
+            world_slug: undefined,
+            at_unix: this.nowUnix(),
+          }));
+          this.metadataPendingTicks.delete(orderId);
+        }
+        // On failure the counter is KEPT: deleting would reset to 0 and re-fire the
+        // one-shot dispatch below on the next tick (FAGAN convergent major).
+      } else if (probe.statuses.score === 'complete') {
+        if (pendingCount === 0 && this.deps.dispatch?.snapshotMetadata) {
+          // First counted tick: dispatch once (existing path, D12.3).
+          const res = await this.deps.dispatch.snapshotMetadata(payload);
+          await this.emit(orderId, ORCHESTRATOR_SUBJECTS.dispatch, OrchestratorDispatchSchema.parse({
+            order_id: orderId,
+            ingredient: 'metadata_snapshot',
+            ok: res.ok,
+            // Hand-built: ingredientJobIdempotencyKey's EnqueueIngredientKey type does not
+            // include metadata_snapshot (dispatch here is direct HTTP, not kitchen enqueue).
+            idempotency_key: `${orderId}:metadata_snapshot`,
+            at_unix: this.nowUnix(),
+          }));
+          if (res.ok) await this.markInProgressKey(orderId, 'metadata_snapshot');
+        }
+        // Count the tick regardless of dispatch availability.
+        this.metadataPendingTicks.set(orderId, pendingCount + 1);
+      }
+    } else {
+      // Metadata resolved (or port absent — the structural-absence path owns that):
+      // drop the counter so long-lived workers do not leak an entry per settled order.
+      this.metadataPendingTicks.delete(orderId);
     }
 
     // ADVANCE satisfied ingredients ─────────────────────────────────────────
@@ -222,33 +270,21 @@ export class FulfillmentOrchestrator {
         await this.escalate(orderId, ingredient, 'worlds returned complete without world_slug');
         continue;
       }
-      // DISCORD CHANNEL-HEALTH GATE (D13.4) ───────────────────────────────────
-      if (ingredient === 'discord_observer' && status === 'complete') {
-        if (this.deps.discordHealth) {
-          // A throwing health port must not abort the whole processOrder tick —
-          // fail closed: treat probe error as unhealthy and escalate (BB FO-003).
-          let health: DiscordChannelHealth;
-          try {
-            health = await this.deps.discordHealth.checkChannelHealth(inputs.chain_id, inputs.contract_address);
-          } catch (e) {
-            health = { healthy: false, reason: `probe error: ${e instanceof Error ? e.message : String(e)}` };
-          }
-          if (!health.healthy) {
-            await this.escalate(orderId, ingredient, `channel-health: ${health.reason ?? 'unhealthy'}`);
-            continue;
-          }
-        } else if (!warnedDiscordHealthAbsent) {
-          // discordHealth port absent + discord complete → documented fallback (D13.3, AC-10).
-          // Once per process: this branch sits in the per-tick advance loop.
-          warnedDiscordHealthAbsent = true;
-          console.warn('[fulfillment-orchestrator] discord_observer: discordHealth port absent, advancing without channel-health check (D13.3)');
-        }
-      }
+      // Discord channel-health gate now lives in CommunityOnboardingOrchestrator.advanceIngredient
+      // (T-2, FR-1). The gate returns { ok: false } when the health check fails; we escalate here.
       const slug = ingredient === 'worlds_manifest' ? canonicalSlug : undefined;
-      await this.deps.onboarding.advanceIngredient(orderId, ingredient, status, slug, {
+      const advResult = await this.deps.onboarding.advanceIngredient(orderId, ingredient, status, slug, {
         tokenLabel: this.deps.tokenLabel,
         callerNote: 'fulfillment-orchestrator',
       });
+      if (!advResult.ok) {
+        // Terminal race is benign — the order settled between our read and the call;
+        // escalating it would page an operator about a SUCCESS (FAGAN).
+        if (advResult.error === 'order already terminal') return;
+        // Gate rejection (e.g., discord health check failed): real, escalate.
+        await this.escalate(orderId, ingredient, advResult.error ?? `${ingredient} advance rejected`);
+        continue;
+      }
       await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
         order_id: orderId,
         ingredient,

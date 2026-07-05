@@ -94,6 +94,7 @@ async function wiringHarness(
     resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
     triage,
     now: () => NOW_MS,
+    discordHealth: opts?.discordHealth,  // T-2: gate lives in advanceIngredient
   });
   await store.placeOrder(order(), {
     subject: ORDER_LIFECYCLE_SUBJECTS.placed,

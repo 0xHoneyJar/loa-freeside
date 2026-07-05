@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   ORDER_LIFECYCLE_SUBJECTS,
   INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
@@ -378,11 +378,14 @@ async function discordHarness(opts: {
   triage.shadowStatus = 'in_progress'; // operator not yet approved — shadow gate holds
 
   const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+  // T-2: discord health gate lives in advanceIngredient — wire discordHealth to
+  // CommunityOnboardingOrchestrator, not just to FulfillmentOrchestrator.
   const onboarding = new CommunityOnboardingOrchestrator({
     store,
     resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
     triage,
     now: () => NOW_MS,
+    discordHealth: opts.discordHealth,
   });
   await store.placeOrder(order(), {
     subject: ORDER_LIFECYCLE_SUBJECTS.placed,
@@ -403,7 +406,7 @@ async function discordHarness(opts: {
     now: () => NOW_MS,
     discordHealth: opts.discordHealth,
   });
-  return { store, orchestrator };
+  return { store, orchestrator, onboarding };
 }
 
 describe('FulfillmentOrchestrator — discord channel-health gate (T-4)', () => {
@@ -470,6 +473,227 @@ describe('FulfillmentOrchestrator — discord channel-health gate (T-4)', () => 
     await orchestrator.processOrder('ord_fo');
     await orchestrator.processOrder('ord_fo');
     expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate)).toHaveLength(1);
+  });
+
+  // ── AC-1: spy called exactly once (gate is in advanceIngredient) ─────────────
+  it('AC-1: checkChannelHealth spy called once before orchestrator.advance for discord_observer', async () => {
+    // ONE ordered log for both the health check and the emitted events, so the
+    // before-relation is actually asserted (not merely both-happened).
+    const callOrder: string[] = [];
+    const spy = vi.fn().mockImplementation(async () => {
+      callOrder.push('HEALTH_CHECK');
+      return { healthy: true };
+    });
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: { checkChannelHealth: spy },
+    });
+    const origAppend = store.appendEvent.bind(store);
+    store.appendEvent = async (orderId, event) => {
+      const ingredient = (event.payload as { ingredient?: string } | undefined)?.ingredient;
+      callOrder.push(`${event.subject as string}:${ingredient ?? '-'}`);
+      return origAppend(orderId, event);
+    };
+
+    await orchestrator.processOrder('ord_fo');
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('8453', CONTRACT);
+    const healthIdx = callOrder.indexOf('HEALTH_CHECK');
+    const advIdx = callOrder.indexOf(`${ORCHESTRATOR_SUBJECTS.advance}:discord_observer`);
+    expect(healthIdx).toBeGreaterThanOrEqual(0);
+    expect(advIdx).toBeGreaterThanOrEqual(0);
+    expect(healthIdx).toBeLessThan(advIdx);
+  });
+
+  // ── AC-2: healthy=false → no advance, escalate instead ──────────────────────
+  it('AC-2: healthy=false emits orchestrator.escalate and no advance for discord_observer', async () => {
+    const spy = vi.fn().mockResolvedValue({ healthy: false, reason: 'channel closed' });
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: { checkChannelHealth: spy },
+    });
+    await orchestrator.processOrder('ord_fo');
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const advances = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.advance);
+    expect(advances.some((a) => (a as { ingredient?: string }).ingredient === 'discord_observer')).toBe(false);
+    const escalations = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate);
+    expect(escalations.some((e) => (e as { ingredient?: string }).ingredient === 'discord_observer')).toBe(true);
+  });
+});
+
+// ── T-1: canonicalSlug guard (AC-6, AC-7) ──────────────────────────────────
+
+class FailDispatch implements FulfillmentDispatchPort {
+  async ingestSonar(): Promise<DispatchResult> { return { ok: true }; }
+  async registerScore(): Promise<DispatchResult> { return { ok: true }; }
+  async manifestWorlds(): Promise<DispatchResult> { return { ok: false, world_slug: 'rogue-slug' }; }
+}
+
+describe('FulfillmentOrchestrator — canonicalSlug guard (T-1, AC-6, AC-7)', () => {
+  it('AC-6: failed worlds dispatch (ok=false) does NOT adopt its world_slug as canonicalSlug', async () => {
+    const triage = new MutableTriage();
+    triage.worldsStatus = 'in_progress';
+    const { store, orchestrator } = await producingHarness({ triage, dispatch: new FailDispatch() });
+    triage.worldsStatus = 'pending'; // next probe returns pending so dispatch fires
+
+    // worlds returns ok:false with world_slug='rogue-slug' — must NOT be adopted.
+    await orchestrator.processOrder('ord_fo');
+    const record = await store.get('ord_fo');
+    expect(record?.fulfillment?.world_slug).not.toBe('rogue-slug');
+  });
+
+  it('AC-7: successful worlds dispatch (ok=true) correctly populates canonicalSlug', async () => {
+    // Adoption is observable via slug_divergence: score dispatch returns a DIFFERENT
+    // slug in the same tick, so the divergence event can only fire if the worlds slug
+    // was actually adopted into canonicalSlug (previously this test asserted nothing
+    // beyond "worlds was dispatched" — FAGAN vacuity finding).
+    const dispatch = new FakeDispatch('real-slug', 'other-slug');
+    const triage = new MutableTriage();
+    triage.worldsStatus = 'in_progress';
+    const { store, orchestrator } = await producingHarness({ triage, dispatch });
+    triage.worldsStatus = 'pending';
+    triage.scoreStatus = 'pending';
+    triage.sonarStatus = 'complete';
+
+    await orchestrator.processOrder('ord_fo');
+    expect(dispatch.calls).toContain('worlds_manifest');
+    const divergences = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.slug_divergence);
+    expect(divergences).toHaveLength(1);
+    expect((divergences[0] as { worlds_slug?: string }).worlds_slug).toBe('real-slug');
+    expect((divergences[0] as { score_slug?: string }).score_slug).toBe('other-slug');
+  });
+});
+
+// ── T-3: persistent-404 backstop (AC-8, AC-9, AC-10, AC-11) ────────────────
+
+async function metadataTickHarness(opts: { withMetadataPort: boolean; maxTicks?: number }) {
+  const origEnv = process.env.METADATA_PROBE_MAX_PENDING_TICKS;
+  if (opts.maxTicks !== undefined) {
+    process.env.METADATA_PROBE_MAX_PENDING_TICKS = String(opts.maxTicks);
+  }
+
+  const triage = opts.withMetadataPort ? new TriageWithMeta() : new MutableTriage();
+  if (opts.withMetadataPort) {
+    (triage as TriageWithMeta).metadataStatus = 'pending';
+  }
+  (triage as MutableTriage).sonarStatus = 'in_progress';
+  (triage as MutableTriage).scoreStatus = 'complete';
+  (triage as MutableTriage).worldsStatus = 'in_progress';
+
+  const dispatch = new FullFakeDispatch('azuki', 'azuki');
+  const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+  const onboarding = new CommunityOnboardingOrchestrator({
+    store,
+    resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
+    triage: opts.withMetadataPort ? (triage as TriageWithMeta) : (triage as MutableTriage),
+    now: () => NOW_MS,
+  });
+  await store.placeOrder(order(), {
+    subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+    payload: { order_id: 'ord_fo', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+  });
+  await onboarding.process('ord_fo', (await store.get('ord_fo'))!);
+  const orchestrator = new FulfillmentOrchestrator({
+    store,
+    triage: opts.withMetadataPort ? (triage as TriageWithMeta) : (triage as MutableTriage),
+    onboarding,
+    dispatch,
+    github: null,
+    now: () => NOW_MS,
+    tokenLabel: 'test-token',
+  });
+
+  return { store, orchestrator, dispatch, restoreEnv: () => {
+    if (opts.maxTicks !== undefined) {
+      if (origEnv === undefined) delete process.env.METADATA_PROBE_MAX_PENDING_TICKS;
+      else process.env.METADATA_PROBE_MAX_PENDING_TICKS = origEnv;
+    }
+  }};
+}
+
+describe('FulfillmentOrchestrator — persistent-404 backstop (T-3, AC-8–AC-11)', () => {
+  afterEach(() => {
+    delete process.env.METADATA_PROBE_MAX_PENDING_TICKS;
+  });
+
+  it('AC-8: after N ticks metadata_snapshot self-resolves to optional with advance event', async () => {
+    // maxPendingTicks=2: tick1=dispatch(count→1), tick2=increment(count→2), tick3=self-resolve
+    process.env.METADATA_PROBE_MAX_PENDING_TICKS = '2';
+    const { store, orchestrator } = await metadataTickHarness({ withMetadataPort: true });
+
+    await orchestrator.processOrder('ord_fo'); // tick 1 — dispatch
+    await orchestrator.processOrder('ord_fo'); // tick 2 — increment
+    await orchestrator.processOrder('ord_fo'); // tick 3 — self-resolve
+
+    const record = await store.get('ord_fo');
+    expect(record?.ingredients?.metadata_snapshot).toBe('optional');
+    const advances = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.advance);
+    expect(advances.some((a) => (a as { ingredient?: string; status?: string }).ingredient === 'metadata_snapshot' && (a as { ingredient?: string; status?: string }).status === 'optional')).toBe(true);
+  });
+
+  it('AC-9: self-resolve operator_audit entry carries persistent-404-self-resolve callerNote', async () => {
+    process.env.METADATA_PROBE_MAX_PENDING_TICKS = '2';
+    const { store, orchestrator } = await metadataTickHarness({ withMetadataPort: true });
+
+    await orchestrator.processOrder('ord_fo');
+    await orchestrator.processOrder('ord_fo');
+    await orchestrator.processOrder('ord_fo');
+
+    const record = await store.get('ord_fo');
+    const audit = record?.operator_audit ?? [];
+    const selfResolve = audit.find((e) => (e as { caller_note?: string }).caller_note === 'fulfillment-orchestrator:persistent-404-self-resolve');
+    expect(selfResolve).toBeDefined();
+  });
+
+  it('AC-10: dispatch fires only once; ticks 2 and 3 emit zero additional metadata dispatch events', async () => {
+    process.env.METADATA_PROBE_MAX_PENDING_TICKS = '2';
+    const { store, orchestrator, dispatch } = await metadataTickHarness({ withMetadataPort: true });
+
+    await orchestrator.processOrder('ord_fo');
+    await orchestrator.processOrder('ord_fo');
+    await orchestrator.processOrder('ord_fo');
+
+    expect(dispatch.snapshotCalls).toHaveLength(1); // dispatched exactly once on tick 1
+    const dispatches = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.dispatch);
+    const metaDispatches = dispatches.filter((d) => (d as { ingredient?: string }).ingredient === 'metadata_snapshot');
+    expect(metaDispatches).toHaveLength(1);
+  });
+
+  it('AC-11: when triage.metadata absent the structural-absence path fires (not tick counter)', async () => {
+    // triage has NO metadata port — advance loop takes the structural-absence path.
+    const { store, orchestrator } = await metadataTickHarness({ withMetadataPort: false });
+
+    await orchestrator.processOrder('ord_fo');
+
+    const record = await store.get('ord_fo');
+    // Structural-absence path advances metadata to optional via callerNote='fulfillment-orchestrator'.
+    const audit = record?.operator_audit ?? [];
+    const structuralAbsence = audit.find(
+      (e) => (e as { caller_note?: string }).caller_note === 'fulfillment-orchestrator' &&
+        (e as { ingredient?: string }).ingredient === 'metadata_snapshot',
+    );
+    expect(structuralAbsence).toBeDefined();
+    // The persistent-404 callerNote must NOT appear.
+    const selfResolve = audit.find((e) => (e as { caller_note?: string }).caller_note === 'fulfillment-orchestrator:persistent-404-self-resolve');
+    expect(selfResolve).toBeUndefined();
+  });
+});
+
+// ── T-4a: dispatch-null suppresses all dispatch events (AC-12) ───────────────
+
+describe('FulfillmentOrchestrator — dispatch=null emits zero dispatch events (T-4a, AC-12)', () => {
+  it('AC-12: processOrder with dispatch=null emits no orchestrator.dispatch events', async () => {
+    const triage = new FixedTriage({ sonar: 'pending', score: 'pending', worlds: 'pending' });
+    const { store, orchestrator } = await producingHarness({ triage, dispatch: null });
+
+    await orchestrator.processOrder('ord_fo');
+
+    const dispatches = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.dispatch);
+    expect(dispatches).toHaveLength(0);
+    // Probe event still fires (dispatch suppression only, not probe).
+    expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.probe)).toHaveLength(1);
   });
 });
 
