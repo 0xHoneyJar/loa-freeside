@@ -12,6 +12,7 @@ import { createGitHubIssuePort } from './github-issue-port.js';
 import { IngredientEnqueueService } from './ingredient-enqueue.js';
 import { createKitchenTriagePorts, KitchenTriagePorts } from './kitchen-triage-ports.js';
 import { createOrderStore } from './store-factory.js';
+import { FulfillmentOrchestrator, FulfillmentOrchestratorWorker } from './fulfillment-orchestrator.js';
 
 class NoopAudit implements AuditPort {
   async invoke(): Promise<AuditServiceResult> {
@@ -67,6 +68,33 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
   });
 
   return { store, orchestrator, enqueue };
+}
+
+export function orchestratorEnabled(): boolean {
+  return process.env.ORCHESTRATOR_ENABLED?.trim() === 'true';
+}
+
+/**
+ * Wire the sibling fulfillment-orchestrator worker (SDD §4.1, D-1). Reuses the intake
+ * composition's store + triage + in-process advance path; sources idempotent dispatch from
+ * the HTTP probes and escalation from the GitHub port (both null-safe for CI/dev).
+ */
+export async function createFulfillmentOrchestratorWorker(): Promise<FulfillmentOrchestratorWorker> {
+  const { store, orchestrator } = await createOrderingComposition();
+  const triage = createKitchenTriagePorts();
+  const dispatch = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
+
+  const fulfillment = new FulfillmentOrchestrator({
+    store,
+    triage,
+    onboarding: orchestrator.communityOnboarding,
+    dispatch,
+    github: createGitHubIssuePort(),
+    now: () => Date.now(),
+    tokenLabel: serviceTokenLabelFromEnv(),
+  });
+
+  return new FulfillmentOrchestratorWorker(fulfillment, store);
 }
 
 export function serviceTokenFromEnv(): string | undefined {
