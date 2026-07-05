@@ -173,6 +173,9 @@ export class FulfillmentOrchestrator {
         order_id: orderId,
         ingredient: 'metadata_snapshot',
         ok: res.ok,
+        // Hand-built: ingredientJobIdempotencyKey's EnqueueIngredientKey type does not
+        // include metadata_snapshot (dispatch here is direct HTTP, not kitchen enqueue).
+        // Same `${orderId}:${ingredient}` shape by construction.
         idempotency_key: `${orderId}:metadata_snapshot`,
         at_unix: this.nowUnix(),
       }));
@@ -222,7 +225,14 @@ export class FulfillmentOrchestrator {
       // DISCORD CHANNEL-HEALTH GATE (D13.4) ───────────────────────────────────
       if (ingredient === 'discord_observer' && status === 'complete') {
         if (this.deps.discordHealth) {
-          const health = await this.deps.discordHealth.checkChannelHealth(inputs.chain_id, inputs.contract_address);
+          // A throwing health port must not abort the whole processOrder tick —
+          // fail closed: treat probe error as unhealthy and escalate (BB FO-003).
+          let health: DiscordChannelHealth;
+          try {
+            health = await this.deps.discordHealth.checkChannelHealth(inputs.chain_id, inputs.contract_address);
+          } catch (e) {
+            health = { healthy: false, reason: `probe error: ${e instanceof Error ? e.message : String(e)}` };
+          }
           if (!health.healthy) {
             await this.escalate(orderId, ingredient, `channel-health: ${health.reason ?? 'unhealthy'}`);
             continue;
@@ -316,7 +326,6 @@ export class FulfillmentOrchestrator {
   private async escalate(orderId: string, ingredient: string, reason: string): Promise<void> {
     const key = `${orderId}:${ingredient}`;
     if (this.escalated.has(key)) return;
-    this.escalated.add(key);
 
     const idempotencyKey = `${orderId}:${ingredient}:escalate`;
     await this.emit(orderId, ORCHESTRATOR_SUBJECTS.escalate, OrchestratorEscalateSchema.parse({
@@ -326,6 +335,9 @@ export class FulfillmentOrchestrator {
       idempotency_key: idempotencyKey,
       at_unix: this.nowUnix(),
     }));
+    // Dedup key records only AFTER the emit lands — recording first would let a store
+    // failure permanently suppress the escalation for this process lifetime (BB FO-002).
+    this.escalated.add(key);
     await this.commentOnTrackingIssue(orderId, ingredient, reason, idempotencyKey);
   }
 
@@ -341,11 +353,15 @@ export class FulfillmentOrchestrator {
     const record = await this.deps.store.get(orderId);
     const job = record?.ingredient_jobs?.find((j) => j.ingredient === ingredient && j.kind === 'github_issue');
     if (!job?.repo || !job.external_id) return;
+    const issueNumber = Number(job.external_id);
+    // external_id is a free-form string on the job record; a non-numeric value would
+    // otherwise reach the GitHub API as NaN (BB FO-007).
+    if (!Number.isInteger(issueNumber) || issueNumber <= 0) return;
 
     try {
       await this.deps.github.addComment({
         repo: job.repo,
-        issueNumber: Number(job.external_id),
+        issueNumber,
         body: [
           `**Orchestrator escalation** — ${reason}.`,
           '',
@@ -374,6 +390,7 @@ export class FulfillmentOrchestrator {
  */
 export class FulfillmentOrchestratorWorker {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private tickInFlight = false;
 
   constructor(
     private readonly orchestrator: FulfillmentOrchestrator,
@@ -395,6 +412,10 @@ export class FulfillmentOrchestratorWorker {
   }
 
   async tick(): Promise<void> {
+    // In-flight guard: setInterval fires on schedule regardless of how long the previous
+    // tick took — overlapping ticks double-process the same orders (BB FO-005).
+    if (this.tickInFlight) return;
+    this.tickInFlight = true;
     // The whole body is guarded: `start()` fires `void this.tick()`, so a throw from
     // `store.listByState` (outside the per-order try/catch) would become an
     // unhandledRejection and silently kill the worker. Log and let the interval retry.
@@ -419,6 +440,8 @@ export class FulfillmentOrchestratorWorker {
       }
     } catch (e) {
       console.error('[fulfillment-orchestrator] tick aborted:', e instanceof Error ? e.message : e);
+    } finally {
+      this.tickInFlight = false;
     }
   }
 }

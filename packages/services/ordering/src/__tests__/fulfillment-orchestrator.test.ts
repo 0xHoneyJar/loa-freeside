@@ -439,7 +439,15 @@ describe('FulfillmentOrchestrator — discord channel-health gate (T-4)', () => 
         },
       },
     });
-    await expect(orchestrator.processOrder('ord_fo')).rejects.toThrow();
+    // Fail-closed (BB FO-003): a throwing health port maps to unhealthy → escalate,
+    // never aborts the tick. (This test's title predates the fix; the old assertion
+    // expected the abort it was named against.)
+    await orchestrator.processOrder('ord_fo');
+    const record = await store.get('ord_fo');
+    expect(record?.ingredients?.discord_observer).not.toBe('complete');
+    const escalations = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate);
+    expect(escalations).toHaveLength(1);
+    expect((escalations[0] as { reason?: string }).reason).toContain('probe error: ECONNREFUSED');
   });
 
   it('advances without health check when discordHealth port is absent (D13.3, AC-10)', async () => {
