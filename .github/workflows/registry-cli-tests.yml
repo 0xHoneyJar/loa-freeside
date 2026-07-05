@@ -35,7 +35,7 @@ jobs:
       # npm ci against committed lockfiles: the gate is lockfile-reproducible, so a
       # red/green is attributable to the PR under test, not floating transitive deps
       # (Bridgebuilder CL-410-002).
-      - name: Build beacon-schema (file: dep of registry + cli)
+      - name: "Build beacon-schema (file: dep of registry + cli)"
         working-directory: packages/beacon-schema
         run: |
           npm ci --no-audit --no-fund
