@@ -1,0 +1,55 @@
+# Registry + CLI unit suites — the G-4 consumer gate (cadence-ledger, sprint-410 T1.5)
+#
+# Guards ADR-012 Phase 0: any PR touching the registry schema/data or the CLI
+# must keep BOTH suites green — freeside-cli decodes the REAL registry.yaml
+# through the shared schema (file: dep), so this lane is the mechanical proof
+# that consumers keep decoding (PRD G-4).
+#
+# Install order is load-bearing (file:-dep stale-copy hazard, proven locally):
+#   beacon-schema (build) → freeside-registry (build + test) → freeside-cli
+# installs LAST so its file: deps copy the freshly built packages.
+name: Registry + CLI Tests
+
+on:
+  pull_request:
+    paths:
+      - "packages/freeside-registry/**"
+      - "packages/freeside-cli/**"
+      - "packages/beacon-schema/**"
+      - ".github/workflows/registry-cli-tests.yml"
+
+jobs:
+  registry-cli-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout loa-freeside
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Standalone per-package installs (mirrors cluster-compliance — no workspace).
+      - name: Build beacon-schema (file: dep of registry + cli)
+        working-directory: packages/beacon-schema
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Test freeside-registry
+        working-directory: packages/freeside-registry
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
+
+      # AFTER registry: the file: dep copies the freshly built schema (stale-copy hazard).
+      - name: Test freeside-cli (G-4 consumer gate — zero source changes expected here)
+        working-directory: packages/freeside-cli
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          npm test
