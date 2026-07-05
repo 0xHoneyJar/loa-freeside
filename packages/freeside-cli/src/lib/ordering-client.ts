@@ -55,7 +55,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env):
   // (local test servers). A remote http URL is refused even with the env set, so the
   // bypass is unreachable against any production host (FAGAN convergent major).
   const loopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]" || parsed.hostname === "::1";
-  const testBypass = parsed.protocol === "http:" && loopback && Boolean(env.ORDERING_SERVICE_URL_UNSAFE_HTTP);
+  const unsafeFlag = (env.ORDERING_SERVICE_URL_UNSAFE_HTTP ?? "").trim().toLowerCase();
+  const testBypass = parsed.protocol === "http:" && loopback && unsafeFlag !== "" && unsafeFlag !== "0" && unsafeFlag !== "false";
   if (parsed.protocol !== "https:" && !testBypass) {
     return {
       ok: false,
