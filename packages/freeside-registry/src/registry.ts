@@ -190,6 +190,17 @@ const ModuleEntry = Schema.Struct({
         e.service.deployment_url === e.deployment_url) ||
       "a service block requires the entry-level deployment_url to be present and equal",
   ),
+  // A target-less http expectation means "probe this cell's own service block"
+  // (HttpExpectation comment above) — so it REQUIRES that block to exist, or
+  // the declaration is undischargeable by any consumer (Bridgebuilder CL-410-001).
+  Schema.filter(
+    (e) =>
+      !e.expectations ||
+      e.expectations.every(
+        (x) => x.probe_kind !== "http" || x.target != null || e.service != null,
+      ) ||
+      "a target-less http expectation requires the cell to declare a service block",
+  ),
 );
 
 const Registry = Schema.Struct({

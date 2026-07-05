@@ -84,6 +84,44 @@ test("entry with expectations decodes on ModuleEntry", () => {
   assert.equal(entry.expectations?.length, 2);
 });
 
+// ── CL-410-001: target-less http implies "probe my service block" ──────────
+
+const serviceForHttp = {
+  deployment_url: "https://example-api-production.up.railway.app",
+  health_path: "/health",
+  expected_status: 200,
+  auth_class: "none",
+  probed_at: "2026-07-05",
+  probe_source: "live-probe",
+};
+
+test("target-less http expectation WITHOUT a service block fails decode (CL-410-001)", () => {
+  assert.throws(
+    () => decodeEntry({ ...baseEntry, expectations: [httpEntry] }),
+    /requires the cell to declare a service block/,
+  );
+});
+
+test("target-less http expectation WITH a service block decodes (CL-410-001)", () => {
+  const entry = decodeEntry({
+    ...baseEntry,
+    deployment_url: serviceForHttp.deployment_url,
+    service: serviceForHttp,
+    expectations: [httpEntry],
+  });
+  assert.equal(entry.expectations?.[0].probe_kind, "http");
+});
+
+test("http expectation with explicit target needs no service block", () => {
+  const entry = decodeEntry({
+    ...baseEntry,
+    expectations: [
+      { ...httpEntry, target: { url: "https://status.example.com/up" } },
+    ],
+  });
+  assert.equal(entry.service, undefined);
+});
+
 // ── negatives (G-5, FR-3) ───────────────────────────────────────────────────
 
 test("gh-workflow kind fails decode (FR-3: excluded until a consumer exists)", () => {

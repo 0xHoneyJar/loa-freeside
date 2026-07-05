@@ -32,16 +32,19 @@ jobs:
           node-version: "22"
 
       # Standalone per-package installs (mirrors cluster-compliance — no workspace).
+      # npm ci against committed lockfiles: the gate is lockfile-reproducible, so a
+      # red/green is attributable to the PR under test, not floating transitive deps
+      # (Bridgebuilder CL-410-002).
       - name: Build beacon-schema (file: dep of registry + cli)
         working-directory: packages/beacon-schema
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
 
       - name: Test freeside-registry
         working-directory: packages/freeside-registry
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run typecheck
           npm test
           npm run build
@@ -50,6 +53,6 @@ jobs:
       - name: Test freeside-cli (G-4 consumer gate — zero source changes expected here)
         working-directory: packages/freeside-cli
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
           npm test
