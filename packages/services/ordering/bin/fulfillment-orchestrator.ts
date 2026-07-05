@@ -6,6 +6,7 @@
  * explicitly deployed; env-config is reused from the intake service.
  */
 import { createFulfillmentOrchestratorWorker, orchestratorEnabled } from '../src/composition.js';
+import { reprobeIntervalMs } from '../src/reprobe-worker.js';
 
 if (!orchestratorEnabled()) {
   // eslint-disable-next-line no-console
@@ -17,7 +18,7 @@ const worker = await createFulfillmentOrchestratorWorker();
 worker.start();
 
 // eslint-disable-next-line no-console
-console.log(`fulfillment-orchestrator started (interval ${process.env.KITCHEN_REPROBE_INTERVAL_SEC ?? 900}s)`);
+console.log(`fulfillment-orchestrator started (interval ${reprobeIntervalMs() / 1000}s)`);
 
 process.on('SIGTERM', () => worker.stop());
 process.on('SIGINT', () => worker.stop());
