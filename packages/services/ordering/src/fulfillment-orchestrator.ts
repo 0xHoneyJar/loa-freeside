@@ -19,7 +19,7 @@ import {
 } from './orchestrator-events.js';
 import { reprobeIntervalMs } from './reprobe-worker.js';
 import type { OrderStore } from './store.js';
-import type { TriagePorts } from './triage-ports.js';
+import type { DiscordChannelHealth, TriagePorts } from './triage-ports.js';
 
 type IngredientKey = keyof CommunityOnboardingIngredients;
 
@@ -27,6 +27,7 @@ type IngredientKey = keyof CommunityOnboardingIngredients;
 const ALL_INGREDIENTS: readonly IngredientKey[] = [
   'sonar',
   'score',
+  'metadata_snapshot',
   'worlds_manifest',
   'discord_observer',
   'shadow_preview',
@@ -63,6 +64,8 @@ export interface FulfillmentDispatchPort {
   ingestSonar(payload: HttpEnqueuePayload): Promise<DispatchResult>;
   registerScore(payload: HttpEnqueuePayload): Promise<DispatchResult>;
   manifestWorlds(payload: HttpEnqueuePayload): Promise<DispatchResult>;
+  /** Optional — absent when metadata-snapshot endpoint not configured (D12.1). */
+  snapshotMetadata?(payload: HttpEnqueuePayload): Promise<DispatchResult>;
 }
 
 export interface FulfillmentOrchestratorDeps {
@@ -80,6 +83,10 @@ export interface FulfillmentOrchestratorDeps {
   now: () => number;
   /** Credential label recorded on advance audit entries. */
   tokenLabel?: string;
+  /** Optional Discord channel-health port (D13.2). When absent, health gate is skipped with a warning (AC-10). */
+  discordHealth?: {
+    checkChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth>;
+  };
 }
 
 /**
@@ -150,12 +157,49 @@ export class FulfillmentOrchestrator {
       if (res.ok) await this.markInProgress(orderId, ingredient);
     }
 
+    // CONDITIONAL DISPATCH: metadata_snapshot (D12.3) ─────────────────────────
+    // Not in DISPATCH_ORDER — score must complete first. metadata port absence = no dispatch (NF-6).
+    if (
+      probe.statuses.metadata_snapshot === 'pending' &&
+      probe.statuses.score === 'complete' &&
+      this.deps.triage.metadata &&
+      this.deps.dispatch?.snapshotMetadata
+    ) {
+      const res = await this.deps.dispatch.snapshotMetadata(payload);
+      await this.emit(orderId, ORCHESTRATOR_SUBJECTS.dispatch, OrchestratorDispatchSchema.parse({
+        order_id: orderId,
+        ingredient: 'metadata_snapshot',
+        ok: res.ok,
+        idempotency_key: `${orderId}:metadata_snapshot`,
+        at_unix: this.nowUnix(),
+      }));
+      if (res.ok) await this.markInProgressKey(orderId, 'metadata_snapshot');
+    }
+
     // ADVANCE satisfied ingredients ─────────────────────────────────────────
     for (const ingredient of ALL_INGREDIENTS) {
-      // shadow_preview is operator-owned and GATES fulfillment (AC6; see
-      // canFulfillCommunityOnboarding:44-53). The orchestrator must NEVER advance it —
-      // only the operator can. Excluding it keeps the fulfillment gate in operator hands.
-      if (ingredient === 'shadow_preview') continue;
+      // METADATA-SNAPSHOT STRUCTURAL-ABSENCE SELF-RESOLVE (FR-2) ──────────────
+      // Port absent at composition time (KITCHEN_PROBE_HTTP_ENABLED=false or SCORE_API_URL
+      // unset): probe returned 'pending' (fallback) but there is no endpoint to service it.
+      // Advance to 'optional' rather than stalling; a configured endpoint that is temporarily
+      // down returns 'pending' with the port present, so this check never misfires (NFR-5).
+      if (ingredient === 'metadata_snapshot' && this.deps.triage.metadata === undefined) {
+        const currentMeta = (await this.deps.store.get(orderId))?.ingredients?.[ingredient];
+        if (currentMeta !== 'complete' && currentMeta !== 'optional') {
+          await this.deps.onboarding.advanceIngredient(orderId, ingredient, 'optional', undefined, {
+            tokenLabel: this.deps.tokenLabel,
+            callerNote: 'fulfillment-orchestrator',
+          });
+          await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
+            order_id: orderId,
+            ingredient,
+            status: 'optional',
+            world_slug: undefined,
+            at_unix: this.nowUnix(),
+          }));
+        }
+        continue;
+      }
       const status = probe.statuses[ingredient];
       if (actionForStatus(status) !== 'satisfied') continue;
       const current = (await this.deps.store.get(orderId))?.ingredients?.[ingredient];
@@ -166,6 +210,19 @@ export class FulfillmentOrchestrator {
       if (ingredient === 'worlds_manifest' && !canonicalSlug) {
         await this.escalate(orderId, ingredient, 'worlds returned complete without world_slug');
         continue;
+      }
+      // DISCORD CHANNEL-HEALTH GATE (D13.4) ───────────────────────────────────
+      if (ingredient === 'discord_observer' && status === 'complete') {
+        if (this.deps.discordHealth) {
+          const health = await this.deps.discordHealth.checkChannelHealth(inputs.chain_id, inputs.contract_address);
+          if (!health.healthy) {
+            await this.escalate(orderId, ingredient, `channel-health: ${health.reason ?? 'unhealthy'}`);
+            continue;
+          }
+        } else {
+          // discordHealth port absent + discord complete → documented fallback (D13.3, AC-10)
+          console.warn('[fulfillment-orchestrator] discord_observer: discordHealth port absent, advancing without channel-health check (D13.3)');
+        }
       }
       const slug = ingredient === 'worlds_manifest' ? canonicalSlug : undefined;
       await this.deps.onboarding.advanceIngredient(orderId, ingredient, status, slug, {
@@ -198,15 +255,16 @@ export class FulfillmentOrchestrator {
       ? await this.deps.triage.worlds.probeDetail(chainId, contract)
       : { status: await this.deps.triage.worlds.probe(chainId, contract), world_slug: undefined };
 
-    const [sonar, score, discord_observer, shadow_preview] = await Promise.all([
+    const [sonar, score, discord_observer, shadow_preview, metadata_snapshot] = await Promise.all([
       this.deps.triage.sonar.probe(chainId, contract),
       this.deps.triage.score.probe(chainId, contract),
       this.deps.triage.discord?.probe(chainId, contract) ?? Promise.resolve<IngredientStatus>('optional'),
       this.deps.triage.shadow.probe(chainId, contract),
+      this.deps.triage.metadata?.probe(chainId, contract) ?? Promise.resolve<IngredientStatus>('pending'),
     ]);
 
     return {
-      statuses: { sonar, score, worlds_manifest: worldsDetail.status, discord_observer, shadow_preview },
+      statuses: { sonar, score, metadata_snapshot, worlds_manifest: worldsDetail.status, discord_observer, shadow_preview },
       worldSlug: worldsDetail.world_slug,
     };
   }
@@ -235,6 +293,10 @@ export class FulfillmentOrchestrator {
 
   /** Monotonic pending → in_progress after a successful dispatch (merge can never downgrade). */
   private async markInProgress(orderId: string, ingredient: EnqueueIngredientKey): Promise<void> {
+    return this.markInProgressKey(orderId, ingredient);
+  }
+
+  private async markInProgressKey(orderId: string, ingredient: IngredientKey): Promise<void> {
     const record = await this.deps.store.get(orderId);
     if (!record || isTerminal(record.state)) return;
     const merged = mergeProbedIngredients(record.ingredients, { [ingredient]: 'in_progress' });

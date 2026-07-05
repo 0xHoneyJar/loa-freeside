@@ -1,7 +1,7 @@
 import type { IngredientStatus } from '@freeside/ordering-protocol';
 
 import { normalizeChainId, normalizeContractAddress } from './contract-address.js';
-import type { WorldsProbeDetail } from './triage-ports.js';
+import type { DiscordChannelHealth, WorldsProbeDetail } from './triage-ports.js';
 
 export type { WorldsProbeDetail };
 
@@ -12,6 +12,8 @@ export interface HttpBuildingProbesConfig {
   serviceToken: string;
   /** shadow-audit base URL (optional — its absence leaves shadow_preview on the policy path). */
   shadowAuditApiUrl?: string;
+  /** discord-observer base URL (optional — absent means discordHealth port not wired). */
+  discordObserverApiUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -66,7 +68,7 @@ function trimBase(url: string): string {
 export class HttpBuildingProbes {
   private readonly fetchFn: typeof fetch;
 
-  constructor(private readonly config: HttpBuildingProbesConfig) {
+  constructor(readonly config: HttpBuildingProbesConfig) {
     this.fetchFn = config.fetchImpl ?? fetch;
   }
 
@@ -136,6 +138,96 @@ export class HttpBuildingProbes {
 
   get hasShadowProbe(): boolean {
     return Boolean(this.config.shadowAuditApiUrl);
+  }
+
+  /**
+   * metadata_snapshot probe (D11.2). Hits score-api metadata-snapshot status:
+   *   200 { status: 'complete' } → complete
+   *   200 { status: 'in_progress' } → in_progress
+   *   200 other/unknown body → pending
+   *   404 → pending
+   *   network error / non-2xx other → blocked
+   */
+  async probeMetadataSnapshot(chainId: string, contract: string): Promise<IngredientStatus> {
+    const normalized = this.normalizePair(chainId, contract);
+    if (!normalized) return 'blocked';
+
+    const params = new URLSearchParams({
+      chain_id: normalized.chainId,
+      contract_address: normalized.contract,
+    });
+    const url = `${trimBase(this.config.scoreApiUrl)}/v1/communities/metadata-snapshot?${params}`;
+    try {
+      const res = await this.fetchFn(url, { headers: authHeaders(this.config.serviceToken) });
+      if (res.status === 404) return 'pending';
+      if (res.status < 200 || res.status >= 300) return 'blocked';
+      const body = await this.readJson(res);
+      const status =
+        typeof body === 'object' && body !== null ? (body as { status?: string }).status : undefined;
+      if (status === 'complete') return 'complete';
+      if (status === 'in_progress') return 'in_progress';
+      return 'pending';
+    } catch {
+      return 'blocked';
+    }
+  }
+
+  /** POST metadata-snapshot dispatch (D12.2). Idempotency-Key: <orderId>:metadata_snapshot. */
+  async snapshotMetadata(payload: HttpEnqueuePayload): Promise<DispatchResult> {
+    const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
+    if (!normalized) return { ok: false };
+
+    const url = `${trimBase(this.config.scoreApiUrl)}/v1/communities/metadata-snapshot`;
+    try {
+      const res = await this.fetchFn(url, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(this.config.serviceToken),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `${payload.orderId}:metadata_snapshot`,
+        },
+        body: JSON.stringify({
+          chain_id: normalized.chainId,
+          contract_address: normalized.contract,
+          order_id: payload.orderId,
+          source: payload.source,
+        }),
+      });
+      return { ok: res.status === 200 || res.status === 202 };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /**
+   * Discord channel-health check (D13.2). Hits discord-observer health endpoint
+   * identified by (chainId, contractAddress):
+   *   200 { healthy: true } → healthy
+   *   200 { healthy: false, reason? } → unhealthy with reason
+   *   non-2xx / network error → { healthy: false }
+   */
+  async checkDiscordChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth> {
+    if (!this.config.discordObserverApiUrl) return { healthy: false, reason: 'discordObserverApiUrl not configured' };
+    const normalized = this.normalizePair(chainId, contract);
+    if (!normalized) return { healthy: false, reason: 'invalid chain/contract' };
+
+    const params = new URLSearchParams({
+      chain_id: normalized.chainId,
+      contract_address: normalized.contract,
+    });
+    const url = `${trimBase(this.config.discordObserverApiUrl)}/v1/channels/health?${params}`;
+    try {
+      const res = await this.fetchFn(url, { headers: authHeaders(this.config.serviceToken) });
+      if (res.status < 200 || res.status >= 300) return { healthy: false, reason: `status ${res.status}` };
+      const body = await this.readJson(res);
+      if (typeof body !== 'object' || body === null) return { healthy: false, reason: 'malformed response' };
+      const healthy = (body as { healthy?: boolean }).healthy;
+      if (healthy === true) return { healthy: true };
+      const reason = (body as { reason?: string }).reason;
+      return { healthy: false, ...(reason ? { reason } : {}) };
+    } catch {
+      return { healthy: false, reason: 'network error' };
+    }
   }
 
   async probeWorlds(chainId: string, contract: string): Promise<WorldsProbeDetail> {
@@ -300,6 +392,7 @@ export function httpBuildingProbesFromEnv(fetchImpl?: typeof fetch): HttpBuildin
     worldsApiUrl,
     serviceToken,
     shadowAuditApiUrl: process.env.SHADOW_AUDIT_API_URL?.trim() || undefined,
+    discordObserverApiUrl: process.env.DISCORD_OBSERVER_API_URL?.trim() || undefined,
     fetchImpl,
   });
 }
