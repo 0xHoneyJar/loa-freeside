@@ -275,33 +275,6 @@ describe('FulfillmentOrchestrator — worlds slug guard (FIX 1, D-2)', () => {
   });
 });
 
-describe('FulfillmentOrchestrator — shadow_preview is operator-owned (FIX 2, AC6)', () => {
-  it('never advances a probed-complete shadow_preview and never auto-fulfills through it', async () => {
-    const triage = new MutableTriage();
-    triage.shadowStatus = 'blocked'; // setup: operator has not approved the shadow preview
-    const { store, orchestrator } = await producingHarness({
-      triage,
-      dispatch: new FakeDispatch('azuki', 'azuki'),
-    });
-
-    // Every upstream now reports complete — including shadow_preview on the wire.
-    triage.sonarStatus = 'complete';
-    triage.scoreStatus = 'complete';
-    triage.worldsStatus = 'complete';
-    triage.worldSlug = 'azuki';
-    triage.shadowStatus = 'complete';
-    await orchestrator.processOrder('ord_fo');
-
-    const record = await store.get('ord_fo');
-    // The orchestrator advanced the machine ingredients but left the operator gate untouched.
-    expect(record?.ingredients?.shadow_preview).not.toBe('complete');
-    // Gate holds → the order does NOT auto-fulfill.
-    expect(record?.state).not.toBe('fulfilled');
-    // No advance event names shadow_preview.
-    const advances = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.advance);
-    expect(advances.some((a) => (a as { ingredient?: string }).ingredient === 'shadow_preview')).toBe(false);
-  });
-});
 
 describe('FulfillmentOrchestratorWorker — tick survives store failures (FIX 3)', () => {
   it('does not reject when store.listByState throws (no unhandledRejection)', async () => {

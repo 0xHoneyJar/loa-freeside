@@ -49,6 +49,7 @@ export function canFulfillCommunityOnboarding(
   for (const key of REQUIRED_INGREDIENTS) {
     if (ingredients[key] !== 'complete') return false;
   }
+  if (ingredients.metadata_snapshot !== 'complete' && ingredients.metadata_snapshot !== 'optional') return false;
   return ingredients.shadow_preview === 'complete' || ingredients.shadow_preview === 'optional';
 }
 
@@ -435,6 +436,11 @@ export class CommunityOnboardingOrchestrator {
         return (c, a) => this.deps.triage.sonar.probe(c, a);
       case 'score':
         return (c, a) => this.deps.triage.score.probe(c, a);
+      case 'metadata_snapshot':
+        // Absent port stays 'pending' HERE so the fulfillment orchestrator's audited
+        // self-resolve (T-2 / AC-4) owns the pending→optional transition; the status
+        // surface (probeAll below) reports 'optional' directly so fulfill never blocks.
+        return (c, a) => this.deps.triage.metadata?.probe(c, a) ?? Promise.resolve('pending' as const);
       case 'worlds_manifest':
         return (c, a) => this.deps.triage.worlds.probe(c, a);
       case 'discord_observer':
@@ -485,17 +491,19 @@ export class CommunityOnboardingOrchestrator {
       : { status: await this.deps.triage.worlds.probe(chainId, contract) };
 
     const reasons: Partial<Record<string, string>> = {};
-    const [sonar, score, discord_observer, shadow_preview] = await Promise.all([
+    const [sonar, score, discord_observer, shadow_preview, metadata_snapshot] = await Promise.all([
       this.deps.triage.sonar.probe(chainId, contract),
       this.deps.triage.score.probe(chainId, contract),
       this.deps.triage.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
       this.probeShadowWithReason(chainId, contract, reasons),
+      this.deps.triage.metadata?.probe(chainId, contract) ?? Promise.resolve('pending' as const),
     ]);
 
     return {
       ingredients: {
         sonar,
         score,
+        metadata_snapshot,
         worlds_manifest: worldsDetail.status,
         discord_observer,
         shadow_preview,

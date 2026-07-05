@@ -83,6 +83,7 @@ export async function createFulfillmentOrchestratorWorker(): Promise<Fulfillment
   const { store, orchestrator } = await createOrderingComposition();
   const triage = createKitchenTriagePorts();
   const dispatch = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
+  const discordHealth = triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined;
 
   const fulfillment = new FulfillmentOrchestrator({
     store,
@@ -92,6 +93,7 @@ export async function createFulfillmentOrchestratorWorker(): Promise<Fulfillment
     github: createGitHubIssuePort(),
     now: () => Date.now(),
     tokenLabel: serviceTokenLabelFromEnv(),
+    discordHealth,
   });
 
   return new FulfillmentOrchestratorWorker(fulfillment, store);

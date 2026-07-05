@@ -12,6 +12,12 @@ export interface ShadowProbeDetail {
   reason?: string;
 }
 
+/** Result of a Discord channel-health check (D13.2). */
+export interface DiscordChannelHealth {
+  healthy: boolean;
+  reason?: string;
+}
+
 /**
  * Ingredient fulfillment ports for preset #2 (SDD §3.2.4).
  * MVP stubs return `pending` on probe; operator advance-ingredient unblocks fulfillment.
@@ -34,6 +40,14 @@ export interface TriagePorts {
     probe(chainId: string, contract: string): Promise<IngredientStatus>;
     probeDetail?(chainId: string, contract: string): Promise<ShadowProbeDetail>;
   };
+  /** Optional metadata_snapshot probe (D11.3). Absent when score-api endpoint not configured. */
+  metadata?: {
+    probe(chainId: string, contract: string): Promise<IngredientStatus>;
+  };
+  /** Optional Discord channel-health port (D13.2). Absent when discord-observer URL not configured. */
+  discordHealth?: {
+    checkChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth>;
+  };
 }
 
 /** MVP default: all probes return pending until operator advance. */
@@ -46,4 +60,5 @@ export class StubTriagePorts implements TriagePorts {
   };
   discord = { probe: async (_chainId: string, _contract: string) => 'optional' as const };
   shadow = { probe: async (_chainId: string, _contract: string) => 'blocked' as const };
+  metadata = { probe: async (_chainId: string, _contract: string) => 'pending' as const };
 }

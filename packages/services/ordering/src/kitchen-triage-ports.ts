@@ -1,4 +1,4 @@
-import { StubTriagePorts, type ShadowProbeDetail, type TriagePorts } from './triage-ports.js';
+import { StubTriagePorts, type DiscordChannelHealth, type ShadowProbeDetail, type TriagePorts } from './triage-ports.js';
 import { HttpBuildingProbes, httpBuildingProbesFromEnv } from './http-building-probes.js';
 
 /**
@@ -18,6 +18,13 @@ export function shadowUnavailablePolicyFromEnv(): ShadowUnavailablePolicy {
   return process.env.SHADOW_PREVIEW_UNAVAILABLE_POLICY?.trim() === 'optional' ? 'optional' : 'blocked';
 }
 
+/** When false, metadata_snapshot initializes to 'optional' and no real probe is wired. */
+export function metadataSnapshotEnabledFromEnv(): boolean {
+  const v = process.env.METADATA_SNAPSHOT_ENABLED?.trim();
+  // default true when env var is unset; explicit 'false' disables
+  return v !== 'false';
+}
+
 /** Delegates to HTTP building probes when KITCHEN_PROBE_HTTP_ENABLED; else stub fallback (SDD §3.4). */
 export class KitchenTriagePorts implements TriagePorts {
   private readonly fallback: TriagePorts;
@@ -27,15 +34,39 @@ export class KitchenTriagePorts implements TriagePorts {
    *  fallback (even a stub subclass) counts as a producer and always wins over the policy. */
   private readonly shadowProducerless: boolean;
 
+  readonly metadata: TriagePorts['metadata'];
+  readonly discordHealth: TriagePorts['discordHealth'];
+
   constructor(
     http: HttpBuildingProbes | null,
     fallback?: TriagePorts,
     shadowPolicy: ShadowUnavailablePolicy = 'blocked',
+    opts?: {
+      /** When false: metadata probe returns 'optional' (deliberate opt-out, gate passes). */
+      metadataEnabled?: boolean;
+    },
   ) {
     this.http = http;
     this.shadowProducerless = fallback === undefined;
     this.fallback = fallback ?? new StubTriagePorts();
     this.shadowPolicy = shadowPolicy;
+
+    const metadataEnabled = opts?.metadataEnabled ?? true;
+    if (http && metadataEnabled) {
+      this.metadata = { probe: (c, a) => http.probeMetadataSnapshot(c, a) };
+    } else if (!metadataEnabled) {
+      // Deliberate opt-out: report 'optional' so canFulfill gate passes (D11.4).
+      this.metadata = { probe: async () => 'optional' as const };
+    } else {
+      // HTTP probes off or score-api not configured: metadata port absent → NF-6 (stays pending).
+      this.metadata = undefined;
+    }
+
+    if (http && http.config.discordObserverApiUrl) {
+      this.discordHealth = { checkChannelHealth: (c, a) => http.checkDiscordChannelHealth(c, a) };
+    } else {
+      this.discordHealth = undefined;
+    }
   }
 
   sonar = {
@@ -90,6 +121,7 @@ let warnedShadowProducerless = false;
 export function createKitchenTriagePorts(): TriagePorts {
   const http = httpBuildingProbesFromEnv();
   const shadowPolicy = shadowUnavailablePolicyFromEnv();
+  const metadataEnabled = metadataSnapshotEnabledFromEnv();
   if (!warnedShadowProducerless && (http || shadowPolicy === 'optional')) {
     warnedShadowProducerless = true;
     console.warn(
@@ -100,7 +132,7 @@ export function createKitchenTriagePorts(): TriagePorts {
       }; see grimoires/loa/cycles/consumption-truth/e2e-runbook.md)`,
     );
   }
-  return new KitchenTriagePorts(http, undefined, shadowPolicy);
+  return new KitchenTriagePorts(http, undefined, shadowPolicy, { metadataEnabled });
 }
 
 /** Test seam: reset the once-per-process producer-less warning. */
