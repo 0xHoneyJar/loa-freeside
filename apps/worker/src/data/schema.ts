@@ -98,6 +98,8 @@ export interface ProfileMetadata {
   naibSeatCount?: number;
   lastUnseatedAt?: string; // ISO date string
   notifications?: NotificationPreferences;
+  // OQ-2: member active/inactive marker (JSONB flag, no migration)
+  active?: boolean;
 }
 
 export const profiles = pgTable(

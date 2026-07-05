@@ -7,6 +7,7 @@
  * Integrates with database for community/member lifecycle
  */
 
+import { z } from 'zod';
 import type { JsMsg } from 'nats';
 import type { Logger } from 'pino';
 import { BaseNatsConsumer, BaseConsumerConfig, ProcessResult } from './BaseNatsConsumer.js';
@@ -16,6 +17,14 @@ import {
   defaultEventHandler,
   type HandlerFn,
 } from '../handlers/index.js';
+import {
+  upsertCommunity,
+  markCommunityInactive,
+  upsertProfile,
+  markProfileInactive,
+  getCommunityByGuildId,
+} from '../data/database.js';
+import type { DiscordRestService } from '../services/DiscordRest.js';
 
 // --------------------------------------------------------------------------
 // Types — imported from shared NATS schema contract
@@ -163,103 +172,206 @@ export class EventNatsConsumer extends BaseNatsConsumer<GatewayEventPayload> {
 }
 
 // --------------------------------------------------------------------------
-// Default Event Handlers
+// Handler-local Zod sub-schemas
 // --------------------------------------------------------------------------
 
-/**
- * Handle guild.join event (bot added to server)
- */
-async function handleGuildJoin(
-  payload: GatewayEventPayload,
-  log: Logger
-): Promise<void> {
-  const { guild_id } = payload;
-  const data = eventData(payload);
-  const guildName = data['name'] as string | undefined;
-  const memberCount = data['member_count'] as number | undefined;
+const GuildJoinDataSchema = z.object({ name: z.string().min(1) });
+const GuildLeaveDataSchema = z.object({});
+const MemberJoinDataSchema = z.object({ username: z.string().optional() });
+const MemberLeaveDataSchema = z.object({});
+const MemberUpdateDataSchema = z.object({
+  roles: z.array(z.string()).optional(),
+  nick: z.string().nullable().optional(),
+  tier: z.string().optional(),
+});
 
-  log.info(
-    { guildId: guild_id, guildName, memberCount },
-    'Bot added to guild'
-  );
+// --------------------------------------------------------------------------
+// Handler factories (closures over injected dependencies)
+// --------------------------------------------------------------------------
 
-  // TODO: Create community record in PostgreSQL if not exists
-  // TODO: Send welcome message / setup prompt
+function makeGuildJoinHandler(discordRest?: DiscordRestService) {
+  return async function handleGuildJoin(
+    payload: GatewayEventPayload,
+    log: Logger
+  ): Promise<void> {
+    const { event_type, guild_id } = payload;
+
+    if (!guild_id) {
+      log.error({ eventType: event_type, guildId: null, reason: 'missing guild_id' }, 'guildJoin rejected');
+      return;
+    }
+
+    const parsed = GuildJoinDataSchema.safeParse(eventData(payload));
+    if (!parsed.success) {
+      log.error({ eventType: event_type, guildId: guild_id, reason: parsed.error.message }, 'guildJoin data invalid');
+      return;
+    }
+
+    const { community, outcome } = await upsertCommunity({
+      discordGuildId: guild_id,
+      name: parsed.data.name,
+    });
+
+    if (outcome === 'created' && discordRest) {
+      const data = eventData(payload);
+      const systemChannelId = data['system_channel_id'] as string | undefined;
+      if (systemChannelId) {
+        await discordRest.sendMessage(systemChannelId, {
+          content: 'Thanks for adding the bot! Use `/setup` to configure your community.',
+        });
+      }
+    }
+
+    log.info({ event: 'guildJoin', guildId: guild_id, communityId: community.id, outcome });
+  };
 }
 
-/**
- * Handle guild.leave event (bot removed from server)
- */
-async function handleGuildLeave(
-  payload: GatewayEventPayload,
-  log: Logger
-): Promise<void> {
-  const { guild_id } = payload;
-  const data = eventData(payload);
-  const unavailable = data['unavailable'] as boolean | undefined;
+function makeGuildLeaveHandler() {
+  return async function handleGuildLeave(
+    payload: GatewayEventPayload,
+    log: Logger
+  ): Promise<void> {
+    const { event_type, guild_id } = payload;
 
-  if (unavailable) {
-    log.warn({ guildId: guild_id }, 'Guild became unavailable (Discord outage)');
-    return;
-  }
+    if (!guild_id) {
+      log.error({ eventType: event_type, guildId: null, reason: 'missing guild_id' }, 'guildLeave rejected');
+      return;
+    }
 
-  log.info({ guildId: guild_id }, 'Bot removed from guild');
+    const { outcome } = await markCommunityInactive({ discordGuildId: guild_id });
 
-  // TODO: Mark community as inactive / schedule cleanup
+    if (outcome === 'unknown_guild') {
+      log.warn({ event: 'guildLeave', guildId: guild_id, outcome });
+    } else {
+      log.info({ event: 'guildLeave', guildId: guild_id, outcome });
+    }
+  };
 }
 
-/**
- * Handle member.join event
- */
-async function handleMemberJoin(
-  payload: GatewayEventPayload,
-  log: Logger
-): Promise<void> {
-  const { guild_id, user_id } = payload;
-  const data = eventData(payload);
-  const username = data['username'] as string | undefined;
+function makeMemberJoinHandler() {
+  return async function handleMemberJoin(
+    payload: GatewayEventPayload,
+    log: Logger
+  ): Promise<void> {
+    const { event_type, guild_id, user_id } = payload;
 
-  log.debug(
-    { guildId: guild_id, userId: user_id, username },
-    'Member joined guild'
-  );
+    if (!guild_id || !user_id) {
+      log.error(
+        { eventType: event_type, guildId: guild_id, discordId: user_id, reason: 'missing guild_id or user_id' },
+        'memberJoin rejected'
+      );
+      return;
+    }
 
-  // TODO: Create profile if not exists
-  // TODO: Check eligibility rules and assign roles
+    const parsed = MemberJoinDataSchema.safeParse(eventData(payload));
+    if (!parsed.success) {
+      log.error({ eventType: event_type, guildId: guild_id, reason: parsed.error.message }, 'memberJoin data invalid');
+      return;
+    }
+
+    const community = await getCommunityByGuildId(guild_id);
+    if (!community || !community.isActive) {
+      log.warn({ event: 'memberJoin', guildId: guild_id, discordId: user_id, reason: 'unknown or inactive guild' });
+      return;
+    }
+
+    const { profile, outcome } = await upsertProfile({
+      communityId: community.id,
+      discordId: user_id,
+      setJoinedAt: true,
+    });
+
+    // loa:shortcut: EligibilityRepository (ScyllaDB) wiring out of scope; add when OQ-3 resolved
+
+    log.info({ event: 'memberJoin', guildId: guild_id, discordId: user_id, profileId: profile.id, outcome });
+  };
 }
 
-/**
- * Handle member.leave event
- */
-async function handleMemberLeave(
-  payload: GatewayEventPayload,
-  log: Logger
-): Promise<void> {
-  const { guild_id, user_id } = payload;
+function makeMemberLeaveHandler() {
+  return async function handleMemberLeave(
+    payload: GatewayEventPayload,
+    log: Logger
+  ): Promise<void> {
+    const { event_type, guild_id, user_id } = payload;
 
-  log.debug({ guildId: guild_id, userId: user_id }, 'Member left guild');
+    if (!guild_id || !user_id) {
+      log.error(
+        { eventType: event_type, guildId: guild_id, discordId: user_id, reason: 'missing guild_id or user_id' },
+        'memberLeave rejected'
+      );
+      return;
+    }
 
-  // TODO: Update profile last_active / mark as inactive
+    const community = await getCommunityByGuildId(guild_id);
+    if (!community) {
+      log.warn({ event: 'memberLeave', guildId: guild_id, discordId: user_id, reason: 'unknown guild' });
+      return;
+    }
+
+    const { outcome } = await markProfileInactive({
+      communityId: community.id,
+      discordId: user_id,
+    });
+
+    if (outcome === 'unknown_profile' || outcome === 'unknown_guild' as never) {
+      log.warn({ event: 'memberLeave', guildId: guild_id, discordId: user_id, outcome });
+    } else {
+      log.info({ event: 'memberLeave', guildId: guild_id, discordId: user_id, outcome });
+    }
+  };
 }
 
-/**
- * Handle member.update event (role changes, nickname, etc.)
- */
-async function handleMemberUpdate(
-  payload: GatewayEventPayload,
-  log: Logger
-): Promise<void> {
-  const { guild_id, user_id } = payload;
-  const data = eventData(payload);
-  const roles = data['roles'] as string[] | undefined;
-  const nick = data['nick'] as string | undefined;
+function makeMemberUpdateHandler() {
+  return async function handleMemberUpdate(
+    payload: GatewayEventPayload,
+    log: Logger
+  ): Promise<void> {
+    const { event_type, guild_id, user_id } = payload;
 
-  log.debug(
-    { guildId: guild_id, userId: user_id, roles, nick },
-    'Member updated'
-  );
+    if (!guild_id || !user_id) {
+      log.error(
+        { eventType: event_type, guildId: guild_id, discordId: user_id, reason: 'missing guild_id or user_id' },
+        'memberUpdate rejected'
+      );
+      return;
+    }
 
-  // TODO: Sync role changes with profile tier
+    const parsed = MemberUpdateDataSchema.safeParse(eventData(payload));
+    if (!parsed.success) {
+      log.error({ eventType: event_type, guildId: guild_id, reason: parsed.error.message }, 'memberUpdate data invalid');
+      return;
+    }
+
+    const community = await getCommunityByGuildId(guild_id);
+    if (!community) {
+      log.warn({ event: 'memberUpdate', guildId: guild_id, discordId: user_id, reason: 'unknown guild' });
+      return;
+    }
+
+    const metadataPatch: Record<string, unknown> = {};
+    const fieldsUpdated: string[] = [];
+
+    if (parsed.data.nick !== undefined) {
+      metadataPatch['displayName'] = parsed.data.nick ?? undefined;
+      fieldsUpdated.push('displayName');
+    }
+    if (parsed.data.roles !== undefined) {
+      fieldsUpdated.push('roles');
+    }
+    if (parsed.data.tier !== undefined) {
+      fieldsUpdated.push('tier');
+    }
+
+    await upsertProfile({
+      communityId: community.id,
+      discordId: user_id,
+      tier: parsed.data.tier,
+      metadataPatch: Object.keys(metadataPatch).length > 0 ? metadataPatch : undefined,
+      setJoinedAt: false,
+    });
+
+    log.info({ event: 'memberUpdate', guildId: guild_id, discordId: user_id, fieldsUpdated });
+  };
 }
 
 // --------------------------------------------------------------------------
@@ -269,14 +381,16 @@ async function handleMemberUpdate(
 /**
  * Create default NATS-native event handlers map
  */
-export function createDefaultNatsEventHandlers(): Map<string, NatsEventHandler> {
+export function createDefaultNatsEventHandlers(
+  discordRest?: DiscordRestService
+): Map<string, NatsEventHandler> {
   const handlers = new Map<string, NatsEventHandler>();
 
-  handlers.set('guild.join', handleGuildJoin);
-  handlers.set('guild.leave', handleGuildLeave);
-  handlers.set('member.join', handleMemberJoin);
-  handlers.set('member.leave', handleMemberLeave);
-  handlers.set('member.update', handleMemberUpdate);
+  handlers.set('guild.join', makeGuildJoinHandler(discordRest));
+  handlers.set('guild.leave', makeGuildLeaveHandler());
+  handlers.set('member.join', makeMemberJoinHandler());
+  handlers.set('member.leave', makeMemberLeaveHandler());
+  handlers.set('member.update', makeMemberUpdateHandler());
 
   return handlers;
 }
