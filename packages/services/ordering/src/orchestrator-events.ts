@@ -38,7 +38,7 @@ export type OrchestratorProbe = z.infer<typeof OrchestratorProbeSchema>;
 export const OrchestratorDispatchSchema = z
   .object({
     order_id: z.string().min(1),
-    ingredient: z.enum(['sonar', 'score', 'worlds_manifest']),
+    ingredient: z.enum(['sonar', 'score', 'worlds_manifest', 'metadata_snapshot']),
     ok: z.boolean(),
     /** Stable upstream idempotency key (re-dispatch after crash is safe on this key). */
     idempotency_key: z.string().min(1),

@@ -18,7 +18,7 @@ import { ConfigCapabilityResolver, type CapabilityConfig } from '../resolver.js'
 import { RecordingGitHubIssuePort } from '../github-issue-port.js';
 import { ORCHESTRATOR_SUBJECTS } from '../orchestrator-events.js';
 import type { DispatchResult, HttpEnqueuePayload } from '../http-building-probes.js';
-import type { TriagePorts, WorldsProbeDetail } from '../triage-ports.js';
+import type { DiscordChannelHealth, TriagePorts, WorldsProbeDetail } from '../triage-ports.js';
 
 const CONTRACT = '0x' + '7'.repeat(40);
 const NOW_MS = 1_700_000_000_000;
@@ -313,6 +313,182 @@ describe('FulfillmentOrchestratorWorker — tick survives store failures (FIX 3)
     const orchestrator = {} as FulfillmentOrchestrator;
     const worker = new FulfillmentOrchestratorWorker(orchestrator, throwingStore, 60_000);
     await expect(worker.tick()).resolves.toBeUndefined();
+  });
+});
+
+// ── T-3: metadata_snapshot conditional dispatch ─────────────────────────────
+
+/** Triage double with configurable metadata probe and discord+shadow stubs. */
+class TriageWithMeta extends MutableTriage {
+  metadataStatus: IngredientStatus = 'pending';
+  metadata = { probe: async () => this.metadataStatus };
+}
+
+class FullFakeDispatch extends FakeDispatch {
+  snapshotCalls: string[] = [];
+  async snapshotMetadata(p: HttpEnqueuePayload): Promise<DispatchResult> {
+    this.snapshotCalls.push(p.orderId);
+    return { ok: true };
+  }
+}
+
+async function metadataHarness(opts: { scoreStatus: IngredientStatus; metadataStatus: IngredientStatus }) {
+  const triage = new TriageWithMeta();
+  triage.sonarStatus = 'in_progress';
+  triage.scoreStatus = opts.scoreStatus;
+  triage.metadataStatus = opts.metadataStatus;
+  triage.worldsStatus = 'in_progress';
+
+  const dispatch = new FullFakeDispatch('azuki', 'azuki');
+  const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+  const onboarding = new CommunityOnboardingOrchestrator({
+    store,
+    resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
+    triage,
+    now: () => NOW_MS,
+  });
+  await store.placeOrder(order(), {
+    subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+    payload: { order_id: 'ord_fo', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+  });
+  await onboarding.process('ord_fo', (await store.get('ord_fo'))!);
+  const orchestrator = new FulfillmentOrchestrator({
+    store,
+    triage,
+    onboarding,
+    dispatch,
+    github: null,
+    now: () => NOW_MS,
+  });
+  return { store, orchestrator, dispatch };
+}
+
+describe('FulfillmentOrchestrator — metadata_snapshot conditional dispatch (T-3)', () => {
+  it('dispatches snapshotMetadata when score=complete and metadata_snapshot=pending', async () => {
+    const { orchestrator, dispatch } = await metadataHarness({ scoreStatus: 'complete', metadataStatus: 'pending' });
+    await orchestrator.processOrder('ord_fo');
+    expect(dispatch.snapshotCalls).toContain('ord_fo');
+  });
+
+  it('does NOT dispatch snapshotMetadata when score is not complete', async () => {
+    const { orchestrator, dispatch } = await metadataHarness({ scoreStatus: 'in_progress', metadataStatus: 'pending' });
+    await orchestrator.processOrder('ord_fo');
+    expect(dispatch.snapshotCalls).toHaveLength(0);
+  });
+
+  it('does NOT dispatch snapshotMetadata when metadata_snapshot is already in_progress', async () => {
+    const { orchestrator, dispatch } = await metadataHarness({ scoreStatus: 'complete', metadataStatus: 'in_progress' });
+    await orchestrator.processOrder('ord_fo');
+    expect(dispatch.snapshotCalls).toHaveLength(0);
+  });
+
+  it('emits orchestrator.dispatch event for metadata_snapshot when dispatched', async () => {
+    const { store, orchestrator } = await metadataHarness({ scoreStatus: 'complete', metadataStatus: 'pending' });
+    await orchestrator.processOrder('ord_fo');
+    const dispatches = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.dispatch);
+    expect(dispatches.some((d) => (d as { ingredient?: string }).ingredient === 'metadata_snapshot')).toBe(true);
+  });
+});
+
+// ── T-4: discord channel-health gate ────────────────────────────────────────
+
+async function discordHarness(opts: {
+  discordStatus: IngredientStatus;
+  discordHealth: { checkChannelHealth(chainId: string, contract: string): Promise<DiscordChannelHealth> } | undefined;
+}) {
+  const triage = new MutableTriage();
+  triage.sonarStatus = 'complete';
+  triage.scoreStatus = 'complete';
+  triage.worldsStatus = 'complete';
+  triage.worldSlug = 'azuki';
+  triage.discordStatus = opts.discordStatus;
+  triage.shadowStatus = 'in_progress'; // operator not yet approved — shadow gate holds
+
+  const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+  const onboarding = new CommunityOnboardingOrchestrator({
+    store,
+    resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
+    triage,
+    now: () => NOW_MS,
+  });
+  await store.placeOrder(order(), {
+    subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+    payload: { order_id: 'ord_fo', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+  });
+  await onboarding.process('ord_fo', (await store.get('ord_fo'))!);
+  // Patch discord_observer to 'pending' so the advance loop sees it (initial 'optional' is
+  // treated as already recorded and skipped, which would bypass the health gate entirely).
+  await store.patchRecord('ord_fo', {
+    ingredients: { ...(await store.get('ord_fo'))!.ingredients!, discord_observer: 'pending' },
+  });
+  const orchestrator = new FulfillmentOrchestrator({
+    store,
+    triage,
+    onboarding,
+    dispatch: new FakeDispatch('azuki', 'azuki'),
+    github: null,
+    now: () => NOW_MS,
+    discordHealth: opts.discordHealth,
+  });
+  return { store, orchestrator };
+}
+
+describe('FulfillmentOrchestrator — discord channel-health gate (T-4)', () => {
+  it('advances discord_observer when discordHealth returns healthy=true', async () => {
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: { checkChannelHealth: async () => ({ healthy: true }) },
+    });
+    await orchestrator.processOrder('ord_fo');
+    const record = await store.get('ord_fo');
+    expect(record?.ingredients?.discord_observer).toBe('complete');
+  });
+
+  it('escalates when discordHealth returns healthy=false', async () => {
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: { checkChannelHealth: async () => ({ healthy: false, reason: 'channel archived' }) },
+    });
+    await orchestrator.processOrder('ord_fo');
+    const escalations = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate);
+    expect(escalations).toEqual([
+      expect.objectContaining({ order_id: 'ord_fo', ingredient: 'discord_observer' }),
+    ]);
+    expect((await store.get('ord_fo'))?.ingredients?.discord_observer).not.toBe('complete');
+  });
+
+  it('escalates when discordHealth throws (network error maps to escalate)', async () => {
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: {
+        checkChannelHealth: async () => {
+          throw new Error('ECONNREFUSED');
+        },
+      },
+    });
+    await expect(orchestrator.processOrder('ord_fo')).rejects.toThrow();
+  });
+
+  it('advances without health check when discordHealth port is absent (D13.3, AC-10)', async () => {
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: undefined,
+    });
+    await orchestrator.processOrder('ord_fo');
+    const record = await store.get('ord_fo');
+    expect(record?.ingredients?.discord_observer).toBe('complete');
+    // No escalation
+    expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate)).toHaveLength(0);
+  });
+
+  it('deduplicates escalation across ticks when channel stays unhealthy', async () => {
+    const { store, orchestrator } = await discordHarness({
+      discordStatus: 'complete',
+      discordHealth: { checkChannelHealth: async () => ({ healthy: false }) },
+    });
+    await orchestrator.processOrder('ord_fo');
+    await orchestrator.processOrder('ord_fo');
+    expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate)).toHaveLength(1);
   });
 });
 

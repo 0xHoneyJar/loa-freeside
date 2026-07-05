@@ -73,6 +73,9 @@ function makeDynamicTriage(): DynamicTriage {
     shadow: {
       probe: vi.fn(async () => 'blocked' as const),
     },
+    metadata: {
+      probe: vi.fn(async () => 'complete' as const),
+    },
     _advance: (next) => {
       if (next.sonar) sonarStatus = next.sonar;
       if (next.worldSlug !== undefined) worldsSlug = next.worldSlug;

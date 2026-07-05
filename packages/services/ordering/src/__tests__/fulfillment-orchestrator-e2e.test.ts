@@ -50,6 +50,7 @@ class DevFallback implements TriagePorts, FulfillmentDispatchPort {
   };
   discord = { probe: async () => 'optional' as const };
   shadow = { probe: async () => 'optional' as const };
+  metadata = { probe: async () => this.status('metadata_snapshot') };
 
   async ingestSonar(_p: HttpEnqueuePayload): Promise<DispatchResult> {
     this.done.add('sonar');
@@ -62,6 +63,10 @@ class DevFallback implements TriagePorts, FulfillmentDispatchPort {
   async manifestWorlds(_p: HttpEnqueuePayload): Promise<DispatchResult> {
     this.done.add('worlds_manifest');
     return { ok: true, world_slug: SLUG };
+  }
+  async snapshotMetadata(_p: HttpEnqueuePayload): Promise<DispatchResult> {
+    this.done.add('metadata_snapshot');
+    return { ok: true };
   }
 }
 

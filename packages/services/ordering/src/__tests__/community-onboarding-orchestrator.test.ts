@@ -79,7 +79,7 @@ describe('CommunityOnboardingOrchestrator', () => {
     });
     await orchestrator.process('ord_co_1');
 
-    for (const ingredient of ['sonar', 'score', 'worlds_manifest'] as const) {
+    for (const ingredient of ['sonar', 'score', 'metadata_snapshot', 'worlds_manifest'] as const) {
       await orchestrator.communityOnboarding.advanceIngredient('ord_co_1', ingredient, 'complete');
     }
     await orchestrator.communityOnboarding.advanceIngredient(
@@ -103,7 +103,7 @@ describe('CommunityOnboardingOrchestrator', () => {
       payload: { order_id: 'ord_co_1', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
     });
 
-    for (const ingredient of ['sonar', 'score', 'worlds_manifest'] as const) {
+    for (const ingredient of ['sonar', 'score', 'metadata_snapshot', 'worlds_manifest'] as const) {
       await orchestrator.communityOnboarding.advanceIngredient('ord_co_1', ingredient, 'complete', 'slug-a');
     }
     await orchestrator.communityOnboarding.advanceIngredient('ord_co_1', 'shadow_preview', 'complete');
@@ -119,6 +119,7 @@ describe('canFulfillCommunityOnboarding', () => {
     const ingredients = {
       sonar: 'complete' as const,
       score: 'complete' as const,
+      metadata_snapshot: 'complete' as const,
       worlds_manifest: 'complete' as const,
       discord_observer: 'optional' as const,
       shadow_preview: 'complete' as const,
@@ -140,5 +141,36 @@ describe('mergeProbedIngredients', () => {
     const existing = { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS, score: 'in_progress' as const };
     const merged = mergeProbedIngredients(existing, { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS, score: 'pending' });
     expect(merged.score).toBe('in_progress');
+  });
+});
+
+describe('canFulfillCommunityOnboarding — metadata_snapshot gate (T-5)', () => {
+  const base = {
+    sonar: 'complete' as const,
+    score: 'complete' as const,
+    worlds_manifest: 'complete' as const,
+    discord_observer: 'optional' as const,
+    shadow_preview: 'complete' as const,
+  };
+  const fulfillment = { world_slug: 'x', contact_email: 'a@b.com', chain_id: '1', contract_address: CONTRACT };
+
+  it('returns false when metadata_snapshot is pending', () => {
+    expect(canFulfillCommunityOnboarding({ ...base, metadata_snapshot: 'pending' }, fulfillment)).toBe(false);
+  });
+
+  it('returns false when metadata_snapshot is in_progress', () => {
+    expect(canFulfillCommunityOnboarding({ ...base, metadata_snapshot: 'in_progress' }, fulfillment)).toBe(false);
+  });
+
+  it('returns false when metadata_snapshot is blocked', () => {
+    expect(canFulfillCommunityOnboarding({ ...base, metadata_snapshot: 'blocked' }, fulfillment)).toBe(false);
+  });
+
+  it('returns true when metadata_snapshot is complete', () => {
+    expect(canFulfillCommunityOnboarding({ ...base, metadata_snapshot: 'complete' }, fulfillment)).toBe(true);
+  });
+
+  it('returns true when metadata_snapshot is optional (NF-6 disabled path)', () => {
+    expect(canFulfillCommunityOnboarding({ ...base, metadata_snapshot: 'optional' }, fulfillment)).toBe(true);
   });
 });
