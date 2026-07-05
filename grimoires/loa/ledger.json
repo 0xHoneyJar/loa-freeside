@@ -2001,7 +2001,7 @@
         {
           "global_id": 410,
           "local_label": "sprint-1",
-          "status": "planned",
+          "status": "completed",
           "domain": "network",
           "theme": "Declare the Liveness Contract"
         }
