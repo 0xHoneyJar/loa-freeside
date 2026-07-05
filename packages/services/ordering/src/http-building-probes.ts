@@ -175,7 +175,9 @@ export class HttpBuildingProbes {
     return (await this.manifestWorlds(payload)).ok;
   }
 
-  /** POST sonar ingest. Poll-only surface — no slug is produced. */
+  /** POST sonar ingest. Poll-only surface — no slug is produced.
+   *  Idempotency contract: sonar upserts on the natural key (chain_id, contract_address),
+   *  so re-dispatch after a crash is a no-op — this is what makes re-dispatch crash-safe. */
   async ingestSonar(payload: HttpEnqueuePayload): Promise<DispatchResult> {
     const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
     if (!normalized) return { ok: false };
@@ -199,7 +201,10 @@ export class HttpBuildingProbes {
   }
 
   /** POST score register. Echoes score's INTERNAL `world_slug` — surfaced only for the
-   *  D-5 divergence check; worlds-api remains canonical. */
+   *  D-5 divergence check; worlds-api remains canonical.
+   *  Idempotency contract: score's register takes an advisory lock on (chain_id,
+   *  contract_address), so concurrent or duplicate registers collapse to one community —
+   *  this is what makes re-dispatch crash-safe. */
   async registerScore(payload: HttpEnqueuePayload): Promise<DispatchResult> {
     const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
     if (!normalized) return { ok: false };
@@ -224,7 +229,10 @@ export class HttpBuildingProbes {
     }
   }
 
-  /** POST worlds manifest. Source of the CANONICAL `world_slug` (D-5). */
+  /** POST worlds manifest. Source of the CANONICAL `world_slug` (D-5).
+   *  Idempotency contract: worlds manifests on the natural key (chain_id, contract_address,
+   *  order_id), returning the existing world_slug on replay — this is what makes re-dispatch
+   *  crash-safe. */
   async manifestWorlds(payload: HttpEnqueuePayload): Promise<DispatchResult> {
     const normalized = this.normalizePair(payload.chainId, payload.contractAddress);
     if (!normalized) return { ok: false };

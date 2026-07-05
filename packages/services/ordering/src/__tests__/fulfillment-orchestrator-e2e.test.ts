@@ -121,6 +121,8 @@ describe('fulfillment-orchestrator E2E (task 23.6)', () => {
     expect(record?.fulfillment?.contact_email).toBe('cm@example.com');
 
     // The audit trail proves the orchestrator (not a human operator) drove every advance.
+    // Assert non-empty first — an empty audit trail must not vacuously pass the loop below.
+    expect(record?.operator_audit?.length ?? 0).toBeGreaterThan(0);
     for (const entry of record?.operator_audit ?? []) {
       expect(entry.caller_note).toBe('fulfillment-orchestrator');
     }

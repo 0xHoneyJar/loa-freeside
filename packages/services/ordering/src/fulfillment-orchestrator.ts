@@ -152,10 +152,21 @@ export class FulfillmentOrchestrator {
 
     // ADVANCE satisfied ingredients ─────────────────────────────────────────
     for (const ingredient of ALL_INGREDIENTS) {
+      // shadow_preview is operator-owned and GATES fulfillment (AC6; see
+      // canFulfillCommunityOnboarding:44-53). The orchestrator must NEVER advance it —
+      // only the operator can. Excluding it keeps the fulfillment gate in operator hands.
+      if (ingredient === 'shadow_preview') continue;
       const status = probe.statuses[ingredient];
       if (actionForStatus(status) !== 'satisfied') continue;
       const current = (await this.deps.store.get(orderId))?.ingredients?.[ingredient];
       if (current === 'complete' || current === 'optional') continue; // already recorded
+      // worlds probed complete but carried no canonical slug: advancing would record a
+      // slug-less fulfillment that can never satisfy canFulfill — a silent stall in
+      // producing. Escalate instead; never advance worlds without a slug (D-2).
+      if (ingredient === 'worlds_manifest' && !canonicalSlug) {
+        await this.escalate(orderId, ingredient, 'worlds returned complete without world_slug');
+        continue;
+      }
       const slug = ingredient === 'worlds_manifest' ? canonicalSlug : undefined;
       await this.deps.onboarding.advanceIngredient(orderId, ingredient, status, slug, {
         tokenLabel: this.deps.tokenLabel,
@@ -312,23 +323,30 @@ export class FulfillmentOrchestratorWorker {
   }
 
   async tick(): Promise<void> {
-    const states: OrderState[] = ['placed', 'routing', 'producing'];
-    const seen = new Set<string>();
-    for (const state of states) {
-      const orders = await this.store.listByState(state);
-      for (const order of orders) {
-        if (order.product !== 'community-onboarding' || seen.has(order.order_id)) continue;
-        seen.add(order.order_id);
-        try {
-          await this.orchestrator.processOrder(order.order_id);
-        } catch (e) {
-          console.error(
-            '[fulfillment-orchestrator] tick failed:',
-            order.order_id,
-            e instanceof Error ? e.message : e,
-          );
+    // The whole body is guarded: `start()` fires `void this.tick()`, so a throw from
+    // `store.listByState` (outside the per-order try/catch) would become an
+    // unhandledRejection and silently kill the worker. Log and let the interval retry.
+    try {
+      const states: OrderState[] = ['placed', 'routing', 'producing'];
+      const seen = new Set<string>();
+      for (const state of states) {
+        const orders = await this.store.listByState(state);
+        for (const order of orders) {
+          if (order.product !== 'community-onboarding' || seen.has(order.order_id)) continue;
+          seen.add(order.order_id);
+          try {
+            await this.orchestrator.processOrder(order.order_id);
+          } catch (e) {
+            console.error(
+              '[fulfillment-orchestrator] tick failed:',
+              order.order_id,
+              e instanceof Error ? e.message : e,
+            );
+          }
         }
       }
+    } catch (e) {
+      console.error('[fulfillment-orchestrator] tick aborted:', e instanceof Error ? e.message : e);
     }
   }
 }
