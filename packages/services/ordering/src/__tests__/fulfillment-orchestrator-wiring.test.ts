@@ -227,7 +227,13 @@ describe('T-3: discordHealth port wired in production composition (FR-3)', () =>
   it('createFulfillmentOrchestratorWorker wires discordHealth when configured (AC-6)', () => {
     // Composition-level: KitchenTriagePorts with a configured HttpBuildingProbes exposes
     // a truthy discordHealth port. The composition extracts it via the same instanceof check.
-    const http = new HttpBuildingProbes({ discordObserverApiUrl: 'http://discord.internal' });
+    const http = new HttpBuildingProbes({
+      sonarApiUrl: 'http://sonar.internal',
+      scoreApiUrl: 'http://score.internal',
+      worldsApiUrl: 'http://worlds.internal',
+      serviceToken: 'test-token',
+      discordObserverApiUrl: 'http://discord.internal',
+    });
     const triage = new KitchenTriagePorts(http);
     expect(triage.discordHealth).toBeTruthy();
 

@@ -437,9 +437,10 @@ export class CommunityOnboardingOrchestrator {
       case 'score':
         return (c, a) => this.deps.triage.score.probe(c, a);
       case 'metadata_snapshot':
-        // Absent port stays 'pending' HERE so the fulfillment orchestrator's audited
-        // self-resolve (T-2 / AC-4) owns the pending→optional transition; the status
-        // surface (probeAll below) reports 'optional' directly so fulfill never blocks.
+        // Absent port stays 'pending' here AND in probeAll: the fulfillment worker's
+        // audited self-resolve (T-2 / AC-4) owns the pending→optional transition.
+        // A service-path-only flow (no worker) therefore reports 'pending' until the
+        // worker ticks — by design; the worker is mandatory in zero-operator fulfill.
         return (c, a) => this.deps.triage.metadata?.probe(c, a) ?? Promise.resolve('pending' as const);
       case 'worlds_manifest':
         return (c, a) => this.deps.triage.worlds.probe(c, a);

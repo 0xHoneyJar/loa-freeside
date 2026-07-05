@@ -62,7 +62,7 @@ export class KitchenTriagePorts implements TriagePorts {
       this.metadata = undefined;
     }
 
-    if (http && http.config.discordObserverApiUrl) {
+    if (http && http.discordObserverConfigured) {
       this.discordHealth = { checkChannelHealth: (c, a) => http.checkDiscordChannelHealth(c, a) };
     } else {
       this.discordHealth = undefined;

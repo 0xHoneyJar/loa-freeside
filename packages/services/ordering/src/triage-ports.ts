@@ -60,5 +60,7 @@ export class StubTriagePorts implements TriagePorts {
   };
   discord = { probe: async (_chainId: string, _contract: string) => 'optional' as const };
   shadow = { probe: async (_chainId: string, _contract: string) => 'blocked' as const };
-  metadata = { probe: async (_chainId: string, _contract: string) => 'pending' as const };
+  // metadata deliberately ABSENT: a structurally-present stub returning eternal 'pending'
+  // would disable the worker's absence self-resolve (FR-2) and stall stub compositions;
+  // absence lets the fulfillment orchestrator advance metadata_snapshot to 'optional'.
 }

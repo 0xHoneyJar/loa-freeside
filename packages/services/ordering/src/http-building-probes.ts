@@ -68,8 +68,13 @@ function trimBase(url: string): string {
 export class HttpBuildingProbes {
   private readonly fetchFn: typeof fetch;
 
-  constructor(readonly config: HttpBuildingProbesConfig) {
+  constructor(private readonly config: HttpBuildingProbesConfig) {
     this.fetchFn = config.fetchImpl ?? fetch;
+  }
+
+  /** Narrow capability probe — config stays private so serviceToken never leaks via the object graph. */
+  get discordObserverConfigured(): boolean {
+    return Boolean(this.config.discordObserverApiUrl);
   }
 
   async probeSonar(chainId: string, contract: string): Promise<IngredientStatus> {
