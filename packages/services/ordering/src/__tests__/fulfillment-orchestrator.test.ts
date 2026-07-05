@@ -1,0 +1,232 @@
+import { describe, it, expect } from 'vitest';
+import {
+  ORDER_LIFECYCLE_SUBJECTS,
+  INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
+  type IngredientStatus,
+} from '@freeside/ordering-protocol';
+
+import {
+  actionForStatus,
+  FulfillmentOrchestrator,
+  type FulfillmentDispatchPort,
+  type IngredientAction,
+} from '../fulfillment-orchestrator.js';
+import { CommunityOnboardingOrchestrator } from '../community-onboarding-orchestrator.js';
+import { InMemoryOrderStore, type NewOrder } from '../store.js';
+import { ConfigCapabilityResolver, type CapabilityConfig } from '../resolver.js';
+import { RecordingGitHubIssuePort } from '../github-issue-port.js';
+import { ORCHESTRATOR_SUBJECTS } from '../orchestrator-events.js';
+import type { DispatchResult, HttpEnqueuePayload } from '../http-building-probes.js';
+import type { TriagePorts, WorldsProbeDetail } from '../triage-ports.js';
+
+const CONTRACT = '0x' + '7'.repeat(40);
+const NOW_MS = 1_700_000_000_000;
+
+const TRIAGE_CAPS: CapabilityConfig = {
+  'collection-index': { building: 'sonar-api', endpoint: 'http://sonar.internal' },
+  'community-register': { building: 'score-api', endpoint: 'http://score.internal' },
+  'world-manifest': { building: 'worlds-api', endpoint: 'http://worlds.internal' },
+};
+
+/** A triage double with per-ingredient statuses fixed at construction. */
+class FixedTriage implements TriagePorts {
+  constructor(
+    private readonly s: {
+      sonar: IngredientStatus;
+      score: IngredientStatus;
+      worlds: IngredientStatus;
+      worldSlug?: string;
+      discord?: IngredientStatus;
+      shadow?: IngredientStatus;
+    },
+  ) {}
+  sonar = { probe: async () => this.s.sonar };
+  score = { probe: async () => this.s.score };
+  worlds = {
+    probe: async () => this.s.worlds,
+    probeDetail: async (): Promise<WorldsProbeDetail> => ({ status: this.s.worlds, world_slug: this.s.worldSlug }),
+  };
+  discord = { probe: async () => this.s.discord ?? ('optional' as const) };
+  shadow = { probe: async () => this.s.shadow ?? ('in_progress' as const) };
+}
+
+/** A dispatch double that records calls and returns configurable slugs. */
+class FakeDispatch implements FulfillmentDispatchPort {
+  readonly calls: string[] = [];
+  constructor(private readonly worldsSlug?: string, private readonly scoreSlug?: string) {}
+  async ingestSonar(_p: HttpEnqueuePayload): Promise<DispatchResult> {
+    this.calls.push('sonar');
+    return { ok: true };
+  }
+  async registerScore(_p: HttpEnqueuePayload): Promise<DispatchResult> {
+    this.calls.push('score');
+    return { ok: true, world_slug: this.scoreSlug };
+  }
+  async manifestWorlds(_p: HttpEnqueuePayload): Promise<DispatchResult> {
+    this.calls.push('worlds_manifest');
+    return { ok: true, world_slug: this.worldsSlug };
+  }
+}
+
+function order(orderId = 'ord_fo'): NewOrder {
+  return {
+    order_id: orderId,
+    product: 'community-onboarding',
+    placed_by: 'dashboard_onboarding',
+    inputs: {
+      chain_id: '8453',
+      contract_address: CONTRACT,
+      contact_email: 'cm@example.com',
+      community_name: 'Pythenians',
+      source: 'dashboard_onboarding',
+    },
+    placed_at_unix: 1_700_000_000,
+    inputs_digest: 'b'.repeat(64),
+    ingredients: { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS },
+  };
+}
+
+/** Build a producing order + a fulfillment orchestrator over the given doubles. */
+async function producingHarness(opts: {
+  triage: TriagePorts;
+  dispatch: FulfillmentDispatchPort | null;
+  github?: RecordingGitHubIssuePort | null;
+}) {
+  const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+  const onboarding = new CommunityOnboardingOrchestrator({
+    store,
+    resolver: new ConfigCapabilityResolver(TRIAGE_CAPS),
+    triage: opts.triage,
+    now: () => NOW_MS,
+  });
+  await store.placeOrder(order(), {
+    subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+    payload: { order_id: 'ord_fo', product: 'community-onboarding', inputs_digest: 'b'.repeat(64) },
+  });
+  // Drive placed → producing without touching ingredients (all probes pending here).
+  await onboarding.process('ord_fo', (await store.get('ord_fo'))!);
+
+  const github = opts.github ?? null;
+  const orchestrator = new FulfillmentOrchestrator({
+    store,
+    triage: opts.triage,
+    onboarding,
+    dispatch: opts.dispatch,
+    github,
+    now: () => NOW_MS,
+    tokenLabel: 'orchestrator-token',
+  });
+  return { store, orchestrator, onboarding, github };
+}
+
+async function emittedSubjects(store: InMemoryOrderStore): Promise<string[]> {
+  return (await store.pendingOutbox()).map((e) => e.subject);
+}
+
+async function eventsOfKind(store: InMemoryOrderStore, subject: string): Promise<unknown[]> {
+  return (await store.pendingOutbox()).filter((e) => e.subject === subject).map((e) => e.payload);
+}
+
+describe('actionForStatus — the probe→action decision table (task 23.2)', () => {
+  const cases: Array<[IngredientStatus, IngredientAction]> = [
+    ['pending', 'dispatch'], // sonar 404/missing, score/worlds lookup 404
+    ['in_progress', 'wait'], // sonar indexing/queued
+    ['complete', 'satisfied'], // sonar indexed, lookup 200-active
+    ['optional', 'satisfied'], // discord / shadow policy-optional
+    ['blocked', 'escalate'], // sonar failed OR any unreachable/ambiguous surface (D-2)
+  ];
+  it.each(cases)('%s → %s', (status, action) => {
+    expect(actionForStatus(status)).toBe(action);
+  });
+});
+
+describe('FulfillmentOrchestrator — dispatch stage (tasks 23.3)', () => {
+  it('dispatches pending ingredients WORLDS-FIRST', async () => {
+    const dispatch = new FakeDispatch('azuki', 'azuki');
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'pending', score: 'pending', worlds: 'pending' }),
+      dispatch,
+    });
+    await orchestrator.processOrder('ord_fo');
+    expect(dispatch.calls).toEqual(['worlds_manifest', 'score', 'sonar']);
+    expect(await emittedSubjects(store)).toContain(ORCHESTRATOR_SUBJECTS.dispatch);
+  });
+
+  it('logs slug_divergence when score echoes a slug that differs from worlds (D-5)', async () => {
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'pending', score: 'pending', worlds: 'pending' }),
+      dispatch: new FakeDispatch('azuki', 'azuki-score'),
+    });
+    await orchestrator.processOrder('ord_fo');
+    const divergences = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.slug_divergence);
+    expect(divergences).toEqual([
+      expect.objectContaining({ order_id: 'ord_fo', worlds_slug: 'azuki', score_slug: 'azuki-score' }),
+    ]);
+  });
+
+  it('does NOT log slug_divergence when the slugs agree', async () => {
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'pending', score: 'pending', worlds: 'pending' }),
+      dispatch: new FakeDispatch('azuki', 'azuki'),
+    });
+    await orchestrator.processOrder('ord_fo');
+    expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.slug_divergence)).toEqual([]);
+  });
+
+  it('does NOT log slug_divergence when score echoes no slug', async () => {
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'pending', score: 'pending', worlds: 'pending' }),
+      dispatch: new FakeDispatch('azuki', undefined),
+    });
+    await orchestrator.processOrder('ord_fo');
+    expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.slug_divergence)).toEqual([]);
+  });
+});
+
+describe('FulfillmentOrchestrator — escalate stage (task 23.4, D-2)', () => {
+  it('emits orchestrator.escalate on a blocked ingredient — never a silent stall', async () => {
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'blocked', score: 'in_progress', worlds: 'in_progress' }),
+      dispatch: null,
+    });
+    await orchestrator.processOrder('ord_fo');
+    const escalations = await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate);
+    expect(escalations).toEqual([expect.objectContaining({ order_id: 'ord_fo', ingredient: 'sonar' })]);
+  });
+
+  it('comments on the ingredient tracking issue when one exists (best-effort)', async () => {
+    const github = new RecordingGitHubIssuePort();
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'blocked', score: 'in_progress', worlds: 'in_progress' }),
+      dispatch: null,
+      github,
+    });
+    await store.patchRecord('ord_fo', {
+      ingredient_jobs: [
+        {
+          ingredient: 'sonar',
+          kind: 'github_issue',
+          external_ref: 'https://github.com/0xHoneyJar/sonar-api/issues/42',
+          external_id: '42',
+          repo: '0xHoneyJar/sonar-api',
+          idempotency_key: 'ord_fo:sonar',
+          enqueued_at_unix: 0,
+        },
+      ],
+    });
+    await orchestrator.processOrder('ord_fo');
+    expect(github.comments).toEqual([
+      expect.objectContaining({ repo: '0xHoneyJar/sonar-api', issueNumber: 42 }),
+    ]);
+  });
+
+  it('deduplicates escalation across ticks (in-memory guard)', async () => {
+    const { store, orchestrator } = await producingHarness({
+      triage: new FixedTriage({ sonar: 'blocked', score: 'in_progress', worlds: 'in_progress' }),
+      dispatch: null,
+    });
+    await orchestrator.processOrder('ord_fo');
+    await orchestrator.processOrder('ord_fo');
+    expect(await eventsOfKind(store, ORCHESTRATOR_SUBJECTS.escalate)).toHaveLength(1);
+  });
+});
