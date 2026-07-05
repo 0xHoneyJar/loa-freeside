@@ -676,8 +676,17 @@ _parse_sprint_paths() {
         # extension. The `/` requirement excludes bare filename prose like
         # `\`spiral-harness.sh\`` (which is a reference, not a deliverable
         # declaration). Accepts `.claude/scripts/...`, `src/...`, etc.
+        #
+        # False-positive guard: after stripping backticks, filter out strings
+        # that are clearly commands or CLI arguments rather than file paths:
+        #   - strings containing whitespace (commands like `npx tsx --test tests/*.test.ts`)
+        #   - strings containing glob chars like `*` (shell globs, not paths)
+        #   - strings starting with `-` or `@` (CLI flags / argument prefixes)
         echo "$content" | grep -oE "\`[^\`]*/[^\`]+\.${ext_re}\`" 2>/dev/null | \
-            sed 's/^`//; s/`$//'
+            sed 's/^`//; s/`$//' | \
+            grep -v '[[:space:]]' | \
+            grep -v '\*' | \
+            grep -E '^[a-zA-Z0-9.]'
         # Pattern 2: bare paths rooted at well-known *top-level* repo prefixes.
         # Anchored to start-of-line or whitespace/non-path-char to prevent
         # substring matches within longer paths — without the anchor,
