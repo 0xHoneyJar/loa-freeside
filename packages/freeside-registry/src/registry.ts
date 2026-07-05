@@ -177,14 +177,18 @@ const ModuleEntry = Schema.Struct({
       "Identity = <cell-slug>/<ref>. Consumers dispatch on probe_kind (loa-cli, next cycle).",
   }),
 }).pipe(
-  // Kills the two-fields-drift hazard the in-block deployment_url creates:
-  // fires only when both are present, so blockless / no-URL cells decode unchanged.
+  // Kills the two-fields-drift hazard the in-block deployment_url creates.
+  // A service block REQUIRES a present-and-equal entry-level deployment_url:
+  // a declared-probeable service on a null-URL entry would split-brain the
+  // registry (entry says not-built, probe.mjs probes it live) — the exact
+  // contradiction derive-from-absence (D-7) forbids. Blockless cells of any
+  // URL state decode unchanged (review C-1 / DISS-001).
   Schema.filter(
     (e) =>
       !e.service ||
-      e.deployment_url == null ||
-      e.service.deployment_url === e.deployment_url ||
-      "service.deployment_url must equal the entry-level deployment_url",
+      (e.deployment_url != null &&
+        e.service.deployment_url === e.deployment_url) ||
+      "a service block requires the entry-level deployment_url to be present and equal",
   ),
 );
 

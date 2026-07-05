@@ -87,15 +87,26 @@ test("service.deployment_url ≠ entry deployment_url fails decode (D-6 drift fi
           deployment_url: "https://example-api-staging.up.railway.app",
         },
       }),
-    /must equal the entry-level deployment_url/,
+    /deployment_url to be present and equal/,
   );
 });
 
-test("drift filter tolerates null entry-level deployment_url (fires only when both present)", () => {
-  const entry = decodeEntry({
-    ...baseEntry,
-    deployment_url: null,
-    service: validService,
-  });
-  assert.equal(entry.service?.deployment_url, validService.deployment_url);
+test("service block on a null-URL entry fails decode (C-1: no split-brain with derive-from-absence)", () => {
+  assert.throws(
+    () =>
+      decodeEntry({
+        ...baseEntry,
+        deployment_url: null,
+        service: validService,
+      }),
+    /deployment_url to be present and equal/,
+  );
+});
+
+test("service block on an entry with ABSENT deployment_url fails decode (C-1)", () => {
+  const { deployment_url: _omit, ...noUrlEntry } = baseEntry;
+  assert.throws(
+    () => decodeEntry({ ...noUrlEntry, service: validService }),
+    /deployment_url to be present and equal/,
+  );
 });
