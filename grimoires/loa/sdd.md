@@ -1,769 +1,595 @@
-# Software Design Document: Autopoiesis — Immune Cells for the Factory
+# Software Design Document — Cadence Ledger: the Liveness Expectation Record
 
-**Version:** 1.1
-**Date:** 2026-07-03
-**Author:** Architecture Designer Agent
-**Status:** Draft (Flatline-SDD-hardened, 2026-07-03)
-**PRD Reference:** grimoires/loa/prd.md (flatline-hardened, 2026-07-03)
+> Cycle: **cadence-ledger**. This SDD designs the loa-freeside slice only: the
+> declaration layer in `packages/freeside-registry`. ADR-012 Phase 0, extended
+> with the staleness dimension (`expectations[]`).
 
 ---
-
-## 0. Grounding & Key Architectural Decision
-
-This SDD is grounded in the live tree, not the template's web-app assumptions. Every path
-below was read during design.
-
-**The load-bearing decision: build on the existing estate-immune framework, do not greenfield.**
-loa-freeside already ships an immune-system substrate that the PRD's four FRs map onto exactly:
-
-| Existing asset (read during design) | What it already provides |
-|---|---|
-| `tools/immune-check.sh` (`:1-40`) | Aggregator + **shared verdict/exit contract**: `exit 0=HEALTHY / 2=PROBLEM / 1=INSUFFICIENT`, `--probe` one-line STATUS tile, `--json` → `{verdict, exit, doctors[]}`, `IMMUNE_*_PROBE_CMD` test seams |
-| `tools/immune-instruments.yaml` | Ground-truth **registry**: every `*-sensor.*` / `*-doctor.*` / `gate-*.*` file MUST register a literal ground-source token, or the lint fails |
-| `tools/check-instrument-ground-truth.sh` (`:102`) | The **teeth**: name-glob `*-sensor.*\|*-doctor.*\|gate-*.*` auto-catches new instruments; forces registration in the same PR |
-| `tools/gate-freeze-sensor.mjs`, `tools/instrument-truth-sensor.mjs` | Two **precedent sensors** already following the `--probe`/exit-code-is-verdict convention (NFR-4) |
-| `.github/workflows/immune-doctors.yml` | Existing **CI wiring** for the read-only doctors |
-| `tools/lib/domain-classify.sh` | ADR-007 path→domain classifier; **CI tooling classifies as `shared`** (default case) — this is why the whole cycle is domain-pure |
-
-> Consequence: NFR-7's shared verdict schema is **already half-built** in `immune-check.sh`.
-> The three new sensors extend it, register in `immune-instruments.yaml` (auto-forced by the
-> name-glob lint), and are aggregated by `immune-check.sh`. This is the single most important
-> design choice; the alternative (three ad-hoc scripts) would violate NFR-7 and re-invent the
-> proven exit-code discipline.
-
-**Resolved targets (G-2 corpus)** — real consumer per package is now probed (see the resolved-blockers table below for provenance):
-
-| Package | Path | Ships | Real consumer (FR-2) | Smoke method (FR-2a) |
-|---|---|---|---|---|
-| `@freeside/adapters` | `packages/adapters` | `dist/` (`main: dist/index.js`) | `packages/services/shadow-audit` | **build** then import — known-**broken** (must FLAG) |
-| `@freeside/cluster-fp` | `packages/cluster-fp` | `src/` (`main: src/index.ts`) | `packages/services/ordering` | resolve+import — known-**good** (must PASS) |
-| `@freeside/ordering-protocol` | `packages/protocol/ordering` | `src/` (`main: src/index.ts`) | `packages/services/ordering` | resolve+import — known-**good** (must PASS) |
-
-**Resolved CI surfaces:**
-- `Integration Tests` numb check → `ci.yml:232` job `integration-tests`, runs `npm run test:integration` whole-repo (bead `arrakis-integration-tests-numb-gate-0is2`).
-- `agent-ci.yml:109` → `npx vitest run tests/integration/`.
-- `Cluster Compliance` → `.github/workflows/cluster-compliance.yml` + vendored `.github/scripts/audit-cluster-cells.sh` (bead `arrakis-cluster-compliance-audit-crash-88ah`).
-- pnpm graph source: **per-package `pnpm-lock.yaml`** (confirmed under `packages/*/`) + `file:`/`@freeside/*` edges in each `package.json`. No root `pnpm-workspace.yaml` exists → the scoping engine builds edges from package.json specifiers, not a workspace manifest.
-
-**Resolved blockers (probed live tree, 2026-07-03 — folded into the design below):**
-
-| Blocker(s) | Probed fact (grounded) | Design consequence |
-|---|---|---|
-| SKP-001 ×2 + IMP-001 (branch-protection token) | The default `github.token` **cannot** read/write branch protection — `administration` is not a grantable `GITHUB_TOKEN` permission scope (confirmed `.github/workflows/immune-doctors.yml:33-38`). The existing safe pattern uses a fine-grained PAT `IMMUNE_DOCTOR_GH_TOKEN` (`Administration:read`) gated on `github.event_name != 'pull_request' && github.ref == 'refs/heads/main'` to defeat pwn-request PAT exfiltration (`immune-doctors.yml:75-82`). | FR-1d required-check migration + FR-4 promotion are **NOT PR-time CI actions**. Promotion is an **operator-run command** (`tools/flip-promote.sh`, admin-**write** PAT the operator holds) OR a gated main-branch-only job mirroring the immune-doctors PAT-gating. See §1.6, §3.7, §5.4. This also resolves SKP-002's "flip can auto-promote with only 1 catch" — **promotion is never automatic from CI; it is an operator act.** |
-| IMP-002 (real consumers for S2 smoke) | Probed dependents: `@freeside/cluster-fp` ← `packages/services/ordering`; `@freeside/adapters` ← `packages/services/shadow-audit` (the **known-broken** import path — exactly how the dist break bites a real consumer); `@freeside/ordering-protocol` ← `packages/services/ordering`. | The consumption doctor (FR-2) exercises these **actual** consumers, not a synthetic harness. See §3.5. OQ-2 resolved. |
-
+status: draft
+created: 2026-07-04
+domain: network (packages/freeside-registry only; a CI workflow file is domain-unclassified and does not trip the ADR-007 firewall — verified against `tools/lib/domain-classify.sh:20-21`)
+prd: grimoires/loa/prd.md
+relates: decisions/012-unify-cluster-liveness.md (Proposed — this cycle IS its Phase 0, extended)
+source_brief: grimoires/loa/context/cadence-ledger-rehomed-brief.md
 ---
 
-## Table of Contents
+## 1. System Overview
 
-1. [System Architecture](#1-system-architecture)
-2. [Software Stack](#2-software-stack)
-3. [State & Artifact Design](#3-state--artifact-design) *(replaces "Database Design" — no DB)*
-4. [Sensor Interface Contracts](#4-sensor-interface-contracts) *(replaces "UI/API")*
-5. [Error Handling & Exit-Code Strategy](#5-error-handling--exit-code-strategy)
-6. [Testing Strategy](#6-testing-strategy)
-7. [Development Phases](#7-development-phases)
-8. [Known Risks and Mitigation](#8-known-risks-and-mitigation)
-9. [Open Questions](#9-open-questions)
-10. [Appendix](#10-appendix)
+### 1.1 What this cycle builds
 
----
+One package changes: `packages/freeside-registry`. Two additive schema blocks on
+`ModuleEntry`, a populated `registry.yaml`, and validation with teeth. Nothing
+else in the cluster changes behavior this cycle — the design's entire job is to
+make the *declaration* correct, verifiable, and safe for every existing decoder.
 
-## 1. System Architecture
+> From prd.md §2: "The lane spans three repos in strict order; **this cycle
+> delivers only the loa-freeside slice** — the declaration layer."
 
-### 1.1 System Overview
-
-Three **immune cells** (sensor + aligner + teeth), each grounded in a filed bug, plus a
-cross-cutting **flip mechanism** that governs when advisory sensors earn blocking authority.
-All three cells emit one **shared verdict record** (NFR-7) and are aggregated by the existing
-`tools/immune-check.sh`. Nothing here is a service or a UI — the deliverables are CLI sensors,
-CI-workflow wiring, JSON/YAML state artifacts, and one upstream issue.
-
-### 1.2 Architectural Pattern
-
-**Pattern:** Filter/sensor pipeline over Git + CI state (event-driven by PR + on-demand),
-following the established estate-immune "doctor → aligner → teeth" triad.
-
-**Justification (from PRD):**
-> "every substrate has two failure modes — silence … and no-teeth … The cure is the same triad:
-> doctor → aligner → teeth" (prd.md:39-42).
-
-Each sensor is a stateless, read-only script whose **exit code IS its verdict** (NFR-4). Blocking
-authority is layered **outside** the sensor (branch-protection required-list + flip-ledger),
-never by mutating the sensor's output — this is how NFR-1 (advisory-first) and NFR-4
-(exit-code integrity) coexist without contradiction.
-
-### 1.3 Component Diagram
+### 1.2 System context
 
 ```mermaid
 graph TD
-    subgraph Triggers
-        PR[Pull Request event]
-        OD[On-demand / shared-pkg change]
-        CRON[Nightly cron]
+    subgraph "loa-freeside · network domain (THIS CYCLE)"
+        Y[registry.yaml<br/>+ service blocks<br/>+ expectations arrays]
+        S[src/registry.ts<br/>Effect Schema<br/>ModuleEntry + ServiceBlock + Expectation]
+        T[tests/<br/>fixture decode tests<br/>full-registry decode test]
+        Y -->|decoded by| S
+        S -->|gated by| T
     end
 
-    subgraph "Cell S1 — Trustworthy Green (tools/)"
-        SCOPE[scope-checks-sensor.sh<br/>changed-pkg + dependents<br/>off pnpm graph]
-        FALLBACK{cross-cutting path?}
-        QMAP[quarantine-coverage-map.yaml]
-        CCFIX[audit-cluster-cells.sh<br/>jq git_url guard]
+    subgraph "Consumers (ZERO source changes this cycle)"
+        CLI[packages/freeside-cli<br/>doctor · beacon auditor<br/>file: dep on registry]
+        PROBE[loa-cli/lib/probe.mjs<br/>reads service.* — un-orphaned by G-1<br/>probe_kind dispatch = NEXT cycle]
+        GW[apps/mcp-gateway probeTenant<br/>ADR-012 Phase 1 — later PR]
+        DASH[operator-dash probe.ts<br/>ADR-012 Phase 2 — later PR]
     end
 
-    subgraph "Cell S2 — Consumption Doctor (tools/)"
-        CONS[consumption-doctor.sh<br/>per-pkg import smoke]
-    end
-
-    subgraph "Cell S3 — False-Green Sensor (tools/)"
-        FG[false-green-sensor.sh<br/>.run state + git delta]
-    end
-
-    subgraph "Shared substrate (existing)"
-        SCHEMA[[verdict schema NFR-7<br/>sensor,target,verdict,evidence,exit_code]]
-        REG[immune-instruments.yaml<br/>+ ground-truth lint]
-        AGG[immune-check.sh aggregator]
-    end
-
-    subgraph "Flip mechanism FR-4 (tools/)"
-        LEDGER[flip-ledger.jsonl<br/>main-branch-only writer<br/>operator adjudication = git commit]
-        FLIP[flip-report.sh<br/>rolling last-N=10 window]
-        PROMOTE[flip-promote.sh<br/>OPERATOR-RUN<br/>admin-write PAT]
-        BP[branch-protection<br/>required-check list]
-    end
-
-    PR --> SCOPE
-    SCOPE --> FALLBACK
-    FALLBACK -- yes --> FULL[run FULL required set]
-    FALLBACK -- no --> SCOPED[run scoped checks]
-    PR --> CCFIX
-    OD --> CONS
-    PR --> FG
-    CRON --> CONS
-
-    SCOPE --> SCHEMA
-    CONS --> SCHEMA
-    FG --> SCHEMA
-    SCHEMA --> AGG
-    SCHEMA --> LEDGER
-    REG -.enforces.-> SCOPE
-    REG -.enforces.-> CONS
-    REG -.enforces.-> FG
-    LEDGER --> FLIP
-    FLIP -- flip-ready --> PROMOTE
-    PROMOTE -- operator runs --> BP
-    QMAP -.audited by.-> SCOPE
+    S -->|loadRegistry decode stays green G-4| CLI
+    Y -.->|declared contract, read later| PROBE
+    Y -.->|Phase 1| GW
+    Y -.->|Phase 2| DASH
 ```
 
-### 1.4 System Components
+Solid arrows are this cycle's verified paths; dashed arrows are declared-for
+future phases and MUST NOT require changes here to land.
 
-#### S1 — Trustworthy Green (`tools/scope-checks-sensor.sh` + support) — FR-1
-- **Purpose:** make a per-PR required-check green mean a real *this-PR* signal.
-- **Responsibilities:**
-  - **FR-1a** Build the changed-package set from `git diff --name-only <base>...<head>`, classify each path to its owning `packages/<pkg>`, then expand to **transitive dependents** by reverse-walking the dependency edges parsed from every `packages/*/package.json`.
-  - **Graph completeness (SKP-002 + IMP-006):** the reverse-walk MUST include **`dependencies` + `peerDependencies` + `devDependencies`** edges (`file:`/`@freeside/*` specifiers), not runtime deps alone — a dev-time or peer edge is still a way a change breaks a dependent's build/test. The analytical scope result must then map each in-scope package to a **concrete runnable command** (e.g. `pnpm --filter <pkg> test`, `pnpm --filter <pkg> build`) so CI actually executes the scoped set rather than an abstract package list. A package that resolves to no runnable check is reported, not silently dropped.
-  - **Fallback-to-full (SKP-002 + IMP-006):** if any changed path is cross-cutting — root `pnpm-lock.yaml`, root `package.json`/`tsconfig*`, `.github/workflows/**`, a schema/contract file, shared env/config, **generated-code paths (codegen output, `*.gen.*`), or dev-tooling/build-config the graph can't attribute to one package** — emit `verdict=full` and run the entire required set. Reuses the classification shape of `tools/lib/domain-classify.sh` (a new sibling `tools/lib/scope-classify.sh`).
-  - **FR-1c** Fix the `Cluster Compliance` jq crash in vendored `.github/scripts/audit-cluster-cells.sh`: guard in-monolith cells (`git_url=loa-freeside`, e.g. `events-api`) so the per-cell record is **valid JSON** and the aggregate `jq` never aborts.
-  - **FR-1b** Quarantine `integration-tests` (`ci.yml:232`) + `agent-ci` into a non-required lane — gated on an **objective per-package equivalence proof** (SKP-003 + IMP-007), not a subjective "demonstrably covers": the scoped replacement (FR-1a) MUST execute the **same test files** the quarantined suite would have run for the changed packages, and a **coverage-diff proves equivalence per-package** before that suite is dropped from required. Rollback trigger: if a post-quarantine escape is found that the old suite *would* have caught, un-quarantine (recorded in `tools/quarantine-coverage-map.yaml`, §3.4). Quarantine is gated on this proof, not merely "conditional".
-  - **FR-1d** Update the **branch-protection required-check list** in lockstep (drop numb, add scoped-green) — but this is an **operator-run migration, NOT a PR-time CI action** (probed: `github.token` cannot write branch protection; §0, §3.7). The scoped-green check *runs* in `pr-validation.yml`; adding/removing it from the *required-list* is `tools/flip-promote.sh`, executed by the operator with an admin-write PAT (or a gated main-branch-only job mirroring the `immune-doctors.yml` PAT-gating). Audit trail = the flip-ledger entry + git history; rollback = re-run the tool to remove a check from required; failure mode (PAT absent) = print the exact operator command, **never silently skip** (§5.4).
-- **Interfaces:** CLI `--probe`, `--json` (verdict schema), exit code. Consumed by a new/edited `.github/workflows/pr-validation.yml` gating job.
-- **Dependencies:** pnpm per-package lockfiles; `tools/lib/domain-classify.sh` precedent; operator-held admin-write PAT for the branch-protection migration (FR-1d — NOT the default CI token).
+### 1.3 Architectural pattern
 
-#### S2 — Consumption Doctor (`tools/consumption-doctor.sh`) — FR-2
-- **Purpose:** a shared package cannot be "healthy" if no consumer can import it.
-- **Responsibilities:** for each shared/published `@freeside/*` package, resolve ≥1 real consumer and run an **import smoke** under the consumer's actual resolution — **build-then-import** if the package ships `dist` (adapters), **resolve+import** if it ships `src` (cluster-fp, ordering-protocol). Emit verdict `consumable | unconsumable | no-consumer` (FR-2b; `no-consumer` is a distinct honest state, not a pass).
-- **Interfaces:** CLI + verdict schema; wired to run on `packages/**` shared-package changes and nightly (NFR-6: not every PR).
-- **Dependencies:** package `exports`/`main` fields; a real consumer per package (design detail 3.5).
-
-#### S3 — False-Green Sensor (`tools/false-green-sensor.sh`) — FR-3
-- **Purpose:** a run/bridge that did nothing cannot report success.
-- **Responsibilities:** read `.run/*state.json` (`bridge-state.json`, `sprint-plan-state.json`) + git delta; a `JACKED_OUT`/completed run with **0 sprints AND 0 findings AND 0 commits** → verdict `suspect`. FR-3b: file the **upstream** `loa` issue with a reproduction (the 2026-07-03 no-op state); the loa-freeside sensor stands alone (R-5).
-- **Interfaces:** CLI + verdict schema; runnable in the Stop-hook path / post-run, and manually.
-- **Dependencies:** `.run` state shapes; git; `gh issue create` against the `loa` repo (FR-3b, one-time).
-
-#### Shared substrate (existing, extended)
-- **`tools/immune-instruments.yaml`** — register all three new instruments + ground-source tokens (auto-forced by the name-glob lint; naming the files `*-sensor.sh`/`*-doctor.sh` triggers it).
-- **`tools/immune-check.sh`** — extend `doctors[]` aggregation to include the three; verdict/exit contract reused verbatim.
-
-#### Flip mechanism (`tools/flip-report.sh` + `tools/flip-ledger.jsonl` + `tools/flip-promote.sh`) — FR-4
-- **Purpose:** advisory that cannot rot into a new numb gate — and cannot cheaply earn authority over ALL future PRs.
-- **Write authority (SKP-003 + SKP-004):** the ledger is appended **only from main-branch runs** — a **single writer**, so there are no PR-parallel writes and no merge conflicts. **Operator adjudication IS an operator git commit** (provenance = git authorship, mirroring the collections-sot "git commit is the ratify" force-chain). Tamper-resistance = git history is the audit trail; a rewrite is visible. Schema + write-authority: §3.2.
-- **Flip criterion (tightened — SKP-002):** `flip-report.sh` promotes to `flip-ready` only when ALL hold: (a) **≥1 seeded-qualifier true-catch** (FR-4c), (b) a clean **rolling window of the last N=10 evaluations with 0 false-positives** (N≥10, not 5 — 1 catch in last-5 is too weak to earn authority over every future PR), and (c) **explicit operator promotion** — the flip to `blocking` is **never automatic from CI**. `flip-promote.sh` is the **operator-run** tool that adds the sensor's check to the branch-protection required-list with an admin-write PAT (§3.7). Seeded qualifier (FR-4c) = a deliberately-broken-then-reverted fixture the sensor must catch, guaranteeing the true-catch is reachable regardless of organic PR volume.
-
-### 1.5 Data Flow
-
-1. PR opens → CI invokes S1 (`scope-checks-sensor.sh`) + `audit-cluster-cells.sh` (fixed) + S3 (if a run completed). On a PR, each sensor writes only its ephemeral verdict record (§3.1) to `.run/immune/<sensor>-<sha>.json` — **it does NOT append to the git-tracked ledger** (no PR-parallel writers).
-2. On the **main-branch run** (post-merge), the single-writer job appends one evaluation entry per sensor to `tools/flip-ledger.jsonl` (§3.2).
-3. `immune-check.sh` aggregates the per-run records for the banner/`--json`.
-4. Operator adjudicates flagged entries **by committing** the `class` change to the ledger (git authorship = provenance) → `flip-report.sh` recomputes the rolling-N=10 window state.
-5. When a sensor reaches `flip-ready`, the **operator runs `tools/flip-promote.sh`** (admin-write PAT) to add its check to branch protection (FR-1d/FR-4) — CI never auto-promotes.
-
-### 1.6 External Integrations
-
-| Service | Purpose | API Type | Docs |
-|---|---|---|---|
-| GitHub branch protection | required-check list read/update (FR-1d, FR-4) — **read** may use the `immune-doctors.yml` PAT-gating pattern on main; **write/promotion is operator-run** (`tools/flip-promote.sh`, admin-write PAT), never the default `github.token` (probed: `administration` is not a grantable `GITHUB_TOKEN` scope) | `gh api /repos/{o}/{r}/branches/{b}/protection` | https://docs.github.com/rest/branches/branch-protection |
-| GitHub Issues (`loa` repo) | upstream bridge-noop issue (FR-3b) | `gh issue create` | https://cli.github.com/manual/gh_issue_create |
-| pnpm 9.15.4 | build/resolve for import smoke (FR-2) | CLI | https://pnpm.io |
-
-### 1.7 Deployment Architecture
-
-No deployment. Artifacts land as: scripts under `tools/`, workflow edits under `.github/workflows/`,
-a vendored-script fix under `.github/scripts/`, state under `.run/immune/` + `grimoires/loa/`.
-Runs on GitHub-hosted `ubuntu-latest` runners and on the operator's machine (local banner via
-`immune-check.sh`).
-
-### 1.8 Scalability Strategy
-
-Not a scaling problem. **NFR-6 cost**: S1 is scoped (fewer packages than whole-repo) → a scoped PR's
-required checks finish in *less* wall-clock than today's whole-repo suite. S2 runs on shared-package
-changes + nightly, not every PR. Concrete per-sensor budgets deferred to sprint (Open Question OQ-3).
-
-### 1.9 Security / Zone Architecture
-
-- **NFR-5 / ADR-007 zone discipline:** all sensor logic lives in `tools/`, CI wiring in
-  `.github/workflows/`, the jq fix in `.github/scripts/`. **`.claude/` (System Zone) is NOT touched**
-  — the framework bridge fix goes upstream (FR-3b).
-- **Domain purity (ADR-007 firewall):** every path this cycle touches classifies as **`shared`**
-  under `tools/lib/domain-classify.sh` (default case). The packages S2 reads (adapters=platform,
-  cluster-fp/ordering-protocol=shared/network) are **read-only inputs**, not modified — so no commit
-  crosses platform↔network. **Design rule for every commit: scope `shared/<x>`; a sensor commit
-  never edits a package's source.** This keeps `path-domain-check.yml` green by construction.
-- **NFR-4 exit-code integrity:** sensor exit codes are never piped through `tail`/`|| true`
-  (rule `stash-safety.md`, memory `Gate output never piped`). Advisory-ness is expressed with
-  GitHub-native `continue-on-error: true` at the workflow-step level or by absence from the
-  required-list — **never** by masking the script's exit code.
+**Declarative contract in a schema-gated data file.** The registry is the
+anti-corruption layer (ADR-012: "the naming IS the anti-corruption layer" —
+"where is health, and what cadence is expected?" answered once). The Effect
+Schema decode is the enforcement mechanism: an invalid declaration cannot load,
+anywhere, in any consumer that uses `loadRegistry()`.
 
 ---
 
-## 2. Software Stack
+## 2. Grounding (verified 2026-07-04/05)
 
-### 2.1 Languages & Runtimes
-
-| Category | Technology | Version | Justification |
-|---|---|---|---|
-| Sensor scripts | Bash | POSIX/bash 5 | Matches existing `tools/*-sensor.sh` / `immune-check.sh`; `shell-compat-lint.yml` already governs it |
-| Structured sensors (optional) | Node.js (ESM `.mjs`) | Node ≥22 (root `engines`) | Precedent: `gate-freeze-sensor.mjs`, `instrument-truth-sensor.mjs` — use `.mjs` only where JSON/graph logic is unwieldy in bash |
-| JSON tooling | `jq` | system | Verdict-record assembly with `--arg`/`--argjson` (the very tool whose misuse caused the FR-1c crash — use `--arg` for strings, validate with `jq empty`) |
-| Package manager | pnpm | 9.15.4 (root `packageManager`) | Ground truth for FR-1a graph + FR-2 smoke |
-| Test framework | bats + vitest | bats (existing `*.test.sh`), vitest 3.2.4 | bats for shell sensors (precedent `immune-check.test.sh`); vitest already present |
-
-**Key existing libraries/assets reused:**
-- `tools/lib/domain-classify.sh` — path-classification precedent for the new `scope-classify.sh`.
-- `tools/immune-check.sh` test seams (`IMMUNE_*_PROBE_CMD`) — copy the fixture-driven test pattern.
-
-### 2.2 Infrastructure & DevOps
-
-| Category | Technology | Purpose |
+| Claim | Source | Verified |
 |---|---|---|
-| CI | GitHub Actions | Sensor execution + gating (extend `immune-doctors.yml`, `pr-validation.yml`, `cluster-compliance.yml`) |
-| Gate control | GitHub branch protection | Required-check list (FR-1d, FR-4 promotion) |
-| State | Git-tracked JSON/YAML + `.run/` | Verdict records, flip-ledger, coverage map |
+| `ModuleEntry` has no `service`/`expectations`; excess yaml fields are "silently stripped on decode" (i.e. unknown fields do NOT break decode) | `packages/freeside-registry/src/registry.ts:26-54` (comment at L38-39) | read 2026-07-04 |
+| probe.mjs reads exactly `service.{deployment_url, health_path, expected_status, auth_class, expected_body_marker}`; no `service.deployment_url` → verdict `scaffold` | `loa-cli/lib/probe.mjs:153-190` (L157, L160-166, L178) | read 2026-07-04 |
+| probe.mjs defaults: `health_path`→`/`, `expected_status`→200, `auth_class`→`none`; `expected_body_marker` optional | `loa-cli/lib/probe.mjs:97, 161, 178` | read 2026-07-04 |
+| ADR-012 appendix declares 5 cells' service values + score-api DO-NOT-TRANSCRIBE + 3 no-block cells | `decisions/012-unify-cluster-liveness.md:105-124` | read 2026-07-04 |
+| score-api real health contract: `/` → **302 Location: /v1/health**; direct `GET /v1/health` → **200** `{"status":"ok",...,"service":"score-api",...}`; `/health` → 404 | live probe 2026-07-05T00:47Z (curl, read-only) | probed |
+| sonar per-chain lag SLOs: ETH<50 · OP<600 · Arbitrum<2400 · Base<600 · **Berachain<300** · Zora<1800; recipe = `chain_metadata { chain_id latest_processed_block block_height }`, lag = `block_height − latest_processed_block`; SLOs are **PROPOSED, observe-only** | `~/Documents/GitHub/sonar-api/SCALE.md` Guardrail 2 (SLO table + lag-check command) | read 2026-07-04 |
+| sonar GraphQL read plane = belt-gateway (`https://belt-gateway-production.up.railway.app/v1/graphql`), NOT sonar-api host; hyperindex deployment IDs rotate (blue-green) | `packages/freeside-registry/registry.yaml:258-268`; `SCALE.md` blue-green guardrail | read 2026-07-04 |
+| freeside-cli consumes the registry via `"@freeside/freeside-registry": "file:../freeside-registry"`; `tests/ordering-registry.test.ts:17` calls `loadRegistry()` with the DEFAULT path → decodes the **real** registry.yaml | `packages/freeside-cli/package.json`, `tests/ordering-registry.test.ts` | read 2026-07-04 |
+| No PR-time CI lane runs the freeside-registry / freeside-cli test suites today (`cluster-compliance.yml` triggers on registry.yaml paths but runs cell-compliance audits, not unit suites; `lib-tests.yml` covers `.claude/lib` only) | `.github/workflows/{cluster-compliance,lib-tests}.yml` | read 2026-07-04 |
+| Test runner: `tsx --test tests/*.test.ts` (node:test), effect ^3.21.0, yaml ^2.6.0, TS ^5.4.0 — no new deps needed (NFR-4) | `packages/freeside-registry/package.json` | read 2026-07-04 |
+| inventory-api appendix value (`/` 401 static-key) has likely drifted: the current deployment (`inventory-api-production-3f25`) serves open `/health 200` per registry notes 2026-07-03 | `registry.yaml:137-143` vs ADR-012 appendix | read 2026-07-04 |
 
-No cloud provider, container, IaC, or monitoring changes — this cycle is CI-tooling only.
+[ASSUMPTION] sonar's SVM reconcile freshness projection (`svm_run_marker.updated_at`
+or equivalent) — flagged in the PRD as unverified; FR-4 verifies against sonar's
+live GraphQL schema before declaring. This SDD designs the shape, not the value.
 
 ---
 
-## 3. State & Artifact Design
+## 3. Design Decisions
 
-*(No database. State is file-based JSON/YAML, git-tracked where it must survive across runs.)*
+### D-1 — `service` block: ADR-012 Decision-1 verbatim, plus provenance
 
-### 3.1 Shared Verdict Schema (NFR-7 — the contract every sensor emits)
+The struct carries **exactly** the five fields probe.mjs reads, plus two
+provenance fields (NFR-5). Provenance is safe to add: probe.mjs destructures
+only the fields it knows (`probe.mjs:97,160-166`) — extra keys are inert.
 
-Reconciles the PRD's `{sensor, target, verdict, evidence, exit_code}` with the **existing**
-`immune-check.sh` exit convention (`0=HEALTHY/clean`, `2=PROBLEM`, `1=INSUFFICIENT`).
+`service.deployment_url` is **required inside the block** (probe.mjs L157: no
+`service.deployment_url` → `scaffold`, which would silently un-probe a declared
+cell). The top-level `deployment_url` stays for existing consumers; a decode
+filter enforces they match (see D-6), so the duplication cannot drift.
 
-```json
-{
-  "$schema": "grimoires/loa/schemas/immune-verdict.schema.json",
-  "schema_version": "1.0.0",
-  "sensor": "scope-checks | consumption-doctor | false-green | cluster-compliance",
-  "target": "pkg:@freeside/adapters | pr:434 | run:bridge-2026-07-03",
-  "verdict": "pass | flag | suspect | full | no-consumer",
-  "evidence": {
-    "source": "file:line or command re-run to reproduce",
-    "detail": "human-readable one line",
-    "artifacts": [".run/immune/consumption-doctor-<sha>.json"]
-  },
-  "exit_code": 0,
-  "generated_at": "2026-07-03T00:00:00Z"
-}
-```
+**Not chosen**: making `service.deployment_url` optional with fallback to the
+entry-level field — probe.mjs is frozen this cycle (zero loa-cli changes), so a
+fallback would require the exact consumer change that is out of scope.
 
-**Verdict → exit-code mapping (binds NFR-7 to NFR-4 and the existing aggregator):**
+### D-2 — `expectations[]`: discriminated union on `probe_kind`, gh-workflow excluded
 
-| verdict | meaning | exit_code | advisory-phase gate effect |
-|---|---|---|---|
-| `pass` | sensor ran, target clean | 0 | none |
-| `full` (S1) | fallback-to-full triggered | 0 | runs full required set (safe) |
-| `no-consumer` (S2) | honest distinct state (FR-2b) | 0 | surfaced, not a failure |
-| `flag` (S2) / `suspect` (S3) | real problem detected | 2 | **advisory**: recorded + surfaced, NOT blocking until flipped |
-| — insufficient (no ground) | could not resolve inputs | 1 | surfaced as INSUFFICIENT, never a false "pass" |
+`Schema.Union` of three structs, each tagged with `probe_kind:
+Schema.Literal(...)`. An entry with `probe_kind: gh-workflow` (or any unknown
+kind) fails the union decode loudly — the PRD's premature-use gate (FR-3) falls
+out of the type system; no bespoke check needed.
 
-> Advisory-first means: a `flag`/`suspect` sensor **still returns exit 2** (NFR-4 honesty). The CI
-> step uses `continue-on-error: true` and the check is absent from the required-list until FR-4
-> promotes it. The exit code is never rewritten.
+### D-3 — stable ref identity
 
-**Validator:** `grimoires/loa/schemas/immune-verdict.schema.json` (JSON Schema, ajv 8.18 already a
-root dep). A sensor whose output fails this schema does not ship (NFR-7).
+Each expectation carries `ref` (kebab-case slug, pattern-enforced). The global
+identity is `<cell-slug>/<ref>` (e.g. `sonar-api/chain-lag`) — stable across
+endpoint rotations, threshold tuning, and cadence changes, so future runners can
+key state/alert-transition history on it. Refs are unique within a cell
+(decode-time filter, D-6).
 
-**Schema evolution & backward-compat (IMP-005).** The new shared verdict MUST stay compatible with
-the records the existing `immune-check.sh` doctors already emit — the aggregator (`doctors[]`) must
-keep consuming both old doctor records and new sensor records without a flag day. Rules:
-- **`schema_version`** (semver) is required on every new-sensor record. Existing doctor records that
-  predate it are treated as `1.0.0` by the aggregator (absent ⇒ baseline), so no existing doctor
-  needs a same-PR edit.
-- **Additive-only within a major:** new **optional** fields are a minor bump; a consumer MUST ignore
-  unknown fields. **Removing/renaming a field or changing the verdict/exit-code semantics is a MAJOR
-  bump** and requires updating `immune-check.sh` + all sensors in the same PR (the ground-truth lint
-  forces co-location).
-- The `verdict → exit_code` mapping table below is the **frozen** compat surface: `0/1/2` semantics
-  are inherited verbatim from the existing aggregator and MUST NOT be redefined under a minor bump.
+### D-4 — `graphql-lag` is generic-declared
 
-### 3.2 Flip-Ledger (`tools/flip-ledger.jsonl`) — FR-4
+Per FR-3, nothing sonar-specific in the schema. The kind declares: `endpoint`
+(data — rotates with blue-green deploys), `query`, `rows_path` (dot-path to the
+row array), `key` (per-row identity field), `minuend`/`subtrahend` (the two
+numeric fields whose difference is the lag), and per-key `thresholds`
+(`lag < threshold` semantics). Sonar's chain-lag check is *just data* under
+this shape; a future postgres-replication-lag or queue-depth check fits the
+same kind unchanged.
 
-Append-only JSONL, git-tracked (survives across PRs — the rolling window needs history).
+### D-5 — `event-max-age` shape
 
-**Write authority (SKP-003 + SKP-004 — the concurrency/trust resolution):**
-- **Single writer: main-branch runs only.** Evaluation entries are appended **exclusively** by the
-  post-merge / main-branch job, never by a PR-time run. This eliminates parallel-PR writes and
-  merge conflicts by construction (no two PRs ever touch the ledger concurrently — the file is only
-  mutated on the linear main history).
-- **Adjudication = an operator git commit.** The `adjudication.class` transition
-  (`unadjudicated → true-catch|false-positive`) is made by the **operator editing the ledger and
-  committing** it. Provenance is **git authorship** (`git log` / signed commit), mirroring the
-  collections-sot "git commit is the ratify" force-chain — the sensor can NEVER self-adjudicate.
-- **Tamper-resistance = git history.** The ledger's audit trail is the commit history; any rewrite
-  (force-push, amend) is visible in the reflog/PR history. No separate signing layer is added — the
-  branch-protected main history IS the tamper-evidence.
+Declares `endpoint`, `query`, `timestamp_path` (dot-path to the freshest-event
+ISO timestamp in the response) and `expect.max_age` (duration string). This is
+the absence-of-expected primitive: consumer-side semantics (next cycle) are
+`now() − timestamp > max_age` → stale.
 
-**Record schema (explicit):**
+### D-6 — validation with teeth = decode-time filters, not docs
 
-```json
-{"schema_version":"1.0.0","ts":"2026-07-03T00:00:00Z","sensor":"consumption-doctor",
- "eval_id":"cd-main-<sha>-1","source_ref":"main@<merge-sha>","verdict":"flag",
- "target":"pkg:@freeside/adapters","seeded":false,
- "adjudication":{"by":"operator","commit":"<git-sha-of-adjudication-commit>",
-   "class":"unadjudicated|true-catch|false-positive","note":"","at":null}}
-```
+Three `Schema.filter` refinements ride the schema itself so every consumer gets
+them for free:
+1. `service.deployment_url === entry.deployment_url` when both present (kills
+   the two-fields-drift hazard D-1 creates).
+2. `expectations[].ref` unique per cell.
+3. `graphql-lag.expect.thresholds` non-empty.
 
-- `source_ref` is a **main merge-sha** (not a PR number) — it records that the entry was written by
-  the single main-branch writer.
-- `adjudication.commit` is populated when the operator commits the class change; `null`/absent while
-  `unadjudicated`.
+Format constraints (path starts with `/`, status 100–599, cadence/max_age
+pattern, ref pattern) are `Schema.pattern`/`Schema.between` refinements on the
+fields.
 
-- **FR-4a rolling window (tightened — SKP-002):** `flip-report.sh` reads the **last N=10** entries
-  for a sensor; `flip-ready` requires **≥1 seeded-qualifier true-catch AND 0 false-positives AND 0
-  unadjudicated** across that window. (N raised from 5 → 10: one catch in the last-5 is too weak to
-  earn authority to block every future PR.)
-- **FR-4b adjudication:** `class` starts `unadjudicated`; only an **operator commit** (or a
-  corroborating second signal recorded by the operator) promotes it to `true-catch`/`false-positive`.
-  An `unadjudicated` entry in the window **blocks** promotion.
-- **FR-4c seeded qualifier:** `seeded:true` marks the deliberate break-then-revert fixture that
-  guarantees a reachable true-catch. Promotion **requires** at least one `seeded:true` +
-  `class:true-catch` entry in the window — an organic flag alone cannot flip a sensor.
+### D-7 — cells without a served URL get NO block (derive-don't-type)
 
-**Retention / evidence policy (IMP-004):** the flip-ledger is **git-tracked and never truncated** —
-it is the permanent evidence trail for every flip (its history IS the audit). `flip-report.sh` only
-*reads* the last N=10 for the window computation; older entries stay in the file for provenance. The
-per-run verdict records under `.run/immune/*.json` are **ephemeral CI-artifact cache** (retained as
-GitHub Actions artifacts for the standard 90-day window, safe to delete locally); the *durable*
-evidence a flip relies on is the git-tracked ledger entry it points to, not the ephemeral cache.
+mint-api (routeless shell), events-api / mediums-api (libraries), ledger-api
+(scaffolded, /health 404) get no `service` block. Their lifecycle derives from
+absence per ADR-012 §Decision-3 — encoding a block for them would hand-type the
+exact claim this lane kills. The schema keeps both blocks `Schema.optional`, so
+absence is valid forever (G-4).
 
-### 3.3 Flip-State Machine (FR-4d)
+### D-8 — score-api FR-2 resolution (flag discharged)
 
-```mermaid
-stateDiagram-v2
-    [*] --> calibrating: window < 10 (K/10)
-    calibrating --> calibrating: main-branch eval appended, window not full
-    calibrating --> flip_ready: last-10 has >=1 SEEDED true-catch AND 0 false-positive AND 0 unadjudicated
-    flip_ready --> blocking: OPERATOR runs flip-promote.sh (admin PAT) -> required-list updated
-    flip_ready --> calibrating: a new eval breaks the clean window
-    blocking --> flip_ready: operator runs flip-promote.sh --remove (rollback)
-    blocking --> [*]
-    note right of flip_ready
-      Promotion is NEVER automatic from CI (SKP-002) — it is an operator act.
-      flip-ready but un-promoted at cycle end = CYCLE FAILURE (G-4)
-      calibrating is a legitimate reported state, never silent limbo
-    end note
-```
-
-### 3.4 Quarantine → Coverage Map (`tools/quarantine-coverage-map.yaml`) — FR-1b/IMP-007/SKP-003
-
-**Objective equivalence gate (SKP-003 + IMP-007).** A suite is quarantined out of the required-list
-ONLY after the scoped replacement (FR-1a) is proven — mechanically, not by prose — to run **the same
-test files** the quarantined suite would have run for the changed packages. The proof is a
-**per-package coverage-diff**: `set(scoped test files for pkg) ⊇ set(quarantined-suite test files
-attributable to pkg)`. Any file the old suite ran that the scoped set does NOT run is an
-`uncovered_file` and **blocks quarantine** for that package until it is either scoped in or logged as
-explicit accepted-risk. **Rollback trigger:** if a post-quarantine escape is later found that the old
-suite *would* have caught, the offending check is **un-quarantined** and the escape recorded in
-`rollback_log` (the map is the durable record of that decision).
+Live-probed at design time (2026-07-05T00:47Z): `/` returns **302 → /v1/health**;
+`GET /v1/health` directly returns **200** with the documented health JSON
+(`"service":"score-api"`, `db:"connected"`, fresh `last_run_at`). `/health`
+404s. The stable liveness path exists:
 
 ```yaml
-# Every quarantined check maps to a scoped replacement with a per-package equivalence PROOF,
-# OR an explicit accepted-risk entry. No silent loss of protection. Audited by scope-checks-sensor.sh.
-quarantined:
-  integration-tests:              # ci.yml:232, npm run test:integration (whole-repo)
-    replaced_by: [scoped:integration-per-package]
-    equivalence:                  # per-package coverage-diff proof (SKP-003) — required to quarantine
-      "@freeside/adapters":
-        scoped_test_files: [packages/adapters/**/*.integration.test.ts]
-        old_suite_files:   [packages/adapters/**/*.integration.test.ts]
-        uncovered_file:    []     # MUST be empty (or accepted-risk) before drop-from-required
-        scoped_command:    "pnpm --filter @freeside/adapters test:integration"
-    rollback_log: []              # {date, escape, old_suite_would_have_caught: true} on un-quarantine
-  agent-ci:                       # agent-ci.yml:109
-    replaced_by: [scoped:agent-integration]
-    equivalence: {}               # populated at S1 impl from the coverage-diff run
-    accepted_risk: null
-    rollback_log: []
+service:
+  deployment_url: https://score-api-production.up.railway.app
+  health_path: /v1/health
+  expected_status: 200
+  auth_class: none            # /v1/health is open (probed unauthenticated → 200)
+  expected_body_marker: '"service":"score-api"'
+  probed_at: "2026-07-05"     # sprint re-verifies at populate time
+  probe_source: live-probe    # FR-2 live resolution, NOT the ADR appendix
 ```
 
-### 3.5 Consumer Resolution Table (FR-2 design input — probed, IMP-002)
+The 302 is never encoded. The redirect is *tolerated* by probe.mjs's same-host
+manual redirect loop anyway, but declaring the direct path removes a hop and a
+misclassification surface. Cell `notes` records the resolution trail.
 
-Real consumers probed against the live tree (2026-07-03). The doctor exercises these **actual**
-consumers, not a synthetic harness — the adapters row is precisely the import path that hid the break.
+### D-9 — sonar's two entries: values are declared data, verified at populate time
 
-| Package | Real consumer (probed) | Smoke |
-|---|---|---|
-| `@freeside/adapters` | `packages/services/shadow-audit` (imports `@freeside/adapters` — the **known-broken** dist path) | build dist, then `node -e "import('@freeside/adapters')"` under `shadow-audit`'s resolution → must **flag** |
-| `@freeside/cluster-fp` | `packages/services/ordering` (imports `@freeside/cluster-fp`) | resolve + `tsx`/`node --import` the `src` entry under `ordering`'s resolution → must **pass** |
-| `@freeside/ordering-protocol` | `packages/services/ordering` (imports `@freeside/ordering-protocol`) | resolve + import `src` entry under `ordering`'s resolution → must **pass** |
+- `sonar-api/chain-lag` (`graphql-lag`): the SCALE.md Guardrail-2 recipe. All six
+  chain thresholds transcribed (§5.3). **Endpoint must be live-verified at sprint
+  time**: registry notes say GraphQL reads go through belt-gateway; SCALE.md's
+  lag-check hits `indexer.hyperindex.xyz/<deployment-id>`. Whichever host serves
+  `chain_metadata` is declared; it is data, revisable without schema change.
+- `sonar-api/svm-reconcile` (`event-max-age`): shape per D-5; the projection
+  field is an [ASSUMPTION] until verified against sonar's live GraphQL schema
+  (FR-4). If unverifiable in-sprint, the entry is **omitted** (not guessed) and
+  the gap recorded in sonar-api's cell `notes` — same discipline as FR-2's
+  declare-nothing branch.
 
-> OQ-2 **resolved** by the live probe. `no-consumer` verdict (FR-2b) remains the honest fallback for
-> any *other* shared package the doctor is later pointed at that has zero real consumers.
+SCALE.md marks the SLO numbers PROPOSED/observe-only; the expectation record
+declares them as thresholds with `owner: zerker` — alerting posture is a
+runner-phase concern (out of scope), so declaring proposed values is safe: the
+declaration layer records *what to measure against*, not *when to page*.
 
-### 3.6 Backup / Recovery
+### D-10 — G-4 gate is a real CI lane, not a hope
 
-N/A — all state is git-tracked; recovery is `git checkout`. `.run/immune/*` is ephemeral per-run
-cache, safe to delete.
+freeside-cli's `ordering-registry.test.ts` already decodes the **real**
+registry.yaml through the **shared** schema (file: dep) — the perfect G-4
+sensor. But no PR-time workflow runs it. Add
+`.github/workflows/registry-cli-tests.yml`: on PRs touching
+`packages/freeside-registry/**` or `packages/freeside-cli/**`, fresh-install
+(`npm ci` per package, standalone — mirrors cluster-compliance's "no workspace"
+install; a fresh install also sidesteps the known pnpm/npm `file:` stale-copy
+hazard) and run both `npm test` suites. The workflow file is domain-unclassified
+(`domain-classify.sh` lists only `packages/freeside-{cli,registry}/*` as
+network), so the PR stays single-domain **network**.
 
-### 3.7 Promotion tool (`tools/flip-promote.sh`) — FR-1d/FR-4, operator-run (SKP-001 ×2 + IMP-001)
+### D-11 — no version bump, no removals
 
-Promotion (adding/removing a check from the branch-protection required-list) is the **one operator
-act** in this cycle — it is **never a PR-time CI action** (probed: the default `github.token` cannot
-write branch protection; `administration` is not a grantable `GITHUB_TOKEN` scope — §0).
-
-```
-tools/flip-promote.sh <sensor-check> [--remove]
-  Preconditions (verified before any API call):
-    - flip-report.sh reports the sensor as `flip-ready` (§3.3) — refuse otherwise
-    - an admin-WRITE PAT is present in env (operator-held, e.g. FLIP_PROMOTE_GH_TOKEN)
-  Action : gh api PUT /repos/{o}/{r}/branches/main/protection  (add/remove required check)
-  Audit  : writes the promotion event + acting operator to the flip-ledger; git history is the trail
-  Rollback (--remove): re-run to drop the check from required (blocking -> flip_ready)
-  Failure mode (PAT ABSENT / auth fails): print the EXACT operator command to run + the missing
-     scope, exit 1 (INSUFFICIENT) — NEVER silently skip, NEVER report success (IMP-008)
-```
-
-Alternative deployment: a **gated main-branch-only job** mirroring the `immune-doctors.yml`
-PAT-gating (`github.event_name != 'pull_request' && github.ref == 'refs/heads/main'`) may run the
-same tool with the org PAT — but the flip decision it acts on is still an operator-committed ledger
-adjudication (§3.2), so authority never originates in CI.
+`registry.yaml` stays `version: 1`. Every schema change is
+`Schema.optional(...)` on `ModuleEntry`; no field is removed or retyped (NFR-2).
+The stale `# Live-probe state` header comment is retired at ADR-012 Phase 3
+(move-3), NOT here — this cycle only updates the schema documentation comment
+block (`registry.yaml:8-19`) to document the new fields.
 
 ---
 
-## 4. Sensor Interface Contracts
+## 4. Data Design — the schema (Contract plane)
 
-*(No HTTP API / UI. The "interface" is the CLI + verdict schema + exit code — the estate-immune
-convention.)*
+### 4.1 `src/registry.ts` additions (exact shape)
 
-### 4.1 Common CLI Contract (every sensor)
+```typescript
+// ── ADR-012 Phase 0 · cadence-ledger cycle ──────────────────────────────────
 
+const AuthClass = Schema.Literal("none", "static-key");
+
+/** ISO-8601 date, e.g. "2026-07-05" */
+const IsoDate = Schema.String.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/));
+
+/** duration/cadence literal: "15m", "6h", "1d" */
+const Duration = Schema.String.pipe(Schema.pattern(/^[1-9][0-9]*(m|h|d)$/));
+
+/** kebab-case slug — the stable half of the <cell>/<ref> expectation identity */
+const RefSlug = Schema.String.pipe(Schema.pattern(/^[a-z0-9][a-z0-9-]{0,63}$/));
+
+// The declared health contract — field-for-field what loa-cli/lib/probe.mjs
+// already reads (ADR-012 §Decision-1), plus NFR-5 provenance (inert to probe.mjs).
+const ServiceBlock = Schema.Struct({
+  deployment_url: Schema.String,           // required: probe.mjs L157 short-circuits to
+                                           // 'scaffold' without it; must equal the
+                                           // entry-level deployment_url (filter, §4.2)
+  health_path: Schema.String.pipe(Schema.pattern(/^\//)),
+  expected_status: Schema.Number.pipe(Schema.int(), Schema.between(100, 599)),
+  auth_class: AuthClass,
+  expected_body_marker: Schema.optional(Schema.String),
+  // ── provenance (NFR-5): hand-typed values cite where/when they were probed ──
+  probed_at: IsoDate,
+  probe_source: Schema.Literal("adr-012-appendix", "live-probe"),
+});
+
+// ── expectations[] · discriminated union on probe_kind ──────────────────────
+// gh-workflow is DELIBERATELY absent: premature use fails the union decode (FR-3).
+
+const ExpectationCommon = {
+  ref: RefSlug,
+  cadence: Duration,
+  owner: Schema.String.pipe(Schema.minLength(1)),
+};
+
+const HttpExpectation = Schema.Struct({
+  probe_kind: Schema.Literal("http"),
+  ...ExpectationCommon,
+  // absent target ⇒ consumers probe the cell's own `service` block (documented
+  // consumer semantic; dispatch lands in loa-cli NEXT cycle)
+  target: Schema.optional(Schema.Struct({ url: Schema.String })),
+  expect: Schema.optional(Schema.Struct({
+    status: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.between(100, 599))),
+    body_marker: Schema.optional(Schema.String),
+  })),
+});
+
+// Generic lag-between-two-numeric-fields over a GraphQL row set (never
+// sonar-hardcoded): lag = row[minuend] − row[subtrahend], keyed by row[key],
+// healthy iff lag < thresholds[row[key]] for every declared key.
+const GraphqlLagExpectation = Schema.Struct({
+  probe_kind: Schema.Literal("graphql-lag"),
+  ...ExpectationCommon,
+  target: Schema.Struct({
+    endpoint: Schema.String,       // declared DATA — deployment ids rotate (SCALE.md blue-green)
+    query: Schema.String,
+    rows_path: Schema.String,      // dot-path to the row array, e.g. "data.chain_metadata"
+    key: Schema.String,            // per-row identity field, e.g. "chain_id"
+    minuend: Schema.String,        // e.g. "block_height"
+    subtrahend: Schema.String,     // e.g. "latest_processed_block"
+  }),
+  expect: Schema.Struct({
+    thresholds: Schema.Record({ key: Schema.String, value: Schema.Number })
+      .pipe(Schema.filter((t) => Object.keys(t).length > 0
+        || "graphql-lag expect.thresholds must declare at least one key")),
+  }),
+});
+
+// Absence-of-expected: freshest event older than max_age ⇒ stale (consumer
+// semantic, next cycle). The staleness-against-declared-cadence primitive.
+const EventMaxAgeExpectation = Schema.Struct({
+  probe_kind: Schema.Literal("event-max-age"),
+  ...ExpectationCommon,
+  target: Schema.Struct({
+    endpoint: Schema.String,
+    query: Schema.String,
+    timestamp_path: Schema.String, // dot-path to the freshest ISO timestamp
+  }),
+  expect: Schema.Struct({ max_age: Duration }),
+});
+
+const Expectation = Schema.Union(
+  HttpExpectation,
+  GraphqlLagExpectation,
+  EventMaxAgeExpectation,
+);
+
+const Expectations = Schema.Array(Expectation).pipe(
+  Schema.filter((xs) => {
+    const refs = xs.map((x) => x.ref);
+    return new Set(refs).size === refs.length
+      || "expectations[].ref must be unique within a cell";
+  }),
+);
 ```
-tools/<name>-sensor.sh [--json] [--probe] [<target>]
-  (no flag)  human summary; exit code = verdict (0/1/2 per §3.1)
-  --probe    one-line banner STATUS tile (mirrors gate-freeze-sensor.mjs --probe)
-  --json     emit the NFR-7 verdict record to stdout
-  exit code  IS the verdict (NFR-4) — capture $? BEFORE any pipe; never `| tail`, never `|| true`
-Test seam: <SENSOR>_PROBE_CMD overrides the ground-source read for fixture-driven bats tests
+
+### 4.2 `ModuleEntry` additions (additive only)
+
+```typescript
+const ModuleEntry = Schema.Struct({
+  // ... existing nine fields UNCHANGED (registry.ts:26-54) ...
+  service: Schema.optional(ServiceBlock).annotations({
+    description:
+      "ADR-012 §D-1 declared health contract, read by loa-cli/lib/probe.mjs. " +
+      "Absent ⇒ lifecycle derives from absence (derive-don't-type).",
+  }),
+  expectations: Schema.optional(Expectations).annotations({
+    description:
+      "Cadence ledger: declared liveness expectations (staleness-against-declared-cadence). " +
+      "Identity = <cell-slug>/<ref>. Consumers dispatch on probe_kind (loa-cli, next cycle).",
+  }),
+}).pipe(
+  Schema.filter((e) =>
+    !e.service || e.deployment_url == null || e.service.deployment_url === e.deployment_url
+      || "service.deployment_url must equal the entry-level deployment_url"),
+);
 ```
 
-### 4.2 S1 — `tools/scope-checks-sensor.sh`
+Note on the filter: it fires only when both are present, so no-URL library
+cells and blockless cells decode unchanged. (If `Schema.filter` on the struct
+proves awkward with the existing `Registry` composition, the equivalent check
+lives in the full-registry decode test instead — the invariant is what's
+load-bearing, not its host.)
 
-```
-Input : git diff <base>...<head> (changed files)
-Steps : classify → owning packages → expand transitive dependents by reverse-walking
-        dependencies + peerDependencies + devDependencies edges (file:/@freeside/* specifiers)
-        → cross-cutting/generated/dev-tooling? → verdict=full
-        → else map each in-scope pkg to a concrete command (pnpm --filter <pkg> test|build)
-Output: {sensor:"scope-checks", target:"pr:N", verdict:"pass|full",
-         evidence:{packages:[...], commands:["pnpm --filter <pkg> test", ...]}}
-Note  : the `commands[]` array is what CI executes — an analytical package list that does not
-        resolve to a runnable command is reported, never silently dropped (IMP-006).
-```
+### 4.3 Exports
 
-### 4.3 S2 — `tools/consumption-doctor.sh`
+`src/index.ts` additionally exports `type ServiceBlock`, `type Expectation`
+(and the three member types) so Phase 1–3 consumers and the next-cycle loa-cli
+dispatch import the contract types instead of re-declaring them.
 
-```
-Input : @freeside/<pkg> (or --all)
-Steps : read exports/main → dist? build+import : src? resolve+import → under consumer resolution
-Output: {sensor:"consumption-doctor", target:"pkg:@freeside/adapters",
-         verdict:"consumable→pass | unconsumable→flag | no-consumer", evidence:{consumer,cmd}}
-```
+### 4.4 New state machine? No.
 
-### 4.4 S3 — `tools/false-green-sensor.sh`
+This cycle introduces no runtime state. The verdict taxonomy
+(`live/gated-live/live-drifted/down/scaffold/unprobed` — probe.mjs) and the
+future stale/fresh transitions are consumer-side, out of scope. Deliberately no
+diagram: drawing one here would imply behavior this PR ships.
 
-```
-Input : .run/bridge-state.json + .run/sprint-plan-state.json + git rev-range
-Steps : state==JACKED_OUT/complete AND sprints==0 AND findings==0 AND commits==0 → suspect
-Output: {sensor:"false-green", target:"run:bridge-<id>", verdict:"pass|suspect|insufficient", evidence:{...}}
-```
+---
 
-**Malformed / partial / absent state contracts (IMP-009 — a corrupt state file must never false-pass).**
-The sensor's whole job is to reject a false green, so its own degraded-input handling must fail
-*conservatively*, never emit `pass`:
+## 5. `registry.yaml` population plan
 
-| `.run` state condition | verdict | exit | rationale |
+### 5.1 Per-cell decision table
+
+| Cell | `service` block | Values source | Notes action |
 |---|---|---|---|
-| Well-formed + JACKED_OUT + 0/0/0 | `suspect` | 2 | the target no-op detection |
-| Well-formed + real work (≥1 commit/finding/sprint) | `pass` | 0 | genuine completion |
-| **Absent** (no `.run/*state.json` for a completion being evaluated) | `insufficient` | 1 | cannot prove work happened ⇒ cannot pass |
-| **Partial** (state present but missing `sprints`/`findings`/`commits` keys) | `insufficient` | 1 | missing counters ≠ zero counters — never infer 0 to pass |
-| **Malformed** (invalid JSON / unparseable) | `insufficient` | 1 | a corrupt file is `insufficient`, never a false `pass` |
-| Non-terminal state (RUNNING/HALTED) | `pass` (n/a) | 0 | not a completion — nothing to assert yet |
+| activities-api | YES | ADR appendix (`/health`, 200, none, `"service":"activities-api"`) → **re-probed at sprint time** | add probe trail |
+| identity-api | YES | ADR appendix (`/health`, 200, none, `"ok":true`) → re-probed | add probe trail |
+| inventory-api | YES | ⚠ appendix (`/` 401 static-key) is **expected-stale** — deployment moved to `-3f25`, registry notes 2026-07-03 say open `/health` 200. Live re-probe DECIDES; do not transcribe the appendix blind | record which value won |
+| sonar-api | YES | ADR appendix (`/`, 200, none, `"message":"Sonar API"`) → re-probed | + two `expectations` entries (§5.3) |
+| storage-api | YES | ADR appendix (`/`, 200, none, no marker — Playground HTML) → re-probed | add probe trail |
+| score-api | YES | **FR-2 live resolution** (D-8): `/v1/health`, 200, none, `"service":"score-api"` | record 302→/v1/health trail; DO-NOT-TRANSCRIBE flag discharged |
+| mint-api | NO | derive-from-absence (routeless shell, /health 404) | note stays |
+| events-api | NO | library, no served URL | — |
+| mediums-api | NO | npm-only, no deployment | — |
+| ledger-api | NO | scaffolded, /health 404 (probed 2026-06-19) | — |
+| ordering | **operator call** (Open Question OQ-1) | its own registry note documents `/healthz` 200 `{"ok":true` | see §10 |
 
-> Rule: the sensor NEVER treats "missing" or "unreadable" as "zero work, but okay". Absent counters
-> and a corrupt file both resolve to **INSUFFICIENT (exit 1)**, surfaced, never collapsed into `pass`.
+Every populated block carries `probed_at: <sprint probe date>` and
+`probe_source` (NFR-5). The sprint task re-probes **all** declared cells before
+populating — appendix values are 2 weeks old and one (inventory) is already
+suspect; the re-probe is the risk mitigation the PRD names (§8, row 3).
 
-### 4.5 FR-1c — `.github/scripts/audit-cluster-cells.sh` (fix, not new interface)
+### 5.2 Example — populated cell (activities-api)
 
-Guard the per-cell JSON assembly: for in-monolith cells (`git_url == loa-freeside`), emit a valid
-JSON record (never feed a bare/empty value to `jq --argjson`). Validate each record with
-`jq empty` before aggregation so one bad cell can never abort the whole audit.
+```yaml
+activities-api:
+  git_url: https://github.com/0xHoneyJar/activities-api.git
+  # ... existing fields unchanged ...
+  service:
+    deployment_url: https://activities-api-production.up.railway.app
+    health_path: /health
+    expected_status: 200
+    auth_class: none
+    expected_body_marker: '"service":"activities-api"'
+    probed_at: "2026-07-XX"        # sprint probe date
+    probe_source: adr-012-appendix # value matched appendix on re-probe
+```
+
+### 5.3 Sonar's two expectation entries (FR-4 / G-3)
+
+```yaml
+sonar-api:
+  # ... existing fields + service block ...
+  expectations:
+    - ref: chain-lag
+      probe_kind: graphql-lag
+      cadence: 15m               # SLO windows are ~10-60 min; 15m gives 2 samples
+      owner: zerker              # SCALE.md doc owner
+      target:
+        endpoint: <LIVE-VERIFIED at sprint time — belt-gateway if it serves
+                   chain_metadata, else indexer.hyperindex.xyz/<current-deployment-id>>
+        query: "{ chain_metadata { chain_id latest_processed_block block_height } }"
+        rows_path: data.chain_metadata
+        key: chain_id
+        minuend: block_height
+        subtrahend: latest_processed_block
+      expect:
+        thresholds:              # SCALE.md Guardrail 2 (PROPOSED tier — observe-only posture
+          "1": 50                #   is a runner concern; declaration records the targets)
+          "10": 600
+          "42161": 2400
+          "8453": 600
+          "80094": 300           # Berachain — primary chain, strictest SLO
+          "7777777": 1800
+    - ref: svm-reconcile
+      probe_kind: event-max-age
+      cadence: 6h
+      owner: zerker
+      target:
+        endpoint: <same live-verified endpoint>
+        query: <VERIFIED against live schema — svm_run_marker.updated_at was an
+                ASSUMPTION; FR-4 forbids declaring an unverified projection>
+        timestamp_path: <verified dot-path>
+      expect:
+        max_age: 26h             # reconcile is ~daily; 26h ≈ one missed run + slack
+                                 # (operator-tunable data; the 5-day Helius outage
+                                 #  would have breached this ~4 days earlier)
+```
+
+The `svm-reconcile` entry ships **only if** the projection verifies against
+sonar's live GraphQL schema in-sprint (D-9); otherwise omit + note.
 
 ---
 
-## 5. Error Handling & Exit-Code Strategy
+## 6. API Specifications
 
-### 5.1 Exit-Code Contract (aligned with `immune-check.sh`)
+No HTTP API changes. The package's public API grows two exported types
+(§4.3); `loadRegistry()` signature is unchanged. The "API" of this cycle is the
+YAML contract itself, specified in §4–5.
 
-| exit | class | meaning |
+---
+
+## 7. Error Handling Strategy
+
+Single failure surface: **decode**. `Schema.decodeUnknownSync` throws
+`ParseError` with a path-annotated tree — this is the designed behavior
+(G-5: "fails decode loudly"), not an error to soften.
+
+| Failure | Where caught | Behavior |
 |---|---|---|
-| 0 | clean | `pass` / `full` / `no-consumer` — sensor ran, no real problem |
-| 1 | INSUFFICIENT | could not ground (absent/partial/**malformed** `.run` state per §4.4, no consumer resolvable, `gh`/PAT unauth per §5.4) — **never** reported as pass |
-| 2 | PROBLEM | `flag` / `suspect` — a real detection |
+| Malformed `service` (bad status range, missing `probed_at`, unknown `auth_class`) | any `loadRegistry()` call | throw ParseError naming the field path |
+| `probe_kind: gh-workflow` / unknown kind | union decode | throw — the FR-3 premature-use gate |
+| Missing `cadence`, bad duration/ref pattern, empty thresholds, duplicate refs | field/array filters | throw with the filter's message |
+| `service.deployment_url` ≠ entry `deployment_url` | struct filter (or registry test, §4.2 note) | throw / red test |
+| Absent `service` / absent `expectations` | — | **valid** (optional; G-4) |
 
-### 5.2 Failure-Mode Rules
+No fallbacks, no partial loads: a registry that fails decode is a registry that
+does not exist to consumers — fail-closed is the point.
 
-- **Never mask:** no `| tail`, no `|| true`, no `2>/dev/null` on the verdict path (NFR-4, rule
-  `stash-safety.md`). `find`/`jq` stderr stays visible (precedent: ground-truth lint `:242`).
-- **Fail conservative (R-4):** S1 ambiguous graph → `full`, not scoped. A missed dependent is worse
-  than extra CI.
-- **Honest distinct states:** S2 `no-consumer` (FR-2b) and INSUFFICIENT are never collapsed into
-  `pass`.
-- **Grounding before assertion:** each sensor's evidence field cites a re-runnable source
-  (memory `verify-the-mechanism-not-the-symptom`).
+---
 
-### 5.3 Logging
+## 8. Testing Strategy
 
-Verdict records to `.run/immune/<sensor>-<sha>.json`; ledger to `tools/flip-ledger.jsonl`; the
-CI job surfaces `--probe` tiles in the step summary. No secrets in any record (cluster-compliance
-already forbids secrets in cell configs).
+Runner: existing `tsx --test` / node:test (no new deps, NFR-4).
 
-### 5.4 Auth-failure behavior — differentiated by operation (IMP-008)
+### 8.1 New tests in `packages/freeside-registry/tests/`
 
-Auth failure must NOT be handled uniformly — a read-only sensor and a promotion have opposite
-correct responses:
-
-| Operation | On auth failure (e.g. `gh` unauth, PAT absent/insufficient scope) | Why |
+| File | Covers | Gate |
 |---|---|---|
-| **Read-only sensor** (S1 scope walk, S2 import smoke, S3 state read, cluster-compliance read of protection) | verdict `insufficient`, **exit 1**, surfaced — **must NOT overblock**: a sensor that can't ground its inputs is INSUFFICIENT, never a `flag`/`suspect` that would gate a PR on a missing token | over-blocking on a transient auth gap turns a read-only advisory into a numb *red* gate (NFR-2) — the disease inverted |
-| **Promotion** (`tools/flip-promote.sh` writing the required-list) | print the **exact operator command** to run + the missing scope, **exit 1**, **never silently skip** and never report success | a silently-skipped promotion leaves the operator believing the gate flipped when it did not (§3.7) |
+| `service-block.test.ts` | valid block decodes; each invalid variant (missing field, bad path/status/auth_class, missing provenance) throws; blockless entry valid; deployment_url mismatch throws | G-1, G-5, NFR-5 |
+| `expectations.test.ts` | valid http / graphql-lag / event-max-age fixtures decode; **`gh-workflow` fails**; unknown kind fails; malformed cadence/ref fails; duplicate refs fail; empty thresholds fail; absent array valid | G-3, G-5, FR-3 |
+| `registry-decode.test.ts` | the REAL `registry.yaml` full-decodes; every `service` block carries `probed_at`; sonar has ≥1 `expectations` entry with the six chain-lag threshold keys; score-api's `health_path` is not `/` with `expected_status: 302` (the anti-transcription tripwire) | G-1, G-2, FR-5 |
 
-This is the concrete split the PRD's IMP-008 asks for: the same `exit 1 / INSUFFICIENT` code, but a
-read failure *surfaces and steps aside* while a write failure *surfaces and hands the operator the
-command*.
+Fixtures live in `tests/fixtures/` beside the existing `sample-beacon-v3.yaml`,
+as small inline-or-file YAML documents per case. Fixture tests assert against
+the **shared production schema import**, never a test-local copy — the
+fixture-tautology guard.
 
----
+### 8.2 G-4 consumer gate
 
-## 6. Testing Strategy
+`packages/freeside-cli` suite runs **unchanged** (zero source, zero test edits
+there): `ordering-registry.test.ts` decodes the real updated registry.yaml
+through the shared schema, and `doctor.test.ts` exercises fixture registries
+(which lack the new optional blocks — proving absence stays valid).
 
-**NFR-3 — the 4 filed beads ARE the regression corpus.** A sensor with no failing-case test is
-incomplete.
+### 8.3 CI lane (D-10)
 
-### 6.1 Per-Sensor Acceptance (fixtures, not manual proof — IMP-003)
+New `.github/workflows/registry-cli-tests.yml`:
 
-| Sensor | Fixture (repeatable) | Expected |
-|---|---|---|
-| S1 FR-1a | PR touching only pkg X | runs only X + X-dependents' checks, each a concrete `pnpm --filter` command |
-| S1 FR-1a (IMP-006) | PR touching a **peer/dev-dep-only** dependent of X | that dependent IS in scope (peer+dev edges walked, not runtime-only) |
-| S1 FR-1a | PR touching shared `tsconfig`/workflow/lockfile/**generated-code/dev-tooling** | **fallback-to-full** |
-| S1 FR-1a | seeded failure in X | caught by X's PR; **NOT** reported by unrelated Y's PR |
-| S1 FR-1b (SKP-003) | coverage-diff of scoped vs quarantined suite per package | `uncovered_file == []` (or accepted-risk) **before** the suite leaves the required-list; else quarantine blocked |
-| S1 FR-1c | registry-touching PR incl. `events-api` (`git_url=loa-freeside`) | cluster-compliance completes, **no jq crash** |
-| S1 FR-1d (IMP-001) | `flip-promote.sh` with PAT absent | prints the exact operator command + missing scope, **exit 1**, never silently skips |
-| S2 (G-2, IMP-002) | run over current tree against **probed real consumers** (§3.5) | `@freeside/adapters` (via `shadow-audit`)→**flag**; `cluster-fp`+`ordering-protocol` (via `ordering`)→**pass** |
-| S3 (G-3) | replay 2026-07-03 no-op state (0/0/0 → JACKED_OUT) | **suspect**; a run with ≥1 commit → **pass** |
-| S3 (IMP-009) | absent / partial (missing counters) / malformed-JSON `.run` state | **insufficient (exit 1)** for each — never a false `pass` |
-| FR-4 (G-4, SKP-002) | seeded break-then-revert per sensor + rolling last-N=10 window | sensor catches the **seeded** break; ledger records an operator-adjudicated true-catch; window has 0 false-positives + 0 unadjudicated; ≥1 sensor reaches `flip-ready`; operator promotion (`flip-promote.sh`) reaches `blocking` |
+```yaml
+on:
+  pull_request:
+    paths:
+      - 'packages/freeside-registry/**'
+      - 'packages/freeside-cli/**'
+      - '.github/workflows/registry-cli-tests.yml'
+# job: setup-node → for pkg in freeside-registry freeside-cli:
+#   npm ci (or npm install --no-package-lock, matching cluster-compliance's
+#   standalone-package install) → npm test
+# freeside-cli installs AFTER freeside-registry so its file: dep copies the
+# UPDATED schema (fresh install defeats the file:-dep stale-copy hazard).
+```
 
-### 6.2 Test Tooling
+Acceptance for the lane itself: a deliberately-broken fixture branch goes red;
+this branch goes green.
 
-- **bats** for shell sensors (precedent `immune-check.test.sh`, `check-instrument-ground-truth`),
-  using `*_PROBE_CMD` fixture seams so tests need no live `gh`/CI.
-- **vitest** where a sensor is `.mjs`.
-- **Schema conformance:** ajv validates every sensor's `--json` against
-  `immune-verdict.schema.json` in CI (NFR-7 enforcement).
-- **Self-registration test:** the ground-truth lint (`check-instrument-ground-truth.sh`) must pass
-  — proves all three new instruments are registered in `immune-instruments.yaml`.
+### 8.4 Live-probe verification (sprint tasks, not unit tests)
 
-### 6.3 CI Integration
-
-- New sensors wired into `.github/workflows/immune-doctors.yml` (advisory: `continue-on-error`).
-- S1 gating job in `pr-validation.yml`; FR-1c fix validated by `cluster-compliance.yml`.
-- **NFR-2:** every added check must be green on an unrelated diff — a check red regardless of the
-  diff is rejected in review (it is the disease).
+Probe output is ambient — never baked into unit tests. The populate task
+records each probe (URL, status, body head, date) in the PR description +
+`probed_at` fields; the score-api tripwire test (§8.1) guards the one
+transcription hazard structurally.
 
 ---
 
-## 7. Development Phases
+## 9. Development Phases (sprint-shaping input)
 
-Mirrors the PRD vertical-slice discipline: **S1 alone = "a PR's green means something again."**
-Each sprint is domain-pure `shared/` scope.
+Single sprint, one PR (all paths network-domain or unclassified):
 
-### Sprint S1 — Trustworthy Green (settle gate) — FR-1 + FR-4 mechanism
-- [ ] `tools/lib/scope-classify.sh` (changed-pkg + transitive dependents off **deps + peerDeps + devDeps** `file:`/`@freeside/*` edges; generated-code/dev-tooling → full)
-- [ ] `tools/scope-checks-sensor.sh` (+ fallback-to-full, **package→concrete-command map**, verdict schema, `--probe`/`--json`)
-- [ ] FR-1c: fix `jq` crash in `.github/scripts/audit-cluster-cells.sh` (guard `git_url=loa-freeside`)
-- [ ] `grimoires/loa/schemas/immune-verdict.schema.json` (NFR-7) incl. `schema_version` + additive-only compat rule (IMP-005) + ajv CI check
-- [ ] `tools/flip-ledger.jsonl` + `tools/flip-report.sh` (**main-branch-only writer**, rolling last-N=10, git-commit adjudication, seeded-qualifier gate, states)
-- [ ] `tools/flip-promote.sh` — **operator-run** required-list migration (admin PAT; PAT-absent → prints command, exit 1; `--remove` rollback)
-- [ ] `tools/quarantine-coverage-map.yaml` + FR-1b quarantine gated on the **per-package coverage-diff equivalence proof** (SKP-003), with `rollback_log`
-- [ ] FR-1d: register all instruments in `immune-instruments.yaml`; run `flip-promote.sh` for the migration once a check is `flip-ready`
-- [ ] bats fixtures for all §6.1 FR-1 acceptance rows incl. peer/dev-dep dependent, coverage-diff, PAT-absent promotion; seeded qualifier for the flip
+1. **Schema** — §4 additions to `registry.ts` + `index.ts` exports + fixture
+   tests (`service-block`, `expectations`). *Verify: new tests red→green;
+   existing `beacon-loader.test.ts`, `worldline-score-api-registry.test.ts`
+   still green.*
+2. **Live probe wave** — re-probe the 6 declare-candidates (+ ordering if OQ-1
+   says yes); resolve inventory's drift; confirm score-api `/v1/health` still
+   200; verify sonar `chain_metadata` endpoint + SVM projection against the
+   live GraphQL schema. *Verify: probe log in PR body.*
+3. **Populate** — registry.yaml service blocks + sonar expectations + notes
+   updates (score-api resolution trail, schema-comment block) +
+   `registry-decode.test.ts`. *Verify: full-decode test green; freeside-cli
+   suite green untouched.*
+4. **CI lane** — `registry-cli-tests.yml`. *Verify: lane runs on the PR itself
+   and is green; `tools/check-beacon-domain.sh --since main` reports
+   single-domain.*
 
-### Sprint S2 — Consumption Doctor — FR-2
-- [ ] `tools/consumption-doctor.sh` (build-vs-resolve smoke, consumer resolution, verdict schema)
-- [ ] G-2 acceptance: adapters→flag, cluster-fp + ordering-protocol→pass
-- [ ] register in `immune-instruments.yaml`; wire on shared-package-change + nightly (NFR-6)
-
-### Sprint S3 — False-Green Sensor — FR-3
-- [ ] `tools/false-green-sensor.sh` (`.run` state + git delta → suspect)
-- [ ] G-3 acceptance: replay 2026-07-03 no-op → suspect; real run → pass
-- [ ] FR-3b: file upstream `loa` issue **with reproduction** (does not block S3 — R-5)
-- [ ] register in `immune-instruments.yaml`; extend `immune-check.sh` `doctors[]`
-
-> If S2/S3 slip, the cycle report states so explicitly; S1 landing alone is a real win (PRD §7).
+Dependency order is 1 → 2 → 3; 4 is parallel to 2–3 but must land in the same
+PR so gate G-4 is enforced at merge time.
 
 ---
 
-## 8. Known Risks and Mitigation
+## 10. Open Questions
 
-| Risk | Prob | Impact | Mitigation |
-|---|---|---|---|
-| R-1: quarantine hides a real failure the numb suite caught | Med | High | FR-1b: quarantine **only after** FR-1a proven to cover the surface; coverage map audited |
-| R-4: scoping misses a cross-package dependent | Med | High | FR-1a expands to transitive dependents; **fallback-to-full** on any ambiguity (conservative) |
-| R-2: advisory rots into a new numb gate | High | High | FR-4 rolling-window flip + seeded qualifier; **G-4: ≥1 flip within cycle is a hard exit condition** |
-| R-3: consumption doctor false-positives on dist-only/no-consumer | Med | Med | FR-2b `no-consumer` is its own honest state; asks "can a real consumer import it" not "must src-ship" |
-| R-5: upstream bridge fix may not land soon | High | Low | FR-3a sensor stands alone in loa-freeside; FR-3b acceptance = issue filed, not fix landed |
-| **R-6 (new): NFR-7 schema drift vs existing `immune-check.sh` exit contract** | Med | Med | §3.1 explicitly maps verdict→exit onto the existing 0/1/2 convention; ajv-enforced; one schema file is SoT |
-| **R-7 (new): domain-firewall trip if a sensor commit edits a package's source** | Med | Med | Design rule §1.9: sensors READ packages, never edit; all commits `shared/` scope; `path-domain-check.yml` green by construction |
-| **R-8 (new): pnpm graph built from per-package lockfiles (no root workspace file)** | Med | Med | S1 builds edges from `packages/*/package.json` `file:`/`@freeside/*` specifiers, not a workspace manifest; fallback-to-full on parse ambiguity |
-| **R-9 (new): flip-ledger concurrency / merge-conflict / tamper (SKP-003/004)** | Low | Med | Ledger is **main-branch-single-writer** (no PR-parallel writes → no conflicts); adjudication is an operator git commit (provenance = authorship); git history is the tamper trail (§3.2) |
-| **R-10 (new): scoped walk misses a peer/dev-dep dependent (IMP-006)** | Med | High | Reverse-walk includes peerDeps + devDeps; generated-code/dev-tooling paths force fallback-to-full (§1.4, §4.2) |
-| **R-11 (new): quarantine drops protection the scoped set doesn't truly replace** | Med | High | FR-1b gated on an **objective per-package coverage-diff** (`uncovered_file==[]`), plus a rollback trigger + `rollback_log` (§3.4) — not a subjective judgment |
-| **R-12 (new): promotion never happens because the operator PAT step is forgotten** | Med | Med | `flip-ready` un-promoted at cycle end is a **hard G-4 cycle failure**; `flip-promote.sh` PAT-absent path prints the exact command (§3.7); state machine surfaces `flip-ready` explicitly (§3.3) |
+- **OQ-1 (operator)**: declare a `service` block for `ordering`? It is outside
+  the ADR-012 appendix and the PRD's "8 cells" phrasing, but its health
+  contract is already documented in its own registry note (`/healthz`, 200,
+  `{"ok":true`) and it is deployed. **Recommendation: yes** — additive, same
+  probe wave, and leaving a documented-but-undeclared health path re-creates
+  the drift class this cycle kills. Costs one probe.
+- **OQ-2 (sprint-resolvable)**: which host serves `chain_metadata` —
+  belt-gateway or `indexer.hyperindex.xyz/<id>`? Resolved by one live query at
+  populate time; declared as data either way (D-9).
+- **OQ-3 (noted, not blocking)**: ADR-012 labels Phase 0 `domain:platform`,
+  but `domain-classify.sh:21` and the PRD both place `packages/freeside-registry`
+  in **network**. This SDD follows the classifier (it is the CI-enforced truth).
+  Worth a one-line ADR-012 erratum when the ADR is ratified.
 
----
+## 11. Risks & Mitigation
 
-## 9. Open Questions
-
-| # | Question | Owner | Status |
-|---|---|---|---|
-| OQ-1 | Branch-protection token permission for the required-list update (FR-1d/FR-4) | operator | **RESOLVED** — the default `github.token` **cannot** (probed: `administration` is not a grantable `GITHUB_TOKEN` scope); promotion is **operator-run** (`tools/flip-promote.sh`, admin-write PAT) or a gated main-only job mirroring `immune-doctors.yml` (§0, §3.7) |
-| OQ-2 | Exact real consumer per shared package for the S2 smoke (§3.5) | S2 impl | **RESOLVED** — probed: adapters←`services/shadow-audit`, cluster-fp←`services/ordering`, ordering-protocol←`services/ordering` (§3.5) |
-| OQ-3 | Concrete per-sensor wall-clock budgets (NFR-6) — set once S1 has implementation data | S1 impl | Open |
-| OQ-4 | Should the three sensors be bash (convention) or `.mjs` where graph/JSON logic dominates (S1 dependents walk)? | S1 impl | Open — lean bash + `jq`; `.mjs` only if the graph walk is unwieldy |
-| OQ-5 | Which `loa` upstream repo/path owns `bridge-orchestrator.sh` for the FR-3b issue? | S3 impl | Open |
-| OQ-6 (new) | Where does `flip-promote.sh` write its promotion event when it runs **locally** (operator machine) vs the ledger that is otherwise main-branch-only? The write is on `main` by the operator, but the promotion may be run out-of-band — confirm the commit-and-push discipline so the audit entry isn't orphaned. | S1 impl | Open — lean: `flip-promote.sh` refuses unless on an up-to-date `main` checkout, then commits the event |
-| OQ-7 (new) | The coverage-diff equivalence (§3.4) needs a per-package "which test files did the whole-repo suite attribute to this package" mapping — is that derivable from vitest's file→package resolution, or must it be declared in the coverage map? | S1 impl | Open — lean: derive from `vitest --coverage` file list filtered by `packages/<pkg>/` path |
-
----
-
-## 10. Appendix
-
-### A. Glossary
-
-| Term | Definition |
+| Risk | Mitigation (designed-in) |
 |---|---|
-| Immune cell | sensor (doctor) + truth-alignment (aligner) + consequence (teeth) — PRD's unit |
-| Advisory-first | sensor reports its true verdict/exit but is absent from the required-list until flipped (NFR-1) |
-| Flip | promotion of an advisory sensor to blocking via a seeded-qualifier catch + clean rolling last-N=10 window + operator adjudication, executed by an **operator-run** `flip-promote.sh` — never auto from CI (FR-4) |
-| Seeded qualifier | deliberate break-then-revert fixture guaranteeing a reachable true-catch (FR-4c) |
-| Fallback-to-full | S1 runs the entire required set when a change is cross-cutting/ambiguous (FR-1a, SKP-002) |
-| Numb gate | a check red regardless of the diff — the disease this cycle removes (NFR-2) |
+| Appendix values drifted (inventory already suspect) | §5.1: live re-probe decides every value; `probed_at`/`probe_source` make staleness visible forever (NFR-5) |
+| score-api 302 gets transcribed by a future hand | D-8 declares the direct path; §8.1 tripwire test makes the 302-transcription a red build |
+| freeside-cli decode breaks | Optional-only additions + §8.2 real-registry consumer test + §8.3 CI lane at merge time |
+| gh-workflow used before a consumer exists | Excluded from the union — decode failure is mechanical (D-2) |
+| SVM projection guess wrong | D-9: verify-or-omit; only yaml data changes if later corrected |
+| Duplicated deployment_url drifts | D-6 filter #1 |
+| Effect struct-level `Schema.filter` composition friction | §4.2 fallback: same invariant asserted in `registry-decode.test.ts` |
+| ADR-012 rejected after landing | Additive schema + data — revertible in one PR (PRD §8) |
 
-### B. References
+## 12. Software Stack (unchanged — for the record)
 
-- PRD: `grimoires/loa/prd.md` (flatline-hardened 2026-07-03)
-- Existing immune substrate: `tools/immune-check.sh`, `tools/immune-instruments.yaml`, `tools/check-instrument-ground-truth.sh`, `.github/workflows/immune-doctors.yml`
-- Scoping precedent: `tools/lib/domain-classify.sh` (ADR-007 §D-3)
-- Failing surfaces: `.github/workflows/ci.yml:232` (Integration Tests), `.github/workflows/cluster-compliance.yml` + `.github/scripts/audit-cluster-cells.sh`
-- Beads: `arrakis-integration-tests-numb-gate-0is2`, `arrakis-cluster-compliance-audit-crash-88ah`, `arrakis-adapters-dist-unconsumable-d0tv`, `arrakis-run-bridge-resume-silent-noop-flzl`
-- ADR-007 (domain firewall), ADR-008 (factory model)
-- Rules: `.claude/rules/zone-system.md`, `.claude/rules/stash-safety.md`
-- GitHub branch protection API: https://docs.github.com/rest/branches/branch-protection
-
-### C. Change Log
-
-| Version | Date | Changes | Author |
-|---|---|---|---|
-| 1.0 | 2026-07-03 | Initial SDD — grounded on existing estate-immune framework | Architecture Designer Agent |
-| 1.1 | 2026-07-03 | Flatline SDD review integration (7 BLOCKERS + 9 HIGH_CONSENSUS) — see note below | Architecture Designer Agent |
-
----
-
-### D. Flatline SDD review integration (2026-07-03)
-
-Hardened against a Flatline multi-model review of the SDD. **Envelope was DEGRADED** — the
-grok-headless voice failed; **gpt-5.2 + codex-headless carried at 100% agreement**. Treated as a
-strong **2-voice** pass, integrated in full; **no "3-model APPROVED" claim is made.**
-
-**Two blockers resolved by live-tree probes (grounded, folded into the design):**
-- **SKP-001 ×2 + IMP-001 (branch-protection):** the default `github.token` cannot write branch
-  protection (`administration` is not a grantable scope; `immune-doctors.yml:33-38`). FR-1d migration
-  + FR-4 promotion are **operator-run** (`tools/flip-promote.sh`, admin-write PAT) or a gated
-  main-only job — **never PR-time CI**, with audit trail, rollback (`--remove`), and a PAT-absent
-  failure mode that prints the operator command. Also resolves SKP-002's "auto-promote on 1 catch"
-  (§0, §1.4, §1.6, §3.7, §5.4, §9 OQ-1). **RESOLVES OQ-1.**
-- **IMP-002 (real S2 consumers):** probed adapters←`services/shadow-audit` (the known-broken path),
-  cluster-fp/ordering-protocol←`services/ordering`; the consumption doctor exercises actual consumers
-  (§0, §3.5). **RESOLVES OQ-2.**
-
-**Remaining blockers designed with grounded defaults:**
-- **SKP-003 + SKP-004 + IMP-003 (flip-ledger concurrency/trust):** ledger is **main-branch
-  single-writer** (no PR-parallel writes/conflicts); adjudication = an **operator git commit**
-  (provenance = authorship); git history = tamper trail; explicit record schema + write-authority
-  (§1.4, §1.5, §3.2, §8 R-9).
-- **SKP-002 (flip criterion too weak):** tightened to **≥1 seeded-qualifier catch AND clean rolling
-  last-N=10 with 0 false-positives AND explicit operator promotion** (never auto); state machine
-  updated (§1.4, §3.2, §3.3, §6.1).
-- **SKP-003 + IMP-007 (quarantine equivalence + rollback):** objective **per-package coverage-diff**
-  proof (`uncovered_file==[]`) gates quarantine; rollback trigger + `rollback_log` (§1.4 FR-1b, §3.4,
-  §6.1, §8 R-11).
-- **SKP-002 + IMP-006 (scoped-graph completeness):** reverse-walk now includes **peerDeps +
-  devDeps**; generated-code/dev-tooling → fallback-to-full; each in-scope package maps to a
-  **concrete `pnpm --filter` command** (§1.4 FR-1a, §4.2, §8 R-10).
-
-**HIGH_CONSENSUS clarifications integrated:**
-- **IMP-004** retention/evidence policy — ledger git-tracked & never truncated; `.run/immune/*`
-  ephemeral (90-day CI artifact) (§3.2).
-- **IMP-005** verdict-schema evolution/compat — `schema_version`, additive-only within a major,
-  frozen `verdict→exit` surface, stays compatible with existing `immune-check.sh` doctor records
-  (§3.1).
-- **IMP-008** auth-failure differentiated by operation — read-only sensor → `insufficient`/exit 1
-  (must NOT overblock); promotion → prints operator command, never silent-skip (§5.4, §6.1).
-- **IMP-009** S3 false-green contracts — absent/partial/malformed `.run` state each →
-  **INSUFFICIENT (exit 1)**, never a false `pass` (§4.4, §5.1, §6.1).
-
-**Deliberately NOT integrated:** none of the 7 blockers / 9 HIGH_CONSENSUS were dropped. No fake
-"3-model APPROVED" verdict was added (the envelope was 2-voice degraded).
-
-**New open questions surfaced by the hardening:** OQ-6 (`flip-promote.sh` local-run commit-and-push
-discipline so the audit entry isn't orphaned) and OQ-7 (deriving the per-package test-file attribution
-for the coverage-diff equivalence) — both §9, defaulted lean, owned by S1 impl.
-
----
-
-*Generated by Architecture Designer Agent · Flatline-SDD-hardened 2026-07-03*
+| Component | Version | Justification |
+|---|---|---|
+| effect (Schema) | ^3.21.0 (existing) | already the decode substrate; discriminated unions + filters native |
+| yaml | ^2.6.0 (existing) | existing loader |
+| TypeScript | ^5.4.0 (existing) | existing toolchain |
+| tsx / node:test | ^4.20.0 (existing) | existing test runner |
+| New dependencies | **none** | NFR-4 |
