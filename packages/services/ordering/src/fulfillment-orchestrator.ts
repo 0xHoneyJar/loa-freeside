@@ -36,6 +36,9 @@ const ALL_INGREDIENTS: readonly IngredientKey[] = [
 /** Dispatch order — WORLDS-FIRST so the canonical slug is sourced before score register (D-5). */
 const DISPATCH_ORDER: readonly EnqueueIngredientKey[] = ['worlds_manifest', 'score', 'sonar'];
 
+// Once-per-process guard for the D13.3 fallback warning (it sits in the per-tick advance loop).
+let warnedDiscordHealthAbsent = false;
+
 /**
  * The single decision table (SDD §4.1 / task 23.2). Ingredient status → orchestrator action:
  * `pending` (sonar 404/missing, score/worlds 404) → dispatch the idempotent write;
@@ -186,17 +189,22 @@ export class FulfillmentOrchestrator {
       if (ingredient === 'metadata_snapshot' && this.deps.triage.metadata === undefined) {
         const currentMeta = (await this.deps.store.get(orderId))?.ingredients?.[ingredient];
         if (currentMeta !== 'complete' && currentMeta !== 'optional') {
-          await this.deps.onboarding.advanceIngredient(orderId, ingredient, 'optional', undefined, {
+          const advanced = await this.deps.onboarding.advanceIngredient(orderId, ingredient, 'optional', undefined, {
             tokenLabel: this.deps.tokenLabel,
             callerNote: 'fulfillment-orchestrator',
           });
-          await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
-            order_id: orderId,
-            ingredient,
-            status: 'optional',
-            world_slug: undefined,
-            at_unix: this.nowUnix(),
-          }));
+          // Emit only on a real transition — advanceIngredient no-ops (ok:false) when the
+          // order went terminal between our read and the call; an unconditional emit would
+          // publish an advance that never happened.
+          if (advanced.ok) {
+            await this.emit(orderId, ORCHESTRATOR_SUBJECTS.advance, OrchestratorAdvanceSchema.parse({
+              order_id: orderId,
+              ingredient,
+              status: 'optional',
+              world_slug: undefined,
+              at_unix: this.nowUnix(),
+            }));
+          }
         }
         continue;
       }
@@ -219,8 +227,10 @@ export class FulfillmentOrchestrator {
             await this.escalate(orderId, ingredient, `channel-health: ${health.reason ?? 'unhealthy'}`);
             continue;
           }
-        } else {
-          // discordHealth port absent + discord complete → documented fallback (D13.3, AC-10)
+        } else if (!warnedDiscordHealthAbsent) {
+          // discordHealth port absent + discord complete → documented fallback (D13.3, AC-10).
+          // Once per process: this branch sits in the per-tick advance loop.
+          warnedDiscordHealthAbsent = true;
           console.warn('[fulfillment-orchestrator] discord_observer: discordHealth port absent, advancing without channel-health check (D13.3)');
         }
       }

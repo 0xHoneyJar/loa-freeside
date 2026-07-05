@@ -163,6 +163,9 @@ describe('T-1: shadow_preview enters the decision table (skip guard removed, FR-
 
     const record = await store.get('ord_w');
     expect(record?.ingredients?.shadow_preview).toBe('complete');
+    // Pin the end-state contract, not just the ingredient flip: with every ingredient
+    // satisfied (metadata self-resolves — port absent), the order reaches fulfilled.
+    expect(record?.state).toBe('fulfilled');
 
     // operator_audit has a fulfillment-orchestrator entry for shadow_preview
     const auditEntry = record?.operator_audit?.find(
