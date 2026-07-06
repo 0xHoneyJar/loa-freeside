@@ -2,7 +2,7 @@
   "veve_version": "0.2.0",
   "name": "dune-meter",
   "version": "0.1.0",
-  "summary": "Cost-aware Dune adapter: estimate (probe heuristic) / run (cost-capped + CostAtom) / budget. The EXP-002 budget-blowout made structurally impossible.",
+  "summary": "Cost-aware Dune adapter: estimate (probe heuristic) / run (CostAtom + post-spend audit) / budget. --cap is a post-spend audit signal; set the account-level Dune Query Cost Cap in your Dune dashboard for the pre-spend hard-abort.",
   "binary": {
     "entry": "bin/dune-meter.mjs",
     "runtime": "node",
