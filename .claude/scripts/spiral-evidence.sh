@@ -677,8 +677,7 @@ _parse_sprint_paths() {
         # `\`spiral-harness.sh\`` (which is a reference, not a deliverable
         # declaration). Accepts `.claude/scripts/...`, `src/...`, etc.
         echo "$content" | grep -oE "\`[^\`]*/[^\`]+\.${ext_re}\`" 2>/dev/null | \
-            sed 's/^`//; s/`$//' | \
-            grep -v ' '
+            sed 's/^`//; s/`$//'
         # Pattern 2: bare paths rooted at well-known *top-level* repo prefixes.
         # Anchored to start-of-line or whitespace/non-path-char to prevent
         # substring matches within longer paths — without the anchor,
