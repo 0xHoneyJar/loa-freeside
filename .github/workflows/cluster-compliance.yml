@@ -65,11 +65,16 @@ jobs:
           # which does NOT accept -o=json — the RED-CI bug (FL T7). Pin the mikefarah
           # Go-yq binary explicitly so the JSON conversion is deterministic.
           YQ_VERSION=v4.44.3
+          # SHA-256 supply-chain hardening (T-4/RC-3a): hash hardcoded from the official
+          # mikefarah/yq v4.44.3 release (extracted via extract-checksum.sh SHA-256 yq_linux_amd64).
+          # Never fetch the hash at runtime — that defeats the integrity check.
+          YQ_SHA256="a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7"
           sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict || {
+            echo "::error::yq binary SHA-256 mismatch — possible CDN corruption or substitution"
+            exit 1
+          }
           sudo chmod +x /usr/local/bin/yq
-          # Assert the pinned mikefarah Go-yq is what actually landed — catches a
-          # wrong/corrupted binary (FAGAN). FOLLOW-UP for full supply-chain hardening:
-          # pin the published SHA256 of yq_linux_amd64 ${YQ_VERSION} and verify it here.
           yq --version | grep -q "mikefarah" || { echo "::error::yq is not the mikefarah Go build"; exit 1; }
           yq --version | grep -q "${YQ_VERSION#v}" || { echo "::error::yq version mismatch (expected ${YQ_VERSION})"; exit 1; }
 
@@ -80,8 +85,17 @@ jobs:
           # Registry shape: top-level `modules:` is a MAP keyed by slug (e.g. freeside-sonar).
           # Pipeline: Go-yq converts YAML→JSON, jq processes JSON with full filter language
           # (Go-yq's own query language doesn't support jq-style sub()/capture()/to_entries).
-          yq -o=json packages/freeside-registry/registry.yaml | \
-            jq -r '.modules | to_entries | .[] |
+          #
+          # RC-3b guard: check for null/empty .modules before proceeding. A null result means
+          # the registry.yaml key changed or the file is empty — emit a specific error rather
+          # than silently producing an empty roster and passing vacuously.
+          roster=$(yq -o=json '.modules' packages/freeside-registry/registry.yaml)
+          if [ -z "$roster" ] || [ "$roster" = "null" ]; then
+            echo "::error::yq produced empty/null .modules from packages/freeside-registry/registry.yaml — registry.yaml shape may have changed or the file is corrupt"
+            exit 1
+          fi
+          echo "$roster" | \
+            jq -r 'to_entries | .[] |
               "\(.key):\(.value.git_url | sub("https://github.com/"; "") | sub("\\.git$"; ""))"' \
             > cell-list.txt
           echo "Cells found:"
@@ -103,15 +117,32 @@ jobs:
             echo ""
             echo "═══ Auditing $slug ($repo) ═══"
 
-            # Shallow-clone the cell into a working dir
+            # Shallow-clone the cell into a working dir.
+            # RC-3c guard: 403/404 responses from gh repo clone indicate the workflow's
+            # GITHUB_TOKEN lacks contents:read on private cells. Classify as 'inaccessible'
+            # (::warning::, does not fail the job) — not as 'non-compliant' (::error::).
             CELL_DIR="cell-$slug"
-            gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1 || {
-              echo "  ⚠ Could not clone $repo — skipping"
-              echo "{ \"slug\": \"$slug\", \"status\": \"UNREACHABLE\", \"reason\": \"clone failed\" }" \
-                > "audit-results/$slug.json"
+            # `if ! var=$(cmd)` keeps errexit from killing the step on clone failure —
+            # a bare assignment carries the command's exit status under `bash -e {0}`
+            # and the classification below would be unreachable (BB #445 HIGH).
+            clone_exit=0
+            if ! clone_output=$(gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1); then
+              clone_exit=$?
+            fi
+            if [ $clone_exit -ne 0 ]; then
+              # Check if this is an access error (403/404) vs other failure
+              if echo "$clone_output" | grep -qE '(403|404|Repository not found|access denied|not found)'; then
+                echo "::warning::$slug ($repo): inaccessible — GITHUB_TOKEN lacks read access (403/404). Classifying as inaccessible, not non-compliant."
+                echo "{ \"slug\": \"$slug\", \"status\": \"inaccessible\", \"reason\": \"403/404 from gh repo clone — private repo or no token access\" }" \
+                  > "audit-results/$slug.json"
+              else
+                echo "::warning::$slug ($repo): could not clone ($clone_exit). Classifying as inaccessible."
+                echo "{ \"slug\": \"$slug\", \"status\": \"inaccessible\", \"reason\": \"clone failed: $clone_output\" }" \
+                  > "audit-results/$slug.json"
+              fi
               WARN_CELLS+=("$slug")
               continue
-            }
+            fi
 
             # Run existence + topology audit (vendored from construct-freeside auditing-cluster-cells skill)
             EXISTENCE_JSON=$(GITHUB_DIR="$(pwd)" bash .github/scripts/audit-cluster-cells.sh \
