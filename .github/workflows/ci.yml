@@ -268,6 +268,10 @@ jobs:
         run: npm run test:integration
         env:
           REDIS_URL: redis://localhost:6379
+          # RC-2 fix: DATABASE_URL placeholder so config.ts Zod validation passes and
+          # MigrationEngine/billing-agent-sovereignty tests do not silently skip.
+          # No Postgres service is provisioned — sietch integration tests use SQLite in-memory.
+          DATABASE_URL: postgresql://test:test@localhost:5432/freeside_test
           # config.ts validates all env at import (Zod); the integration vitest project has no
           # setupFiles, so unlike the unit project (tests/setup-unit.ts) these required vars are
           # unset → "Configuration validation failed: triggerDev.secretKey". Test placeholders,
