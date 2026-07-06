@@ -9,8 +9,51 @@
 // verdicts); Dune's per-query Query Cost Cap is the HARD guard (it aborts a
 // runaway scan at the source). Both exist because EXP-002 had neither.
 
-import { writeFileSync, renameSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, renameSync, readFileSync, existsSync, mkdirSync, openSync, writeSync, closeSync, unlinkSync, statSync } from 'node:fs';
 import { dirname, basename, join } from 'node:path';
+
+const LOCK_MAX_ATTEMPTS = 10;
+const LOCK_RETRY_MS = 100;
+const LOCK_STALE_S = 60;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Acquire an O_EXCL lockfile. Loops up to LOCK_MAX_ATTEMPTS times.
+ * Stale lock (mtime > 60s AND process gone) is cleared and retried once.
+ */
+async function acquireLock(lockPath) {
+  for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt++) {
+    try {
+      const fd = openSync(lockPath, 'wx');
+      writeSync(fd, String(process.pid));
+      return fd;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      // Check for stale lock
+      try {
+        const stat = statSync(lockPath);
+        const ageS = (Date.now() - stat.mtimeMs) / 1000;
+        if (ageS > LOCK_STALE_S) {
+          const storedPid = Number(readFileSync(lockPath, 'utf8').trim());
+          let gone = false;
+          try { process.kill(storedPid, 0); } catch (ke) { if (ke.code === 'ESRCH') gone = true; }
+          if (gone) {
+            try { unlinkSync(lockPath); } catch (_) { /* lost race, continue */ }
+            continue; // retry immediately
+          }
+        }
+      } catch (_) { /* stat/read failed — contended, fall through to sleep */ }
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+  throw new Error('budget-ledger: could not acquire lock after 10 attempts');
+}
+
+function releaseLock(lockPath, fd) {
+  try { closeSync(fd); } catch (_) {}
+  try { unlinkSync(lockPath); } catch (_) {}
+}
 
 /** Dune free-tier ceiling: 2,500 credits = 2,500,000 datapoints. */
 export const DEFAULT_CEILING_CREDITS = 2500;
@@ -44,6 +87,13 @@ export function readLedger(path, { ceiling = DEFAULT_CEILING_CREDITS } = {}) {
       throw new Error(`budget-ledger: field ${k} is not a non-negative integer — refusing to spend`);
     }
   }
+  if (ceiling !== undefined && ceiling !== parsed.ceiling_credits) {
+    process.stderr.write(
+      `dune-meter: DUNE_BUDGET_CEILING override active: ${parsed.ceiling_credits} → ${ceiling} credits\n`
+    );
+    writeLedger(path, { ...parsed, ceiling_credits: ceiling });
+    parsed.ceiling_credits = ceiling;
+  }
   return parsed;
 }
 
@@ -67,20 +117,32 @@ export function writeLedger(path, ledger) {
 }
 
 /**
- * Decrement the budget by `credits` (record a spend). Reads the current ledger,
- * adds the spend + one atom, writes atomically. Returns the new ledger.
+ * Decrement the budget by `credits` (record a spend). Uses an O_EXCL lockfile to
+ * serialize the read-modify-write, preventing concurrent callers from dropping each
+ * other's spends. Returns the new ledger.
  * `credits` must be a non-negative integer.
  */
-export function recordSpend(path, credits, { ceiling = DEFAULT_CEILING_CREDITS } = {}) {
+export async function recordSpend(path, credits, { ceiling = DEFAULT_CEILING_CREDITS } = {}) {
   if (!Number.isInteger(credits) || credits < 0) {
     throw new Error(`budget-ledger: spend must be a non-negative integer (got ${credits})`);
   }
-  const ledger = readLedger(path, { ceiling });
-  const next = {
-    ceiling_credits: ledger.ceiling_credits,
-    spent_credits: ledger.spent_credits + credits,
-    atoms_count: ledger.atoms_count + 1,
-    updated_at: ledger.updated_at,
-  };
-  return writeLedger(path, next);
+  const lockPath = join(dirname(path), '.dune-budget.lock');
+  let fd;
+  try {
+    fd = await acquireLock(lockPath);
+  } catch (err) {
+    throw new Error(`budget-ledger: could not acquire lock — spend of ${credits} credits is unrecorded; add these credits manually. (${err.message})`);
+  }
+  try {
+    const ledger = readLedger(path, { ceiling });
+    const next = {
+      ceiling_credits: ledger.ceiling_credits,
+      spent_credits: ledger.spent_credits + credits,
+      atoms_count: ledger.atoms_count + 1,
+      updated_at: ledger.updated_at,
+    };
+    return writeLedger(path, next);
+  } finally {
+    releaseLock(lockPath, fd);
+  }
 }

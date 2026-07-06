@@ -79,18 +79,37 @@ async function cmdEstimate(args, { client } = {}) {
   let ledger;
   try { ledger = readLedger(ledgerPath, { ceiling }); }
   catch (e) { return err(EXIT.CALLER, e.message); }
-  const rem = remaining(ledger);
 
+  const isQueryId = looksLikeQueryId(target);
+
+  // Budget guard: refuse the probe itself if budget is exhausted (raw SQL only —
+  // query_id path makes no Dune execution so no guard needed).
+  if (!isQueryId && remaining(ledger) < 1) {
+    return err(EXIT.BUDGET_REFUSE, 'probe refused: budget exhausted');
+  }
+
+  const rem = remaining(ledger);
   const dune = client ?? new DuneClient();
   let probe;
   try {
-    probe = await dune.probe(target, { isQueryId: looksLikeQueryId(target) });
+    probe = await dune.probe(target, { isQueryId });
   } catch (e) {
     if (e instanceof DuneClientError) return err(EXIT.CALLER, e.message);
     return err(EXIT.CALLER, `estimate probe failed: ${e.message}`);
   }
 
-  const est = buildEstimate({ rows: probe.rows, cols: probe.cols, remainingCredits: rem });
+  // Record probe spend before returning (raw SQL path only; query_id → probe_credits: 0).
+  if (!isQueryId && probe.probe_credits > 0) {
+    try {
+      await recordSpend(ledgerPath, probe.probe_credits, { ceiling });
+      // Refresh remaining after probe spend
+      ledger = readLedger(ledgerPath, { ceiling });
+    } catch (e) {
+      return err(EXIT.CALLER, e.message);
+    }
+  }
+
+  const est = buildEstimate({ rows: probe.rows, cols: probe.cols, remainingCredits: remaining(ledger) });
   return ok(est, est.verdict === 'REFUSE' ? EXIT.BUDGET_REFUSE : EXIT.OK);
 }
 
@@ -107,7 +126,13 @@ async function cmdRun(args, { client } = {}) {
   let ledger;
   try { ledger = readLedger(ledgerPath, { ceiling }); }
   catch (e) { return err(EXIT.CALLER, e.message); }
-  const rem = remaining(ledger);
+
+  // T-4: --force must be bounded by --cap ≤ ceiling to prevent unconstrained spend.
+  if (flags.force && flags.cap > ceiling) {
+    return err(EXIT.CALLER, `--force requires --cap ≤ ${ceiling} credits to bound per-query spend; got ${flags.cap}`);
+  }
+
+  let rem = remaining(ledger);
 
   const dune = client ?? new DuneClient();
   const isQueryId = looksLikeQueryId(target);
@@ -117,16 +142,46 @@ async function cmdRun(args, { client } = {}) {
   //    non-executing read of cached result metadata). An un-estimatable target
   //    (e.g. a never-run query_id with no cached metadata) needs --force to
   //    proceed on the cost-cap alone — we never execute it just to estimate.
+  //    The probe-budget guard (remaining < 1 for raw SQL) is NEVER bypassed by --force.
+  if (!isQueryId && remaining(ledger) < 1) {
+    return err(EXIT.BUDGET_REFUSE, 'probe refused: budget exhausted');
+  }
+
   let est = null;
   try {
-    const probe = await dune.probe(target, { isQueryId });
-    est = buildEstimate({ rows: probe.rows, cols: probe.cols, remainingCredits: rem });
+    if (isQueryId) {
+      // query_id: probe() reads cached metadata, no Dune execution, no credits.
+      const probe = await dune.probe(target, { isQueryId: true });
+      est = buildEstimate({ rows: probe.rows, cols: probe.cols, remainingCredits: rem });
+    } else {
+      // raw SQL: split into COUNT + LIMIT-1 with inter-probe budget check (AC-6/AC-7).
+      const { rows, countCredits } = await dune.probeCount(target);
+      try {
+        const updLedger = await recordSpend(ledgerPath, countCredits, { ceiling });
+        ledger = updLedger;
+        rem = remaining(ledger);
+      } catch (e) {
+        return err(EXIT.CALLER, e.message);
+      }
+      if (rem === 0) {
+        return err(EXIT.BUDGET_REFUSE, 'probe refused: COUNT exhausted remaining budget');
+      }
+      const { cols, sampleCredits } = await dune.probeSample(target);
+      try {
+        const updLedger = await recordSpend(ledgerPath, sampleCredits, { ceiling });
+        ledger = updLedger;
+        rem = remaining(ledger);
+      } catch (e) {
+        return err(EXIT.CALLER, e.message);
+      }
+      est = buildEstimate({ rows, cols, remainingCredits: rem });
+    }
   } catch (e) {
     if (e instanceof DuneClientError) {
       if (!flags.force) {
         return err(EXIT.CALLER, `${e.message} (or re-run with --force to proceed on the cost-cap alone)`);
       }
-      // --force: proceed un-estimated; the per-query cost-cap is the backstop.
+      // --force: proceed un-estimated.
     } else {
       return err(EXIT.CALLER, `pre-run estimate failed: ${e.message}`);
     }
@@ -135,8 +190,8 @@ async function cmdRun(args, { client } = {}) {
     return ok({ refused: true, reason: 'estimate exceeds remaining budget', estimate: est }, EXIT.BUDGET_REFUSE);
   }
 
-  // 2) EXECUTE with the cost-cap. The --cap is the per-query hard-abort; the
-  //    account-level Query Cost Cap is the structural backstop (see README).
+  // 2) EXECUTE with the cost-cap.
+  //    --cap is a POST-spend audit signal; no Dune API per-request cap parameter exists.
   const t0 = Date.now();
   let executionId;
   let metadata;
@@ -180,7 +235,7 @@ async function cmdRun(args, { client } = {}) {
     wall_ms: wallMs,
   });
   const envelope = appendAtom(atomsPath, atom);
-  const newLedger = recordSpend(ledgerPath, credits, { ceiling });
+  const newLedger = await recordSpend(ledgerPath, credits, { ceiling });
 
   return ok({
     executed: true,
@@ -237,7 +292,7 @@ const HELP = [
   '  dune-meter run <sql|query_id> --cap <credits> execute with cost-cap, emit CostAtom',
   '  dune-meter budget                             show spent/remaining/ceiling + recent',
   '',
-  '  flags: --cap <n> (run, required)  --force (override budget-refuse)  --engine small|medium|large',
+  '  flags: --cap <n> (run, required)  --force (override estimate REFUSE and DuneClientError probe failures — does NOT bypass the probe-budget guard)  --engine small|medium|large',
   '  env:   DUNE_API_KEY  DUNE_BUDGET_LEDGER  DUNE_COST_ATOMS  DUNE_BUDGET_CEILING',
   '  exit:  0 ok · 2 caller-error · 3 budget-refuse · 4 cap-aborted',
   '',
