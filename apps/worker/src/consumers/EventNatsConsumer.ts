@@ -176,7 +176,11 @@ export class EventNatsConsumer extends BaseNatsConsumer<GatewayEventPayload> {
 // --------------------------------------------------------------------------
 
 const GuildJoinDataSchema = z.object({ name: z.string().min(1) });
-const GuildLeaveDataSchema = z.object({});
+const GuildLeaveDataSchema = z.object({
+  // Discord sets unavailable=true when a guild goes down in an OUTAGE — that is not a
+  // leave. Deactivating on it would mass-disable communities every Discord incident.
+  unavailable: z.boolean().optional(),
+});
 const MemberJoinDataSchema = z.object({ username: z.string().optional() });
 const MemberLeaveDataSchema = z.object({});
 const MemberUpdateDataSchema = z.object({
@@ -238,6 +242,13 @@ function makeGuildLeaveHandler() {
       return;
     }
 
+    const parsed = GuildLeaveDataSchema.safeParse(eventData(payload));
+    if (parsed.success && parsed.data.unavailable === true) {
+      // Outage, not a departure (BB FO HIGH): leave isActive untouched.
+      log.warn({ event: 'guildLeave', guildId: guild_id, reason: 'guild unavailable (Discord outage) — not deactivating' });
+      return;
+    }
+
     const { outcome } = await markCommunityInactive({ discordGuildId: guild_id });
 
     if (outcome === 'unknown_guild') {
@@ -279,6 +290,9 @@ function makeMemberJoinHandler() {
       communityId: community.id,
       discordId: user_id,
       setJoinedAt: true,
+      // Rejoin must flip active back on — member.leave sets metadata.active=false and
+      // the JSONB merge preserves it otherwise (BB HIGH: rejoined members stayed inactive).
+      metadataPatch: { active: true },
     });
 
     // loa:shortcut: EligibilityRepository (ScyllaDB) wiring out of scope; add when OQ-3 resolved
@@ -354,7 +368,10 @@ function makeMemberUpdateHandler() {
     const fieldsUpdated: string[] = [];
 
     if (parsed.data.nick !== undefined) {
-      metadataPatch['displayName'] = parsed.data.nick ?? undefined;
+      // nick === null means the user REMOVED their nickname — keep the null so the
+      // JSONB || merge overwrites displayName (an undefined value is dropped at JSON
+      // serialization and the stale name survives; BB MEDIUM).
+      metadataPatch['displayName'] = parsed.data.nick;
       fieldsUpdated.push('displayName');
     }
     if (parsed.data.roles !== undefined) {

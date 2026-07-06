@@ -13,7 +13,7 @@
 
 import postgres from 'postgres';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { eq, and, desc, asc, lte, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, lte, gte, sql, getTableColumns } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import type { Config } from '../config.js';
 import * as schema from './schema.js';
@@ -1707,20 +1707,23 @@ export async function upsertCommunity(params: {
         // createdAt intentionally omitted — write-once invariant
       },
     })
-    .returning();
+    // xmax = 0 detects insert-vs-update ATOMICALLY at the write itself. The pre-SELECT
+    // above has a TOCTOU window: two concurrent guild.join deliveries could both see
+    // "no row" and both classify created — double-sending the welcome (BB MEDIUM).
+    .returning({ ...getTableColumns(schema.communities), inserted: sql<boolean>`(xmax = 0)` });
 
-  const community = result[0]!;
+  const { inserted, ...community } = result[0]!;
   const wasExisting = existing[0];
   let outcome: 'created' | 'reactivated' | 'noop';
-  if (!wasExisting) {
+  if (inserted) {
     outcome = 'created';
-  } else if (!wasExisting.isActive) {
+  } else if (wasExisting && !wasExisting.isActive) {
     outcome = 'reactivated';
   } else {
     outcome = 'noop';
   }
 
-  return { community, outcome };
+  return { community: community as schema.Community, outcome };
 }
 
 /**

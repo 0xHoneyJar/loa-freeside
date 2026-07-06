@@ -540,3 +540,75 @@ describe.skipIf(SKIP)('validation (AC-15)', () => {
 // AC-18: structural (path-domain check — documented, not run here)
 // All changed files are exclusively under apps/worker/ — enforced by CI.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Bridgebuilder #444 pins — outage guard · rejoin reactivation · nick removal ·
+// atomic created classification
+// ---------------------------------------------------------------------------
+
+describe.skipIf(SKIP)('BB #444 review pins', () => {
+  const rand = () => Math.random().toString(36).slice(2, 10);
+
+  it('guild.leave with unavailable=true (Discord outage) leaves isActive untouched', async () => {
+    const guildId = 'bbpin-guild-' + rand();
+    const handlers = createDefaultNatsEventHandlers();
+    await handlers.get('guild.join')!(makeMockPayload('guild.join', { guild_id: guildId, data: { name: 'Outage Guild' } }), log);
+
+    await handlers.get('guild.leave')!(makeMockPayload('guild.leave', { guild_id: guildId, data: { unavailable: true } }), log);
+    const afterOutage = (await getCommunitiesForGuild(guildId))[0]!;
+    expect(afterOutage.isActive).toBe(true);
+
+    await handlers.get('guild.leave')!(makeMockPayload('guild.leave', { guild_id: guildId }), log);
+    const afterRealLeave = (await getCommunitiesForGuild(guildId))[0]!;
+    expect(afterRealLeave.isActive).toBe(false);
+  });
+
+  it('member rejoin flips metadata.active back to true, joinedAt unchanged', async () => {
+    const guildId = 'bbpin-guild-' + rand();
+    const userId = 'bbpin-user-' + rand();
+    const handlers = createDefaultNatsEventHandlers();
+    await handlers.get('guild.join')!(makeMockPayload('guild.join', { guild_id: guildId, data: { name: 'Rejoin Guild' } }), log);
+
+    await handlers.get('member.join')!(makeMockPayload('member.join', { guild_id: guildId, user_id: userId }), log);
+    const community = (await getCommunitiesForGuild(guildId))[0]!;
+    const first = (await getProfilesForUser(community.id, userId))[0]!;
+
+    await handlers.get('member.leave')!(makeMockPayload('member.leave', { guild_id: guildId, user_id: userId }), log);
+    const left = (await getProfilesForUser(community.id, userId))[0]!;
+    expect((left.metadata as Record<string, unknown>)['active']).toBe(false);
+
+    await handlers.get('member.join')!(makeMockPayload('member.join', { guild_id: guildId, user_id: userId }), log);
+    const rejoined = (await getProfilesForUser(community.id, userId))[0]!;
+    expect((rejoined.metadata as Record<string, unknown>)['active']).toBe(true);
+    expect(rejoined.joinedAt.toISOString()).toBe(first.joinedAt.toISOString());
+  });
+
+  it('member.update with nick:null clears displayName (stale name does not survive)', async () => {
+    const guildId = 'bbpin-guild-' + rand();
+    const userId = 'bbpin-user-' + rand();
+    const handlers = createDefaultNatsEventHandlers();
+    await handlers.get('guild.join')!(makeMockPayload('guild.join', { guild_id: guildId, data: { name: 'Nick Guild' } }), log);
+    await handlers.get('member.join')!(makeMockPayload('member.join', { guild_id: guildId, user_id: userId }), log);
+    const community = (await getCommunitiesForGuild(guildId))[0]!;
+
+    await handlers.get('member.update')!(makeMockPayload('member.update', { guild_id: guildId, user_id: userId, data: { nick: 'Neo' } }), log);
+    const named = (await getProfilesForUser(community.id, userId))[0]!;
+    expect((named.metadata as Record<string, unknown>)['displayName']).toBe('Neo');
+
+    await handlers.get('member.update')!(makeMockPayload('member.update', { guild_id: guildId, user_id: userId, data: { nick: null } }), log);
+    const cleared = (await getProfilesForUser(community.id, userId))[0]!;
+    expect((cleared.metadata as Record<string, unknown>)['displayName']).toBeNull();
+  });
+
+  it('concurrent upsertCommunity classifies exactly one created (xmax atomic)', async () => {
+    const guildId = 'bbpin-guild-' + rand();
+    const results = await Promise.all([
+      upsertCommunity({ discordGuildId: guildId, name: 'Race Guild' }),
+      upsertCommunity({ discordGuildId: guildId, name: 'Race Guild' }),
+    ]);
+    const created = results.filter((r) => r.outcome === 'created');
+    expect(created).toHaveLength(1);
+    const rows = await getCommunitiesForGuild(guildId);
+    expect(rows).toHaveLength(1);
+  });
+});
