@@ -66,10 +66,14 @@ export const DEFAULT_LEDGER_PATH = '.run/dune-budget.json';
  * file does not exist. Throws on a corrupt (unparseable) file — a corrupt budget
  * ledger is a refuse-to-spend condition, not a silently-reset-to-full one.
  */
-export function readLedger(path, { ceiling = DEFAULT_CEILING_CREDITS } = {}) {
+export function readLedger(path, { ceiling } = {}) {
+  // `ceiling` is an EXPLICIT operator override (DUNE_BUDGET_CEILING) — callers pass it
+  // ONLY when the env var is set. Defaulting it here made every env-less invocation
+  // "override" a persisted lower ceiling back UP to 2500: a silent budget raise, the
+  // exact inversion of what a ceiling is for (BB #448 HIGH).
   if (!existsSync(path)) {
     return {
-      ceiling_credits: ceiling,
+      ceiling_credits: ceiling ?? DEFAULT_CEILING_CREDITS,
       spent_credits: 0,
       atoms_count: 0,
       updated_at: null,
@@ -122,7 +126,7 @@ export function writeLedger(path, ledger) {
  * other's spends. Returns the new ledger.
  * `credits` must be a non-negative integer.
  */
-export async function recordSpend(path, credits, { ceiling = DEFAULT_CEILING_CREDITS } = {}) {
+export async function recordSpend(path, credits, { ceiling } = {}) {
   if (!Number.isInteger(credits) || credits < 0) {
     throw new Error(`budget-ledger: spend must be a non-negative integer (got ${credits})`);
   }

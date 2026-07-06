@@ -49,7 +49,9 @@ function resolvePaths() {
     atomsPath: env.DUNE_COST_ATOMS
       ? resolve(env.DUNE_COST_ATOMS)
       : join(PKG_ROOT, DEFAULT_ATOMS_PATH),
-    ceiling: env.DUNE_BUDGET_CEILING ? Number.parseInt(env.DUNE_BUDGET_CEILING, 10) : DEFAULT_CEILING_CREDITS,
+    // undefined when unset: only an EXPLICIT env value is an override — a default here
+    // would silently raise a persisted lower ceiling on every env-less run (BB #448 HIGH).
+    ceiling: env.DUNE_BUDGET_CEILING ? Number.parseInt(env.DUNE_BUDGET_CEILING, 10) : undefined,
   };
 }
 
@@ -128,8 +130,10 @@ async function cmdRun(args, { client } = {}) {
   catch (e) { return err(EXIT.CALLER, e.message); }
 
   // T-4: --force must be bounded by --cap ≤ ceiling to prevent unconstrained spend.
-  if (flags.force && flags.cap > ceiling) {
-    return err(EXIT.CALLER, `--force requires --cap ≤ ${ceiling} credits to bound per-query spend; got ${flags.cap}`);
+  // The effective ceiling is the LEDGER's (persisted) when no env override is set.
+  const effectiveCeiling = ceiling ?? ledger.ceiling_credits;
+  if (flags.force && flags.cap > effectiveCeiling) {
+    return err(EXIT.CALLER, `--force requires --cap ≤ ${effectiveCeiling} credits to bound per-query spend; got ${flags.cap}`);
   }
 
   let rem = remaining(ledger);
@@ -163,7 +167,7 @@ async function cmdRun(args, { client } = {}) {
       } catch (e) {
         return err(EXIT.CALLER, e.message);
       }
-      if (rem === 0) {
+      if (rem <= 0) {
         return err(EXIT.BUDGET_REFUSE, 'probe refused: COUNT exhausted remaining budget');
       }
       const { cols, sampleCredits } = await dune.probeSample(target);

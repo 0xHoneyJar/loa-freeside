@@ -135,6 +135,20 @@ test('readLedger returns fresh default when absent', () => {
   } finally { e.cleanup(); }
 });
 
+test('persisted lower ceiling survives an env-less read (no silent raise) — BB #448 HIGH', () => {
+  const e = tmpEnv();
+  try {
+    // Operator once set DUNE_BUDGET_CEILING=1000 (persisted); later runs WITHOUT the env
+    // must keep 1000 — a defaulted ceiling param would "override" it back up to 2500.
+    writeLedger(e.ledgerPath, { ceiling_credits: 1000, spent_credits: 0, atoms_count: 0, updated_at: null });
+    const led = readLedger(e.ledgerPath); // no ceiling option = env unset
+    assert.equal(led.ceiling_credits, 1000);
+    // explicit override still works both directions
+    const lowered = readLedger(e.ledgerPath, { ceiling: 500 });
+    assert.equal(lowered.ceiling_credits, 500);
+  } finally { e.cleanup(); }
+});
+
 test('writeLedger then readLedger round-trips + stamps updated_at', () => {
   const e = tmpEnv();
   try {
