@@ -209,33 +209,53 @@ export class DuneClient {
   }
 
   /**
-   * The estimate PROBE → {rows, cols}, the heuristic input (labeled honestly
-   * upstream in estimate.mjs). NEVER does a full execution of the target:
-   *   • SQL      — a cheap COUNT(*) (rows) + LIMIT-1 (cols) probe on the small
-   *                engine (design-sanctioned: "a cheap COUNT(*) / LIMIT 1 probe").
-   *   • query_id — a NON-EXECUTING read of the latest cached result metadata
-   *                (latestResultMetadata). A saved query is never executed just
-   *                to estimate it (design doc: "No full execution" — the EXP-002
-   *                scar was an unbounded scan run with nothing metering it; the
-   *                estimate path must not reintroduce that).
+   * COUNT(*) probe for raw SQL: returns {rows, countCredits}.
+   * Used by cmdRun's split-probe path (inter-probe budget check between count + sample).
    */
-  async probe(target, { isQueryId }) {
-    if (isQueryId) {
-      return this.latestResultMetadata(target);
-    }
-    // Raw SQL probe: wrap in COUNT(*) to get rows cheaply, and a LIMIT 1 to read
-    // the column shape. We send the COUNT form (cheapest signal).
-    const countSql = `SELECT count(*) AS n FROM (${stripTrailingSemicolon(target)}) _probe`;
+  async probeCount(sql) {
+    const countSql = `SELECT count(*) AS n FROM (${stripTrailingSemicolon(sql)}) _probe`;
     const exec = await this.executeSql(countSql, { performance: ENGINES.small });
     const status = await this.pollStatus(exec.execution_id);
     const rows = status.result?.rows?.[0]?.n ?? 0;
-    // column count of the ORIGINAL query: a LIMIT 1 read.
-    const sampleSql = `SELECT * FROM (${stripTrailingSemicolon(target)}) _probe LIMIT 1`;
+    const countMeta = await this.resultMetadata(exec.execution_id);
+    const countCredits = Number.isInteger(countMeta.credits)
+      ? countMeta.credits
+      : Math.ceil((countMeta.datapoints ?? 0) / 1000);
+    return { rows: Number(rows), countCredits };
+  }
+
+  /**
+   * LIMIT 1 probe for raw SQL: returns {cols, sampleCredits}.
+   * Used by cmdRun's split-probe path after the inter-probe budget check clears.
+   */
+  async probeSample(sql) {
+    const sampleSql = `SELECT * FROM (${stripTrailingSemicolon(sql)}) _probe LIMIT 1`;
     const sampleExec = await this.executeSql(sampleSql, { performance: ENGINES.small });
     const sampleStatus = await this.pollStatus(sampleExec.execution_id);
     const cols = sampleStatus.result?.metadata?.column_names?.length
       ?? (sampleStatus.result?.rows?.[0] ? Object.keys(sampleStatus.result.rows[0]).length : 1);
-    return { rows: Number(rows), cols, execution_id: exec.execution_id };
+    const sampleMeta = await this.resultMetadata(sampleExec.execution_id);
+    const sampleCredits = Number.isInteger(sampleMeta.credits)
+      ? sampleMeta.credits
+      : Math.ceil((sampleMeta.datapoints ?? 0) / 1000);
+    return { cols, sampleCredits };
+  }
+
+  /**
+   * The estimate PROBE → {rows, cols, probe_credits}. NEVER does a full execution.
+   *   • SQL      — delegates to probeCount + probeSample (cheap COUNT(*) + LIMIT-1).
+   *   • query_id — NON-EXECUTING read of the latest cached result metadata.
+   * cmdEstimate calls this combined form; cmdRun calls probeCount/probeSample
+   * individually so it can gate on the budget between them.
+   */
+  async probe(target, { isQueryId }) {
+    if (isQueryId) {
+      const result = await this.latestResultMetadata(target);
+      return { ...result, probe_credits: 0 };
+    }
+    const { rows, countCredits } = await this.probeCount(target);
+    const { cols, sampleCredits } = await this.probeSample(target);
+    return { rows, cols, probe_credits: countCredits + sampleCredits };
   }
 }
 

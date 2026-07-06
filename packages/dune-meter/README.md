@@ -50,14 +50,16 @@ dune-meter estimate <sql|query_id>
     verdict: OK | WARN (est > 25% of remaining) | REFUSE (est > remaining → exit 3)
 
 dune-meter run <sql|query_id> --cap <credits> [--force] [--engine small|medium|large]
-  → executes WITH a Dune cost-cap (small engine by default). Runs the pre-run
-    estimate first (non-executing for a query_id) and REFUSES (exit 3) if it
-    exceeds the remaining budget, unless --force. An un-estimatable target (e.g. a
-    never-run query_id with no cached metadata) needs --force to proceed on the
-    cost-cap alone (exit 2 otherwise) — it is never executed just to estimate.
-    Polls to completion, reads credits/datapoints consumed from the result
-    metadata, EMITS a CostAtom (hash-chained JSONL), and decrements the budget
-    ledger. Exit 4 if Dune aborts on the cap (or reported spend > --cap).
+  → execute with post-spend audit via --cap (small engine by default). Runs the
+    pre-run estimate first (non-executing for a query_id) and REFUSES (exit 3) if
+    it exceeds the remaining budget, unless --force. An un-estimatable target (e.g.
+    a never-run query_id with no cached metadata) needs --force to proceed without
+    an estimate (exit 2 otherwise) — it is never executed just to estimate.
+    --force requires --cap ≤ DUNE_BUDGET_CEILING (exit 2 if exceeded) to bound
+    per-query spend when skipping the estimate gate.
+    Polls to completion, reads credits/datapoints consumed from result metadata,
+    EMITS a CostAtom (hash-chained JSONL), and decrements the budget ledger.
+    Exit 4 if Dune aborts on the cost cap (or reported spend > --cap).
 
 dune-meter budget
   → reads the ledger, prints { spent_credits, remaining_credits, ceiling,
@@ -82,9 +84,11 @@ dune-meter budget
 | `DUNE_COST_ATOMS` | `<pkg>/.run/dune-cost-atoms.jsonl` | CostAtom ledger path |
 | `DUNE_BUDGET_CEILING` | `2500` | credit ceiling (free-tier default) |
 
-> **Set the account-level Query Cost Cap.** The `--cap` flag is the per-query
-> intent, and the API `performance` tier picks the engine — but the structural
-> hard-abort lives in the Dune dashboard's **Query Cost Cap** setting. Set it.
+> **`--cap N` is a post-spend audit signal.** If reported credits exceed N after
+> execution completes, the CLI exits 4 and the overage is recorded — but it does
+> **not** prevent Dune from executing or charging credits. The account-level
+> **Dune Query Cost Cap** (configured in the Dune dashboard) is the only pre-spend
+> hard abort at the Dune layer. Set it there to get the true structural backstop.
 > The 30-minute engine execution cap is a documented hard limit: queries are
 > expected to be **era-bound** (a block/time range), never an unbounded scan.
 > The unbounded scan is exactly the EXP-002 failure mode, closed by construction.

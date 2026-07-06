@@ -122,13 +122,12 @@ jobs:
             # GITHUB_TOKEN lacks contents:read on private cells. Classify as 'inaccessible'
             # (::warning::, does not fail the job) — not as 'non-compliant' (::error::).
             CELL_DIR="cell-$slug"
-            # `if ! var=$(cmd)` keeps errexit from killing the step on clone failure —
-            # a bare assignment carries the command's exit status under `bash -e {0}`
-            # and the classification below would be unreachable (BB #445 HIGH).
+            # `var=$(cmd) || rc=$?` keeps errexit from killing the step AND captures the
+            # REAL exit code. (Two prior attempts were both wrong: a bare assignment dies
+            # under `bash -e {0}` before classification; `if ! var=$(cmd); then rc=$?`
+            # captures the NEGATION's status, which is always 0 — FAGAN DISS-001.)
             clone_exit=0
-            if ! clone_output=$(gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1); then
-              clone_exit=$?
-            fi
+            clone_output=$(gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1) || clone_exit=$?
             if [ $clone_exit -ne 0 ]; then
               # Check if this is an access error (403/404) vs other failure
               if echo "$clone_output" | grep -qE '(403|404|Repository not found|access denied|not found)'; then
