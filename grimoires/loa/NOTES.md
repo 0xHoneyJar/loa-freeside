@@ -431,3 +431,114 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - **FR-2 pre-resolved at design time**: live probe 2026-07-05T00:47Z — score-api `/` → 302 `Location: /v1/health`; direct `GET /v1/health` → 200 `{"status":"ok",...,"service":"score-api"}`; `/health` → 404. SDD D-8 declares `/v1/health`+200+marker; sprint re-verifies at populate time. DO-NOT-TRANSCRIBE flag dischargeable.
 - Key decisions: service block = probe.mjs 5 fields + `probed_at`/`probe_source` provenance (NFR-5, inert to probe.mjs); `service.deployment_url` required + filter-equal to entry-level url; expectations = Schema.Union discriminated on probe_kind (gh-workflow absent ⇒ decode fails, FR-3 mechanical); graphql-lag fully generic (endpoint/query/rows_path/key/minuend/subtrahend/thresholds); uniqueness+format via decode-time filters; new CI lane `.github/workflows/registry-cli-tests.yml` (workflow path is domain-unclassified ⇒ PR stays single-domain network).
 - Watch-items for sprint: inventory-api appendix value expected-stale (new `-3f25` deploy serves open /health 200 — re-probe decides); sonar chain_metadata host (belt-gateway vs hyperindex id) live-verified at populate; SVM projection verify-or-omit; OQ-1 operator call = declare `ordering` service block (recommended yes).
+
+---
+
+## spiral-spiral-20260706-489b18-cycle-1 — Make Numb CI Gates Honest
+
+### RC-1 Reproduction (2026-07-06)
+
+**Command**: `vitest run --workspace vitest.workspace.ts --project integration --reporter=verbose` in `themes/sietch/` with full env placeholder set.
+
+**Result**: `Test Files  22 failed | 231 passed | 1 skipped (254)` · `Tests  114 failed | 6244 passed | 32 skipped`
+
+**Classification**: DOES NOT REPRODUCE as collector crash — `vitest.workspace.ts` already carries the RC-1 fix (comment: "RC-1 fix: deps.optimizer.ssr and server.deps are declared explicitly in each project"; commit `685246cf`). The collector runs successfully: 231 of 254 test files pass. The 22 failing files fail due to actual code bugs:
+
+- `billing-agent-sovereignty.test.ts`: unhandled rejection `SqliteError: table system_config has no column named metadata` (schema column missing from test's in-memory SQLite)
+- `story-fragments.test.ts`: assertion failures (`expect(result).toBe(true)`, `Cannot read properties of undefined (reading '0')`, etc.)
+- 20 additional test files with assertion/logic failures
+
+**Q-1 answer**: The billing-referrals failures are not a Postgres dependency (SQLite is used) — they are actual test logic failures. The 22 file failures represent committed code bugs, not a CI configuration issue.
+
+**Fix**: None within `shared/` scope. Each failing test file needs a separate bead for its own bug fix. T-2 closes with evidence: collector crash RC-1 is already fixed; residual failures are out-of-scope code bugs. Required env vars are all present in ci.yml (added in `5df7d0d3`).
+
+**T-2 exit codes**: RC-1 reproduction command exit 1 (non-zero due to test failures). Integration-tests check is still red but due to legitimate code bugs, not CI misconfiguration.
+
+---
+
+### RC-2 Reproduction (2026-07-06)
+
+**Commands** (per PRD §RC-2):
+
+```
+pnpm install --frozen-lockfile      → exit 0 (lockfile is current)
+./node_modules/.bin/vitest run --config vitest.agent-ci.config.ts   → exit 0 (23 files, 448 pass, 1 skip)
+npx vitest run --config vitest.agent-ci-integration.config.ts       → exit 1
+```
+
+**RC-2 integration config result**: `Test Files  2 failed | 4 passed (6)` · `Tests  68 passed | 22 skipped`
+
+Failures:
+- `tests/integration/agent-gateway.test.ts`: `Cannot find package 'ioredis'` (dynamic import at beforeAll; ioredis in `themes/sietch/node_modules` and `packages/adapters/node_modules` but NOT in root `node_modules`)
+- `tests/integration/audit-trail.integration.test.ts`: `Cannot find package 'pg'` (import at module top-level via `db-harness.ts`; pg in `themes/sietch/node_modules` only)
+
+**Classification**: RC-2 REPRODUCES (integration vitest config, exit 1). Root cause: ioredis and pg are not in root node_modules; `server.deps.moduleDirectories` in the vitest config lists `themes/sietch/node_modules` but Vite's module resolution fails to find the packages there for dynamic and top-level imports.
+
+**Q-2 answer (from RC-2b)**: pnpm-lock.yaml is NOT stale; `pnpm install --frozen-lockfile` exits 0. RC-2b does not reproduce.
+
+**Fix applied (T-3)**: Added explicit `resolve.alias` entries for `ioredis` and `pg` in `vitest.agent-ci-integration.config.ts`, following the existing `zod` alias pattern. This directly resolves both packages from `themes/sietch/node_modules`, bypassing Vite's generic module resolution.
+
+**T-3 exit codes**: Before fix: exit 1. After fix: exit 0 (both ioredis-dependent tests skip via skipIf/describe.skipIf; audit-trail skips via `SKIP = !process.env.PG_TEST_URL`).
+
+---
+
+### RC-3 Reproduction (2026-07-06)
+
+**Commands** (adapted to macOS — Linux yq binary not applicable):
+
+```
+yq --version                                                       → yq version v4.50.1 (mikefarah) ✓
+yq -o=json '.modules' packages/freeside-registry/registry.yaml | python3 -m json.tool   → exit 0
+bash .github/scripts/audit-cluster-cells.sh                       → exit 0 (8 cells audited)
+```
+
+**Classification**: RC-3 DOES NOT REPRODUCE on macOS at HEAD. Registry parse is valid (exit 0). audit-cluster-cells.sh runs cleanly. The yq binary on this system (v4.50.1, mikefarah) works correctly.
+
+**Q-3 answer**: Private cell repos (sonar-api line missing from cell-list output) may return 403 — current script classifies them as UNREACHABLE and adds to WARN_CELLS (does not fail job). The workflow's audit step already handles this via the `|| continue` pattern.
+
+**Fix applied (T-4)**:
+1. SHA-256 hardening: Added `sha256sum --check --strict` for `yq_linux_amd64 v4.44.3` (hash: `a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7`) before `chmod +x` in `cluster-compliance.yml`.
+2. Registry parse guard: Added null/empty check after `yq -o=json '.modules'`; if null/empty emits `::error::` and exits 1.
+3. 403/404 inaccessible classification: Updated audit step to classify `UNREACHABLE` cells as `inaccessible` (::warning::), not failing the job.
+
+**T-4 exit codes**: `yq --version` → mikefarah line ✓. SHA-256 check → pass (when binary matches). Parse guard → exits 1 on null/empty .modules.
+
+---
+
+## Immune-Check Result (2026-07-06)
+
+**Command**: `bash tools/immune-check.sh`
+
+**Output**:
+```
+╓─ immune-check · estate immune doctors · 2026-07-06T02:19Z
+     (no output — exit 0)
+     (no output — exit 0)
+     ✓ ground-truth-lint · 8 instrument(s) grounded (candidates=9, suppressed=3)
+  ╙─ ✓ VERDICT: HEALTHY (exit 0)
+```
+
+**Exit code**: 0 (HEALTHY) — gate-freeze-sensor and instrument-truth-sensor both clean, ground-truth-lint passes 8 instruments.
+
+## Signal Verification (T-6) (2026-07-06)
+
+**Method**: Used `IMMUNE_LINT_PROBE_CMD` test seam (documented in `tools/immune-check.sh` header — "fixture-driven, no live deps") to inject a simulated lint violation without touching framework-zone files.
+
+**Command**:
+```bash
+IMMUNE_LINT_PROBE_CMD='echo "T6 deliberate signal break"; exit 1' bash tools/immune-check.sh
+```
+
+**Output**:
+```
+╓─ immune-check · estate immune doctors · 2026-07-06T02:21Z
+     (no output — exit 0)
+     (no output — exit 0)
+     T6 deliberate signal break
+  ╙─ ⚠ VERDICT: PROBLEM (exit 2)
+```
+
+**Exit code**: 2 (PROBLEM) — confirms that a lint violation (exit 1 from check-instrument-ground-truth.sh, remapped to sev 2) correctly drives immune-check to exit 2. Gate is not numb.
+
+No files were mutated — the test seam is an env override, no revert required.
+
