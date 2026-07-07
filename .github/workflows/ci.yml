@@ -209,6 +209,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: |
+            themes/sietch/package-lock.json
+            packages/core/package-lock.json
+            packages/adapters/package-lock.json
 
       - name: Install dependencies
         working-directory: themes/sietch
@@ -253,6 +259,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: |
+            themes/sietch/package-lock.json
+            packages/core/package-lock.json
+            packages/adapters/package-lock.json
 
       - name: Install dependencies
         working-directory: themes/sietch
@@ -326,6 +338,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: apps/worker/package-lock.json
 
       - name: Install worker dependencies
         working-directory: apps/worker
