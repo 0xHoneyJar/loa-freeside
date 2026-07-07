@@ -199,7 +199,7 @@ Directory structure:
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 145 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
 | `grimoires/` | 1095 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
+| `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) |
 | `lib/` | 1 | Source code | \u2014 |
 | `packages/` | 793 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
 | `scripts/` | 37 | Utility scripts | \u2014 |
