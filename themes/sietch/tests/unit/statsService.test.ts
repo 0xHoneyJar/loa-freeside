@@ -177,11 +177,9 @@ describe('StatsService', () => {
         ]),
       });
 
-      // Total BGT query
+      // Total BGT rows (summed in JS with BigInt)
       mockPrepare.mockReturnValueOnce({
-        get: vi.fn().mockReturnValue({
-          total_bgt: parseUnits('50000', 18).toString(),
-        }),
+        all: vi.fn().mockReturnValue([{ bgt_held: parseUnits('50000', 18).toString() }]),
       });
 
       // Weekly active query
@@ -350,10 +348,8 @@ describe('StatsService', () => {
           ]),
         }) // by tier
         .mockReturnValueOnce({
-          get: vi.fn().mockReturnValue({
-            total_bgt: parseUnits('50000', 18).toString(),
-          }),
-        }) // total BGT
+          all: vi.fn().mockReturnValue([{ bgt_held: parseUnits('50000', 18).toString() }]),
+        }) // total BGT rows
         .mockReturnValueOnce({ get: vi.fn().mockReturnValue({ count: 75 }) }) // weekly active
         .mockReturnValueOnce({ get: vi.fn().mockReturnValue({ count: 5 }) }) // new this week
         .mockReturnValueOnce({ get: vi.fn().mockReturnValue({ count: 3 }) }) // promotions
@@ -363,9 +359,7 @@ describe('StatsService', () => {
           get: vi.fn().mockReturnValue({ tier: 'ichwan', total_activity: 500 }),
         }) // most active tier
         .mockReturnValueOnce({
-          get: vi.fn().mockReturnValue({
-            total_bgt: parseUnits('50000', 18).toString(),
-          }),
+          all: vi.fn().mockReturnValue([{ bgt_held: parseUnits('50000', 18).toString() }]),
         }); // totalBgtWei
 
       mockGetDatabase.mockReturnValue({ prepare: mockPrepare });

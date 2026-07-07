@@ -124,8 +124,8 @@ describe('DigestService', () => {
       // Mock new members this week
       mockGet.mockReturnValueOnce({ count: 12 });
 
-      // Mock total BGT
-      mockGet.mockReturnValueOnce({ total_bgt: '1000000000000000000000' }); // 1000 BGT in wei
+      // Mock total BGT rows (summed in JS with BigInt)
+      mockAll.mockReturnValueOnce([{ bgt_held: '1000000000000000000000' }]); // 1000 BGT in wei
 
       // Mock tier distribution
       mockAll.mockReturnValueOnce([
@@ -180,7 +180,7 @@ describe('DigestService', () => {
       // Mock all queries returning zeros/nulls/undefined
       mockGet.mockReturnValueOnce({ count: 0 }); // total members
       mockGet.mockReturnValueOnce({ count: 0 }); // new members
-      mockGet.mockReturnValueOnce({ total_bgt: '0' }); // total BGT
+      mockAll.mockReturnValueOnce([]); // total BGT rows
       mockAll.mockReturnValueOnce([]); // tier distribution
       mockGet.mockReturnValueOnce(null); // most active tier
       mockGet.mockReturnValueOnce({ count: 0 }); // promotions count
