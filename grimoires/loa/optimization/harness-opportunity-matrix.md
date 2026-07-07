@@ -148,3 +148,16 @@
 - Measurement side-effects were confined to untracked `node_modules` (the
   hounfour dist rebuilt by running the postinstall to reproduce O4.1); no tracked
   file was modified by any measurement command.
+
+---
+
+## 9. Pass 2 — oxlint (LINT lever) · IMPLEMENTED
+
+Rows **O2.2** (sietch eslint→oxlint) and **O2.1** (repo-wide oxlint gate) landed.
+Full parity proof + eslint→oxlint coverage map: **`pass2-oxlint-parity.md`**.
+
+- **Tool:** oxlint 1.73.0, pinned root devDependency; single Rust binary, no per-package install.
+- **Speed:** `themes/sietch/src` **17.79 s (eslint) → 0.093 s (oxlint)** = **≈190×**; whole-repo gate `oxlint` = **0.74 s / 1844 files** (first-ever repo-wide lint).
+- **Isomorphism:** oxlint fast gate covers every non-type-aware eslint rule (486 warns). The 15 type-aware `@typescript-eslint` rules (1092 warns, 8 with no oxlint equivalent) are **retained, not dropped** — enforced by `themes/sietch` `lint:types = eslint src --ext .ts` (reproduces the identical 1578-warning baseline). Blocking rules (`prefer-const`/`no-var`/`no-restricted-imports`, incl. the SDD §2.2 hounfour allowlist) covered natively with 0 false positives.
+- **Scripts:** root `lint: oxlint`; `themes/sietch`/`apps/ingestor`/`apps/worker` `lint: ../../node_modules/.bin/oxlint src` (no workspace → root binary by relative path). `apps/*` prior eslint scripts were non-functional (eslint uninstalled) — pure improvement.
+- **Untouched (per scope):** `packages/events` events-lint, all `.github/workflows/*.yml`, `.claude/`/`.beads/`/`.run/`/`*.pyc`. Source not auto-fixed. Root lockfile updated (expected).
