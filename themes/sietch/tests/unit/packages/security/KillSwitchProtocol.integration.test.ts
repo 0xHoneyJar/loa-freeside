@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { KillSwitchProtocol, KillSwitchError } from '../../../../src/packages/security/KillSwitchProtocol.js';
 import { WizardSessionStore } from '../../../../src/packages/wizard/WizardSessionStore.js';
 import { Redis } from 'ioredis';
+import { config } from '../../../../src/config.js';
 
 describe('KillSwitchProtocol', () => {
   let redis: Redis;
@@ -352,19 +353,36 @@ describe('KillSwitchProtocol', () => {
     });
 
     it('should log failed activation', async () => {
-      try {
-        await killSwitch.activate({
-          scope: 'COMMUNITY',
-          reason: 'SECURITY_BREACH',
-          // Missing communityId
-          activatedBy: 'admin123',
-        activatorRole: 'PLATFORM_ADMIN',
-        } as any);
-      } catch (error) {
-        // Expected to fail
-      }
+      // Invalid options are rejected upfront (INVALID_OPTIONS, before the
+      // audited execution block) — an audited "failed activation" is one
+      // that fails IN FLIGHT. Break Redis SCAN to force that.
+      const brokenRedis = new Proxy(redis, {
+        get(target, prop) {
+          if (prop === 'scan') {
+            return () => Promise.reject(new Error('Redis connection failed'));
+          }
+          const value = (target as any)[prop];
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      }) as any;
+      const brokenKillSwitch = new KillSwitchProtocol({
+        redis: brokenRedis,
+        sessionStore,
+        debug: false,
+      });
 
-      const logs = killSwitch.getAuditLogs();
+      await expect(
+        brokenKillSwitch.activate({
+          scope: 'USER',
+          reason: 'CREDENTIAL_COMPROMISE',
+          userId: 'user456',
+          activatedBy: 'admin123',
+          activatorRole: 'PLATFORM_ADMIN',
+          notifyAdmins: false,
+        })
+      ).rejects.toThrow(KillSwitchError);
+
+      const logs = brokenKillSwitch.getAuditLogs();
       expect(logs.length).toBeGreaterThan(0);
 
       const lastLog = logs[logs.length - 1];
@@ -382,6 +400,13 @@ describe('KillSwitchProtocol', () => {
   });
 
   describe('Admin Notifications', () => {
+    beforeEach(() => {
+      // sendDiscordWebhook signs payloads with HMAC (Sprint 66 HIGH-002)
+      // and throws without a configured secret — configure the test secret
+      // the way production env would.
+      (config as any).security.webhookSecret = 'test-webhook-hmac-secret';
+    });
+
     it('should skip notification if webhook not configured', async () => {
       // Kill switch has no webhook configured in beforeEach
       const result = await killSwitch.activate({
@@ -456,7 +481,11 @@ describe('KillSwitchProtocol', () => {
         webhookUrl,
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'X-Signature': expect.any(String),
+            'X-Timestamp': expect.any(String),
+          }),
         })
       );
 
@@ -671,16 +700,21 @@ describe('KillSwitchProtocol', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle session store errors gracefully', async () => {
-      // Mock session store to throw error
-      const brokenSessionStore = {
-        ...sessionStore,
-        delete: vi.fn().mockRejectedValue(new Error('Redis connection failed')),
-      } as any;
+    it('should handle Redis errors gracefully (wrapped as KillSwitchError)', async () => {
+      // Session revocation scans Redis directly — break the scan.
+      const brokenRedis = new Proxy(redis, {
+        get(target, prop) {
+          if (prop === 'scan') {
+            return () => Promise.reject(new Error('Redis connection failed'));
+          }
+          const value = (target as any)[prop];
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      }) as any;
 
       const brokenKillSwitch = new KillSwitchProtocol({
-        redis,
-        sessionStore: brokenSessionStore,
+        redis: brokenRedis,
+        sessionStore,
         debug: false,
       });
 
@@ -690,25 +724,53 @@ describe('KillSwitchProtocol', () => {
           reason: 'CREDENTIAL_COMPROMISE',
           userId: 'user456',
           activatedBy: 'admin123',
-        activatorRole: 'PLATFORM_ADMIN',
+          activatorRole: 'PLATFORM_ADMIN',
           notifyAdmins: false,
         })
       ).rejects.toThrow(KillSwitchError);
     });
 
-    it('should include error in result on failure', async () => {
-      try {
-        await killSwitch.activate({
+    it('should use INVALID_OPTIONS for bad requests and ACTIVATION_FAILED for in-flight failures', async () => {
+      // Bad request: rejected upfront, before any execution
+      const invalid = await killSwitch
+        .activate({
           scope: 'COMMUNITY',
           reason: 'SECURITY_BREACH',
           // Missing communityId
           activatedBy: 'admin123',
-        activatorRole: 'PLATFORM_ADMIN',
-        } as any);
-      } catch (error) {
-        expect(error).toBeInstanceOf(KillSwitchError);
-        expect((error as KillSwitchError).code).toBe('ACTIVATION_FAILED');
-      }
+          activatorRole: 'PLATFORM_ADMIN',
+        } as any)
+        .catch((e) => e);
+      expect(invalid).toBeInstanceOf(KillSwitchError);
+      expect((invalid as KillSwitchError).code).toBe('INVALID_OPTIONS');
+
+      // In-flight failure: wrapped as ACTIVATION_FAILED
+      const brokenRedis = new Proxy(redis, {
+        get(target, prop) {
+          if (prop === 'scan') {
+            return () => Promise.reject(new Error('Redis connection failed'));
+          }
+          const value = (target as any)[prop];
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      }) as any;
+      const brokenKillSwitch = new KillSwitchProtocol({
+        redis: brokenRedis,
+        sessionStore,
+        debug: false,
+      });
+      const inflight = await brokenKillSwitch
+        .activate({
+          scope: 'USER',
+          reason: 'CREDENTIAL_COMPROMISE',
+          userId: 'user456',
+          activatedBy: 'admin123',
+          activatorRole: 'PLATFORM_ADMIN',
+          notifyAdmins: false,
+        })
+        .catch((e) => e);
+      expect(inflight).toBeInstanceOf(KillSwitchError);
+      expect((inflight as KillSwitchError).code).toBe('ACTIVATION_FAILED');
     });
   });
 });
