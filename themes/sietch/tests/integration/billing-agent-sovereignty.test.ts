@@ -24,6 +24,7 @@ import { CREDIT_LOTS_REBUILD_SQL } from '../../src/db/migrations/060_credit_lots
 import { TBA_DEPOSITS_SQL } from '../../src/db/migrations/057_tba_deposits.js';
 import { AGENT_GOVERNANCE_SQL } from '../../src/db/migrations/058_agent_governance.js';
 import { ECONOMIC_EVENTS_SQL } from '../../src/db/migrations/054_economic_events.js';
+import { SYSTEM_CONFIG_SCHEMA_SQL } from '../../src/db/migrations/050_system_config.js';
 
 // Service imports
 import { CreditLedgerAdapter } from '../../src/packages/adapters/billing/CreditLedgerAdapter.js';
@@ -94,29 +95,10 @@ function createTestDb(): Database.Database {
     );
   `);
 
-  // System config tables (needed for governance activation)
-  testDb.exec(`
-    CREATE TABLE IF NOT EXISTS system_config (
-      id TEXT PRIMARY KEY,
-      param_key TEXT NOT NULL,
-      entity_type TEXT,
-      value_json TEXT NOT NULL,
-      config_version INTEGER NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'active',
-      proposed_by TEXT,
-      proposed_at TEXT,
-      approval_count INTEGER DEFAULT 0,
-      required_approvals INTEGER DEFAULT 0,
-      activated_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-    );
-    CREATE TABLE IF NOT EXISTS system_config_version_seq (
-      param_key TEXT NOT NULL,
-      entity_type TEXT,
-      current_version INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (param_key, entity_type)
-    );
-  `);
+  // System config tables (needed for governance activation) — real migration
+  // schema; a hand-rolled copy drifted (missing metadata) and made propose()
+  // reject inside activateExpiredCooldowns.
+  testDb.exec(SYSTEM_CONFIG_SCHEMA_SQL);
 
   return testDb;
 }
