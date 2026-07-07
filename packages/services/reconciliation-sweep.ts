@@ -177,6 +177,86 @@ export async function runReconciliationSweep(
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Missed mints on already-terminal rows: when the webhook marked the
+  // payment 'finished' but processPaymentForLedger threw afterwards, the
+  // handler acked 200 and the row is terminal — the non-terminal sweep above
+  // never sees it again. Recover: finished payments with no credit_lots row
+  // get an idempotent mint (no API poll needed; the status is known).
+  // -------------------------------------------------------------------------
+  const missedMintResult = await pool.query<{
+    payment_id: string;
+    community_id: string;
+    price_amount: number;
+    order_id: string;
+  }>(
+    `SELECT p.payment_id, p.community_id, p.price_amount, p.order_id
+     FROM crypto_payments p
+     LEFT JOIN credit_lots l ON l.payment_id = p.payment_id
+     WHERE p.status = 'finished'
+       AND l.id IS NULL
+       AND p.updated_at < NOW() - $1 * INTERVAL '1 minute'
+     ORDER BY p.updated_at ASC
+     LIMIT $2`,
+    [mergedConfig.minAgeMins, mergedConfig.batchSize],
+  );
+
+  for (const payment of missedMintResult.rows) {
+    result.paymentsChecked++;
+    try {
+      if (redis) {
+        const lotResult = await processPaymentForLedger(pool, redis, {
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          priceUsd: payment.price_amount,
+          orderId: payment.order_id,
+        });
+        result.recoveredCount++;
+        result.details.push({
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          previousStatus: 'finished',
+          newStatus: 'finished',
+          action: 'recovered',
+          lotId: lotResult.lotId,
+        });
+      } else {
+        // Redis unavailable — Postgres-only mint (same fallback as the
+        // non-terminal arm; conservation guard corrects Redis on recovery).
+        const amountMicro = usdToMicroSafe(payment.price_amount);
+        const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+        const lotId = await withCommunityScope(payment.community_id, pool, async (client) => {
+          return mintCreditLot(client, {
+            community_id: payment.community_id,
+            source: 'purchase',
+            amount_micro: amountMicro,
+            payment_id: payment.payment_id,
+            expires_at: expiresAt,
+          });
+        });
+        result.recoveredCount++;
+        result.details.push({
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          previousStatus: 'finished',
+          newStatus: 'finished',
+          action: 'recovered',
+          lotId,
+        });
+      }
+    } catch (err) {
+      result.errorCount++;
+      result.details.push({
+        paymentId: payment.payment_id,
+        communityId: payment.community_id,
+        previousStatus: 'finished',
+        newStatus: null,
+        action: 'error',
+        error: (err as Error).message,
+      });
+    }
+  }
+
   return result;
 }
 

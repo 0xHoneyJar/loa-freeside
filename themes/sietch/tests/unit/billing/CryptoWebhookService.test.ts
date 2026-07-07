@@ -201,6 +201,25 @@ describe('CryptoWebhookService', () => {
     // -------------------------------------------------------------------------
 
     describe('timestamp check', () => {
+      it('should PROCESS a stale finished event (delayed terminal delivery, money path)', async () => {
+        // Sietch has no reconciliation sweep — quarantining a stale
+        // signature-valid 'finished' event would strand the payment.
+        // Replay safety comes from the idempotency layers that still run
+        // (Redis dedupe, DB status-transition validation).
+        const staleFinished = createTestEvent({
+          status: 'finished',
+          timestamp: new Date(Date.now() - 15 * 60 * 1000),
+        });
+
+        const result = await cryptoWebhookService.processEvent(staleFinished);
+
+        expect(result.status).toBe('processed');
+        expect(mockedBillingQueries.updateCryptoPaymentStatus).toHaveBeenCalledWith(
+          '12345',
+          expect.objectContaining({ status: 'finished' }),
+        );
+      });
+
       it('should quarantine stale events with a durable record', async () => {
         const staleEvent = createTestEvent({
           timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago

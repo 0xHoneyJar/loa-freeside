@@ -447,19 +447,53 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     }
 
     // -------------------------------------------------------------------
-    // Step 7: Update crypto_payments status
+    // Step 7: Update crypto_payments status (atomic monotonicity guard)
+    //
+    // The Step 6 read-then-check is advisory (friendly response codes) but
+    // NOT a lock: because the dedupe key includes payment_status, two valid
+    // deliveries with different statuses (e.g. confirmed + finished) can
+    // both reach this point concurrently and both observe the same
+    // pre-update row. The UPDATE itself therefore re-enforces monotonicity
+    // in one atomic statement — a slower 'confirmed' can never overwrite a
+    // faster 'finished'. rowCount 0 means we lost the race (or the row went
+    // terminal between read and write): skip side effects.
     // -------------------------------------------------------------------
     const isFinished = payload.payment_status === 'finished';
+    const isTerminalFailure = ['failed', 'refunded', 'expired'].includes(payload.payment_status);
 
-    await pool.query(
+    const updateResult = await pool.query(
       `UPDATE crypto_payments
        SET status = $2,
            actually_paid = COALESCE($3, actually_paid),
            finished_at = CASE WHEN $4 THEN NOW() ELSE finished_at END,
            updated_at = NOW()
-       WHERE payment_id = $1`,
-      [paymentId, payload.payment_status, payload.actually_paid, isFinished],
+       WHERE payment_id = $1
+         AND status NOT IN ('finished', 'failed', 'refunded', 'expired')
+         AND ($5 OR CASE status
+                WHEN 'waiting' THEN 0
+                WHEN 'confirming' THEN 1
+                WHEN 'partially_paid' THEN 1
+                WHEN 'confirmed' THEN 2
+                WHEN 'sending' THEN 3
+                ELSE -1 END < $6)`,
+      [
+        paymentId,
+        payload.payment_status,
+        payload.actually_paid,
+        isFinished,
+        isTerminalFailure,
+        currentOrdinal,
+      ],
     );
+
+    if (updateResult.rowCount === 0) {
+      logger.info(
+        { paymentId, incoming: payload.payment_status },
+        'Status update lost a concurrent transition race — no overwrite',
+      );
+      res.status(200).json({ status: 'skipped', reason: 'concurrent_transition' });
+      return;
+    }
 
     // -------------------------------------------------------------------
     // Step 8: Mint credit lot if finished (idempotent)

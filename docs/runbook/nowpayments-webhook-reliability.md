@@ -105,6 +105,24 @@ The webhook path is best-effort real-time; the reconciliation sweep
    of the provider retry schedule. `partially_paid` is included because it can
    still receive a delayed `finished` webhook that the freshness gate
    quarantines; the sweep is that payment's only recovery path.
+4. **Missed mints on terminal rows** — when the webhook marked the payment
+   `finished` but the mint threw after the 200 was committed, the row is
+   terminal and invisible to the stuck-payment query. A second sweep arm
+   selects `finished` payments with no `credit_lots` row and mints
+   idempotently (no API poll — the status is already known).
+5. **Sietch (monolith) stale `finished` events** — the live
+   `/api/crypto/webhook` path has no sweep, so a stale signature-valid
+   `finished` event is PROCESSED rather than quarantined (delayed terminal
+   delivery must not strand a payment); replay safety is preserved by the
+   LVVER idempotency layers (Redis `(payment_id, status)` dedupe + DB
+   status-transition validation). Non-terminal stale events remain
+   quarantined with a durable `crypto_webhook_quarantined_stale` record.
+6. **Concurrent status deliveries** — because the dedupe key includes
+   `payment_status`, two different-status deliveries can race past the
+   advisory read-then-check. The Postgres route's UPDATE enforces
+   monotonicity atomically (terminal rows never change; ordinals must
+   strictly increase), so a slower `confirmed` can never overwrite a faster
+   `finished` (`200 skipped/concurrent_transition`).
 
 ## Alerting hooks
 

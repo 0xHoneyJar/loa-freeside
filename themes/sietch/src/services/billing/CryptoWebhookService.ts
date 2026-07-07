@@ -209,7 +209,25 @@ class CryptoWebhookService {
       // STEP 1.5 - TIMESTAMP CHECK: Reject stale events (replay prevention)
       // ========================================================================
       const eventAge = Date.now() - event.timestamp.getTime();
-      if (eventAge > MAX_EVENT_AGE_MS) {
+      if (eventAge > MAX_EVENT_AGE_MS && paymentStatus === 'finished') {
+        // Stale but signature-valid FINISHED event: process it. Sietch has
+        // no reconciliation sweep, so quarantining the terminal-success
+        // event would strand the customer's payment until manual ops.
+        // Replay safety does not depend on the freshness gate here — the
+        // layers below still apply: Redis (payment_id, status) dedupe, DB
+        // status-transition validation (finished is terminal; a replay of
+        // an already-finished payment is rejected), and idempotent
+        // subscription/credit handling.
+        logger.warn(
+          {
+            paymentId,
+            eventTimestamp: event.timestamp.toISOString(),
+            ageMs: eventAge,
+            maxAgeMs: MAX_EVENT_AGE_MS,
+          },
+          'Processing stale finished crypto webhook (delayed delivery) — idempotency layers protect against replay'
+        );
+      } else if (eventAge > MAX_EVENT_AGE_MS) {
         logger.warn(
           {
             paymentId,

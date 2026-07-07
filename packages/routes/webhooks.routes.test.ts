@@ -59,7 +59,7 @@ function signedBody(payload: Record<string, unknown>): { raw: string; sig: strin
  * In-memory fake pg pool: enforces the webhook_events UNIQUE(provider,
  * event_id) constraint and tracks crypto_payments status transitions.
  */
-function makeFakePool(opts: { status?: string; failInsertTimes?: number } = {}) {
+function makeFakePool(opts: { status?: string; failInsertTimes?: number; selectStatus?: () => string } = {}) {
   const webhookEvents = new Set<string>();
   const state = { status: opts.status ?? 'waiting', failInsertTimes: opts.failInsertTimes ?? 0 };
 
@@ -75,11 +75,25 @@ function makeFakePool(opts: { status?: string; failInsertTimes?: number } = {}) 
       return { rows: [{ id: `evt-${webhookEvents.size}` }] };
     }
     if (/SELECT status FROM crypto_payments/.test(sql)) {
-      return { rows: [{ status: state.status }] };
+      return { rows: [{ status: opts.selectStatus ? opts.selectStatus() : state.status }] };
     }
     if (/UPDATE crypto_payments/.test(sql)) {
-      state.status = params?.[1] as string;
-      return { rows: [] };
+      // Emulate the atomic monotonicity guard in the route's UPDATE:
+      // terminal rows never change; non-terminal-failure transitions must
+      // strictly increase the status ordinal.
+      const ORD: Record<string, number> = {
+        waiting: 0, confirming: 1, partially_paid: 1, confirmed: 2, sending: 3,
+      };
+      const incoming = params?.[1] as string;
+      const isTerminalFailure = params?.[4] as boolean;
+      const incomingOrdinal = params?.[5] as number;
+      const terminal = ['finished', 'failed', 'refunded', 'expired'];
+      if (terminal.includes(state.status)) return { rows: [], rowCount: 0 };
+      if (!(isTerminalFailure || (ORD[state.status] ?? -1) < incomingOrdinal)) {
+        return { rows: [], rowCount: 0 };
+      }
+      state.status = incoming;
+      return { rows: [], rowCount: 1 };
     }
     if (/INSERT INTO billing_audit_log/.test(sql)) {
       return { rows: [] };
@@ -484,6 +498,38 @@ describe('POST /webhooks/nowpayments — webhook_events INSERT failure (#326)', 
 // ---------------------------------------------------------------------------
 // Per-IP rate limiting (CodeQL: unauthenticated route performs DB access)
 // ---------------------------------------------------------------------------
+
+describe('POST /webhooks/nowpayments — concurrent status transitions', () => {
+  it('a slower lower-status delivery cannot overwrite a faster finished (atomic UPDATE guard)', async () => {
+    // Simulate the race: both deliveries' advisory SELECT sees the stale
+    // pre-update 'waiting' row, so neither is rejected by the read-then-
+    // check. The atomic UPDATE guard must still prevent the regression.
+    const { pool, state } = makeFakePool({ status: 'waiting', selectStatus: () => 'waiting' });
+    const { app } = makeApp({ pool });
+
+    const finished = signedBody({
+      payment_id: 777, payment_status: 'finished', order_id: 'order-race',
+      price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+    });
+    const confirmed = signedBody({
+      payment_id: 777, payment_status: 'confirmed', order_id: 'order-race',
+      price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+    });
+
+    const res1 = await post(app, finished.raw, finished.sig);
+    expect(res1.status).toBe(200);
+    expect(res1.body.status).toBe('processed');
+    expect(state.status).toBe('finished');
+
+    const res2 = await post(app, confirmed.raw, confirmed.sig);
+    expect(res2.status).toBe(200);
+    expect(res2.body).toEqual({ status: 'skipped', reason: 'concurrent_transition' });
+    // The finished row was NOT regressed to confirmed
+    expect(state.status).toBe('finished');
+    // Credits minted exactly once (by the finished delivery)
+    expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('POST /webhooks/nowpayments — per-IP rate limiting', () => {
   it('returns 429 once the per-IP window budget is exhausted, before any processing', async () => {
