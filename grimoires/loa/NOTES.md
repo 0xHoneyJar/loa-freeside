@@ -542,3 +542,20 @@ IMMUNE_LINT_PROBE_CMD='echo "T6 deliberate signal break"; exit 1' bash tools/imm
 
 No files were mutated — the test seam is an env override, no revert required.
 
+## /ride reality+ground-truth refresh (2026-07-06)
+
+Scope: **Reality + Ground Truth refresh** (PRD/SDD preserved). Integrity gate (Phase 0.2) failed on
+benign stale checksums (2026-01-17 vs framework 1.180.0) — user-authorized override, logged to trajectory.
+Ran 6 parallel read-only extractors; synthesized against code (CODE IS TRUTH).
+
+Retired the 2026-05-18 CORPSE. Refreshed: `reality/{index,structure,architecture-overview,api-surface,`
+`data-models,entry-points,hygiene-report}.md`, `drift-report.md`, `ground-truth/{index,architecture,`
+`api-surface,contracts,behaviors}.md` + `ground-truth/checksums.json` (13 files) + `.reality-meta.json`.
+
+Key drift findings:
+- **C1 (Conflict)**: namespace migrated `@arrakis/*` → `@freeside/*` (0 `@arrakis` refs; 18 `@freeside/*` + 3 `@0xhoneyjar/*`). **AGENTS.md still stale** — Chain Provider examples reference `@arrakis/adapters/chain`.
+- **C2**: monolith → hexagonal federation (11 registry cells, 8 external `*-api`).
+- **Shadows**: freeside-cli, mcp-gateway, operator-dash, BeaconV3, `@0xhoneyjar/events`, shadow-mode/shadow-audit/ordering services — all undocumented in the corpse.
+- **Ghosts/gaps**: beacon subdomains 404 cluster-wide; no CI canary for cluster secret-parity; mint/ledger/mediums not fully deployed.
+
+Follow-ups (see `drift-report.md`, not auto-applied): refresh AGENTS.md namespace; secret-parity CI canary; workspace dep dedupe (viem/zod/jose); `@ts-nocheck` (27) burn-down.

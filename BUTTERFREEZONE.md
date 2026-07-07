@@ -14,12 +14,12 @@ capability_requirements:
   - git: read_write
   - shell: execute
   - github_api: read_write (scope: external)
-version: v7.51.5
+version: v7.60.0
 installation_mode: unknown
 trust_level: L3-hardened
 -->
 
-# cycle-consumption-truth
+# ride-main-wt
 
 <!-- provenance: CODE-FACTUAL -->
 Multi-model agent economy infrastructure platform.
@@ -28,24 +28,27 @@ The framework provides 40 specialized skills, built with TypeScript/JavaScript, 
 
 ## Key Capabilities
 <!-- provenance: CODE-FACTUAL -->
-
-### Straylight governance — quarantined by tools/governance-doctor.sh
-### API Surface
-#### REST API (themes/sietch/src/api/) — 80+ routes
-- File — Domain
-- `routes.ts` — Top-level mounting
-- `admin.routes.ts` — Admin / governance operations
-- `badge.routes.ts` — Badge CRUD + evaluation
-- `billing.routes.ts` — Fiat billing
-- `crypto-billing.routes.ts` — NowPayments + on-chain billing
-- `telegram.routes.ts` — Telegram-specific endpoints
-- `server.ts` — HTTP bootstrap
-- `middleware.ts` — Auth, CORS, rate limit, request-id
-- `errors.ts` — Error→HTTP mapping
-##### Selected Routes
-### Discovery
-### Authn
-### Agent gateway (proxy to packages/adapters/agent)
+The project exposes 4 key entry points across its public API surface.
+### API & Command Surface — loa-freeside (current, in-repo)
+#### REST (themes/sietch — Express 5)
+- **48 route modules → 300+ endpoints** (`themes/sietch/src/api/routes/index.ts`). Server init `themes/sietch/src/api/server.ts:119-761`.
+- Mount points: `publicRouter`, `adminRouter`, `memberRouter`, `billingRouter`, `badgeRouter`, `boostRouter`, `componentRouter`, `themeRouter`, `telegramRouter`, `verifyRouter`, `internalRouter`, `internalAgentRouter`, `agentTbaRouter`, `agentGovernanceRouter`, `velocityRouter`, `eventsRouter`, `governanceRouter`.
+- Representative modules:
+- **Auth middleware**: `requireAuth`, `requireRoles`, `requireApiKey`, `requireDashboardAuth`. Security: helmet CSP, `memberRateLimiter` / `webhookRateLimiter`, cookie parser, CORS.
+#### REST (in-repo services — Hono)
+- `packages/services/shadow-audit` → `bin/http.ts` (Access-Risk Audit API)
+- `packages/services/ordering` → `bin/http.ts` + `bin/worker.ts` + `bin/fulfillment-orchestrator.ts`
+- `packages/services/shadow-mode` → `src/index.ts` (member-graph ledger)
+- `packages/freeside-registry` → `/federation.json` manifest endpoint
+- `apps/mcp-gateway` → `bin/http.ts` (Hono; MCP federation v0.3)
+#### Discord (discord.js) — 23 commands
+#### Telegram (Grammy) — 12 commands
+#### CLIs — 2
+- **freeside-cli** (`packages/freeside-cli/bin/freeside-cli.ts`) — 6 verbs: `list`, `inspect <slug>`, `doctor [--remote|--acvp|--cells-dir]`, `order (place|status|ingredients)`, `kitchen (probe|advance)`, `fulfill (watch)`. Exit codes 0 ok · 1 usage · 2 unreachable · 3 API error · 4 ambiguous · 5 timeout · 6 failed.
+- **gaib** (`packages/cli/bin/gaib.ts`, Commander) — groups: `auth` (login/logout/whoami), `sandbox` (list/create/destroy/connect/link/unlink), `user` (create/ls/grant/access/revoke), `server` (init/apply/diff/destroy/export/import/theme/workspace/backup/restore). Levenshtein typo detection.
+#### MCP
+#### Webhooks (6)
+- `/api/billing/webhook`, `/api/crypto/webhook` (raw-body middleware, `server.ts:249-262`) — NOWPayments/Paddle
 
 ## Architecture
 <!-- provenance: CODE-FACTUAL -->
@@ -188,29 +191,29 @@ Directory structure:
 <!-- provenance: CODE-FACTUAL -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `apps/` | 242 | Documentation | \u2014 |
+| `apps/` | 244 | Documentation | \u2014 |
 | `compositions/` | 3 | Compositions | \u2014 |
 | `config/` | 1 | Configuration files | \u2014 |
 | `decisions/` | 12 | Documentation | \u2014 |
 | `docs/` | 53 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
-| `evals/` | 137 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1030 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
+| `evals/` | 145 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
+| `grimoires/` | 1095 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) |
 | `lib/` | 1 | Source code | \u2014 |
-| `packages/` | 25455 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
+| `packages/` | 793 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
 | `scripts/` | 37 | Utility scripts | \u2014 |
 | `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
 | `spec/` | 10 | Test suites | \u2014 |
-| `tests/` | 737 | Test suites | \u2014 |
+| `tests/` | 738 | Test suites | \u2014 |
 | `themes/` | 1116 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
-| `tools/` | 58 | Test suites | \u2014 |
+| `tools/` | 76 | Test suites | \u2014 |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L3 — Property-Based**
-- 758 test files across 2 suites
-- CI/CD: GitHub Actions (36 workflows)
+- 768 test files across 2 suites
+- CI/CD: GitHub Actions (38 workflows)
 - Security: SECURITY.md present
 
 ## Agents
@@ -243,16 +246,16 @@ Available commands:
 - `npm run build:hounfour` — scripts/rebuild-hounfour-dist.sh
 - `npm run postinstall` — scripts/rebuild-hounfour-dist.sh
 <!-- ground-truth-meta
-head_sha: 7af874e496239f831ba0d2b2d549fc85c59b9571
-generated_at: 2026-07-03T04:14:25Z
+head_sha: 63a40bbcec56dcec40864eab571dd2387eac7354
+generated_at: 2026-07-07T00:07:27Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: 297035f834f57b204990f2e8156610c8b1fceb882d67ac458b3d6d6d3fcef0ff
-  capabilities: bcb60f6d7c8b95aa0202469861bdf6195dcf3a605601899ee0ef7d59f81ad5b2
+  agent_context: 0d76275843029b30901e6ca024c96e85b0ef103caad0da0fbdca3d55fda03713
+  capabilities: eb26703b4d83acb05251ed9147671df2bd7a09f4edddda23d22cf63c54b6913b
   architecture: 80ec77393aa96a34c52e58f24d4a4f00402a5354b9e3ba08f2054675d72f0072
   interfaces: aef7759afb21bb6110e38c64b1d6473ca8ac51b4884c8d3825854d217e96621f
-  module_map: 5679bbca91484e570ba30a4c23194b4a5e9ba41f503e07dc797c1327a477b2b5
-  verification: 235e427a5e4622616e25013e1c6a1d2e519e30631887bdecf49b26540eb92726
+  module_map: 3a7d0351ee9235637ade2b941e3eb9fec236c896af149a68ad7aaeca4212a47f
+  verification: b97b673ed56818fbc7d39752a35ec67f3c16efd6479877938d0451837fed6eef
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: b54c7d13ab5a794bc7020f58f7ec91c1147264d5ea11fe3799af423cdb89a85c
   quick_start: f0f00b450676e8357d71bf0d73d9040bda778c7dd172e9a463067ca34b35fe59
