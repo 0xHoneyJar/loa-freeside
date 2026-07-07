@@ -18,6 +18,21 @@ vi.mock('../../src/config.js', () => ({
       guildId: 'guild',
       channels: { census: 'channel-census' },
     },
+    // ChainService is constructed at module load via the services barrel and
+    // reads these keys in its constructor.
+    chain: {
+      rpcUrls: ['https://rpc.test.example.com'],
+      provider: 'rpc',
+      bgtAddress: '0x0000000000000000000000000000000000000001',
+      startBlock: 0,
+    },
+    // BoostService (also on the services barrel) reads these at construction.
+    boost: {
+      thresholds: { level1: 2, level2: 7, level3: 14 },
+      pricing: { pricePerMonthCents: 500 },
+      bundles: undefined,
+    },
+    paddle: undefined,
   },
 }));
 

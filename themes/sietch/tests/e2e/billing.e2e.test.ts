@@ -102,6 +102,14 @@ vi.mock('../../src/config.js', () => ({
       billing: true,
       gatekeeper: true,
     },
+    // BoostService is constructed at module load via WebhookService's import
+    // chain and reads these keys in its constructor.
+    boost: {
+      thresholds: { level1: 2, level2: 7, level3: 14 },
+      pricing: { pricePerMonthCents: 500 },
+      bundles: undefined,
+    },
+    paddle: undefined,
   },
   isBillingEnabled: () => true,
 }));
@@ -689,21 +697,22 @@ describe('Billing E2E Tests', () => {
 
   describe('Idempotency & Duplicate Handling', () => {
     it('should reject duplicate webhook events', async () => {
-      const event: Stripe.Event = {
+      // processEvent() takes the provider-agnostic normalized shape
+      // (ProviderWebhookEvent), not a raw Stripe.Event.
+      const event = {
         id: 'evt_duplicate_001',
-        type: 'checkout.session.completed',
+        type: 'subscription.created',
+        rawType: 'checkout.session.completed',
         data: {
-          object: {
-            id: 'cs_dup_001',
-            customer: 'cus_dup_001',
-            subscription: 'sub_dup_001',
-            metadata: {
-              community_id: 'community_dup_test',
-              tier: 'premium',
-            },
+          id: 'sub_dup_001',
+          customerId: 'cus_dup_001',
+          customData: {
+            community_id: 'community_dup_test',
+            tier: 'premium',
           },
         },
-      } as unknown as Stripe.Event;
+        timestamp: new Date(),
+      } as any;
 
       // First processing
       const result1 = await webhookService.processEvent(event);

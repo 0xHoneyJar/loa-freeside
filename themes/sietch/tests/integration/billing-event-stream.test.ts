@@ -56,8 +56,14 @@ afterEach(() => {
 // =============================================================================
 
 describe('Task 18.1: Event Type Vocabulary', () => {
-  it('BILLING_EVENT_TYPES contains all 22 event types', () => {
-    expect(BILLING_EVENT_TYPES).toHaveLength(22);
+  it('BILLING_EVENT_TYPES contains all 27 event types', () => {
+    // 22 original + 5 agent-economy events
+    expect(BILLING_EVENT_TYPES).toHaveLength(27);
+    expect(BILLING_EVENT_TYPES).toContain('AgentSettlementInstant');
+    expect(BILLING_EVENT_TYPES).toContain('AgentClawbackPartial');
+    expect(BILLING_EVENT_TYPES).toContain('AgentClawbackReceivableCreated');
+    expect(BILLING_EVENT_TYPES).toContain('AgentBudgetWarning');
+    expect(BILLING_EVENT_TYPES).toContain('AgentBudgetExhausted');
     expect(BILLING_EVENT_TYPES).toContain('AccountCreated');
     expect(BILLING_EVENT_TYPES).toContain('LotMinted');
     expect(BILLING_EVENT_TYPES).toContain('LotExpired');
