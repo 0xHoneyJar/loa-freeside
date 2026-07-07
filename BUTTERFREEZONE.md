@@ -19,7 +19,7 @@ installation_mode: unknown
 trust_level: L3-hardened
 -->
 
-# loa-freeside
+# ride-main-wt
 
 <!-- provenance: CODE-FACTUAL -->
 Multi-model agent economy infrastructure platform.
@@ -58,20 +58,20 @@ graph TD
     apps[apps]
     compositions[compositions]
     config[config]
-    cycles[cycles]
     decisions[decisions]
     docs[docs]
     drizzle[drizzle]
     evals[evals]
+    grimoires[grimoires]
     Root[Project Root]
     Root --> apps
     Root --> compositions
     Root --> config
-    Root --> cycles
     Root --> decisions
     Root --> docs
     Root --> drizzle
     Root --> evals
+    Root --> grimoires
 ```
 Directory structure:
 ```
@@ -84,19 +84,6 @@ Directory structure:
 ./compositions
 ./compositions/discovery
 ./config
-./cycles
-./cycles/cycle-234880467e
-./cycles/cycle-234904aa37
-./cycles/cycle-23509724af
-./cycles/cycle-2418979794
-./cycles/cycle-283774a088
-./cycles/cycle-2877944302
-./cycles/cycle-29219684ea
-./cycles/cycle-296348dc68
-./cycles/cycle-30138914f8
-./cycles/cycle-3058600cab
-./cycles/cycle-3074254dba
-./cycles/cycle-313561e162
 ./decisions
 ./docs
 ./docs/api
@@ -105,40 +92,53 @@ Directory structure:
 ./docs/integration
 ./docs/migration
 ./docs/planning
+./docs/proposals
+./docs/research
+./docs/runbook
+./docs/runbooks
+./drizzle
+./drizzle/migrations
+./evals
+./evals/baselines
+./evals/environment-design
+./evals/fixtures
+./evals/graders
+./evals/harness
+./evals/results
 ```
 
 ## Interfaces
 <!-- provenance: CODE-FACTUAL -->
 ### HTTP Routes
 
-- **GET** `/.well-known/beacon-schema/v2.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:242`)
-- **GET** `/.well-known/federation.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:211`)
-- **GET** `/` (`./.claude/worktrees/agent-a12058defed335d22/apps/freeside-operator-dash/src/app.ts:204`)
-- **GET** `/` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:287`)
-- **GET** `/api/events` (`./.claude/worktrees/agent-a12058defed335d22/apps/freeside-operator-dash/src/app.ts:263`)
-- **GET** `/api/state` (`./.claude/worktrees/agent-a12058defed335d22/apps/freeside-operator-dash/src/app.ts:214`)
-- **GET** `/healthz` (`./.claude/worktrees/agent-a12058defed335d22/apps/freeside-operator-dash/src/app.ts:210`)
-- **GET** `/healthz` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:206`)
-- **GET** `/internal/federation.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:221`)
-- **GET** `/quote` (`./.claude/worktrees/agent-a12058defed335d22/packages/routes/x402.routes.ts:92`)
-- **GET** `/schema/federation.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:236`)
-- **GET** `/schema/tenant.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:234`)
-- **GET** `/schema/tenants.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:235`)
-- **GET** `/status.json` (`./.claude/worktrees/agent-a12058defed335d22/apps/mcp-gateway/src/app.ts:244`)
-- **GET** `/v1/audit` (`./.claude/worktrees/agent-a12058defed335d22/packages/services/shadow-audit/src/http/audit-router.ts:182`)
+- **GET** `/.well-known/beacon-schema/v2.json` (`./apps/mcp-gateway/src/app.ts:243`)
+- **GET** `/.well-known/federation.json` (`./apps/mcp-gateway/src/app.ts:212`)
+- **GET** `/` (`./apps/freeside-operator-dash/src/app.ts:204`)
+- **GET** `/` (`./apps/mcp-gateway/src/app.ts:288`)
+- **GET** `/` (`./packages/services/ordering/src/frontend.ts:25`)
+- **GET** `/api/events` (`./apps/freeside-operator-dash/src/app.ts:263`)
+- **GET** `/api/state` (`./apps/freeside-operator-dash/src/app.ts:214`)
+- **GET** `/healthz` (`./apps/freeside-operator-dash/src/app.ts:210`)
+- **GET** `/healthz` (`./apps/mcp-gateway/src/app.ts:207`)
+- **GET** `/internal/federation.json` (`./apps/mcp-gateway/src/app.ts:222`)
+- **GET** `/quote` (`./packages/routes/x402.routes.ts:92`)
+- **GET** `/schema/federation.json` (`./apps/mcp-gateway/src/app.ts:237`)
+- **GET** `/schema/tenant.json` (`./apps/mcp-gateway/src/app.ts:235`)
+- **GET** `/schema/tenants.json` (`./apps/mcp-gateway/src/app.ts:236`)
+- **GET** `/status.json` (`./apps/mcp-gateway/src/app.ts:245`)
 
 ### CLI Commands
 
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/auth/index.ts:113:    .command('login')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/auth/index.ts:130:    .command('logout')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/auth/index.ts:145:    .command('whoami')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:78:    .command('new [name]')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:97:    .command('ls')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:116:    .command('rm <name>')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:134:    .command('env <name>')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:151:    .command('link <sandbox> <guildId>')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:168:    .command('unlink <sandbox> <guildId>')
-./.claude/worktrees/agent-a12058defed335d22/packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
+./packages/cli/src/commands/auth/index.ts:113:    .command('login')
+./packages/cli/src/commands/auth/index.ts:130:    .command('logout')
+./packages/cli/src/commands/auth/index.ts:145:    .command('whoami')
+./packages/cli/src/commands/sandbox/index.ts:78:    .command('new [name]')
+./packages/cli/src/commands/sandbox/index.ts:97:    .command('ls')
+./packages/cli/src/commands/sandbox/index.ts:116:    .command('rm <name>')
+./packages/cli/src/commands/sandbox/index.ts:134:    .command('env <name>')
+./packages/cli/src/commands/sandbox/index.ts:151:    .command('link <sandbox> <guildId>')
+./packages/cli/src/commands/sandbox/index.ts:168:    .command('unlink <sandbox> <guildId>')
+./packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 
 ### Skill Commands
 
@@ -191,32 +191,28 @@ Directory structure:
 <!-- provenance: CODE-FACTUAL -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `apps/` | 39816 | Documentation | \u2014 |
+| `apps/` | 244 | Documentation | \u2014 |
 | `compositions/` | 3 | Compositions | \u2014 |
 | `config/` | 1 | Configuration files | \u2014 |
-| `cycles/` | 191 | Cycles | \u2014 |
 | `decisions/` | 12 | Documentation | \u2014 |
 | `docs/` | 53 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
-| `evals/` | 197 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1807 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 272 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
+| `evals/` | 145 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
+| `grimoires/` | 1095 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 127 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
 | `lib/` | 1 | Source code | \u2014 |
-| `packages/` | 117937 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
+| `packages/` | 793 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
 | `scripts/` | 37 | Utility scripts | \u2014 |
 | `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
 | `spec/` | 10 | Test suites | \u2014 |
 | `tests/` | 738 | Test suites | \u2014 |
-| `themes/` | 46235 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
+| `themes/` | 1116 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
 | `tools/` | 76 | Test suites | \u2014 |
-| `wt-gv6-parity/` | 82021 | [![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md) | [wt-gv6-parity/README.md](wt-gv6-parity/README.md) |
-| `wt-gv6-ring1/` | 82084 | [![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md) | [wt-gv6-ring1/README.md](wt-gv6-ring1/README.md) |
-| `wt-theatre-refresh/` | 82093 | [![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md) | [wt-theatre-refresh/README.md](wt-theatre-refresh/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L3 — Property-Based**
-- 796 test files across 2 suites
+- 768 test files across 2 suites
 - CI/CD: GitHub Actions (38 workflows)
 - Security: SECURITY.md present
 
@@ -250,16 +246,16 @@ Available commands:
 - `npm run build:hounfour` — scripts/rebuild-hounfour-dist.sh
 - `npm run postinstall` — scripts/rebuild-hounfour-dist.sh
 <!-- ground-truth-meta
-head_sha: 9b0f4a129c1c04d97298015d1e07c69435c971bf
-generated_at: 2026-07-06T23:17:59Z
+head_sha: 63a40bbcec56dcec40864eab571dd2387eac7354
+generated_at: 2026-07-07T00:07:27Z
 generator: butterfreezone-gen v1.0.0
 sections:
   agent_context: 0d76275843029b30901e6ca024c96e85b0ef103caad0da0fbdca3d55fda03713
   capabilities: eb26703b4d83acb05251ed9147671df2bd7a09f4edddda23d22cf63c54b6913b
-  architecture: 8667b850911df53b980c2b9391af1da8d679d48e4703e536eea1028f5bae119c
-  interfaces: 6d7c70ffe9f40c2f353112d095da25c30739c71947ae77a458bdc5662be7547e
-  module_map: 353108feb12b39102240b8c5150ed02e7fb57fff8c64e8b5b9fa0629a71d00cb
-  verification: 83548854465b6aed187b0486ad998de59230d1d9793f14203e2ef59350417c74
+  architecture: 80ec77393aa96a34c52e58f24d4a4f00402a5354b9e3ba08f2054675d72f0072
+  interfaces: aef7759afb21bb6110e38c64b1d6473ca8ac51b4884c8d3825854d217e96621f
+  module_map: 3a7d0351ee9235637ade2b941e3eb9fec236c896af149a68ad7aaeca4212a47f
+  verification: b97b673ed56818fbc7d39752a35ec67f3c16efd6479877938d0451837fed6eef
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: b54c7d13ab5a794bc7020f58f7ec91c1147264d5ea11fe3799af423cdb89a85c
   quick_start: f0f00b450676e8357d71bf0d73d9040bda778c7dd172e9a463067ca34b35fe59
