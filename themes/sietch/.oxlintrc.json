@@ -1,0 +1,76 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@0xhoneyjar/loa-hounfour", "@0xhoneyjar/loa-hounfour/**"],
+            "message": "Import from the protocol barrel (packages/core/protocol) instead of directly from @0xhoneyjar/loa-hounfour. See SDD \u00a72.2 for allowlisted exceptions."
+          }
+        ]
+      }
+    ],
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-console": "warn",
+    "no-case-declarations": "warn",
+    "no-constant-condition": "warn",
+    "no-control-regex": "warn",
+    "no-useless-escape": "warn",
+    "no-useless-catch": "warn",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-require-imports": "warn",
+    "typescript/no-empty-object-type": "warn",
+    "typescript/no-unsafe-function-type": "warn",
+    "typescript/ban-ts-comment": "warn",
+    "typescript/no-floating-promises": "warn",
+    "typescript/no-base-to-string": "warn",
+    "typescript/no-redundant-type-constituents": "warn",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/restrict-template-expressions": "warn",
+    "typescript/unbound-method": "warn",
+    "typescript/await-thenable": "warn",
+    "typescript/no-unsafe-enum-comparison": "warn"
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/packages/core/protocol/index.ts",
+        "src/packages/core/protocol/arrakis-*.ts",
+        "src/packages/core/protocol/jwt-boundary.ts",
+        "src/packages/core/protocol/parse-boundary-micro-usd.ts",
+        "src/packages/adapters/agent/*.ts",
+        "src/api/routes/discovery.routes.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "**/*.d.ts",
+    "coverage",
+    "build",
+    "vitest.config.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/test-utils/**",
+    "src/ui/**",
+    "**/*.js",
+    "**/*.jsx",
+    "**/*.mjs",
+    "**/*.cjs"
+  ]
+}

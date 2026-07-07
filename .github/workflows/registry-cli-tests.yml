@@ -30,6 +30,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: |
+            packages/beacon-schema/package-lock.json
+            packages/freeside-registry/package-lock.json
+            packages/freeside-cli/package-lock.json
 
       # Standalone per-package installs (mirrors cluster-compliance — no workspace).
       # npm ci against committed lockfiles: the gate is lockfile-reproducible, so a

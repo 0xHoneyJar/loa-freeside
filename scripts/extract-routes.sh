@@ -37,50 +37,40 @@ if [[ ! -d "$ROUTES_DIR" ]]; then
   exit 1
 fi
 
-# Extract routes using grep patterns for Express router methods
+# Extract routes using a single awk pass (was ~8 subprocess spawns per line).
+# Semantics preserved byte-for-byte vs the prior grep/cut/tr pipeline: same line
+# filter (router|app.METHOD), first-match method (uppercased), first quoted path
+# (quotes stripped), case-insensitive auth heuristic, find|sort file order, FNR line.
 extract_routes() {
-  local routes="["
-  local first=true
+  local files=()
+  while IFS= read -r f; do files+=("$f"); done < <(find "$ROUTES_DIR" -name '*.ts' -not -name '*.test.ts' -not -name '*.spec.ts' -not -name '*.integration.ts' | LC_ALL=C sort)
 
-  while IFS= read -r file; do
-    local rel_path="$file"
+  if [[ ${#files[@]} -eq 0 ]]; then
+    printf '[\n]\n'
+    return 0
+  fi
 
-    # Match: router.METHOD('path', ...) or router.METHOD("path", ...)
-    while IFS= read -r line; do
-      local line_num method path auth
-      line_num=$(echo "$line" | cut -d: -f1)
-      local content=$(echo "$line" | cut -d: -f2-)
-
-      # Extract method
-      if echo "$content" | grep -qE 'router\.(get|post|put|delete|patch|all)\('; then
-        method=$(echo "$content" | grep -oE '\.(get|post|put|delete|patch|all)\(' | head -1 | tr -d '.(' | tr '[:lower:]' '[:upper:]')
-      elif echo "$content" | grep -qE 'app\.(get|post|put|delete|patch|all)\('; then
-        method=$(echo "$content" | grep -oE '\.(get|post|put|delete|patch|all)\(' | head -1 | tr -d '.(' | tr '[:lower:]' '[:upper:]')
-      else
-        continue
-      fi
-
-      # Extract path (single or double quoted)
-      path=$(echo "$content" | grep -oE "['\"][^'\"]+['\"]" | head -1 | tr -d "'" | tr -d '"')
-
-      if [[ -z "$path" ]]; then
-        continue
-      fi
-
-      # Determine auth requirement (heuristic: presence of auth middleware)
-      auth="false"
-      if echo "$content" | grep -qiE 'auth|jwt|token|apiKey|requireAuth|verifyToken'; then
-        auth="true"
-      fi
-
-      [[ "$first" == "true" ]] && first=false || routes+=","
-      routes+=$(printf '\n  {"method":"%s","path":"%s","auth":%s,"source_file":"%s","line":%s}' \
-        "$method" "$path" "$auth" "$rel_path" "$line_num")
-    done < <(grep -nE 'router\.(get|post|put|delete|patch|all)\(|app\.(get|post|put|delete|patch|all)\(' "$file" 2>/dev/null || true)
-  done < <(find "$ROUTES_DIR" -name '*.ts' -not -name '*.test.ts' -not -name '*.spec.ts' -not -name '*.integration.ts' | LC_ALL=C sort)
-
-  routes+=$'\n]'
-  echo "$routes"
+  awk '
+    BEGIN { printf "["; first = 1 }
+    # Same outer filter as the old grep -nE alternation
+    $0 !~ /router\.(get|post|put|delete|patch|all)\(/ && \
+      $0 !~ /app\.(get|post|put|delete|patch|all)\(/ { next }
+    {
+      # method: first .METHOD( match, drop "." and "(", uppercase (== grep -oE|head -1|tr)
+      if (!match($0, /\.(get|post|put|delete|patch|all)\(/)) next
+      m = substr($0, RSTART, RLENGTH); gsub(/[.(]/, "", m); method = toupper(m)
+      # path: first quoted string, strip all quote chars (== grep -oE|head -1|tr -d)
+      if (!match($0, /["'"'"'][^"'"'"']+["'"'"']/)) next
+      p = substr($0, RSTART, RLENGTH); gsub(/["'"'"']/, "", p)
+      if (p == "") next
+      # auth heuristic (== grep -qiE), case-insensitive
+      auth = (tolower($0) ~ /auth|jwt|token|apikey|requireauth|verifytoken/) ? "true" : "false"
+      if (first) first = 0; else printf ","
+      printf "\n  {\"method\":\"%s\",\"path\":\"%s\",\"auth\":%s,\"source_file\":\"%s\",\"line\":%s}", \
+        method, p, auth, FILENAME, FNR
+    }
+    END { printf "\n]\n" }
+  ' "${files[@]}"
 }
 
 routes_json=$(extract_routes)
