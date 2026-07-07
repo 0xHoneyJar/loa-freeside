@@ -324,10 +324,23 @@ describe('Billing E2E Tests', () => {
     await redisService.disconnect();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockDatabase.reset();
     mockRedisCache.clear();
     vi.clearAllMocks();
+
+    // Clear this suite's OWN dedup/lock keys: stale `webhook:event:*` keys
+    // from a prior run flip first-attempt processing to 'duplicate' (these
+    // suites previously relied on another suite's flushall() as accidental
+    // cleanup). Scoped to this file's event IDs so a parallel suite's
+    // in-flight keys are never touched.
+    const client = (redisService as any).client;
+    if (client) {
+      const suiteEventIds = ['evt_boost_001', 'evt_cancel_001', 'evt_checkout_e2e_001', 'evt_concurrent_001', 'evt_duplicate_001', 'evt_failure_001', 'evt_success_001', 'evt_upgrade_001'];
+      await client.del(
+        ...suiteEventIds.flatMap((id: string) => [`webhook:event:${id}`, `webhook:lock:${id}`])
+      );
+    }
   });
 
   // ===========================================================================

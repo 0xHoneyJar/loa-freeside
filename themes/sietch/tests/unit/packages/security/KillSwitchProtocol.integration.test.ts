@@ -24,7 +24,9 @@ describe('KillSwitchProtocol', () => {
   let killSwitch: KillSwitchProtocol;
 
   beforeEach(() => {
-    redis = new Redis();
+    // Dedicated test DB: flushall() here would wipe every other suite's
+    // redis state mid-run (synthesis suites use db 14/15).
+    redis = new Redis({ db: 13 });
     sessionStore = new WizardSessionStore({ redis, debug: false });
     killSwitch = new KillSwitchProtocol({
       redis,
@@ -34,7 +36,7 @@ describe('KillSwitchProtocol', () => {
   });
 
   afterEach(async () => {
-    await redis.flushall();
+    await redis.flushdb();
     redis.disconnect();
   });
 

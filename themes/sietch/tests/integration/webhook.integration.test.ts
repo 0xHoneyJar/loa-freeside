@@ -179,9 +179,22 @@ describe('Webhook Integration Tests', () => {
     await redisService.disconnect();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockDatabase.reset();
     vi.clearAllMocks();
+
+    // Clear this suite's OWN dedup/lock keys: stale `webhook:event:*` keys
+    // from a prior run flip first-attempt processing to 'duplicate' (these
+    // suites previously relied on another suite's flushall() as accidental
+    // cleanup). Scoped to this file's event IDs so a parallel suite's
+    // in-flight keys are never touched.
+    const client = (redisService as any).client;
+    if (client) {
+      const suiteEventIds = ['evt_cancel_123', 'evt_checkout_123', 'evt_checkout_456', 'evt_concurrent_123', 'evt_db_error_123', 'evt_payment_fail_123', 'evt_payment_ok_123', 'evt_stale_123'];
+      await client.del(
+        ...suiteEventIds.flatMap((id: string) => [`webhook:event:${id}`, `webhook:lock:${id}`])
+      );
+    }
   });
 
   // ===========================================================================

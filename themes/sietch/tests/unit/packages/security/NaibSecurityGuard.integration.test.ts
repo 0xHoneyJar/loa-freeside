@@ -24,7 +24,9 @@ describe('NaibSecurityGuard', () => {
   let totpSecret: string;
 
   beforeEach(async () => {
-    redis = new Redis();
+    // Dedicated test DB: flushall() here would wipe every other suite's
+    // redis state mid-run (synthesis suites use db 14/15).
+    redis = new Redis({ db: 12 });
     mfaService = new MFAService({
       redis,
       maxAttempts: 5,
@@ -47,7 +49,7 @@ describe('NaibSecurityGuard', () => {
   });
 
   afterEach(async () => {
-    await redis.flushall();
+    await redis.flushdb();
     redis.disconnect();
   });
 

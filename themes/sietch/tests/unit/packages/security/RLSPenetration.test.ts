@@ -453,11 +453,17 @@ describe('RLS Penetration Test Suite', () => {
         times2.push(performance.now() - start2);
       }
 
-      const avg1 = times1.reduce((a, b) => a + b, 0) / times1.length;
-      const avg2 = times2.reduce((a, b) => a + b, 0) / times2.length;
+      // Medians, not means: under parallel test load a single scheduler
+      // stall inflates one mean and flakes the comparison.
+      const median = (xs: number[]) => {
+        const sorted = [...xs].sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)];
+      };
+      const med1 = median(times1);
+      const med2 = median(times2);
 
       // Timings should be similar (within 50%)
-      expect(Math.abs(avg1 - avg2)).toBeLessThan(Math.max(avg1, avg2) * 0.5);
+      expect(Math.abs(med1 - med2)).toBeLessThan(Math.max(med1, med2) * 0.5);
     });
 
     it('TC-RLS-039: Should use constant-time comparison', async () => {

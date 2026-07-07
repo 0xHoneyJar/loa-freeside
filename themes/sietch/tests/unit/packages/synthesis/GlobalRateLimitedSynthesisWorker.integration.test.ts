@@ -145,6 +145,26 @@ describe('GlobalRateLimitedSynthesisWorker', () => {
   // Job Processing with Rate Limiting
   // ==========================================================================
 
+  /** Poll until every job reaches `state` (fixed sleeps flake under full-suite load). */
+  async function waitForJobStates(
+    jobIds: string[],
+    state: string,
+    timeoutMs = 15000
+  ): Promise<string[]> {
+    const deadline = Date.now() + timeoutMs;
+    let states: string[] = [];
+    for (;;) {
+      states = await Promise.all(
+        jobIds.map(async (id) => {
+          const job = await queue.getJob(id);
+          return (await job?.getState()) ?? 'missing';
+        })
+      );
+      if (states.every((s) => s === state) || Date.now() > deadline) return states;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
   describe('Job Processing', () => {
     beforeEach(async () => {
       // refillRate 0: the continuous refill loop would top the bucket back
@@ -165,11 +185,7 @@ describe('GlobalRateLimitedSynthesisWorker', () => {
       });
 
       // Wait for job to be processed
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Check job completed
-      const job = await queue.getJob(jobId);
-      const state = await job?.getState();
+      const [state] = await waitForJobStates([jobId], 'completed');
       expect(state).toBe('completed');
 
       // Token should have been consumed
@@ -191,15 +207,7 @@ describe('GlobalRateLimitedSynthesisWorker', () => {
       );
 
       // Wait for jobs to be processed
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // All jobs should complete
-      const states = await Promise.all(
-        jobIds.map(async (id) => {
-          const job = await queue.getJob(id);
-          return job?.getState();
-        })
-      );
+      const states = await waitForJobStates(jobIds, 'completed');
 
       expect(states.filter((s) => s === 'completed').length).toBe(5);
 
