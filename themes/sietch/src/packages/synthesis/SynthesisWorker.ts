@@ -104,6 +104,13 @@ export interface SynthesisWorkerConfig {
     duration: number;
   };
   discordClient: Client;
+  /**
+   * When false, the underlying BullMQ worker is created but does NOT start
+   * consuming the queue. Used by GlobalRateLimitedSynthesisWorker, which
+   * reuses processJob() but must be the ONLY consumer so every job passes
+   * through global token acquisition.
+   */
+  autorun?: boolean;
 }
 
 /**
@@ -133,6 +140,7 @@ export class SynthesisWorker {
         max: 10,
         duration: 1000,
       },
+      autorun: config.autorun ?? true,
     };
 
     this.worker = new Worker(

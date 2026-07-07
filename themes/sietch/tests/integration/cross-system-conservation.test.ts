@@ -561,27 +561,37 @@ describe('Cross-System E2E — Negative Scenarios (Task 4.5)', () => {
   // BigInt precision guard: JWT with actual_cost_micro > 2^53
   // ---------------------------------------------------------------------------
 
-  it('BigInt precision: actual_cost_micro > 2^53 round-trips without precision loss', async () => {
-    const largeCost = ((2n ** 53n) + 1n).toString(); // "9007199254740993"
+  it('BigInt precision: boundary parse is exact up to MAX_SAFE_MICRO_USD, rejects above it', async () => {
+    // Boundary-hardened parsing (Sprint 4, Task 4.3) caps micro-USD at
+    // MAX_SAFE_MICRO_USD (1e15 = $1B). Values above the cap — including
+    // anything past 2^53 — are rejected at the claims boundary
+    // (CLAIMS_SCHEMA), so float precision loss is structurally impossible.
+    const overCap = ((2n ** 53n) + 1n).toString(); // "9007199254740993" > 1e15
 
     const claims = makeInboundClaims({
       reservation_id: reservationId,
-      actual_cost_micro: largeCost,
+      actual_cost_micro: overCap,
     });
     const token = await signInbound(claims, keypairs.loaFinn.privateKey);
 
-    // The JWT will fail OVERSPEND (exceeds 500,000 reserved), but claims
-    // are parsed before that check. We verify the parsing preserves precision.
     const err = await verifyUsageJWT(token, keypairs.loaFinn.publicKey, idempotency, reservations)
       .catch(e => e);
 
-    // Should fail at OVERSPEND (step 6), meaning claims parsed correctly through steps 1-5
     expect(err).toBeInstanceOf(JwtBoundaryError);
-    expect(err.code).toBe('OVERSPEND');
+    expect(err.code).toBe('CLAIMS_SCHEMA');
+    expect(err.message).toContain('actual_cost_micro');
 
-    // Verify the BigInt conversion preserves precision
-    const parsed = BigInt(largeCost);
-    expect(parsed).toBe(9007199254740993n);
-    expect(parsed > BigInt(Number.MAX_SAFE_INTEGER)).toBe(true);
+    // Within the cap, parsing is exact: a large-but-legal cost fails at
+    // OVERSPEND (step 6), proving the claims parsed precisely through 1-5.
+    const withinCap = '999999999999999'; // < 1e15, >> 500,000 reserved
+    const claims2 = makeInboundClaims({
+      reservation_id: reservationId,
+      actual_cost_micro: withinCap,
+    });
+    const token2 = await signInbound(claims2, keypairs.loaFinn.privateKey);
+    const err2 = await verifyUsageJWT(token2, keypairs.loaFinn.publicKey, idempotency, reservations)
+      .catch(e => e);
+    expect(err2).toBeInstanceOf(JwtBoundaryError);
+    expect(err2.code).toBe('OVERSPEND');
   });
 });

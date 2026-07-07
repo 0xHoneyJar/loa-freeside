@@ -217,7 +217,9 @@ export class GlobalDiscordTokenBucket {
     // Store configuration with defaults
     this.config = {
       maxTokens: config.maxTokens || 50,
-      refillRate: config.refillRate || 50,
+      // ?? not ||: an explicit refillRate of 0 (no automatic refill) is a
+      // valid configuration and must not be coerced to the default.
+      refillRate: config.refillRate ?? 50,
       bucketKey: config.bucketKey || 'discord:global:tokens',
       defaultTimeout: config.defaultTimeout || 30000,
       initialBackoff: config.initialBackoff || 100,
@@ -476,7 +478,15 @@ export class GlobalDiscordTokenBucket {
     this.stopRefillLoop();
 
     if (this.redis) {
-      await this.redis.quit();
+      try {
+        await this.redis.quit();
+      } catch (err) {
+        // quit() on an already-closed connection rejects with
+        // "Connection is closed." — close() is idempotent by contract.
+        if (!(err instanceof Error && err.message.includes('Connection is closed'))) {
+          throw err;
+        }
+      }
     }
 
     this.isInitialized = false;

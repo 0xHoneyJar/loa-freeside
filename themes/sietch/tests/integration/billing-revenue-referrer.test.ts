@@ -36,6 +36,10 @@ function setupDb(): Database.Database {
   testDb.exec(REVENUE_RULES_SCHEMA_SQL);
   testDb.exec(REFERRAL_SCHEMA_SQL);
   testDb.exec(REFERRER_EARNINGS_SQL);
+  // Migration 048 adds the settle_after column the earning INSERT writes
+  // (its full SQL also builds an index on 047's settled_at; the column is
+  // all this suite needs).
+  testDb.exec(`ALTER TABLE referrer_earnings ADD COLUMN settle_after TEXT`);
   // Add referrer_bps column to revenue_rules
   testDb.exec(`ALTER TABLE revenue_rules ADD COLUMN referrer_bps INTEGER NOT NULL DEFAULT 0`);
   testDb.pragma('foreign_keys = ON');

@@ -114,9 +114,11 @@ export class GlobalRateLimitedSynthesisWorker {
 
     this.globalBucket = new GlobalDiscordTokenBucket(bucketConfig);
 
-    // Initialize underlying SynthesisWorker (but don't start it)
-    // We wrap its processJob method with rate limiting
-    this.synthesisWorker = new SynthesisWorker(config);
+    // Initialize underlying SynthesisWorker WITHOUT starting its consumer
+    // (autorun: false). We only reuse its processJob() logic — if it ran, it
+    // would process jobs from the same queue while bypassing global token
+    // acquisition entirely (and ignoring pause()).
+    this.synthesisWorker = new SynthesisWorker({ ...config, autorun: false });
 
     // Create our own worker that wraps synthesis with rate limiting
     const connection = new Redis(config.redis.port, config.redis.host, {
