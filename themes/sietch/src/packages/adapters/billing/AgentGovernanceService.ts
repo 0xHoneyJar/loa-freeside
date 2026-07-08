@@ -402,7 +402,9 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       // sweeps (multiple app instances running the cron) can both read the
       // same quorum_reached row; the conditional UPDATE lets exactly one
       // sweep win, so one proposal can never produce duplicate config
-      // versions.
+      // versions. (The proposal-status CHECK constraint has no in-progress
+      // state, so the claim writes the terminal status directly; the
+      // orphan-recovery arm below closes the crash window that leaves.)
       const claim = this.db.prepare(`
         UPDATE agent_governance_proposals
         SET status = 'activated', updated_at = ?
@@ -411,40 +413,8 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       if (claim.changes === 0) continue; // another sweep claimed it
 
       try {
-        // Create AND ACTIVATE the system_config entry via constitutional
-        // governance — a draft would never apply (resolution reads only
-        // active configs). Quorum + cooldown were enforced in this layer,
-        // so activateFromAgentGovernance runs the supersede + activate +
-        // audit path in one transaction. Awaited OUTSIDE any sync
-        // transaction: an un-awaited async call inside db.transaction()
-        // turned every failure into an unhandled rejection while the
-        // proposal was still marked activated.
-        if (this.governance) {
-          await this.governance.activateFromAgentGovernance(
-            row.param_key,
-            JSON.parse(row.proposed_value),
-            {
-              proposerAccountId: row.proposer_account_id,
-              agentProposalId: row.id,
-              totalWeight: row.total_weight,
-              entityType: row.entity_type,
-            },
-          );
-        }
-
-        // Emit activation event
-        this.db.transaction(() => {
-          this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
-            proposalId: row.id,
-            paramKey: row.param_key,
-            proposedValue: row.proposed_value,
-            totalWeight: row.total_weight,
-            timestamp: now,
-          });
-        })();
-
+        await this.activateProposalConfig(row, now);
         activated++;
-
         logger.info({
           event: 'agent.governance.proposal_activated',
           proposalId: row.id,
@@ -466,7 +436,80 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       }
     }
 
+    // Crash recovery: a process killed between the claim commit and the
+    // config transaction leaves the proposal 'activated' with no config
+    // behind it — invisible to the quorum_reached query above forever.
+    // Detect those via the agentProposalId provenance metadata that
+    // activateFromAgentGovernance stamps on every config it creates, and
+    // re-run the (idempotent) activation.
+    if (this.governance) {
+      const orphans = this.db.prepare(`
+        SELECT p.* FROM agent_governance_proposals p
+        WHERE p.status = 'activated'
+          AND NOT EXISTS (
+            SELECT 1 FROM system_config c
+            WHERE c.metadata LIKE '%"agentProposalId":"' || p.id || '"%'
+          )
+      `).all() as ProposalRow[];
+
+      for (const row of orphans) {
+        try {
+          await this.activateProposalConfig(row, now);
+          activated++;
+          logger.warn({
+            event: 'agent.governance.proposal_activation_recovered',
+            proposalId: row.id,
+            paramKey: row.param_key,
+          }, 'Recovered agent proposal that was claimed but never produced a config');
+        } catch (err: any) {
+          // Proposal stays 'activated' and config stays missing, so the
+          // orphan query re-selects it on the next sweep.
+          logger.error({
+            event: 'agent.governance.activation_recovery_error',
+            proposalId: row.id,
+            err: err.message,
+          }, 'Failed to recover orphaned agent proposal activation');
+        }
+      }
+    }
+
     return activated;
+  }
+
+  /**
+   * Create-and-activate the constitutional config for a claimed proposal,
+   * then emit the activation event. Awaited OUTSIDE any sync transaction:
+   * an un-awaited async call inside db.transaction() turns failures into
+   * unhandled rejections. The event is emitted after the config commits,
+   * so an orphan-recovered proposal (config missing) has never emitted it.
+   */
+  private async activateProposalConfig(row: ProposalRow, now: string): Promise<void> {
+    // A draft would never apply (resolution reads only active configs);
+    // quorum + cooldown were enforced in this layer, so
+    // activateFromAgentGovernance runs the supersede + activate + audit
+    // path in one transaction.
+    if (this.governance) {
+      await this.governance.activateFromAgentGovernance(
+        row.param_key,
+        JSON.parse(row.proposed_value),
+        {
+          proposerAccountId: row.proposer_account_id,
+          agentProposalId: row.id,
+          totalWeight: row.total_weight,
+          entityType: row.entity_type,
+        },
+      );
+    }
+
+    this.db.transaction(() => {
+      this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
+        proposalId: row.id,
+        paramKey: row.param_key,
+        proposedValue: row.proposed_value,
+        totalWeight: row.total_weight,
+        timestamp: now,
+      });
+    })();
   }
 
   // ---------------------------------------------------------------------------

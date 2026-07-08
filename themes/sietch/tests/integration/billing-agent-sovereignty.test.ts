@@ -462,4 +462,36 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     const updated = await governanceService.getProposal(proposal.id);
     expect(updated!.status).toBe('expired');
   });
+
+  it('orphaned activation recovered: claimed proposal with no config gets its config on the next sweep', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-orphan');
+    const proposalId = randomUUID();
+
+    // Simulate a crash between the claim commit and the config transaction:
+    // proposal already 'activated', but no system_config row carries its
+    // agentProposalId provenance.
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         cooldown_ends_at, expires_at, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', ?, 1, 2, 2,
+              'activated', '2020-01-01T00:00:00Z', '2099-01-01T00:00:00Z',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(proposalId, agentId);
+
+    const activated = await governanceService.activateExpiredCooldowns();
+    expect(activated).toBe(1);
+
+    const config = db.prepare(`
+      SELECT status, value_json, metadata FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { status: string; value_json: string; metadata: string | null } | undefined;
+    expect(config).toBeDefined();
+    expect(JSON.parse(config!.value_json)).toBe(900);
+    expect(JSON.parse(config!.metadata ?? '{}').agentProposalId).toBe(proposalId);
+
+    // Second sweep: config now exists, nothing left to recover.
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
+  });
 });
