@@ -209,23 +209,34 @@ class CryptoWebhookService {
       // STEP 1.5 - TIMESTAMP CHECK: Reject stale events (replay prevention)
       // ========================================================================
       const eventAge = Date.now() - event.timestamp.getTime();
-      if (eventAge > MAX_EVENT_AGE_MS && paymentStatus === 'finished') {
-        // Stale but signature-valid FINISHED event: process it. Sietch has
-        // no reconciliation sweep, so quarantining the terminal-success
-        // event would strand the customer's payment until manual ops.
-        // Replay safety does not depend on the freshness gate here — the
-        // layers below still apply: Redis (payment_id, status) dedupe, DB
-        // status-transition validation (finished is terminal; a replay of
-        // an already-finished payment is rejected), and idempotent
-        // subscription/credit handling.
+      // Terminal statuses (mirrors isValidStatusTransition's terminal set):
+      // delayed delivery of a TERMINAL truth must be processed, not
+      // quarantined — sietch has no reconciliation sweep, so quarantining
+      // would strand the payment in its previous pending status until
+      // manual ops ('finished' strands the customer's credits; 'failed'/
+      // 'refunded'/'expired' strand the row as apparently-pending forever).
+      const staleProcessableStatuses: CryptoPaymentStatus[] = [
+        'finished',
+        'failed',
+        'refunded',
+        'expired',
+      ];
+      if (eventAge > MAX_EVENT_AGE_MS && staleProcessableStatuses.includes(paymentStatus)) {
+        // Stale but signature-valid TERMINAL event: process it. Replay
+        // safety does not depend on the freshness gate here — the layers
+        // below still apply: Redis (payment_id, status) dedupe, DB
+        // status-transition validation (terminal states cannot transition
+        // further, so a replay against an already-terminal payment is
+        // rejected), and idempotent subscription/credit handling.
         logger.warn(
           {
             paymentId,
+            paymentStatus,
             eventTimestamp: event.timestamp.toISOString(),
             ageMs: eventAge,
             maxAgeMs: MAX_EVENT_AGE_MS,
           },
-          'Processing stale finished crypto webhook (delayed delivery) — idempotency layers protect against replay'
+          'Processing stale terminal crypto webhook (delayed delivery) — idempotency layers protect against replay'
         );
       } else if (eventAge > MAX_EVENT_AGE_MS) {
         logger.warn(

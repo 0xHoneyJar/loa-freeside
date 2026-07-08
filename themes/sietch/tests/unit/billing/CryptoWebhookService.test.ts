@@ -220,6 +220,28 @@ describe('CryptoWebhookService', () => {
         );
       });
 
+      it('should PROCESS stale non-finished TERMINAL events (failed/refunded/expired)', async () => {
+        // A delayed terminal truth must not strand the row in its previous
+        // pending status — there is no recovery sweep on this path. The
+        // idempotency layers (Redis dedupe, DB transition validation)
+        // still protect against replays.
+        for (const status of ['failed', 'refunded', 'expired'] as const) {
+          vi.clearAllMocks();
+          const staleTerminal = createTestEvent({
+            status,
+            timestamp: new Date(Date.now() - 15 * 60 * 1000),
+          });
+
+          const result = await cryptoWebhookService.processEvent(staleTerminal);
+
+          expect(result.status).toBe('processed');
+          expect(mockedBillingQueries.updateCryptoPaymentStatus).toHaveBeenCalledWith(
+            '12345',
+            expect.objectContaining({ status }),
+          );
+        }
+      });
+
       it('should quarantine stale events with a durable record', async () => {
         const staleEvent = createTestEvent({
           timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
