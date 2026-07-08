@@ -399,19 +399,24 @@ export class AgentGovernanceService implements IAgentGovernanceService {
 
     for (const row of proposals) {
       try {
-        // Create system_config entry via constitutional governance. Awaited
-        // OUTSIDE the sync transaction: propose() is async, so calling it
-        // un-awaited inside db.transaction() turned every failure into an
-        // unhandled rejection while the proposal was still marked activated.
-        // Propose-first ordering: if it fails, the proposal stays
-        // quorum_reached and is retried on the next sweep.
+        // Create AND ACTIVATE the system_config entry via constitutional
+        // governance — a draft would never apply (resolution reads only
+        // active configs). Quorum + cooldown were enforced in this layer,
+        // so activateFromAgentGovernance runs the supersede + activate +
+        // audit path in one transaction. Awaited OUTSIDE the sync status
+        // transaction: an un-awaited async call inside db.transaction()
+        // turned every failure into an unhandled rejection while the
+        // proposal was still marked activated. Activate-first ordering: if
+        // it fails, the proposal stays quorum_reached and is retried on
+        // the next sweep.
         if (this.governance) {
-          await this.governance.propose(
+          await this.governance.activateFromAgentGovernance(
             row.param_key,
             JSON.parse(row.proposed_value),
             {
-              proposerAdminId: `agent-governance:${row.proposer_account_id}`,
-              justification: `Agent governance proposal ${row.id} activated after cooldown`,
+              proposerAccountId: row.proposer_account_id,
+              agentProposalId: row.id,
+              totalWeight: row.total_weight,
             },
           );
         }

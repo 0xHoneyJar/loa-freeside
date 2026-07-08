@@ -274,6 +274,19 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     const finalProposal = await governanceService.getProposal(proposal.id);
     expect(finalProposal!.status).toBe('activated');
 
+    // The approved parameter must actually APPLY: activation creates an
+    // ACTIVE system_config row (a draft would never be read by resolution).
+    const activeConfig = db.prepare(`
+      SELECT status, value_json, proposed_by, metadata FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as
+      | { status: string; value_json: string; proposed_by: string; metadata: string | null }
+      | undefined;
+    expect(activeConfig).toBeDefined();
+    expect(activeConfig!.proposed_by).toBe(`agent-governance:${agentAId}`);
+    const configMeta = JSON.parse(activeConfig!.metadata ?? '{}');
+    expect(configMeta.agentProposalId).toBe(proposal.id);
+
     // =========================================================================
     // Phase 7: Full reconciliation — all 6 checks pass
     // =========================================================================

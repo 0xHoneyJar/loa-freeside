@@ -79,6 +79,20 @@ export interface IConstitutionalGovernanceService {
    */
   emergencyOverride(configId: string, approvers: string[], justification: string): Promise<SystemConfig>;
 
+  /**
+   * Activate a parameter change approved through AGENT governance.
+   * Quorum and cooldown are enforced by AgentGovernanceService before this
+   * is called; the config is created and activated in one transaction with
+   * the standard supersede + audit trail. Metadata records the agent
+   * proposal provenance. This is a sanctioned second governance track, not
+   * a bypass of the human draft→approve→cooldown lifecycle.
+   */
+  activateFromAgentGovernance(
+    paramKey: string,
+    value: unknown,
+    opts: { proposerAccountId: string; agentProposalId: string; totalWeight: number },
+  ): Promise<SystemConfig>;
+
   // =========================================================================
   // Query
   // =========================================================================

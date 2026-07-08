@@ -207,26 +207,7 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
     const entityType = opts.entityType ?? null;
 
     return this.db.transaction(() => {
-      // Allocate version from sequence counter under BEGIN IMMEDIATE
-      const seqRow = this.db.prepare(
-        `SELECT current_version FROM system_config_version_seq
-         WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
-      ).get(paramKey, entityType) as { current_version: number } | undefined;
-
-      let nextVersion: number;
-      if (seqRow) {
-        nextVersion = seqRow.current_version + 1;
-        this.db.prepare(
-          `UPDATE system_config_version_seq SET current_version = ?
-           WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
-        ).run(nextVersion, paramKey, entityType);
-      } else {
-        nextVersion = 1;
-        this.db.prepare(
-          `INSERT INTO system_config_version_seq (param_key, entity_type, current_version)
-           VALUES (?, ?, ?)`,
-        ).run(paramKey, entityType, nextVersion);
-      }
+      const nextVersion = this.allocateVersion(paramKey, entityType);
 
       const id = randomUUID();
       const valueJson = String(value);
@@ -239,6 +220,88 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
       `).run(id, paramKey, entityType, valueJson, nextVersion, opts.proposerAdminId, metadata);
 
       this.logAudit(id, 'proposed', opts.proposerAdminId, null, 'draft', nextVersion, metadata);
+
+      return this.getConfigRow(id);
+    })();
+  }
+
+  /** Allocate the next config version from the sequence counter. Must be called inside a transaction. */
+  private allocateVersion(paramKey: string, entityType: string | null): number {
+    const seqRow = this.db.prepare(
+      `SELECT current_version FROM system_config_version_seq
+       WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
+    ).get(paramKey, entityType) as { current_version: number } | undefined;
+
+    if (seqRow) {
+      const nextVersion = seqRow.current_version + 1;
+      this.db.prepare(
+        `UPDATE system_config_version_seq SET current_version = ?
+         WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
+      ).run(nextVersion, paramKey, entityType);
+      return nextVersion;
+    }
+    this.db.prepare(
+      `INSERT INTO system_config_version_seq (param_key, entity_type, current_version)
+       VALUES (?, ?, ?)`,
+    ).run(paramKey, entityType, 1);
+    return 1;
+  }
+
+  async activateFromAgentGovernance(
+    paramKey: string,
+    value: unknown,
+    opts: { proposerAccountId: string; agentProposalId: string; totalWeight: number },
+  ): Promise<SystemConfig> {
+    // Agent quorum + cooldown were already enforced by AgentGovernanceService;
+    // a draft here would never apply (resolution reads only active configs),
+    // so the config is created and activated in ONE transaction with the
+    // standard supersede + audit trail (same shape as emergencyOverride,
+    // with agent-quorum provenance instead of human approvers).
+    const validation = validateConfigValue(paramKey, value);
+    if (!validation.valid) {
+      throw new SchemaValidationError(paramKey, validation.error!);
+    }
+
+    return this.db.transaction(() => {
+      const nextVersion = this.allocateVersion(paramKey, null);
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      const actor = `agent-governance:${opts.proposerAccountId}`;
+      const metadata = JSON.stringify({
+        source: 'agent-governance',
+        agentProposalId: opts.agentProposalId,
+        totalWeight: opts.totalWeight,
+      });
+
+      // Supersede previous active config for same (param_key, global)
+      const prevActive = this.db.prepare(`
+        SELECT id FROM system_config
+        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = '__global__'
+          AND status = 'active'
+      `).get(paramKey) as { id: string } | undefined;
+
+      if (prevActive) {
+        this.db.prepare(`
+          UPDATE system_config SET status = 'superseded', superseded_at = ?, superseded_by = ?
+          WHERE id = ?
+        `).run(now, id, prevActive.id);
+        this.logAudit(prevActive.id, 'superseded', 'system', 'active', 'superseded', nextVersion, null);
+      }
+
+      this.db.prepare(`
+        INSERT INTO system_config
+          (id, param_key, entity_type, value_json, config_version, status, proposed_by, activated_at, metadata)
+        VALUES (?, ?, NULL, ?, ?, 'active', ?, ?, ?)
+      `).run(id, paramKey, String(value), nextVersion, actor, now, metadata);
+
+      this.logAudit(id, 'activated', actor, null, 'active', nextVersion, metadata);
+
+      logger.info({
+        configId: id,
+        paramKey,
+        agentProposalId: opts.agentProposalId,
+        event: 'constitutional.agent_governance.activated',
+      }, 'Config activated via agent governance');
 
       return this.getConfigRow(id);
     })();
