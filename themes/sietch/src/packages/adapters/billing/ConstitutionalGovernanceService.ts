@@ -250,7 +250,12 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
   async activateFromAgentGovernance(
     paramKey: string,
     value: unknown,
-    opts: { proposerAccountId: string; agentProposalId: string; totalWeight: number },
+    opts: {
+      proposerAccountId: string;
+      agentProposalId: string;
+      totalWeight: number;
+      entityType?: string | null;
+    },
   ): Promise<SystemConfig> {
     // Agent quorum + cooldown were already enforced by AgentGovernanceService;
     // a draft here would never apply (resolution reads only active configs),
@@ -262,8 +267,13 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
       throw new SchemaValidationError(paramKey, validation.error!);
     }
 
+    // Entity scope travels with the proposal: an entity-scoped proposal must
+    // supersede and create only its own (param_key, entity_type) row, never
+    // the global one.
+    const entityType = opts.entityType ?? null;
+
     return this.db.transaction(() => {
-      const nextVersion = this.allocateVersion(paramKey, null);
+      const nextVersion = this.allocateVersion(paramKey, entityType);
       const now = new Date().toISOString();
       const id = randomUUID();
       const actor = `agent-governance:${opts.proposerAccountId}`;
@@ -273,12 +283,12 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
         totalWeight: opts.totalWeight,
       });
 
-      // Supersede previous active config for same (param_key, global)
+      // Supersede previous active config for same (param_key, entity_type)
       const prevActive = this.db.prepare(`
         SELECT id FROM system_config
-        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = '__global__'
+        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')
           AND status = 'active'
-      `).get(paramKey) as { id: string } | undefined;
+      `).get(paramKey, entityType) as { id: string } | undefined;
 
       if (prevActive) {
         this.db.prepare(`
@@ -288,11 +298,14 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
         this.logAudit(prevActive.id, 'superseded', 'system', 'active', 'superseded', nextVersion, null);
       }
 
+      // value_json is always JSON (resolution does JSON.parse); String(value)
+      // would store bare `fixed_allocation` instead of `"fixed_allocation"`
+      // and make the activated config throw at resolution time.
       this.db.prepare(`
         INSERT INTO system_config
           (id, param_key, entity_type, value_json, config_version, status, proposed_by, activated_at, metadata)
-        VALUES (?, ?, NULL, ?, ?, 'active', ?, ?, ?)
-      `).run(id, paramKey, String(value), nextVersion, actor, now, metadata);
+        VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+      `).run(id, paramKey, entityType, JSON.stringify(value), nextVersion, actor, now, metadata);
 
       this.logAudit(id, 'activated', actor, null, 'active', nextVersion, metadata);
 

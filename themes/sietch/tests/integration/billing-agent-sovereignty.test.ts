@@ -284,8 +284,19 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
       | undefined;
     expect(activeConfig).toBeDefined();
     expect(activeConfig!.proposed_by).toBe(`agent-governance:${agentAId}`);
+    // value_json must be JSON (resolution does JSON.parse)
+    expect(JSON.parse(activeConfig!.value_json)).toBe(600);
     const configMeta = JSON.parse(activeConfig!.metadata ?? '{}');
     expect(configMeta.agentProposalId).toBe(proposal.id);
+
+    // Idempotency: a second sweep finds nothing to claim and creates no
+    // duplicate config versions.
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
+    const activeCount = db.prepare(`
+      SELECT COUNT(*) as n FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { n: number };
+    expect(activeCount.n).toBe(1);
 
     // =========================================================================
     // Phase 7: Full reconciliation — all 6 checks pass

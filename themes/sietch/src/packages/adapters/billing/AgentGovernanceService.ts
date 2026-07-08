@@ -398,17 +398,27 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     `).all(now) as ProposalRow[];
 
     for (const row of proposals) {
+      // CLAIM the proposal atomically before doing any work: overlapping
+      // sweeps (multiple app instances running the cron) can both read the
+      // same quorum_reached row; the conditional UPDATE lets exactly one
+      // sweep win, so one proposal can never produce duplicate config
+      // versions.
+      const claim = this.db.prepare(`
+        UPDATE agent_governance_proposals
+        SET status = 'activated', updated_at = ?
+        WHERE id = ? AND status = 'quorum_reached'
+      `).run(now, row.id);
+      if (claim.changes === 0) continue; // another sweep claimed it
+
       try {
         // Create AND ACTIVATE the system_config entry via constitutional
         // governance — a draft would never apply (resolution reads only
         // active configs). Quorum + cooldown were enforced in this layer,
         // so activateFromAgentGovernance runs the supersede + activate +
-        // audit path in one transaction. Awaited OUTSIDE the sync status
+        // audit path in one transaction. Awaited OUTSIDE any sync
         // transaction: an un-awaited async call inside db.transaction()
         // turned every failure into an unhandled rejection while the
-        // proposal was still marked activated. Activate-first ordering: if
-        // it fails, the proposal stays quorum_reached and is retried on
-        // the next sweep.
+        // proposal was still marked activated.
         if (this.governance) {
           await this.governance.activateFromAgentGovernance(
             row.param_key,
@@ -417,19 +427,13 @@ export class AgentGovernanceService implements IAgentGovernanceService {
               proposerAccountId: row.proposer_account_id,
               agentProposalId: row.id,
               totalWeight: row.total_weight,
+              entityType: row.entity_type,
             },
           );
         }
 
+        // Emit activation event
         this.db.transaction(() => {
-          // Update proposal status
-          this.db.prepare(`
-            UPDATE agent_governance_proposals
-            SET status = 'activated', updated_at = ?
-            WHERE id = ?
-          `).run(now, row.id);
-
-          // Emit activation event
           this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
             proposalId: row.id,
             paramKey: row.param_key,
@@ -447,11 +451,18 @@ export class AgentGovernanceService implements IAgentGovernanceService {
           paramKey: row.param_key,
         }, 'Agent governance proposal activated');
       } catch (err: any) {
+        // Release the claim so the next sweep retries; without this the
+        // proposal would be closed with no active config behind it.
+        this.db.prepare(`
+          UPDATE agent_governance_proposals
+          SET status = 'quorum_reached', updated_at = ?
+          WHERE id = ? AND status = 'activated'
+        `).run(now, row.id);
         logger.error({
           event: 'agent.governance.activation_error',
           proposalId: row.id,
           err: err.message,
-        }, 'Failed to activate proposal');
+        }, 'Failed to activate proposal — claim released for retry');
       }
     }
 

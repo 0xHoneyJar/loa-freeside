@@ -90,7 +90,13 @@ export interface IConstitutionalGovernanceService {
   activateFromAgentGovernance(
     paramKey: string,
     value: unknown,
-    opts: { proposerAccountId: string; agentProposalId: string; totalWeight: number },
+    opts: {
+      proposerAccountId: string;
+      agentProposalId: string;
+      totalWeight: number;
+      /** Entity scope carried over from the agent proposal (null = global). */
+      entityType?: string | null;
+    },
   ): Promise<SystemConfig>;
 
   // =========================================================================
