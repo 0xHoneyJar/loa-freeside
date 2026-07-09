@@ -1,5 +1,33 @@
 # Notes
 
+## Sprint Planning Session 2026-07-09 — waggle-s1 sprint plan
+
+Sprint plan generated at `grimoires/loa/sprint.md` (4 sprints, 28 tasks). Ledger: cycle-waggle-s1 registered, global sprints #411-414, next_sprint_number=415, active_cycle=cycle-waggle-s1. Beads: 4 epics + 28 tasks created (E1=arrakis-rv5eo, E2=arrakis-khh9j, E3=arrakis-6hqfl, E4=arrakis-rp1f1), domain+sprint labels per ADR-007, same-domain deps only (cross-domain ordering lives in sprint.md, not beads — rule 5).
+
+Key planning decisions:
+- Sprint slicing = SDD §9 phases 1:1 (already ADR-007-sliced); flatline §12 deltas assigned to the phase where their subject lands (§12.1/12.4→S3, §12.2/12.3/12.8→S2, §12.5/12.9-AST→S4, §12.7 smoke lane→S1 CI + S4 verification)
+- Sprint 3 = three domain-isolated monolith PRs (PR-A platform/services events endpoint, PR-B network/registry conformance_ref, PR-C platform/tools doctor) + dashboard lane
+- FR-7/G-4 pulse work placed in S4 per PRD acceptance rule (tested sink + queued digest; webhook NOT a dependency) — NOT deferred to S2 despite sdd.md:371 "stubbed" phrasing; PRD G-4 is binding
+- Task 2.1 (Bearer mint contract) is P0 GATING with loud-block + identity-api order as circuit breaker
+- Suite order honors cut-vertex rule: inventory first (S1), then activities/audit (S2), ordering (S3)
+
+Watch items for /implement: sprint:N bead labels collide across cycles (pre-existing arrakis-l8yk carries sprint:2) — filter by epic:<id> labels instead; beads health DEGRADED (br doctor issues) pre-existing.
+
+---
+
+
+## Architect Session 2026-07-09 — waggle-s1 SDD
+
+SDD generated at `grimoires/loa/sdd.md` from waggle-s1 PRD. Key state for sprint planning:
+
+- **9 decisions D-1..D-9**; sprint slicing pre-cut in SDD §9 (4 phases, ADR-007 domain-isolated: platform/services, network/registry, platform/tools as three separate monolith PRs + dashboard-repo PRs)
+- **Grounded corrections to carry**: (a) FR-3 AC4 names `metadata/:contract/:tokenId` but dashboard actually consumes `/holdings/:wallet`, `/nfts/:contract/owner/:address`, `/profile/:address` — suites pin actual consumption; (b) FR-4 "JetStream feed" satisfied via NEW `GET /v1/orders/events` HTTP log-read of `order_outbox` (seq cursor) — outbox IS the log JetStream drains from, no dual-write; JetStream-direct rejected (dashboard has zero NATS plumbing, part-serverless)
+- **Zero-deploy win**: shadow-audit is already deployable (bin/http.ts + Dockerfile + railway.toml, header names the dashboard's dormant client verbatim) — FR-2 is env + delete-MOCK_AUDIT + Railway service, no extraction
+- **Data risk R-7 sharpened**: activities-api event tables EMPTY per registry notes (write path not wired 2026-05-30) — FR-1 AC1 needs ≥1 real badge grant; Phase-2 precondition
+- **Blockers/open**: Discord webhook URL (S2), badge grants existence, top-20 worlds order pin, ordering events auth posture (internal-trust MVP)
+
+---
+
 ## Ride Session 2026-05-18 — Codebase Re-Ride
 
 The Loa rode through. Replaced 3-month-stale reality artifacts. Highlights:

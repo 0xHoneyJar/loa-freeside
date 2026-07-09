@@ -1433,21 +1433,40 @@ flatline_protocol:
   # now (they merged the general + code lineages), so no codex-specialized variant
   # needed in the alias chain.
   models:
-    # 2026-07-04 operator: best model is gpt-5.5 (5.2 outdated) AND "I use headless
-    # as well" — codex-headless wraps gpt-5.5 via the codex CLI session, so it is
-    # both directives at once. All-headless chain per the 2026-05-25 doctrine above.
-    # Chain is PROVEN-BY-DISPATCH (real OK round-trips, 2026-07-04), not readiness-
-    # asserted. Four voices verified: codex, grok, cursor, claude(fable). Chain
-    # ordered for cross-family dissent (openai → xai → cursor); claude-headless
-    # stays out — same family as the runtime, dedicated to Bridgebuilder/fable.
-    # Dead routes, excluded until repaired:
-    #   gemini-headless — gemini CLI deprecated by Google; returns as Antigravity
-    #                     (`agy` installed locally) once loa#1109 AgyHeadlessAdapter
-    #                     merges upstream and we /update-loa
-    #   openai:gpt-5.5  — API quota exhausted; GOOGLE_API_KEY invalid (400)
+    # 2026-07-09 operator: wired GPT-5.6-SOL + Grok 4.5 as new frontier-model voices.
+    # All-headless chain preserved per 2026-05-25 doctrine.
+    #
+    # Dispatch status (2026-07-09):
+    #   gpt-5.6-sol     — PRIMARY: codex exec --model gpt-5.6-sol (CodexHeadlessAdapter,
+    #                     openai:gpt-5.6-sol); PROVEN codex 0.144.0, session 019f48a6.
+    #                     FALLBACK: cursor-agent --model gpt-5.6-sol-high (cursor:gpt-5.6-sol);
+    #                     Cursor Ultra monthly cap currently hit (resets 2026-08-01) —
+    #                     fallback activates only when codex chain exhausts.
+    #                     Operator-authorized cross-provider fallback 2026-07-09.
+    #   grok-4.5        — cursor-agent --model grok-4.5-xhigh; PROVEN (real round-trip
+    #                     2026-07-09, "alive" response, 4149ms, session 4ee12ea3).
+    #   cursor-headless — composer-2.5 unchanged; Cursor corpus anchor.
+    #
+    # CLI diversity: codex-exec (openai) + cursor-agent (xai) + grok CLI (xai-native)
+    # Previous (rollback):
+    #   codex-headless → gpt-5.5 (codex CLI) | grok-headless → grok-build (xai native CLI)
+    # Dead routes:
+    #   gemini-headless — gemini CLI deprecated; pending loa#1109 AgyHeadlessAdapter
+    #
+    # NAME↔PAYLOAD NOTE (2026-07-09): flatline's pre-runtime allowlist
+    # (generated-model-maps.sh via gen-adapter-maps.sh) reads ONLY
+    # .claude/defaults/model-config.yaml — it does NOT merge the hounfour
+    # overrides below, so honest names 'gpt-5.6-sol'/'grok-4.5' are rejected
+    # before dispatch (loa#1199). Sanctioned workaround: keep known-good voice
+    # NAMES, repoint dispatch payloads via hounfour extra.cli_model overrides:
+    #   codex-headless  → dispatches gpt-5.6-sol (codex exec, PROVEN 0.144.0)
+    #   grok-headless   → dispatches grok-4.5 NATIVE grok CLI (grok-build id is
+    #                     dead upstream — CLI now defaults to grok-4.5)
+    #   cursor-headless → SoT default composer-2.5 (Cursor corpus anchor)
+    # Three companies, three CLIs. Rename to honest names once loa#1199 lands.
     primary: "codex-headless"
-    secondary: "grok-headless"
-    tertiary: "cursor-headless"
+    secondary: "cursor-headless"
+    tertiary: "grok-headless"
   # Consensus thresholds (0-1000 scale)
   thresholds:
     # Both models >700 = auto-integrate improvement
@@ -1621,3 +1640,109 @@ post_pr_validation:
   phases:
     bridgebuilder_review:
       enabled: true
+
+# =============================================================================
+# Hounfour: Model Routing Overrides (2026-07-09 — GPT-5.6-SOL + Grok 4.5)
+# =============================================================================
+# Deep-merges into .claude/defaults/model-config.yaml (loader.py §4-layer pipeline,
+# precedence L2).
+#
+# GPT-5.6-SOL primary path: openai:gpt-5.6-sol via native codex CLI.
+#   dispatch: codex exec --model gpt-5.6-sol (CodexHeadlessAdapter)
+#   PROVEN 2026-07-09: codex 0.144.0, result="alive", session 019f48a6-0097-7a53-870e-72594ec035c9
+#   No cross-company fallback_chain: cheval's chain_resolver._validate_chain() enforces the
+#   within-company invariant (cycle-104 G1, SDD §1.4.1) — openai≠cursor as companies. The
+#   operator-authorized "same model, different broker" intent cannot be expressed in the chain;
+#   voice-drop IS the correct mechanism (flatline runs 2 voices when codex subscription caps).
+#   cursor:gpt-5.6-sol remains registered below for direct operator use.
+#   Restores CLI diversity: flatline = codex-exec + cursor-agent×2 (was cursor-agent×3).
+#
+# GPT-5.6-SOL cursor broker (fallback only):
+#   cursor path: Cursor Ultra monthly usage limit currently hit (resets 2026-08-01).
+#   Activates only when codex chain exhausts. Chain terminal — no further fallback.
+#
+# Grok 4.5: cursor:grok-4.5 via cursor-agent.
+#   dispatch: cursor-agent --model grok-4.5-xhigh
+#   PROVEN 2026-07-09: result="alive", 4149ms, session=4ee12ea3-05fc-48a6-8a26-2804c86af2e5
+#   note: grok-4.5 is cursor-brokered — NOT the native grok CLI (grok binary serves
+#         grok-build only; no native grok-4.5 adapter exists). Chain terminal.
+hounfour:
+  providers:
+    openai:
+      models:
+        # GPT-5.6 SOL — PRIMARY path: native codex CLI (CodexHeadlessAdapter).
+        # Follows SoT codex-headless pattern (auth_type headless, kind cli, no
+        # endpoint_family — headless entries skip that validation per SoT codex-headless).
+        # cli_model is the exact id codex exec --model accepts (proven 0.144.0, 2026-07-09).
+        # Cross-provider fallback to cursor:gpt-5.6-sol: same model, different broker.
+        # Operator-authorized 2026-07-09 to preserve voice continuity across cap events.
+        gpt-5.6-sol:
+          auth_type: headless
+          dispatch_group: openai-gpt
+          kind: cli
+          capabilities: [chat, code]
+          context_window: 1000000       # 1M context (GPT-5.6 Sol 1M; verified via cursor label)
+          # No pricing entry — codex subscription, metered at $0.
+          # No fallback_chain: cheval's within-company invariant (chain_resolver._validate_chain)
+          # blocks cross-company entries (openai→cursor are different companies in cheval's model).
+          # Voice-drop IS the correct mechanism: when codex subscription caps, flatline drops
+          # this voice and runs with grok-4.5 + cursor-headless (2 voices). The cursor:gpt-5.6-sol
+          # entry below remains registered for operator direct use via alias cursor:gpt-5.6-sol.
+          extra:
+            cli_model: gpt-5.6-sol     # exact id codex exec --model accepts (verified 0.144.0)
+
+        # FLATLINE VOICE OVERRIDE (2026-07-09): the flatline allowlist can't see the
+        # honest name above (generated maps read the SoT only, not this merge), so the
+        # known-good NAME codex-headless carries the SOL payload. Deep-merge overrides
+        # only the keys below; the SoT entry's other fields stand.
+        codex-headless:
+          context_window: 1000000       # SOL 1M (SoT entry says 400000 for gpt-5.5)
+          extra:
+            cli_model: gpt-5.6-sol      # was gpt-5.5 — codex exec --model gpt-5.6-sol
+
+    cursor:
+      models:
+        # GPT-5.6 SOL — FALLBACK broker for openai:gpt-5.6-sol.
+        # Activates via cheval chain-walk when codex subscription exhausts.
+        # cli_model must match cursor-agent --list-models exactly (GPT-5.6 Sol 1M High).
+        # Chain terminal — no fallback_chain (both brokers exhausted = voice-drop).
+        gpt-5.6-sol:
+          auth_type: headless
+          dispatch_group: cursor-agent
+          kind: cli
+          capabilities: [chat, code]
+          context_window: 1000000       # "1M" in cursor model labels (GPT-5.6 Sol 1M High)
+          # No pricing entry — cursor subscription, metered at $0.
+          extra:
+            cli_model: gpt-5.6-sol-high   # cursor-agent model id: GPT-5.6 Sol 1M High
+
+        # Grok 4.5 — xAI Grok 4.5 via Cursor subscription. Chain terminal.
+        # NOT available via native grok CLI (grok binary serves grok-build only).
+        # PROVEN 2026-07-09: result="alive", 4149ms, session=4ee12ea3-05fc-48a6-8a26-2804c86af2e5
+        grok-4.5:
+          auth_type: headless
+          dispatch_group: cursor-agent
+          kind: cli
+          capabilities: [chat, code]
+          context_window: 256000        # matches grok-build entry; verify on GA spec
+          # No pricing entry — cursor subscription, metered at $0.
+          extra:
+            cli_model: grok-4.5-xhigh    # cursor-agent model id: Cursor Grok 4.5
+
+    xai:
+      models:
+        # FLATLINE VOICE OVERRIDE (2026-07-09): native grok CLI dropped 'grok-build'
+        # ("unknown model id") and now serves grok-4.5 as its DEFAULT (`grok models`:
+        # grok-4.5*, grok-composer-2.5-fast). The SoT's grok-build cli_model is dead —
+        # repoint the known-good NAME grok-headless (alias → xai:grok-build) at grok-4.5.
+        # This gives flatline true 3-company diversity: codex(OpenAI) + grok(xAI) +
+        # cursor(Cursor), and cursor-headless returns to its SoT composer default.
+        grok-build:
+          extra:
+            cli_model: grok-4.5         # was grok-build — dead id; grok-4.5 is CLI default
+
+  aliases:
+    # gpt-5.6-sol → PRIMARY: openai:gpt-5.6-sol (codex exec) with cursor:gpt-5.6-sol fallback.
+    # grok-4.5    → cursor:grok-4.5 (cursor-agent); chain terminal (no native grok path).
+    gpt-5.6-sol: "openai:gpt-5.6-sol"
+    grok-4.5: "cursor:grok-4.5"

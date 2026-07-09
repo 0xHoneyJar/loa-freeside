@@ -1,595 +1,435 @@
-# Software Design Document — Cadence Ledger: the Liveness Expectation Record
+# SDD — Waggle Loop S1: Consumer Conformance + Four Real Surfaces
 
-> Cycle: **cadence-ledger**. This SDD designs the loa-freeside slice only: the
-> declaration layer in `packages/freeside-registry`. ADR-012 Phase 0, extended
-> with the staleness dimension (`expectations[]`).
+**Cycle**: waggle-s1
+**Date**: 2026-07-09
+**PRD**: `grimoires/loa/prd.md` (waggle-s1, 2026-07-09)
+**Primary source brief**: `grimoires/loa/context/2026-07-09-consumer-conformance-loop.md` (operator-promoted)
+**Domains**: `network/registry` (conformance_ref) · `platform/services` (ordering events read) · `platform/tools` (doctor) · external repo `freeside-dashboard` (suites + wiring). Per ADR-007, no single PR crosses platform/network — §10 slices by repo/domain.
 
----
-status: draft
-created: 2026-07-04
-domain: network (packages/freeside-registry only; a CI workflow file is domain-unclassified and does not trip the ADR-007 firewall — verified against `tools/lib/domain-classify.sh:20-21`)
-prd: grimoires/loa/prd.md
-relates: decisions/012-unify-cluster-liveness.md (Proposed — this cycle IS its Phase 0, extended)
-source_brief: grimoires/loa/context/cadence-ledger-rehomed-brief.md
 ---
 
 ## 1. System Overview
 
-### 1.1 What this cycle builds
+The Waggle Loop wires four dashboard surfaces to real backends, with each wire-in **born executable** as a consumer-driven contract suite, and closes the loop through the existing immune rack. One genuinely new organ (the contract harness), one new read seam (ordering event log), one additive schema field (`conformance_ref`), one new doctor. Everything else is wiring of organs that already exist.
 
-One package changes: `packages/freeside-registry`. Two additive schema blocks on
-`ModuleEntry`, a populated `registry.yaml`, and validation with teeth. Nothing
-else in the cluster changes behavior this cycle — the design's entire job is to
-make the *declaration* correct, verifiable, and safe for every existing decoder.
+> From prd.md:13: "Every consumer-side failure in the estate renders as a **plausible zero**." The design answer is an acknowledgment protocol at every consumed seam: every read renders `data | error | stale`, never a fabricated zero.
 
-> From prd.md §2: "The lane spans three repos in strict order; **this cycle
-> delivers only the loa-freeside slice** — the declaration layer."
-
-### 1.2 System context
+### 1.1 Component architecture
 
 ```mermaid
 graph TD
-    subgraph "loa-freeside · network domain (THIS CYCLE)"
-        Y[registry.yaml<br/>+ service blocks<br/>+ expectations arrays]
-        S[src/registry.ts<br/>Effect Schema<br/>ModuleEntry + ServiceBlock + Expectation]
-        T[tests/<br/>fixture decode tests<br/>full-registry decode test]
-        Y -->|decoded by| S
-        S -->|gated by| T
+    subgraph dashboard["freeside-dashboard (consumer)"]
+        BG[Badge surface] --> AC[activities client NEW]
+        AU[Audit surface] --> SAC[shadow-audit client existing]
+        INV[Inventory surface] --> IC[inventory client existing]
+        INB[Hub inbox] --> OC[ordering events adapter NEW]
+        AC & SAC & IC & OC --> SR[SeamResult ack protocol NEW]
+        CT["tests/contracts/&lt;building&gt;/ NEW"] -->|asserts| AC & SAC & IC & OC
+        CT --> CL[conformance ledger JSONL NEW]
+        RL[reality-ledger.md NEW]
     end
 
-    subgraph "Consumers (ZERO source changes this cycle)"
-        CLI[packages/freeside-cli<br/>doctor · beacon auditor<br/>file: dep on registry]
-        PROBE[loa-cli/lib/probe.mjs<br/>reads service.* — un-orphaned by G-1<br/>probe_kind dispatch = NEXT cycle]
-        GW[apps/mcp-gateway probeTenant<br/>ADR-012 Phase 1 — later PR]
-        DASH[operator-dash probe.ts<br/>ADR-012 Phase 2 — later PR]
+    subgraph buildings["Producers"]
+        ACT[activities-api Railway LIVE]
+        SA[shadow-audit svc packages/services/shadow-audit DEPLOY]
+        IA[inventory-api -3f25 LIVE]
+        ORD[ordering-service Railway LIVE]
+        IDN[identity-api Bearer mint]
     end
 
-    S -->|loadRegistry decode stays green G-4| CLI
-    Y -.->|declared contract, read later| PROBE
-    Y -.->|Phase 1| GW
-    Y -.->|Phase 2| DASH
+    AC -->|"GET /v1/badges (Bearer)"| ACT
+    IDN -.->|HS256 Bearer| AC
+    SAC -->|"GET /v1/audit (X-API-Key)"| SA
+    IC -->|"GET /holdings, /nfts, /profile (public)"| IA
+    OC -->|"GET /v1/orders/events?since= NEW"| ORD
+
+    subgraph loop["loa-freeside (rack + registry)"]
+        REG["registry.yaml expectations[] + conformance_ref"]
+        DOC[consumer-conformance doctor NEW]
+        IIW[immune-doctors.yml cron 13:17 UTC]
+    end
+
+    REG -.->|points at| CT
+    IIW --> DOC
+    DOC -->|"gh: dashboard CI verdict + ledger artifact"| CL
+    DOC -.->|S2| PULSE[Discord digest]
 ```
 
-Solid arrows are this cycle's verified paths; dashed arrows are declared-for
-future phases and MUST NOT require changes here to land.
+### 1.2 The cybernetic loop mapped to components
 
-### 1.3 Architectural pattern
-
-**Declarative contract in a schema-gated data file.** The registry is the
-anti-corruption layer (ADR-012: "the naming IS the anti-corruption layer" —
-"where is health, and what cadence is expected?" answered once). The Effect
-Schema decode is the enforcement mechanism: an invalid declaration cannot load,
-anywhere, in any consumer that uses `loadRegistry()`.
-
----
-
-## 2. Grounding (verified 2026-07-04/05)
-
-| Claim | Source | Verified |
+| Organ (brief §2) | Component here | New? |
 |---|---|---|
-| `ModuleEntry` has no `service`/`expectations`; excess yaml fields are "silently stripped on decode" (i.e. unknown fields do NOT break decode) | `packages/freeside-registry/src/registry.ts:26-54` (comment at L38-39) | read 2026-07-04 |
-| probe.mjs reads exactly `service.{deployment_url, health_path, expected_status, auth_class, expected_body_marker}`; no `service.deployment_url` → verdict `scaffold` | `loa-cli/lib/probe.mjs:153-190` (L157, L160-166, L178) | read 2026-07-04 |
-| probe.mjs defaults: `health_path`→`/`, `expected_status`→200, `auth_class`→`none`; `expected_body_marker` optional | `loa-cli/lib/probe.mjs:97, 161, 178` | read 2026-07-04 |
-| ADR-012 appendix declares 5 cells' service values + score-api DO-NOT-TRANSCRIBE + 3 no-block cells | `decisions/012-unify-cluster-liveness.md:105-124` | read 2026-07-04 |
-| score-api real health contract: `/` → **302 Location: /v1/health**; direct `GET /v1/health` → **200** `{"status":"ok",...,"service":"score-api",...}`; `/health` → 404 | live probe 2026-07-05T00:47Z (curl, read-only) | probed |
-| sonar per-chain lag SLOs: ETH<50 · OP<600 · Arbitrum<2400 · Base<600 · **Berachain<300** · Zora<1800; recipe = `chain_metadata { chain_id latest_processed_block block_height }`, lag = `block_height − latest_processed_block`; SLOs are **PROPOSED, observe-only** | `~/Documents/GitHub/sonar-api/SCALE.md` Guardrail 2 (SLO table + lag-check command) | read 2026-07-04 |
-| sonar GraphQL read plane = belt-gateway (`https://belt-gateway-production.up.railway.app/v1/graphql`), NOT sonar-api host; hyperindex deployment IDs rotate (blue-green) | `packages/freeside-registry/registry.yaml:258-268`; `SCALE.md` blue-green guardrail | read 2026-07-04 |
-| freeside-cli consumes the registry via `"@freeside/freeside-registry": "file:../freeside-registry"`; `tests/ordering-registry.test.ts:17` calls `loadRegistry()` with the DEFAULT path → decodes the **real** registry.yaml | `packages/freeside-cli/package.json`, `tests/ordering-registry.test.ts` | read 2026-07-04 |
-| No PR-time CI lane runs the freeside-registry / freeside-cli test suites today (`cluster-compliance.yml` triggers on registry.yaml paths but runs cell-compliance audits, not unit suites; `lib-tests.yml` covers `.claude/lib` only) | `.github/workflows/{cluster-compliance,lib-tests}.yml` | read 2026-07-04 |
-| Test runner: `tsx --test tests/*.test.ts` (node:test), effect ^3.21.0, yaml ^2.6.0, TS ^5.4.0 — no new deps needed (NFR-4) | `packages/freeside-registry/package.json` | read 2026-07-04 |
-| inventory-api appendix value (`/` 401 static-key) has likely drifted: the current deployment (`inventory-api-production-3f25`) serves open `/health 200` per registry notes 2026-07-03 | `registry.yaml:137-143` vs ADR-012 appendix | read 2026-07-04 |
-
-[ASSUMPTION] sonar's SVM reconcile freshness projection (`svm_run_marker.updated_at`
-or equivalent) — flagged in the PRD as unverified; FR-4 verifies against sonar's
-live GraphQL schema before declaring. This SDD designs the shape, not the value.
+| INTENT | `freeside-dashboard/tests/contracts/<building>/` + registry `conformance_ref` | 🔨 the one new organ |
+| SENSE | dashboard CI workflow (net-new app-test job) + `consumer-conformance` doctor on `immune-doctors.yml` cron `17 13 * * *` | 🔨 register |
+| COMPARE | `bun test` exit codes + MUST-coverage matrix ≥0.95 | ✅ by construction |
+| WEIGH | SAATY-lite ranking in the doctor (impact × staleness × recurrence) — dumb first | 🔨 trivial |
+| ACT | beads (`br`, domain-labeled) autonomously; PR fixes operator-pointed; DRAFT-only while merge door frozen (NFR-3) | ✅ exists |
+| RECORD | append-only conformance ledger JSONL + PROVENANCE-pinned fixtures | 🔨 file format |
 
 ---
 
-## 3. Design Decisions
+## 2. Architectural Pattern
 
-### D-1 — `service` block: ADR-012 Decision-1 verbatim, plus provenance
+**Consumer-driven contracts (Pact-style, Pattern 5 of `/testing-conformance-harnesses`) over a hexagonal consumer.** The dashboard already isolates every seam behind a client module (`src/lib/<building>-api/client.ts`, `src/lib/adapters/*`); the harness asserts ONLY what the dashboard consumes, per building, from OUTSIDE the app code. The registry carries a pointer to the suite (`conformance_ref`), never the suite itself — probing stays in loa-cli's lane (PRD FR-5).
 
-The struct carries **exactly** the five fields probe.mjs reads, plus two
-provenance fields (NFR-5). Provenance is safe to add: probe.mjs destructures
-only the fields it knows (`probe.mjs:97,160-166`) — extra keys are inert.
+Reference: consumer-driven contracts — Fowler, https://martinfowler.com/articles/consumerDrivenContracts.html. Distributed-systems vocabulary per PRD §2 (Kleppmann, https://www.cl.cam.ac.uk/teaching/2122/ConcDisSys/dist-sys-notes.pdf).
 
-`service.deployment_url` is **required inside the block** (probe.mjs L157: no
-`service.deployment_url` → `scaffold`, which would silently un-probe a declared
-cell). The top-level `deployment_url` stays for existing consumers; a decode
-filter enforces they match (see D-6), so the duplication cannot drift.
+### 2.1 Kleppmann table → concrete mechanisms
 
-**Not chosen**: making `service.deployment_url` optional with fallback to the
-entry-level field — probe.mjs is frozen this cycle (zero loa-cli changes), so a
-fallback would require the exact consumer change that is out of scope.
-
-### D-2 — `expectations[]`: discriminated union on `probe_kind`, gh-workflow excluded
-
-`Schema.Union` of three structs, each tagged with `probe_kind:
-Schema.Literal(...)`. An entry with `probe_kind: gh-workflow` (or any unknown
-kind) fails the union decode loudly — the PRD's premature-use gate (FR-3) falls
-out of the type system; no bespoke check needed.
-
-### D-3 — stable ref identity
-
-Each expectation carries `ref` (kebab-case slug, pattern-enforced). The global
-identity is `<cell-slug>/<ref>` (e.g. `sonar-api/chain-lag`) — stable across
-endpoint rotations, threshold tuning, and cadence changes, so future runners can
-key state/alert-transition history on it. Refs are unique within a cell
-(decode-time filter, D-6).
-
-### D-4 — `graphql-lag` is generic-declared
-
-Per FR-3, nothing sonar-specific in the schema. The kind declares: `endpoint`
-(data — rotates with blue-green deploys), `query`, `rows_path` (dot-path to the
-row array), `key` (per-row identity field), `minuend`/`subtrahend` (the two
-numeric fields whose difference is the lag), and per-key `thresholds`
-(`lag < threshold` semantics). Sonar's chain-lag check is *just data* under
-this shape; a future postgres-replication-lag or queue-depth check fits the
-same kind unchanged.
-
-### D-5 — `event-max-age` shape
-
-Declares `endpoint`, `query`, `timestamp_path` (dot-path to the freshest-event
-ISO timestamp in the response) and `expect.max_age` (duration string). This is
-the absence-of-expected primitive: consumer-side semantics (next cycle) are
-`now() − timestamp > max_age` → stale.
-
-### D-6 — validation with teeth = decode-time filters, not docs
-
-Three `Schema.filter` refinements ride the schema itself so every consumer gets
-them for free:
-1. `service.deployment_url === entry.deployment_url` when both present (kills
-   the two-fields-drift hazard D-1 creates).
-2. `expectations[].ref` unique per cell.
-3. `graphql-lag.expect.thresholds` non-empty.
-
-Format constraints (path starts with `/`, status 100–599, cadence/max_age
-pattern, ref pattern) are `Schema.pattern`/`Schema.between` refinements on the
-fields.
-
-### D-7 — cells without a served URL get NO block (derive-don't-type)
-
-mint-api (routeless shell), events-api / mediums-api (libraries), ledger-api
-(scaffolded, /health 404) get no `service` block. Their lifecycle derives from
-absence per ADR-012 §Decision-3 — encoding a block for them would hand-type the
-exact claim this lane kills. The schema keeps both blocks `Schema.optional`, so
-absence is valid forever (G-4).
-
-### D-8 — score-api FR-2 resolution (flag discharged)
-
-Live-probed at design time (2026-07-05T00:47Z): `/` returns **302 → /v1/health**;
-`GET /v1/health` directly returns **200** with the documented health JSON
-(`"service":"score-api"`, `db:"connected"`, fresh `last_run_at`). `/health`
-404s. The stable liveness path exists:
-
-```yaml
-service:
-  deployment_url: https://score-api-production.up.railway.app
-  health_path: /v1/health
-  expected_status: 200
-  auth_class: none            # /v1/health is open (probed unauthenticated → 200)
-  expected_body_marker: '"service":"score-api"'
-  probed_at: "2026-07-05"     # sprint re-verifies at populate time
-  probe_source: live-probe    # FR-2 live resolution, NOT the ADR appendix
-```
-
-The 302 is never encoded. The redirect is *tolerated* by probe.mjs's same-host
-manual redirect loop anyway, but declaring the direct path removes a hop and a
-misclassification surface. Cell `notes` records the resolution trail.
-
-### D-9 — sonar's two entries: values are declared data, verified at populate time
-
-- `sonar-api/chain-lag` (`graphql-lag`): the SCALE.md Guardrail-2 recipe. All six
-  chain thresholds transcribed (§5.3). **Endpoint must be live-verified at sprint
-  time**: registry notes say GraphQL reads go through belt-gateway; SCALE.md's
-  lag-check hits `indexer.hyperindex.xyz/<deployment-id>`. Whichever host serves
-  `chain_metadata` is declared; it is data, revisable without schema change.
-- `sonar-api/svm-reconcile` (`event-max-age`): shape per D-5; the projection
-  field is an [ASSUMPTION] until verified against sonar's live GraphQL schema
-  (FR-4). If unverifiable in-sprint, the entry is **omitted** (not guessed) and
-  the gap recorded in sonar-api's cell `notes` — same discipline as FR-2's
-  declare-nothing branch.
-
-SCALE.md marks the SLO numbers PROPOSED/observe-only; the expectation record
-declares them as thresholds with `owner: zerker` — alerting posture is a
-runner-phase concern (out of scope), so declaring proposed values is safe: the
-declaration layer records *what to measure against*, not *when to page*.
-
-### D-10 — G-4 gate is a real CI lane, not a hope
-
-freeside-cli's `ordering-registry.test.ts` already decodes the **real**
-registry.yaml through the **shared** schema (file: dep) — the perfect G-4
-sensor. But no PR-time workflow runs it. Add
-`.github/workflows/registry-cli-tests.yml`: on PRs touching
-`packages/freeside-registry/**` or `packages/freeside-cli/**`, fresh-install
-(`npm ci` per package, standalone — mirrors cluster-compliance's "no workspace"
-install; a fresh install also sidesteps the known pnpm/npm `file:` stale-copy
-hazard) and run both `npm test` suites. The workflow file is domain-unclassified
-(`domain-classify.sh` lists only `packages/freeside-{cli,registry}/*` as
-network), so the PR stays single-domain **network**.
-
-### D-11 — no version bump, no removals
-
-`registry.yaml` stays `version: 1`. Every schema change is
-`Schema.optional(...)` on `ModuleEntry`; no field is removed or retyped (NFR-2).
-The stale `# Live-probe state` header comment is retired at ADR-012 Phase 3
-(move-3), NOT here — this cycle only updates the schema documentation comment
-block (`registry.yaml:8-19`) to document the new fields.
+| PRD §2 prescription | Design mechanism |
+|---|---|
+| Explicit ack, never fabricated zero | `SeamResult<T>` discriminated union (§6.1) at all four seams; render branches on it |
+| Timeout + cadence declared; missed cadence IS a violation | every suite declares `cadence` + per-request timeout; doctor treats a missing daily run as FAIL |
+| Failure detector, transition-only alerting | doctor computes `working→broken / broken→fixed` transitions from ledger history (S2 alert wiring) |
+| Bounded staleness | suites assert `as_of`/staleness bounds where the seam exposes them (inventory `revalidate: 300`, order-feed max-age) |
+| Log, not polled state | ordering event feed read via monotonic `seq` cursor over `order_outbox` (§4.5) |
+| State machine replication | replay check: fold lifecycle events for an order → must equal `GET /v1/orders/:id` projection state |
+| Quorum for gating verdicts | doctor is informational-never-required (rack doctrine); any gating graduation needs 2-of-3 confirmation (S2+) |
+| Byzantine boundary | order events carry the Hounfour signed envelope (ed25519 + JCS + hash-chain) end-to-end; dashboard verifies via installed `@0xhoneyjar/events` |
+| Cut vertices get suites FIRST | suite order: inventory (betweenness 8.0) → activities → audit → ordering |
 
 ---
 
-## 4. Data Design — the schema (Contract plane)
+## 3. Key Design Decisions
 
-### 4.1 `src/registry.ts` additions (exact shape)
+### D-1 — Harness lives in the consumer, runs under `bun test`
+`freeside-dashboard/tests/contracts/<building>/*.contract.test.ts`, executed by the dashboard's existing runner (**bun**; there is no vitest/playwright in that repo — grounded: dashboard `package.json` `test` script is `bun test tests/unit/...`). Two modes per suite, selected by env:
+- **`CONTRACT_MODE=fixture`** (default, CI-safe): runs against PROVENANCE-pinned recorded fixtures under `tests/contracts/<building>/fixtures/` — each fixture header cites URL + capture date + capturing command (differential-vs-real discipline; fixture self-consistency ≠ correctness).
+- **`CONTRACT_MODE=live`**: same assertions against the live seam (daily cron + pre-release). Live mode is what makes quiet-vs-down decidable.
 
-```typescript
-// ── ADR-012 Phase 0 · cadence-ledger cycle ──────────────────────────────────
+Rejected: a separate contracts repo (violates one-building-one-repo consumer symmetry; the suite IS the consumer's requirement) and vitest (net-new runner for no gain).
 
-const AuthClass = Schema.Literal("none", "static-key");
+### D-2 — Badges wire to activities-api self-Bearer route; catalog grid stays labeled `sample` with an order filed
+Grounded current state: the badge page calls `getDemoBadges(slug)` over in-file fixtures (freeside-dashboard `src/app/(freeside)/badges` data module — `getDemoBadges`, badges.ts:162, verified live); the score-api client's badge methods (`getAllBadges` → `GET /v1/badges` on score-api, client.ts:1502) are the facade path the PRD retires for this surface.
 
-/** ISO-8601 date, e.g. "2026-07-05" */
-const IsoDate = Schema.String.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/));
+Target: new `src/lib/activities-api/client.ts` calling activities-api `GET /v1/badges` with an identity-scoped Bearer. Grounded producer truth (activities-api `apps/runtime/src/routes/reads.ts`): `/v1/badges` returns **BadgeIssued events for the AUTHENTICATED identity** (reads.ts:274-288) — identity comes from the token, never a query param; a service-token route `GET /v1/identities/:identity_id/badges` (reads.ts:335) exists for reading an arbitrary member. Auth gate: offline HS256 verify, identity-api issuer, never-falls-open 401 (`auth/require-identity.ts`).
 
-/** duration/cadence literal: "15m", "6h", "1d" */
-const Duration = Schema.String.pipe(Schema.pattern(/^[1-9][0-9]*(m|h|d)$/));
+Therefore the S1 badge surface is **the session member's earned badges** (self-Bearer), satisfying FR-1 AC1 exactly ("a Mibera member with granted badges sees them render"). The project-wide catalog grid with holder counts requires the badge-index (Envio) wire the fixture header already names — that stays `sample`-labeled and files an order (FR-5 backpressure), not silently faked. Viewing another member's badges (member/[wallet] page) uses the service-token route if pulled into S1 scope; default is out.
 
-/** kebab-case slug — the stable half of the <cell>/<ref> expectation identity */
-const RefSlug = Schema.String.pipe(Schema.pattern(/^[a-z0-9][a-z0-9-]{0,63}$/));
+Bearer acquisition: dashboard server exchanges its session for an identity-api HS256 Bearer ([ASSUMPTION confirmed at PRD pre-gen gate]: "identity Bearer mintable today" — prd.md:140). The suite asserts the full auth flow including invalid/missing token → 401 → explicit error state (kills the silent-401 drift class, FR-1 AC2).
 
-// The declared health contract — field-for-field what loa-cli/lib/probe.mjs
-// already reads (ADR-012 §Decision-1), plus NFR-5 provenance (inert to probe.mjs).
-const ServiceBlock = Schema.Struct({
-  deployment_url: Schema.String,           // required: probe.mjs L157 short-circuits to
-                                           // 'scaffold' without it; must equal the
-                                           // entry-level deployment_url (filter, §4.2)
-  health_path: Schema.String.pipe(Schema.pattern(/^\//)),
-  expected_status: Schema.Number.pipe(Schema.int(), Schema.between(100, 599)),
-  auth_class: AuthClass,
-  expected_body_marker: Schema.optional(Schema.String),
-  // ── provenance (NFR-5): hand-typed values cite where/when they were probed ──
-  probed_at: IsoDate,
-  probe_source: Schema.Literal("adr-012-appendix", "live-probe"),
-});
+### D-3 — Audit: deploy the in-monolith shadow-audit service; delete MOCK_AUDIT
+`packages/services/shadow-audit/` is already a deployable surface — `bin/http.ts` + `Dockerfile` + `railway.toml` exist, and its header says verbatim: "This is the deployable surface the freeside-dashboard's already-built dormant client (`GET ${SHADOW_AUDIT_API_URL}/v1/audit`) consumes once its env is pointed here" (bin/http.ts:3-6). Deploying it as a Railway service **from the monolith repo** (the ordering-service precedent) satisfies FR-2 AC2's "expose from monolith edge; no new service extraction" — no new repo, no code move.
 
-// ── expectations[] · discriminated union on probe_kind ──────────────────────
-// gh-workflow is DELIBERATELY absent: premature use fails the union decode (FR-3).
+Dashboard side: `SHADOW_AUDIT_API_URL` + `SHADOW_AUDIT_API_KEY` + `SHADOW_AUDIT_ENABLED` set; `MOCK_AUDIT` and the mock branch of `getAudit()` (`src/lib/freeside-worlds/access-audit/mock-audit.ts:27,67`) are **deleted** (silence rule / config-client precedent). `getAudit` becomes live-only; unreachable → LOUD error state (operator surface), never null→empty.
 
-const ExpectationCommon = {
-  ref: RefSlug,
-  cadence: Duration,
-  owner: Schema.String.pipe(Schema.minLength(1)),
-};
+Producer boot config is fail-loud by design (required `OPERATED_COMMUNITIES`, `COLLECTION_REGISTRY`, `RPC_URL_<chain>`; bin/http.ts:9-16) — live correctness is operator-gated per its own header; the deploy checklist is in §10 Phase 2.
 
-const HttpExpectation = Schema.Struct({
-  probe_kind: Schema.Literal("http"),
-  ...ExpectationCommon,
-  // absent target ⇒ consumers probe the cell's own `service` block (documented
-  // consumer semantic; dispatch lands in loa-cli NEXT cycle)
-  target: Schema.optional(Schema.Struct({ url: Schema.String })),
-  expect: Schema.optional(Schema.Struct({
-    status: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.between(100, 599))),
-    body_marker: Schema.optional(Schema.String),
-  })),
-});
+### D-4 — Inventory: canonical DNS repoint + typed errors; suite pins the ACTUALLY-consumed surface
+Grounded: the dashboard is already wired to inventory-api with default host `https://inventory.0xhoneyjar.xyz` (client.ts:16) — which is dead for API reads; the live open read plane is `inventory-api-production-3f25.up.railway.app` (`/health` 200, `/holdings` + `/profile` open — registry.yaml:174-181). Beacon 404s until inventory-api#18 merges (registry.yaml:181).
 
-// Generic lag-between-two-numeric-fields over a GraphQL row set (never
-// sonar-hardcoded): lag = row[minuend] − row[subtrahend], keyed by row[key],
-// healthy iff lag < thresholds[row[key]] for every declared key.
-const GraphqlLagExpectation = Schema.Struct({
-  probe_kind: Schema.Literal("graphql-lag"),
-  ...ExpectationCommon,
-  target: Schema.Struct({
-    endpoint: Schema.String,       // declared DATA — deployment ids rotate (SCALE.md blue-green)
-    query: Schema.String,
-    rows_path: Schema.String,      // dot-path to the row array, e.g. "data.chain_metadata"
-    key: Schema.String,            // per-row identity field, e.g. "chain_id"
-    minuend: Schema.String,        // e.g. "block_height"
-    subtrahend: Schema.String,     // e.g. "latest_processed_block"
-  }),
-  expect: Schema.Struct({
-    thresholds: Schema.Record({ key: Schema.String, value: Schema.Number })
-      .pipe(Schema.filter((t) => Object.keys(t).length > 0
-        || "graphql-lag expect.thresholds must declare at least one key")),
-  }),
-});
+Design per the operator's public-reads fork decision (prd.md FR-3): point canonical DNS `inventory.0xhoneyjar.xyz` at the -3f25 Railway deploy (operator-adjacent infra, R-2 smallest-diff); dashboard default URL stays the canonical host; `INVENTORY_API_URL` overrides until DNS lands. The bare `catch { return null }` sites in `inventoryFetch`/`fetchProfilePicture` (client.ts:40,144) convert to `SeamResult` — the dead-host-silence class becomes a pinned catch-set case.
 
-// Absence-of-expected: freshest event older than max_age ⇒ stale (consumer
-// semantic, next cycle). The staleness-against-declared-cadence primitive.
-const EventMaxAgeExpectation = Schema.Struct({
-  probe_kind: Schema.Literal("event-max-age"),
-  ...ExpectationCommon,
-  target: Schema.Struct({
-    endpoint: Schema.String,
-    query: Schema.String,
-    timestamp_path: Schema.String, // dot-path to the freshest ISO timestamp
-  }),
-  expect: Schema.Struct({ max_age: Duration }),
-});
+**Grounded correction to FR-3 AC4**: the PRD names `holdings/:address, metadata/:contract/:tokenId`, but the dashboard actually consumes `GET /holdings/:wallet`, `GET /nfts/:contract/owner/:address`, and `GET /profile/:address` (client.ts:48,77,137). Consumer-driven contracts assert only what the consumer consumes — the suite pins the three real endpoints. `/metadata/:contract/:tokenId` enters the suite only if a dashboard call site appears.
 
-const Expectation = Schema.Union(
-  HttpExpectation,
-  GraphqlLagExpectation,
-  EventMaxAgeExpectation,
-);
+### D-5 — Order events: HTTP log-read of the durable outbox, cursor = `order_outbox.seq`
+Grounded: lifecycle events are appended to a durable Postgres outbox and drained to JetStream (`orders.lifecycle.{placed,routing,producing,fulfilled,failed}.v1`, Hounfour-signed envelopes — `packages/protocol/ordering/src/events.ts:7-14`); the outbox table has a monotonic `seq` (`store-postgres.ts:253`); ordering-service is DEPLOYED (`ordering-service-production.up.railway.app`, registry.yaml:247); the existing HTTP surface is `POST /v1/orders` + `GET /v1/orders/:id` only, with the design note "JetStream stays server-side — the browser polls this" (intake.ts:27-31). The dashboard has **zero** NATS plumbing (`@0xhoneyjar/events` installed, imported nowhere).
 
-const Expectations = Schema.Array(Expectation).pipe(
-  Schema.filter((xs) => {
-    const refs = xs.map((x) => x.ref);
-    return new Set(refs).size === refs.length
-      || "expectations[].ref must be unique within a cell";
-  }),
-);
-```
+Decision: add a read-only **`GET /v1/orders/events?since=<seq>&limit=<n>`** to the ordering service, serving the lifecycle log (decoded + allowlist-projected `PublicLifecycleEvent`, see §5.1) from `order_outbox` where `published = true`, ordered by `seq`. The dashboard's new inbox adapter consumes it as a log — cursor, replay, at-least-once **dedupe by `seq`** (flatline SKP-002 CRITICAL 875: `(order_id, subject)` is NOT a unique event identity — `routing`/`producing`/`failed` legitimately repeat; `seq` is the delivery identity, and repeated same-subject events fold as distinct transitions).
 
-### 4.2 `ModuleEntry` additions (additive only)
+Named tension with FR-4's phrasing ("from the durable JetStream feed"): the outbox IS the durable log JetStream itself drains from (`publishOutbox`, lifecycle-publisher.ts:25-35 — no dual-write); serving it over HTTP preserves the required semantic (offset/replay, PRD §2 "consumed as a log, not polled state") without the rejected alternative's costs. **Rejected**: a JetStream pull-consumer inside the dashboard — the dashboard runs partly serverless (Vercel preview detection in route-gate.ts), holds no NATS credentials, and has no streaming runtime; a NATS client in a request-scoped Next.js server would be a new failure mode, not a wire-in. `@0xhoneyjar/events` is still used — for envelope types + signature/hash-chain verification in the adapter (the Byzantine-boundary row earns its keep).
 
-```typescript
-const ModuleEntry = Schema.Struct({
-  // ... existing nine fields UNCHANGED (registry.ts:26-54) ...
-  service: Schema.optional(ServiceBlock).annotations({
-    description:
-      "ADR-012 §D-1 declared health contract, read by loa-cli/lib/probe.mjs. " +
-      "Absent ⇒ lifecycle derives from absence (derive-don't-type).",
-  }),
-  expectations: Schema.optional(Expectations).annotations({
-    description:
-      "Cadence ledger: declared liveness expectations (staleness-against-declared-cadence). " +
-      "Identity = <cell-slug>/<ref>. Consumers dispatch on probe_kind (loa-cli, next cycle).",
-  }),
-}).pipe(
-  Schema.filter((e) =>
-    !e.service || e.deployment_url == null || e.service.deployment_url === e.deployment_url
-      || "service.deployment_url must equal the entry-level deployment_url"),
-);
-```
+Replay check (FR-4 AC2): the suite folds an order's lifecycle events through the state machine and asserts equality with `GET /v1/orders/:id` `state` — divergence is a defect, mechanically testable. Known blocker #401 (shadow_preview stub stalls NEW orders) is honest: AC scope is replay of existing events; #401 files as an order.
 
-Note on the filter: it fires only when both are present, so no-URL library
-cells and blockless cells decode unchanged. (If `Schema.filter` on the struct
-proves awkward with the existing `Registry` composition, the equivalent check
-lives in the full-registry decode test instead — the invariant is what's
-load-bearing, not its host.)
+The demo inbox feed (`getDemoInboxFeed`, hub-inbox.ts:107) is labeled `sample` at cutover and deleted once the suite is green against live (FR-4 AC1).
 
-### 4.3 Exports
+### D-6 — `conformance_ref`: one optional string on `ExpectationCommon`
+Additive, decode-safe: `conformance_ref: Schema.optional(Schema.String)` added to `ExpectationCommon` (`packages/freeside-registry/src/registry.ts:63-67`), value shape `<repo>#<path>` e.g. `freeside-dashboard#tests/contracts/inventory`. It is DATA — nothing in loa-freeside dispatches on it (probing stays loa-cli's lane; NFR-1: freeside-cli + probe.mjs keep decoding because optional-additive cannot fail the union). Registry entries for the four wired buildings gain `expectations[]` blocks (where absent) carrying `conformance_ref` + cadence. Network-domain PR, isolated per ADR-007.
 
-`src/index.ts` additionally exports `type ServiceBlock`, `type Expectation`
-(and the three member types) so Phase 1–3 consumers and the next-cycle loa-cli
-dispatch import the contract types instead of re-declaring them.
+### D-7 — Doctor: `tools/consumer-conformance-doctor.mjs`, ground truth = live `gh` read of dashboard CI
+Registered in `tools/immune-instruments.yaml` with literal ground-source tokens (the two-part lint contract, immune-instruments.yaml:9-30): it re-derives its verdict from (a) the dashboard repo's latest `consumer-conformance` workflow run conclusion and (b) the uploaded conformance-ledger artifact, both read live via `execFileSync('gh'` — never a self-declared status (the gate-freeze-sensor precedent, immune-instruments.yaml:48-49). Runs as a job in `.github/workflows/immune-doctors.yml` (inherits daily cron `17 13 * * *` = 13:17 UTC, prd.md FR-5 AC1) under the rack's soft-by-construction doctrine: **always exits 0 in CI, verdict surfaced via job summary + `::warning::`, never added to required checks** (immune-doctors.yml:8-16; a red-on-every-PR check is a numb gate). The honest 0/2/1 exit contract lives in the tool for local invocation; the workflow wrapper absorbs it.
 
-### 4.4 New state machine? No.
+### D-8 — Conformance ledger: append-only JSONL, hash-linked, re-derivable
+Written by suite runs (CI appends + uploads as artifact; local runs append to `.run/conformance-ledger.jsonl`), digested cold to `grimoires/loa/` in the dashboard repo. Each record carries `prev_hash` (sha256 of the previous line) so any verdict tampering breaks the chain — MERKLE pattern, one line of cost. Schema in §5.2. Runtime violation events from end-user surfaces (FR-6) are structured log lines with marker `conformance.violation` in S1; materializing runtime logs into the ledger is S2 (pulse) work.
 
-This cycle introduces no runtime state. The verdict taxonomy
-(`live/gated-live/live-drifted/down/scaffold/unprobed` — probe.mjs) and the
-future stale/fresh transitions are consumer-side, out of scope. Deliberately no
-diagram: drawing one here would imply behavior this PR ships.
+### D-9 — Silence rule: one `SeamResult<T>` type + a grep-assertable gate
+A single discriminated union (§6.1) replaces `catch → []/null/0` on the four S1 surfaces. Per-surface policy: **operator/analytics surfaces (audit, conformance views) fail LOUD** — error state renders, no fallback; **end-user surfaces (badges, inventory, inbox) degrade gracefully** — explicit "Unavailable" state + violation log line, never fake data. Honesty labels reuse the existing `SourceBadge` component (`src/components/freeside/source-badge.tsx`) extended to the `Live | Sample | Unavailable` vocabulary at feature level. FR-6 AC1's "grep-assertable" becomes `scripts/check-silent-zero.ts` in dashboard CI: scans the four surfaces' data modules for catch-blocks returning `[]`/`null`/`0`/empty-object literals and fails on any hit (mechanical, matches the ~108-site fail-soft house pattern it is retiring surface-by-surface).
 
 ---
 
-## 5. `registry.yaml` population plan
+## 4. Software Stack
 
-### 5.1 Per-cell decision table
-
-| Cell | `service` block | Values source | Notes action |
+| Layer | Technology | Version | Justification |
 |---|---|---|---|
-| activities-api | YES | ADR appendix (`/health`, 200, none, `"service":"activities-api"`) → **re-probed at sprint time** | add probe trail |
-| identity-api | YES | ADR appendix (`/health`, 200, none, `"ok":true`) → re-probed | add probe trail |
-| inventory-api | YES | ⚠ appendix (`/` 401 static-key) is **expected-stale** — deployment moved to `-3f25`, registry notes 2026-07-03 say open `/health` 200. Live re-probe DECIDES; do not transcribe the appendix blind | record which value won |
-| sonar-api | YES | ADR appendix (`/`, 200, none, `"message":"Sonar API"`) → re-probed | + two `expectations` entries (§5.3) |
-| storage-api | YES | ADR appendix (`/`, 200, none, no marker — Playground HTML) → re-probed | add probe trail |
-| score-api | YES | **FR-2 live resolution** (D-8): `/v1/health`, 200, none, `"service":"score-api"` | record 302→/v1/health trail; DO-NOT-TRANSCRIBE flag discharged |
-| mint-api | NO | derive-from-absence (routeless shell, /health 404) | note stays |
-| events-api | NO | library, no served URL | — |
-| mediums-api | NO | npm-only, no deployment | — |
-| ledger-api | NO | scaffolded, /health 404 (probed 2026-06-19) | — |
-| ordering | **operator call** (Open Question OQ-1) | its own registry note documents `/healthz` 200 `{"ok":true` | see §10 |
+| Dashboard framework | Next.js (App Router, RSC) | 16.1.4 | existing (dashboard package.json); no change |
+| Dashboard UI | React | 19.2.3 | existing |
+| Boundary decoding (dashboard) | effect + @effect/schema | ^3.10.0 / ^0.75 | existing house pattern (`decodeOrNull` → upgraded to decode-to-SeamResult); **no zod in the dashboard** |
+| Test runner (dashboard) | bun test | pin ONE bun version — 1.3.11 (Docker today); resolve bun.lock vs pnpm-lock authority split in S1 (brief §6) | existing runner; contract suites must run where unit tests run |
+| Event envelope verify | @0xhoneyjar/events (git pin) | installed | already a dep, currently unused; earns its keep verifying Hounfour envelopes (D-5) |
+| Ordering service | Hono + @hono/node-server | ^4.7.0 / ^1.13.0 | existing (packages/services/ordering) |
+| Ordering validation | zod | ^3.23.8 | existing monolith house pattern |
+| Ordering store | PostgreSQL via pg | ^8.16.0 | existing (`order_outbox` already has `seq`) |
+| Shadow-audit service | Hono, deployed via existing Dockerfile + railway.toml | as-committed | zero new code to deploy (D-3) |
+| Registry schema | effect Schema (discriminated unions) | as-committed | additive field only (D-6) |
+| Doctor | Node .mjs + `gh` CLI | Node 22 (immune-doctors.yml setup-node) | rack precedent (gate-freeze-sensor) |
+| CI | GitHub Actions | n/a | net-new dashboard app-test workflow (none runs `bun test` today — grounded gap) |
 
-Every populated block carries `probed_at: <sprint probe date>` and
-`probe_source` (NFR-5). The sprint task re-probes **all** declared cells before
-populating — appendix values are 2 weeks old and one (inventory) is already
-suspect; the re-probe is the risk mitigation the PRD names (§8, row 3).
+No new external dependencies in the truth path (NFR-2): no SaaS, no Pact broker — the "broker" is the registry pointer + git.
 
-### 5.2 Example — populated cell (activities-api)
+---
 
-```yaml
-activities-api:
-  git_url: https://github.com/0xHoneyJar/activities-api.git
-  # ... existing fields unchanged ...
-  service:
-    deployment_url: https://activities-api-production.up.railway.app
-    health_path: /health
-    expected_status: 200
-    auth_class: none
-    expected_body_marker: '"service":"activities-api"'
-    probed_at: "2026-07-XX"        # sprint probe date
-    probe_source: adr-012-appendix # value matched appendix on re-probe
+## 5. Database Design
+
+No new databases. One new read path and one file-format schema.
+
+### 5.1 `order_outbox` (existing, Postgres — read path added)
+
+Existing shape (grounded from store-postgres.ts:111,253): `seq` (monotonic, bigserial), `order_id`, `subject`, `payload` (jsonb, Hounfour-enveloped), `published` (bool).
+
+New read (D-5), index to add if absent:
+
+```sql
+-- read model for GET /v1/orders/events (read-only; no schema change)
+SELECT seq, order_id, subject, payload
+FROM order_outbox
+WHERE seq > $1                      -- cursor: ?since=<seq>
+  AND subject LIKE 'orders.lifecycle.%'   -- public lifecycle only; orchestrator.* stays ops-private
+  AND published = true              -- flatline SKP-002 (780): only events the durable stream
+                                    -- acknowledged; pre-publish rows would fork consumer truth
+ORDER BY seq
+LIMIT $2;                           -- ?limit, default 100, max 500
+
+CREATE INDEX IF NOT EXISTS order_outbox_seq_subject_idx
+  ON order_outbox (seq) WHERE subject LIKE 'orders.lifecycle.%' AND published = true;
 ```
 
-### 5.3 Sonar's two expectation entries (FR-4 / G-3)
+Redaction (**hardened per flatline SKP-003 CRITICAL 850**): the endpoint NEVER serves raw `payload` jsonb. It decodes the stored envelope and re-projects through a versioned **`PublicLifecycleEvent`** with a strict field ALLOWLIST (`seq, order_id, subject, event_version, occurred_at, status, public_note?`) — the same discipline as `toPublicOrder` (projection.ts:5-9), enforced by a snapshot test that fails if any non-allowlisted field escapes. Unknown event versions project as `{subject, seq, event_version, opaque: true}`, never raw. `orders.orchestrator.*.v1` stays ops-private.
 
-```yaml
-sonar-api:
-  # ... existing fields + service block ...
-  expectations:
-    - ref: chain-lag
-      probe_kind: graphql-lag
-      cadence: 15m               # SLO windows are ~10-60 min; 15m gives 2 samples
-      owner: zerker              # SCALE.md doc owner
-      target:
-        endpoint: <LIVE-VERIFIED at sprint time — belt-gateway if it serves
-                   chain_metadata, else indexer.hyperindex.xyz/<current-deployment-id>>
-        query: "{ chain_metadata { chain_id latest_processed_block block_height } }"
-        rows_path: data.chain_metadata
-        key: chain_id
-        minuend: block_height
-        subtrahend: latest_processed_block
-      expect:
-        thresholds:              # SCALE.md Guardrail 2 (PROPOSED tier — observe-only posture
-          "1": 50                #   is a runner concern; declaration records the targets)
-          "10": 600
-          "42161": 2400
-          "8453": 600
-          "80094": 300           # Berachain — primary chain, strictest SLO
-          "7777777": 1800
-    - ref: svm-reconcile
-      probe_kind: event-max-age
-      cadence: 6h
-      owner: zerker
-      target:
-        endpoint: <same live-verified endpoint>
-        query: <VERIFIED against live schema — svm_run_marker.updated_at was an
-                ASSUMPTION; FR-4 forbids declaring an unverified projection>
-        timestamp_path: <verified dot-path>
-      expect:
-        max_age: 26h             # reconcile is ~daily; 26h ≈ one missed run + slack
-                                 # (operator-tunable data; the 5-day Helius outage
-                                 #  would have breached this ~4 days earlier)
+### 5.2 Conformance ledger record (JSONL, append-only)
+
+```json
+{
+  "ts": "2026-07-09T13:17:04Z",
+  "building": "inventory",
+  "suite": "tests/contracts/inventory",
+  "ref": "inventory-api/holdings-read",
+  "mode": "live",
+  "verdict": "pass",
+  "must_coverage": 0.97,
+  "cases": { "pass": 14, "fail": 0, "xfail": 1 },
+  "evidence_ref": "gha:1234567890",
+  "prev_hash": "sha256:ab34…"
+}
 ```
 
-The `svm-reconcile` entry ships **only if** the projection verifies against
-sonar's live GraphQL schema in-sprint (D-9); otherwise omit + note.
+`verdict ∈ pass|fail|xfail-only|error`; `mode ∈ fixture|live`. `prev_hash` chains lines (D-8). Runtime violation events (FR-6) share the shape with `verdict: "violation"` + `surface` field.
+
+### 5.3 Reality ledger (`freeside-dashboard/grimoires/loa/reality-ledger.md` — new)
+
+Markdown table, one row per dashboard surface: `surface | classification (live | sample(order:<bead>) | delete-proposed) | seam | suite | last-verified`. Every fabricated community card row carries its order ref (FR-6 AC2 — they are worlds at rung 0, pre-orders).
 
 ---
 
 ## 6. API Specifications
 
-No HTTP API changes. The package's public API grows two exported types
-(§4.3); `loadRegistry()` signature is unchanged. The "API" of this cycle is the
-YAML contract itself, specified in §4–5.
+### 6.1 `SeamResult<T>` — the ack protocol (dashboard, new `src/lib/seam/result.ts`)
+
+```typescript
+export type SeamResult<T> =
+  | { status: "ok"; data: T; asOf?: string }        // fresh data
+  | { status: "stale"; data: T; asOf: string }      // bounded-staleness violation, data still shown + labeled
+  | { status: "error"; cause: SeamError };          // explicit failure — NEVER coerced to []/null/0
+
+export type SeamError = {
+  seam: string;                 // "activities" | "shadow-audit" | "inventory" | "ordering"
+  kind: "unreachable" | "http" | "auth" | "decode" | "timeout";
+  httpStatus?: number;
+  detail: string;               // sanitized; never leaks tokens
+};
+```
+
+### 6.2 Consumed endpoints (existing — the contract suites pin these)
+
+| Building | Endpoint | Auth | Suite asserts |
+|---|---|---|---|
+| activities-api | `GET /v1/badges` | identity Bearer (HS256, identity-api issuer) | 200 shape `{items, total_count}` (reads.ts:145-150); cursor contract; missing/invalid token → 401 (never 200-empty); staleness bound |
+| activities-api | `GET /v1/identities/:identity_id/badges` | service token, `read` scope | (only if member-view pulled into S1) 200 shape; scope refusal → 401/403 |
+| shadow-audit | `GET /v1/audit?...` | `X-API-Key` (optional on server; dashboard always sends) | response schema (`parseAuditOutput` types); auth; unreachable → loud |
+| inventory-api | `GET /holdings/:wallet` | none (public reads) | 200 shape (`InventoryHoldingsResponse`); non-2xx → explicit error (dead-host case pinned) |
+| inventory-api | `GET /nfts/:contract/owner/:address?pageSize=` | none | 200 shape (`InventoryNftCollectionResponse`) |
+| inventory-api | `GET /profile/:address?contract=` | none | 200 shape (`ProfilePictureResponse`) |
+| ordering | `GET /v1/orders/:id` | internal | `PublicOrderSchema` (projection stability); 404 on unknown |
+
+### 6.3 `GET /v1/orders/events` (NEW — ordering service, platform domain)
+
+```
+GET /v1/orders/events?since=<seq>&limit=<n≤500>
+→ 200 {
+    "events": [
+      { "seq": 812,
+        "subject": "orders.lifecycle.placed.v1",
+        "order_id": "…",
+        "envelope": { /* Hounfour signed envelope: ed25519 sig, JCS canonical payload, hash-chain */ } }
+    ],
+    "next_since": 812        // cursor for the next page; == since when no new events
+  }
+→ 400 on non-integer since/limit
+```
+
+Semantics: monotonic, replayable, at-least-once — consumers **dedupe by `seq`** (SKP-002: subject repeats are legal transitions, not duplicates). **Auth (flatline SKP-001 CRITICAL 930/920 — "internal-trust mirrors intake" was unspecified on a public Railway URL):** the route is DEFAULT-DENY behind a **service-scoped Bearer** (`ORDERS_EVENTS_READ_TOKEN`, constant-time compare) held server-side by the dashboard only; missing/invalid credential → 401, and the contract suite asserts the refusal (negative cases: no token, wrong token, rotated token). Rate-limited per client. "Already-public projection" describes the FIELD boundary (§5.1 allowlist), not an access grant — bulk enumeration of lifecycle history is not public. Member-scoped access remains the later Member-Access seam sprint.
+
+### 6.4 Dashboard adapter surface (new)
+
+- `src/lib/activities-api/client.ts` — `fetchEarnedBadges(bearer): Promise<SeamResult<Badge[]>>`
+- `src/lib/ordering-api/client.ts` — `fetchOrderEvents(since): Promise<SeamResult<OrderEventPage>>` (verifies envelopes via `@0xhoneyjar/events`)
+- `src/lib/adapters/orders-inbox-adapter.ts` — folds lifecycle events → inbox threads; registered in `resolveInboxFeedSource()` as source `"orders"` (`INBOX_SOURCE=orders` + `ORDERING_API_URL` set)
+
+### 6.5 Sequence — a suite run reaching the operator
+
+```mermaid
+sequenceDiagram
+    participant CI as dashboard CI (cron+PR)
+    participant S as tests/contracts/*
+    participant B as building (live seam)
+    participant L as conformance ledger
+    participant D as consumer-conformance doctor
+    participant O as Operator (S2: Discord)
+
+    CI->>S: bun test CONTRACT_MODE=live
+    S->>B: real requests (timeout declared)
+    B-->>S: 200 / 4xx / timeout
+    S->>L: append verdict (prev_hash chained)
+    CI->>CI: upload ledger artifact
+    Note over D: daily 13:17 UTC (immune-doctors.yml)
+    D->>CI: gh — latest run conclusion + artifact
+    D->>D: rank violations (impact × staleness × recurrence)
+    D-->>O: job summary + ::warning:: (S1) → digest + transition alerts (S2)
+```
 
 ---
 
 ## 7. Error Handling Strategy
 
-Single failure surface: **decode**. `Schema.decodeUnknownSync` throws
-`ParseError` with a path-annotated tree — this is the designed behavior
-(G-5: "fails decode loudly"), not an error to soften.
+The silence rule IS the error-handling strategy (FR-6, D-9).
 
-| Failure | Where caught | Behavior |
-|---|---|---|
-| Malformed `service` (bad status range, missing `probed_at`, unknown `auth_class`) | any `loadRegistry()` call | throw ParseError naming the field path |
-| `probe_kind: gh-workflow` / unknown kind | union decode | throw — the FR-3 premature-use gate |
-| Missing `cadence`, bad duration/ref pattern, empty thresholds, duplicate refs | field/array filters | throw with the filter's message |
-| `service.deployment_url` ≠ entry `deployment_url` | struct filter (or registry test, §4.2 note) | throw / red test |
-| Absent `service` / absent `expectations` | — | **valid** (optional; G-4) |
+1. **Trust-boundary decode**: every seam response decodes through @effect/schema before use; decode failure → `SeamResult error(kind: "decode")` — never `decodeOrNull → empty state`.
+2. **Per-surface policy**: operator surfaces (audit) render the error loudly and stop; end-user surfaces (badges, inventory, inbox) render an explicit labeled "Unavailable" state and emit a `conformance.violation` log line. Neither path fabricates a zero.
+3. **Failure-detector states** (the suite + doctor jointly implement the eventually-perfect detector):
 
-No fallbacks, no partial loads: a registry that fails decode is a registry that
-does not exist to consumers — fail-closed is the point.
+```mermaid
+stateDiagram-v2
+    [*] --> healthy
+    healthy --> suspect: live-mode timeout / non-2xx
+    suspect --> broken: violation persists next run
+    suspect --> healthy: next run green
+    broken --> fixed: run green after broken
+    fixed --> healthy: (transition event emitted — broken→fixed)
+    healthy --> broken: missed cadence (a missed run IS a violation)
+```
+
+4. **Producer side**: shadow-audit and ordering keep their existing fail-loud boot posture (missing env → crash, unhandledRejection → exit 1; bin/http.ts:34-39) — Railway restart policy recovers a clean crash, not a zombie.
+5. **Never simplified away**: auth failures are distinct from empty results at every seam (the silent-401 class, FR-1 AC2/R-1).
 
 ---
 
 ## 8. Testing Strategy
 
-Runner: existing `tsx --test` / node:test (no new deps, NFR-4).
+The harness is the deliverable — the requirement is born executable (G-3).
 
-### 8.1 New tests in `packages/freeside-registry/tests/`
+| Tier | What | Where | Gate |
+|---|---|---|---|
+| Contract suites | per-building consumer contracts, fixture + live modes | `freeside-dashboard/tests/contracts/{activities,shadow-audit,inventory,ordering}/` | dashboard CI (net-new workflow) — fixture mode on PR, live mode on cron |
+| Coverage matrix | every consumed endpoint/field × MUST/SHOULD, ≥95% MUST per wired building or gap in COVERAGE.md | `tests/contracts/COVERAGE.md` + generator script | FR-5 AC2 |
+| Discrepancies | producer-vs-consumer divergences found while wiring | `tests/contracts/DISCREPANCIES.md` | skill Pattern 5 artifact |
+| Catch-set | pinned regression cases from REAL misses — seeds: 24-vs-0 parity, Zod-cap swallow (actions.ts:1908), dead-host silence, sonar#120 zero-holders | `tests/contracts/catch-set/` | NFR-4; grows only from behavior |
+| Replay check | lifecycle fold == projection state | ordering contract suite | FR-4 AC2 |
+| Silent-zero gate | grep-assertable no-catch→zero on the four surfaces | `scripts/check-silent-zero.ts` in dashboard CI | FR-6 AC1 |
+| Unit tests | new adapters/clients (SeamResult branches, envelope verify, cursor paging) | `tests/unit/*` (existing dirs) | Karpathy: every branch leaves a runnable check |
+| Producer-side | ordering events endpoint: vitest in packages/services/ordering (cursor, redaction, limit clamp) | monolith | per-PR |
+| Fixture provenance | every fixture header: source URL, capture date, capture command | fixture files | differential-vs-real discipline |
 
-| File | Covers | Gate |
-|---|---|---|
-| `service-block.test.ts` | valid block decodes; each invalid variant (missing field, bad path/status/auth_class, missing provenance) throws; blockless entry valid; deployment_url mismatch throws | G-1, G-5, NFR-5 |
-| `expectations.test.ts` | valid http / graphql-lag / event-max-age fixtures decode; **`gh-workflow` fails**; unknown kind fails; malformed cadence/ref fails; duplicate refs fail; empty thresholds fail; absent array valid | G-3, G-5, FR-3 |
-| `registry-decode.test.ts` | the REAL `registry.yaml` full-decodes; every `service` block carries `probed_at`; sonar has ≥1 `expectations` entry with the six chain-lag threshold keys; score-api's `health_path` is not `/` with `expected_status: 302` (the anti-transcription tripwire) | G-1, G-2, FR-5 |
-
-Fixtures live in `tests/fixtures/` beside the existing `sample-beacon-v3.yaml`,
-as small inline-or-file YAML documents per case. Fixture tests assert against
-the **shared production schema import**, never a test-local copy — the
-fixture-tautology guard.
-
-### 8.2 G-4 consumer gate
-
-`packages/freeside-cli` suite runs **unchanged** (zero source, zero test edits
-there): `ordering-registry.test.ts` decodes the real updated registry.yaml
-through the shared schema, and `doctor.test.ts` exercises fixture registries
-(which lack the new optional blocks — proving absence stays valid).
-
-### 8.3 CI lane (D-10)
-
-New `.github/workflows/registry-cli-tests.yml`:
-
-```yaml
-on:
-  pull_request:
-    paths:
-      - 'packages/freeside-registry/**'
-      - 'packages/freeside-cli/**'
-      - '.github/workflows/registry-cli-tests.yml'
-# job: setup-node → for pkg in freeside-registry freeside-cli:
-#   npm ci (or npm install --no-package-lock, matching cluster-compliance's
-#   standalone-package install) → npm test
-# freeside-cli installs AFTER freeside-registry so its file: dep copies the
-# UPDATED schema (fresh install defeats the file:-dep stale-copy hazard).
-```
-
-Acceptance for the lane itself: a deliberately-broken fixture branch goes red;
-this branch goes green.
-
-### 8.4 Live-probe verification (sprint tasks, not unit tests)
-
-Probe output is ambient — never baked into unit tests. The populate task
-records each probe (URL, status, body head, date) in the PR description +
-`probed_at` fields; the score-api tripwire test (§8.1) guards the one
-transcription hazard structurally.
+XFAIL discipline: a known-broken seam (e.g. sonar#120 poisoning holdings truth) is an `xfail` with a bead ref — visible, counted, never silently green.
 
 ---
 
-## 9. Development Phases (sprint-shaping input)
+## 9. Development Phases (sprint-ready, ADR-007-sliced)
 
-Single sprint, one PR (all paths network-domain or unclassified):
+Each PR stays inside one repo AND one domain. DRAFT PRs while the merge door is frozen (NFR-3, R-6). Beads carry `domain:*` labels.
 
-1. **Schema** — §4 additions to `registry.ts` + `index.ts` exports + fixture
-   tests (`service-block`, `expectations`). *Verify: new tests red→green;
-   existing `beacon-loader.test.ts`, `worldline-score-api-registry.test.ts`
-   still green.*
-2. **Live probe wave** — re-probe the 6 declare-candidates (+ ordering if OQ-1
-   says yes); resolve inventory's drift; confirm score-api `/v1/health` still
-   200; verify sonar `chain_metadata` endpoint + SVM projection against the
-   live GraphQL schema. *Verify: probe log in PR body.*
-3. **Populate** — registry.yaml service blocks + sonar expectations + notes
-   updates (score-api resolution trail, schema-comment block) +
-   `registry-decode.test.ts`. *Verify: full-decode test green; freeside-cli
-   suite green untouched.*
-4. **CI lane** — `registry-cli-tests.yml`. *Verify: lane runs on the PR itself
-   and is green; `tools/check-beacon-domain.sh --since main` reports
-   single-domain.*
+### Phase 1 — Harness substrate + fastest suite (dashboard repo)
+1. `SeamResult` type + seam module conversion for inventory client (already wired seam = fastest green).
+2. `tests/contracts/` scaffold: runner conventions, fixture PROVENANCE format, ledger appender, `tests/contracts/inventory/` suite (3 endpoints, dead-host catch-set case).
+3. Net-new CI workflow running `bun test tests/contracts` (fixture mode) + `scripts/check-silent-zero.ts`; live-mode cron job; ledger artifact upload.
+4. `grimoires/loa/reality-ledger.md` initial classification of ALL dashboard surfaces; fabricated community cards get `sample(order:<bead>)` labels.
+5. Resolve bun version pin + lockfile authority (brief §6).
 
-Dependency order is 1 → 2 → 3; 4 is parallel to 2–3 but must land in the same
-PR so gate G-4 is enforced at merge time.
+### Phase 2 — Badges + Audit real (dashboard repo + infra ops)
+6. `src/lib/activities-api/client.ts` + Bearer mint seam + badge surface cutover; score-api facade path retired from this surface; catalog grid labeled `sample` + order filed; `tests/contracts/activities/` (incl. 401 case).
+7. [OPERATOR-ADJACENT] shadow-audit Railway deploy from monolith (existing Dockerfile/railway.toml; env checklist from bin/http.ts header; live-correctness spot-check per its warning).
+8. Dashboard: set `SHADOW_AUDIT_*` env, DELETE `MOCK_AUDIT` + mock branch, loud error state; `tests/contracts/shadow-audit/`.
+9. [OPERATOR-ADJACENT] inventory canonical DNS → -3f25; verify inventory-api#18 (beacon serving) state; registry `beacon_url` truth restored.
+
+### Phase 3 — Order events + registry + doctor (monolith, two PRs by domain)
+10. **PR (platform/services)**: `GET /v1/orders/events` on ordering service + index + tests; deploy.
+11. **PR (network/registry)**: `conformance_ref` additive schema field + `expectations[]` blocks with pointers for the four wired buildings; freeside-cli decode conformance vectors stay green.
+12. **PR (platform/tools)**: `tools/consumer-conformance-doctor.mjs` + `immune-instruments.yaml` registration (literal tokens) + `immune-doctors.yml` job (informational).
+13. Dashboard: ordering client + orders-inbox adapter + replay check + `tests/contracts/ordering/`; demo feed → `sample` → delete; #401 filed as order.
+
+### Phase 4 — Close S1 (dashboard repo)
+14. Coverage matrix generator + COVERAGE.md ≥95% MUST (or documented gaps); DISCREPANCIES.md populated from wiring findings.
+15. Remaining catch-set seeds pinned; silent-zero gate green across all four surfaces.
+16. Ledger digest → grimoires cold copy; FR-7 pulse wiring stubbed behind webhook availability (S2 gate, not S1 blocker).
+
+Dependency edges: 1→2→3 (substrate before suites); 7→8 (deploy before cutover); 10→13 (endpoint before adapter); 11 independent; 12 depends on 3 (needs a CI run to read).
 
 ---
 
-## 10. Open Questions
+## 10. Known Risks and Mitigation
 
-- **OQ-1 (operator)**: declare a `service` block for `ordering`? It is outside
-  the ADR-012 appendix and the PRD's "8 cells" phrasing, but its health
-  contract is already documented in its own registry note (`/healthz`, 200,
-  `{"ok":true`) and it is deployed. **Recommendation: yes** — additive, same
-  probe wave, and leaving a documented-but-undeclared health path re-creates
-  the drift class this cycle kills. Costs one probe.
-- **OQ-2 (sprint-resolvable)**: which host serves `chain_metadata` —
-  belt-gateway or `indexer.hyperindex.xyz/<id>`? Resolved by one live query at
-  populate time; declared as data either way (D-9).
-- **OQ-3 (noted, not blocking)**: ADR-012 labels Phase 0 `domain:platform`,
-  but `domain-classify.sh:21` and the PRD both place `packages/freeside-registry`
-  in **network**. This SDD follows the classifier (it is the CI-enforced truth).
-  Worth a one-line ADR-012 erratum when the ADR is ratified.
-
-## 11. Risks & Mitigation
-
-| Risk | Mitigation (designed-in) |
-|---|---|
-| Appendix values drifted (inventory already suspect) | §5.1: live re-probe decides every value; `probed_at`/`probe_source` make staleness visible forever (NFR-5) |
-| score-api 302 gets transcribed by a future hand | D-8 declares the direct path; §8.1 tripwire test makes the 302-transcription a red build |
-| freeside-cli decode breaks | Optional-only additions + §8.2 real-registry consumer test + §8.3 CI lane at merge time |
-| gh-workflow used before a consumer exists | Excluded from the union — decode failure is mechanical (D-2) |
-| SVM projection guess wrong | D-9: verify-or-omit; only yaml data changes if later corrected |
-| Duplicated deployment_url drifts | D-6 filter #1 |
-| Effect struct-level `Schema.filter` composition friction | §4.2 fallback: same invariant asserted in `registry-decode.test.ts` |
-| ADR-012 rejected after landing | Additive schema + data — revertible in one PR (PRD §8) |
-
-## 12. Software Stack (unchanged — for the record)
-
-| Component | Version | Justification |
+| # | Risk | Mitigation (design-level) |
 |---|---|---|
-| effect (Schema) | ^3.21.0 (existing) | already the decode substrate; discriminated unions + filters native |
-| yaml | ^2.6.0 (existing) | existing loader |
-| TypeScript | ^5.4.0 (existing) | existing toolchain |
-| tsx / node:test | ^4.20.0 (existing) | existing test runner |
-| New dependencies | **none** | NFR-4 |
+| R-1 | Identity Bearer secret drift → silent 401s | suite asserts auth flow explicitly incl. 401-distinct-from-empty (D-2); live-mode cron makes drift loud within a day |
+| R-2 | Inventory DNS/edge change is operator-adjacent infra | smallest diff: read-path unwall only; `INVENTORY_API_URL` env keeps dashboard live pre-DNS; keyed fallback documented if public posture fails review |
+| R-3 | #401 stalls NEW orders → feed shows only replayed history | AC scoped to replay (D-5); #401 filed as order; golden thread (Azuki order 6ddc06f5) remains settle target |
+| R-4 | sonar#120 zero-holders poisons holdings truth | pinned as XFAIL catch-set case with bead ref; Dune-differential is S2 (inhale-only, evidence never verdict — NFR-2) |
+| R-5 | inventory/score cut-vertex SPOFs | suite order puts inventory first (Phase 1); failure becomes visible + attributable |
+| R-6 | Merge door frozen (--admin merges) | DRAFT PRs; doctor informational-never-required by design (D-7) so S1 adds zero new freeze surface |
+| R-7 | activities event tables EMPTY (registry notes: write path not wired 2026-05-30) + B1 donation wallet list in no repo | badge READ wiring + suite don't block on data (FR-1); AC1's "member with granted badges" needs at least one grant — surfaced as an explicit Phase-2 precondition, order filed if grants absent |
+| R-8 | Cross-engine drift: suites under bun, prod under node | named sensing hazard (brief §6); pin one bun version; contract suites run against LIVE seams (engine-independent assertions) |
+| R-9 | Doctor reads cross-repo CI via gh token scope | read-only `gh` with default token; degraded-not-false verdict on missing scope (gate-freeze-sensor precedent) |
+
+---
+
+## 11. Open Questions
+
+1. **Discord webhook URL** (FR-7/S2) — operator-provided; S2 gate, not S1 blocker (prd.md FR-7).
+2. **Badge grants for AC1** — is at least one Mibera badge granted in activities-api prod today? (R-7; determines whether Phase 2 lands with a live-green or XFAIL-pending-grant suite.)
+3. **"Top-20 worlds" order pin** — verify wording against the internal-team request during S1 (prd.md:140).
+4. **Member-view badges** (service-token route) — in or out of S1 badge scope? Default: out (D-2).
+5. **Ordering events endpoint auth posture** — RESOLVED by flatline integration (§12.0): default-deny service-scoped Bearer, negative cases in suite. Member-Access seam sprint unchanged.
+6. **FR-3 AC4 endpoint naming** — SDD pins the actually-consumed surface (D-4 grounded correction); confirm no separate `/metadata/:contract/:tokenId` consumer exists.
+
+## 12. Flatline-Integrated Design Deltas (2026-07-09 · 13 blockers, 12 improvements folded)
+
+§12.0 records the three in-place fixes already applied above: `published = true` read filter + versioned `PublicLifecycleEvent` allowlist projection (§5.1, SKP-002/003), `seq`-based dedup identity (D-5, SKP-002 875), default-deny service-Bearer on `/v1/orders/events` (§6.3, SKP-001 930). The remaining deltas:
+
+### 12.1 Inbox cursor durability on serverless (SKP-004 760)
+`since` cursor state MUST NOT live in per-instance memory (Vercel cold start ⇒ replay from `seq=0`, duplicate fan-out). S1: persist `next_since` in the dashboard's existing durable store (config-service KV or midi-db table `orders_inbox_cursor(consumer_id, next_since, updated_at)`) with read-modify-write under a lease; replay blast radius capped by `?limit` + max 3 pages per request cycle. Contract cases: cold-start resume from persisted cursor; two concurrent instances don't double-advance.
+
+### 12.2 Bearer mint contract is Phase-2 GATING (SKP-004 795, IMP-004 890)
+Before FR-1 wiring: document the exact identity-api exchange (endpoint, `sub`/`aud`/`iss` claims, TTL, refresh, server-only storage, log redaction) in the suite's fixture notes; integration tests for wrong-audience / expired / wrong-issuer / rotation. If the session→token exchange does not exist upstream, FR-1 blocks LOUDLY and files the identity-api order — no facade fallback.
+
+### 12.3 Shadow-audit auth fails CLOSED (SKP-005 770)
+The producer's API key is MANDATORY in production config: service refuses startup when `SHADOW_AUDIT_API_KEY` is absent; constant-time verification; rotation documented. Suite asserts unauthenticated + wrong-key → 401 against the DEPLOYED configuration (not just local). The dashboard "promising to send a key" is not a boundary.
+
+### 12.4 Envelope verification trust root (SKP-006 750)
+S1 scope-pin: signature/hash-chain verification of Hounfour envelopes is EVIDENCE, not a gate, until a trust-root design exists (key distribution, key IDs, issuer binding, rotation overlap, fail-closed rules — the Legba lane). The suite treats envelope-verify failures as `violation(provenance)` in the ledger without blocking render. Full trust-root design = S2 order (links the existing Legba trust-store lane).
+
+### 12.5 Conformance ledger durability (SKP-007 735, IMP-005 870)
+CI artifacts are per-run and forkable — the ledger's SINGLE durable serialization point is the repo: the live-mode cron job commits ledger segments to a dedicated branch (`conformance-ledger`, append-only path per seam, run_id + commit provenance in each record), matching the operator's runner-state-on-dedicated-branch constraint. Per-record `sha256` + `prev_hash` computed over canonical JSON (JCS); genesis rule per seam; the doctor detects missing predecessors/forks/truncation and emits `unknown`, never silent-pass. Signing upgrade (OIDC attestation) = S2.
+
+### 12.6 Doctor evidence selection is pinned (SKP-008 710, IMP-006 880)
+The consumer-conformance doctor selects evidence deterministically: repo=freeside-dashboard, workflow ID pinned, branch=main, event∈{schedule,push}, mode=live, artifact name exact, commit provenance recorded, max evidence age = 26h. Anything else ⇒ verdict `unknown` (exit 1 INSUFFICIENT — never healthy-by-default), and persistent `unknown` (>2 cadences) surfaces in the pulse as its own transition.
+
+### 12.7 Live smoke on merge (SKP-003 740)
+Fixture-green ≠ wire-in complete. In addition to the daily live cron: a **live-mode smoke subset** (one canary MUST per wired seam, §10.1 timeouts) runs on merge-to-main post-deploy, informational-never-required per rack doctrine BUT its result lands in the ledger and a red smoke sets the seam's reality-ledger state to `violation` — the quorum rule (PRD §10.3) then prevents `live` classification. Day-long blindness window closed without creating a numb required gate.
+
+### 12.8 Badge seed precondition (SKP-007 710)
+Phase-2 badge cutover requires the live-bootstrap contract: pinned test identity returns ≥1 badge OR the suite fails loud with the documented operator seed step (grant one badge to the test identity via the B1 path). 200-empty ≠ green during bootstrap; `empty-authoritative` is only accepted after the seed exists (PRD §10.2 completeness rules apply).
+
+### 12.9 Enforcement + fixtures hygiene (IMP-010 710, IMP-011 680)
+`check-silent-zero.ts` upgrades from grep-literals to AST-aware detection (ts-morph over catch-clauses, `.catch(`, `?? []`-on-seam-results, optional-chain-with-default in seam modules) + one behavioral test per surface (inject upstream fault, assert error-state render). Fixtures gain a sidecar `PROVENANCE.json` per file: source URL, capture command, capture time, response-header subset, `sha256` — refresh procedure documented (UPDATE_FIXTURES=1 + git diff review per the conformance skill).
+
+---
+
+> **Traceability**: D-1↔FR-5/G-3 · D-2↔FR-1 · D-3↔FR-2 · D-4↔FR-3 · D-5↔FR-4 · D-6↔FR-5/NFR-1 · D-7↔FR-5 AC1/G-4 · D-8↔G-4/NFR-4 · D-9↔FR-6/G-1 · §12↔flatline sdd-final_consensus.json 2026-07-09. All file:line citations read live 2026-07-09 from loa-freeside @ ride-refresh-2026-07-06, freeside-dashboard main, activities-api main.
