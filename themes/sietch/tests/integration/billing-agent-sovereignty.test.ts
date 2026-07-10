@@ -494,4 +494,21 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     // Second sweep: config now exists, nothing left to recover.
     expect(await governanceService.activateExpiredCooldowns()).toBe(0);
   });
+
+  it('activation is idempotent by proposal id (concurrent recovery cannot double-activate)', async () => {
+    const svc = new ConstitutionalGovernanceService(db);
+    const proposalId = randomUUID();
+    const opts = { proposerAccountId: 'acct-x', agentProposalId: proposalId, totalWeight: 2 };
+
+    const first = await svc.activateFromAgentGovernance('reservation.default_ttl_seconds', 750, opts);
+    const second = await svc.activateFromAgentGovernance('reservation.default_ttl_seconds', 750, opts);
+
+    // Second call is a no-op returning the SAME config — no second version
+    // superseding the first.
+    expect(second.id).toBe(first.id);
+    const rows = db.prepare(`
+      SELECT COUNT(*) as n FROM system_config WHERE param_key = 'reservation.default_ttl_seconds'
+    `).get() as { n: number };
+    expect(rows.n).toBe(1);
+  });
 });

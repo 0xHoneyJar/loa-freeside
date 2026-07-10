@@ -272,7 +272,30 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
     // the global one.
     const entityType = opts.entityType ?? null;
 
+    // BEGIN IMMEDIATE: the idempotency check below is check-then-insert, so
+    // the write lock must be taken BEFORE the check — two deferred
+    // transactions in different processes could otherwise both pass the
+    // SELECT and both insert.
     return this.db.transaction(() => {
+      // Idempotent by proposal id: activation may be retried (orphan
+      // recovery, claim released after a post-config failure) and may race
+      // across app instances. If a config already carries this proposal's
+      // provenance, return it instead of minting a second version that
+      // supersedes the first.
+      const existing = this.db.prepare(`
+        SELECT id FROM system_config
+        WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
+      `).get(opts.agentProposalId) as { id: string } | undefined;
+      if (existing) {
+        logger.info({
+          configId: existing.id,
+          paramKey,
+          agentProposalId: opts.agentProposalId,
+          event: 'constitutional.agent_governance.already_activated',
+        }, 'Agent governance activation already applied — idempotent no-op');
+        return this.getConfigRow(existing.id);
+      }
+
       const nextVersion = this.allocateVersion(paramKey, entityType);
       const now = new Date().toISOString();
       const id = randomUUID();
@@ -317,7 +340,7 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
       }, 'Config activated via agent governance');
 
       return this.getConfigRow(id);
-    })();
+    }).immediate();
   }
 
   async submit(configId: string, proposerAdminId: string): Promise<SystemConfig> {
