@@ -346,3 +346,59 @@ Clean compile.
 | `bun test tests/contracts/` | 51 pass · 6 todo · 0 fail |
 | `bunx tsc --noEmit` | exit 0 (clean) |
 | Open tasks (XFAIL) | Task 2.5 Railway shadow-audit deploy; arrakis-ue40t activities env-confirm; identity seed gate |
+
+---
+
+## Sprint 2 Cycle 2 Fixes (C-5..C-7, N-5..N-6)
+
+> Branch: `feature/waggle-s1` · Cycle: cycle-waggle-s2c2 · Authored: 2026-07-10
+
+### C-5 — activities client defaulted silently to production; session Bearer egressed to prod from any dev/preview env
+
+**Commit:** `3deb27a4`
+
+- `src/lib/activities-api/client.ts` — `activitiesApiBase()` now returns `null` when `ACTIVITIES_API_URL` is not set (was: `?? DEFAULT_ACTIVITIES_API_URL` pointing to the production Railway host). `fetchEarnedBadges()` checks the result and returns `seamError({kind:"unreachable"})` BEFORE constructing any fetch request or Authorization header. The production default constant is deleted.
+- Documented: why this is structurally different from the inventory client's default (`DEFAULT_INVENTORY_API_URL`) — inventory is a public-read client with no credentials; that default is explicitly annotated as safe, and a warning is added against copying the pattern into credentialed clients.
+- `tests/contracts/activities/auth.test.ts` — added MUST case: unset `ACTIVITIES_API_URL` → `seamError(unreachable)` AND guard-fetch is never called (`fetchCalled === false`; no Authorization header constructed).
+
+### N-5 — mock-audit.ts shim survived past its intended life
+
+**Commit:** `3deb27a4`
+
+- `src/lib/freeside-worlds/access-audit/mock-audit.ts` — deleted. No live consumers remained (all page.tsx importers were already repointed to `client.ts` in Task 2.6). The file's own docstring flagged this deletion for the current pass.
+
+### C-6/C-7 — declared §10.1 timeout bounds enforced nowhere across all three seams
+
+**Commit:** `830b320b` (6 files, +327/−39)
+
+- `src/lib/seam/fetch.ts` — created `seamFetch(url,{timeoutMs,seam,init})`. Wraps `AbortSignal.timeout(timeoutMs)`. `DOMException("TimeoutError")` → `seamError({kind:"timeout"})`. Network error → `seamError({kind:"unreachable"})`. Callers own status-code branches and body decode.
+- `src/lib/activities-api/client.ts` — replaced bare `fetch()` call with `seamFetch`. Imports `bounds.timeout_ms` from `tests/contracts/activities/bounds.json` (single source of truth; no retyped constant).
+- `src/lib/freeside-worlds/access-audit/client.ts` — replaced `try { fetch(...) } catch` with `seamFetch`. Imports `bounds.timeout_ms` from `tests/contracts/shadow-audit/bounds.json`.
+- `src/lib/inventory-api/client.ts` — replaced `inventoryFetch`'s `try { fetch(...) } catch` with `seamFetch`. Imports `bounds.timeout_ms` from `tests/contracts/inventory/bounds.json`. Deleted `loa:shortcut` marker ("AbortController wired in S2 when §10.1 timeouts enforce" — trigger was due).
+- One timeout test per seam: each contract suite has a new MUST case — `TimeoutError` DOMException mock → expect `{status:"error", kind:"timeout"}`.
+- `tests/unit/seam/fetch.test.ts` — 5 tests: (1) real 50ms timeout with AbortSignal-aware mock (never-resolving promise that rejects when signal fires; proves the actual mechanism, not just the catch branch), (2) direct TimeoutError mock, (3) network error → unreachable, (4) success → ok with Response, (5) non-2xx → ok (caller owns status codes).
+
+### N-6 — pre-sprint full-suite failures attribution (stash-verified)
+
+The full test suite (`bun test tests/`) shows 3 persistent failures across Sprints 1 and 2:
+
+| Failing test | File | Attribution |
+|---|---|---|
+| `buildCommunityNavSections v3 > marks Settings active when settingsActive is true` | `tests/unit/freeside-worlds/community-nav.test.ts` | Uncommitted working-tree edits to `src/lib/freeside-worlds/community-nav.ts` predating Sprint 1 |
+| `resolveFreesideBreadcrumbs > returns Integrations trail for Discord settings redirect` | `tests/unit/freeside-worlds/freeside-breadcrumbs.test.ts` | Uncommitted working-tree edits to `src/lib/freeside-worlds/freeside-breadcrumbs.ts` predating Sprint 1 |
+| `(d) returns the FULL DEMO_PROJECTS when the managed-worlds fetch throws` | `tests/unit/freeside-worlds/hub-inbox.test.ts` (splitOnboardingCatalog) | Uncommitted working-tree edits to `src/lib/freeside-worlds/hub-inbox.ts` predating Sprint 1 |
+
+**Stash-verified evidence (Cycle 2, 2026-07-09):** `git stash push` of working-tree component sources → `bun test tests/unit/freeside-worlds/` → 34 pass / 0 fail. Restore stash → 3 failures reappear. These modifications are not attributable to any Sprint 1 or Sprint 2 commit; `git log -S` across the affected paths returns no sprint-era commits touching the logic under test.
+
+These failures are **pre-sprint drift in uncommitted component sources**. They are load-bearing for audit purposes — no reviewer should re-derive this attribution.
+
+---
+
+### Sprint 2 Cycle 2 Gate Summary
+
+| Gate | Result |
+|------|--------|
+| `bun test tests/unit/seam/ tests/contracts/` | 60 pass · 6 todo · 0 fail |
+| `bun test tests/contracts/activities/` | 21 pass (was 20; C-5 test added) · 5 todo · 0 fail |
+| `bunx tsc --noEmit` | exit 0 (clean) |
+| Pre-sprint failures (full suite) | 3 failures, stash-verified as pre-sprint working-tree drift (N-6 above) |
