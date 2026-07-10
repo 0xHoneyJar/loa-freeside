@@ -23,7 +23,7 @@
 import { serve } from '@hono/node-server';
 import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
-import { buildAuditApp, configFromEnv } from '../src/server.js';
+import { buildAuditApp, configFromEnv, validateApiKeyEnv } from '../src/server.js';
 import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-source.js';
 import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
@@ -35,6 +35,15 @@ process.on('unhandledRejection', (reason) => {
   console.error('[shadow-audit-api] unhandledRejection — exiting:', reason);
   process.exit(1);
 });
+
+// §12.3: fail-closed — refuse startup when SHADOW_AUDIT_API_KEY is absent/empty.
+// For local dev only: SHADOW_AUDIT_ALLOW_ANON=dev-only (never in production).
+try {
+  validateApiKeyEnv(process.env);
+} catch (err) {
+  console.error('[shadow-audit-api] FATAL:', (err as Error).message);
+  process.exit(1);
+}
 
 // the COLLECTION_REGISTRY values (collection id + token standard) are the most correctness-critical config
 // in the deploy — VALIDATE them, the way role-source validates its snapshot (FAGAN MEDIUM-2). A typo'd

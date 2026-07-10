@@ -59,6 +59,27 @@ function failClosedAuth(): AuditRouterDeps['auth'] {
   };
 }
 
+/**
+ * §12.3 — startup API-key guard. Call once before serving. Throws when SHADOW_AUDIT_API_KEY is
+ * absent/empty so the caller can process.exit(1) with a clear message. The ONLY accepted local-dev
+ * bypass is SHADOW_AUDIT_ALLOW_ANON=dev-only — never valid in production.
+ */
+export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.SHADOW_AUDIT_API_KEY) return;
+  if (env.SHADOW_AUDIT_ALLOW_ANON === 'dev-only') {
+    console.warn(
+      '[shadow-audit-api] WARNING: SHADOW_AUDIT_ALLOW_ANON=dev-only — running open/unauthenticated. ' +
+        'This escape is for local dev only; NEVER set it in production.',
+    );
+    return;
+  }
+  throw new Error(
+    'SHADOW_AUDIT_API_KEY is required in production (§12.3 — service is fail-closed). ' +
+      'Generate a key: openssl rand -hex 32\n' +
+      'For local dev ONLY: SHADOW_AUDIT_ALLOW_ANON=dev-only (NEVER in production).',
+  );
+}
+
 /** Build the audit Hono app from an injected `OwnershipSource` + the local adapters. */
 export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collectionRegistry?: CollectionRegistry): Hono {
   const now = () => Date.now();
@@ -97,9 +118,16 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
       // accidentally expose a future /v1/collections/... route (FAGAN S3).
       if (c.req.path === '/healthz' || /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)) return next();
       const got = Buffer.from(c.req.header('x-api-key') ?? '');
-      // constant-time compare (FAGAN LOW-7: a `!==` on a shared secret is a timing oracle).
-      const ok = got.length === keyBuf.length && timingSafeEqual(got, keyBuf);
-      if (!ok) return c.json({ error: 'unauthorized' }, 401);
+      // §12.3 constant-time verify: always run timingSafeEqual — never short-circuit on length mismatch.
+      // A `got.length === keyBuf.length &&` guard placed BEFORE timingSafeEqual turns the key length
+      // into a timing oracle (attacker learns correct length in O(1)). Fix: pad/truncate the received
+      // value to the reference length so timingSafeEqual always executes, then enforce the length
+      // constraint on already-computed booleans (no timing leak from `&&` on plain booleans).
+      const filled = Buffer.alloc(keyBuf.length, 0);
+      got.copy(filled, 0, 0, Math.min(got.length, filled.length));
+      const contentMatch = timingSafeEqual(filled, keyBuf);
+      const ok = contentMatch && got.length === keyBuf.length;
+      if (!ok) return new Response(null, { status: 401 }); // §12.3: no body detail on auth failure
       await next();
     });
   }

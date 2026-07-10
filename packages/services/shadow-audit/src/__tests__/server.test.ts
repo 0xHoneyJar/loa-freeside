@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AuditOutputSchema } from '@freeside/shadow-audit-protocol';
-import { buildAuditApp, configFromEnv, type AuditServerConfig } from '../server.js';
+import { buildAuditApp, configFromEnv, validateApiKeyEnv, type AuditServerConfig } from '../server.js';
 import { makeBalanceWhaleSource } from '../whale-source.js';
 import { makeFileRoleSource } from '../role-source.js';
 import type { OwnershipSource, Balances } from '../audit-service.js';
@@ -212,5 +212,61 @@ describe('capability read security boundary (FR-2 / PRD §Security boundary)', (
     // and /v1/audit WITHOUT the key is still gated
     const gated = await app.request(`/v1/audit?${query('thj')}`);
     expect(gated.status).toBe(401);
+  });
+});
+
+// ── §12.3 startup key guard ──
+
+describe('validateApiKeyEnv — §12.3 fail-closed startup guard', () => {
+  it('startup-refusal: throws when SHADOW_AUDIT_API_KEY is absent', () => {
+    expect(() => validateApiKeyEnv({} as NodeJS.ProcessEnv)).toThrow(/SHADOW_AUDIT_API_KEY/);
+  });
+
+  it('startup-refusal: throws when SHADOW_AUDIT_API_KEY is empty string', () => {
+    expect(() => validateApiKeyEnv({ SHADOW_AUDIT_API_KEY: '' } as NodeJS.ProcessEnv)).toThrow(/SHADOW_AUDIT_API_KEY/);
+  });
+
+  it('startup-refusal: rejects a wrong SHADOW_AUDIT_ALLOW_ANON value (not dev-only)', () => {
+    expect(() => validateApiKeyEnv({ SHADOW_AUDIT_ALLOW_ANON: 'true' } as NodeJS.ProcessEnv)).toThrow(/SHADOW_AUDIT_API_KEY/);
+    expect(() => validateApiKeyEnv({ SHADOW_AUDIT_ALLOW_ANON: '1' } as NodeJS.ProcessEnv)).toThrow(/SHADOW_AUDIT_API_KEY/);
+  });
+
+  it('dev escape: allows startup when SHADOW_AUDIT_ALLOW_ANON=dev-only (local dev, never production)', () => {
+    expect(() => validateApiKeyEnv({ SHADOW_AUDIT_ALLOW_ANON: 'dev-only' } as NodeJS.ProcessEnv)).not.toThrow();
+  });
+
+  it('allows startup when SHADOW_AUDIT_API_KEY is set', () => {
+    expect(() => validateApiKeyEnv({ SHADOW_AUDIT_API_KEY: 'some-secret' } as NodeJS.ProcessEnv)).not.toThrow();
+  });
+});
+
+// ── §12.3 correct-key → 200 ──
+
+describe('buildAuditApp — §12.3 correct key returns 200', () => {
+  const ownership = fakeOwnership(new Map([[R1, 1n], [R2, 1n]]), new Map([[Y, 1n]]));
+
+  it('200 on correct X-API-Key (§12.3)', async () => {
+    const { path, cleanup } = tempRoleSnapshot('thj', R1);
+    try {
+      const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key', roleSnapshotPath: path }));
+      const res = await app.request(`/v1/audit?${query('thj')}`, {
+        headers: { 'x-api-key': 'correct-key' },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('401 on missing key (§12.3)', async () => {
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }));
+    expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
+  });
+
+  it('401 on wrong key (§12.3)', async () => {
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }));
+    expect(
+      (await app.request(`/v1/audit?${query('thj')}`, { headers: { 'x-api-key': 'wrong-key' } })).status,
+    ).toBe(401);
   });
 });
