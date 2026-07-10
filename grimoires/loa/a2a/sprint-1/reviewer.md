@@ -455,12 +455,30 @@ Both reads remain lazy (`process.env` on each call) for test overrideability.
 - `http://localhost:3001` with `ACTIVITIES_API_ALLOWED_HOSTS` excluding localhost → `kind:auth`, no fetch
 - `http://localhost:3001` in dev with localhost in effective allowlist → validation passes, fetch called, 401 mock surfaces correctly
 
+### A-4 (A-4a MEDIUM + A-4b MEDIUM) — pin scheme allowlist; explicit http opt-in (`2306e408`)
+
+Two residuals in `validateActivitiesUrl` found by final security dissent:
+
+**A-4a — scheme denylist → scheme allowlist (deletion-over-denylist).** The old `if (parsed.protocol !== "https:")` check allowed `ftp://localhost`, `file:///etc/passwd`, etc. to fall through because they're non-https on a loopback host. Fixed to enumerate exactly two permitted schemes in if/else-if/else:
+- `https:` — always permitted
+- `http:` — loopback + `ACTIVITIES_ALLOW_HTTP_LOOPBACK=1` only
+- Everything else — rejected immediately; `ftp:, file:, gopher:, data:, …` cannot carry a Bearer
+
+**A-4b — NODE_ENV fail-open → ACTIVITIES_ALLOW_HTTP_LOOPBACK explicit opt-in.** `isProduction = NODE_ENV === "production"` is fail-open: an unset/misspelled `NODE_ENV` in a real prod deploy makes `isProduction=false` and enables http loopback with a live session Bearer. Replaced with `ACTIVITIES_ALLOW_HTTP_LOOPBACK=1` — an explicit dev opt-in flag. Absence = `http:` rejected, always. `NODE_ENV` is no longer read by `validateActivitiesUrl`. A-3 positive test updated to set this flag (previously set NODE_ENV; now correctly sets the actual gate).
+
+**Tests (5 MUST added to `auth.test.ts`)**:
+- `ftp://localhost/` → `kind:auth`, `fetchCalled===false` (A-4a scheme block)
+- `file:///etc/passwd` → `kind:auth`, `fetchCalled===false` (A-4a scheme block)
+- `http://localhost:9999` WITHOUT flag → `kind:auth`, `fetchCalled===false` (A-4b fail-closed)
+- `http://localhost:9999` WITH `ACTIVITIES_ALLOW_HTTP_LOOPBACK=1` → fetch called, 401 from mock (A-4b opt-in)
+- `https://activities-api.fixture.test` → fetch called, `kind:decode` (NOT `kind:auth`) → proves https path is unaffected (regression check)
+
 ### Sprint 2 Audit Gate Summary (final)
 
 | Gate | Result |
 |------|--------|
-| `bun test tests/contracts/activities/ tests/unit/seam/` | 43 pass · 4 todo · 0 fail |
+| `bun test tests/contracts/activities/ tests/unit/seam/` | 48 pass · 4 todo · 0 fail |
 | `npx tsc --noEmit` | exit 0 (clean) |
-| Commits | A-1: `faf4e39e` · A-2: `a8eef2af` · A-3: `7ea3e923` |
+| Commits | A-1: `faf4e39e` · A-2: `a8eef2af` · A-3: `7ea3e923` · A-4: `2306e408` |
 | Branch | `feature/waggle-s1` (freeside-dashboard) |
 | Pre-sprint failures | 3 (unchanged, stash-verified N-6) |
