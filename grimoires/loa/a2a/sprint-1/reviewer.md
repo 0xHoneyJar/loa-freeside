@@ -402,3 +402,47 @@ These failures are **pre-sprint drift in uncommitted component sources**. They a
 | `bun test tests/contracts/activities/` | 21 pass (was 20; C-5 test added) · 5 todo · 0 fail |
 | `bunx tsc --noEmit` | exit 0 (clean) |
 | Pre-sprint failures (full suite) | 3 failures, stash-verified as pre-sprint working-tree drift (N-6 above) |
+
+---
+
+## Sprint 2 Audit Fixes
+
+**Finding source**: `grimoires/loa/a2a/sprint-2/auditor-sprint-feedback.md` (CHANGES_REQUIRED, 2026-07-10). Two findings from cross-family cheval dispatch (SOL / openai:codex-headless).
+
+### A-1 (HIGH) — activities URL boundary validation (`faf4e39e`)
+
+Added `validateActivitiesUrl(rawUrl: string)` to `src/lib/activities-api/client.ts`. Runs AFTER the null check for `activitiesApiBase()` and BEFORE any `seamFetch` call — the Authorization header is never constructed for an untrusted base URL. Three rejection conditions:
+
+1. Embedded credentials (`url.username || url.password`) → rejected; prevents Bearer + cred co-egress
+2. Non-https scheme on non-loopback host → rejected; prevents cleartext Bearer egress  
+3. Hostname not in `ACTIVITIES_API_ALLOWED_HOSTS` (default: Railway prod host + localhost/127.0.0.1) → rejected; SSRF / accidental prod egress guard
+
+`ACTIVITIES_API_ALLOWED_HOSTS` is read lazily (per-call from `process.env`) so tests can override after module load. Loopback hosts (`localhost`, `127.0.0.1`) are always allowed so `http://localhost:3000` works in dev without config.
+
+**Test updates**: `beforeAll` in `auth.test.ts` and `suite.test.ts` now set `ACTIVITIES_API_ALLOWED_HOSTS=activities-api.fixture.test,localhost` so the fixture domain passes validation. Added 3 MUST cases to `auth.test.ts` (all verify `fetchCalled === false`):
+- `https://evil.example/` → `kind:auth` (hostname not in allowlist)
+- `https://u:p@activities-api.fixture.test/` → `kind:auth` (embedded credentials)
+- `http://evil.example/` → `kind:auth` (non-https non-loopback)
+
+### A-2 (MEDIUM) — SeamError.publicMessage; detail server-side only (`a8eef2af`)
+
+`src/lib/seam/result.ts`: added `publicMessage: string` to `SeamError`. Fixed, enumerated string per kind — derived automatically by `seamError()` factory; callers supply `Omit<SeamError, "publicMessage">` (all existing call sites unchanged). Mapping: `auth`→"Not authorized", `unreachable`→"Service unavailable", `timeout`→"Request timed out", `http`|`decode`→"Unexpected response". Docstring updated: `detail` is server-side only (logs + conformance ledger); render `publicMessage` instead.
+
+`src/components/freeside/access-audit/access-audit-summary.tsx`: `AccessAuditError` no longer accepts `{kind, detail}` — now accepts `{project, publicMessage}` and renders the safe enumerated string. Internal config detail strings can no longer reach the browser through this component.
+
+`src/app/(freeside)/[project]/audit/page.tsx` (line 45 per auditor finding): now passes `publicMessage={result.cause.publicMessage}` instead of `kind={...}` and `detail={result.cause.detail}`.
+
+**Tests** (`tests/unit/seam/public-message.test.ts`, new):
+- 6 MUST: `seamError()` produces correct `publicMessage` for all 5 kinds + `detail` preserved alongside
+- Grep: `cause.detail` does not appear in `audit/page.tsx`, `member/[wallet]/page.tsx`, or `access-audit-summary.tsx`
+- Render-shape: `AccessAuditError` function body contains `publicMessage`, does not contain `detail`
+
+### Sprint 2 Audit Gate Summary
+
+| Gate | Result |
+|------|--------|
+| `bun test tests/contracts/ tests/unit/seam/ tests/unit/inventory-api/ tests/unit/access-audit/` | 110 pass · 6 todo · 0 fail |
+| `npx tsc --noEmit` | exit 0 (clean) |
+| Commits | A-1: `faf4e39e` · A-2: `a8eef2af` |
+| Branch | `feature/waggle-s1` (freeside-dashboard) |
+| Pre-sprint failures | 3 (unchanged, stash-verified N-6) |
