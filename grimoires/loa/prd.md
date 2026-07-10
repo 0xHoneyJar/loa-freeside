@@ -1,190 +1,199 @@
-# PRD — Waggle Loop S1: Consumer Conformance + Four Real Surfaces
+# PRD — Shadow-Audit MVP: The Shadow-Mode Access-Intelligence Wedge (+ Agent-First Railway IaC)
 
-**Cycle**: waggle-s1
-**Date**: 2026-07-09
-**Domains touched**: `network/registry` (conformance_ref), `platform/tools` (doctor), external repo `freeside-dashboard` (suites + wiring). Per ADR-007 no single PR crosses platform/network — sprint plan slices by repo/domain.
-**Primary source**: `grimoires/loa/context/2026-07-09-consumer-conformance-loop.md` (operator-promoted, grill rounds 1–2)
-**Reality**: `grimoires/loa/reality/` (ride 2026-07-06, fresh)
+**Version:** 1.0
+**Date:** 2026-07-10
+**Cycle:** shadow-audit-mvp
+**Author:** discovering-requirements (operator-driven; exhaustive session context)
+**Supersedes-active:** waggle-s1 (archived → `prd.waggle-s1.md`; sprint #412 completed)
+
+> **Sources (this PRD traces to):** `grimoires/loa/context/2026-07-10-shadow-audit-mvp-definition-of-done.md`,
+> `2026-07-10-shadow-audit-collection-registry.grounded.md`, `2026-07-10-boehm-sovereignty-discriminator.md`;
+> issue `0xHoneyJar/loa-freeside#283` (D1 contract, Eileen-ratified Option C); the Codex Railway-vs-Cloudflare
+> research verdict; operator interview (2026-07-10, this session); `project_deployed-but-unconsumed-pattern`.
+
+---
+
+## 1. Problem & Vision
+
+**The wedge (operator thesis, interview 2026-07-10):** *Freeside is the Shadow-Mode intelligence layer for
+Web3 communities — it runs BESIDE existing gating tools (Collab.Land / Guild / Matrica), builds the canonical
+member graph, detects access/lifecycle drift, and shows operators which members are valuable, risky, lapsed,
+or worth acting on.* The first sellable product is not "token gating" — it is an **access-intelligence audit
+for communities already using token gating**: enter without ripping out the incumbent, prove value, then
+gradually take over lifecycle → member intelligence → monetization.
+
+**Why this, why now (grounded reality, issue #283):** the MVP is a member-intelligence + access-lifecycle
+control-plane delivered as two coupled halves — **D4 Shadow-Mode coexistence** (install behind incumbent,
+touch no roles, explain divergences) and **D1 member graph / holder-quality**. A read-only verification pass
+found a sharp asymmetry: **D4 is materially BUILT** (`packages/adapters/coexistence/`, ~14.5k ln: incumbent
+detector, shadow ledger, namespaced role manager "MUST NEVER touch incumbent roles", parallel-mode
+orchestrator, migration manager — runtime/wireability unverified `[?]`); **D1 exists only as SCHEMA**
+(`apps/worker/src/data/schema.ts` `profiles` table binds communityId+discordId+wallet + tier/rank/scores;
+the reasoning that fills it does not exist). **Option C (Hybrid) is RATIFIED by Eileen;** #283 settles the
+D1 *contract* (bands, provenance, `AccessDecisionRecord`, explanation seam) — *"a decision, not code."*
+
+**The cycle problem (the cure applied):** the cluster's signature failure is *substrate shipping before a
+live consumer* (`project_deployed-but-unconsumed-pattern`, operator-validated). This cycle applies the cure to
+the shadow-audit: land **one real community (thj) seeing its real drift next to its incumbent roles, live** —
+the first load-bearing consumer of the Shadow-Mode wedge — and give the member graph its **first real writer**.
+
+**Vision framing (BOEHM boring-box discipline, `boehm-sovereignty-discriminator.md`):** boring box over
+distributed system; the member graph and organization-as-code are **seeded by** this MVP, never blockers on
+its spine. Stay on Railway (Codex research: agent-first requires code-first IaC, not leaving Railway).
 
 ---
 
-## 1. Problem Statement
+## 2. Goals & Success Metrics
 
-Every consumer-side failure in the estate renders as a **plausible zero**. The dashboard's 136 fail-soft catch sites collapse API-down and empty-community into identical pixels; `loa doctor` reports healthy with zero discovery; SVM was silently down 5 days; sonar#120 indexes 0 Azuki holders right now and no alarm exists. Requirements live as prose (registry notes, briefs, beads) that nothing executes — one `expectations[]` block exists estate-wide and nothing evaluates it.
+| ID | Goal | Success metric |
+|----|------|----------------|
+| **G-1** | Deploy the shadow-audit box **via Railway native IaC** (agent-first, dogfooded) | Service live as its own `shadow-audit-api` project, deployed from `.railway/railway.ts` via `config plan` → operator-approved `apply`; fail-closed verified (refuses startup on missing required vars) |
+| **G-2** *(SPINE)* | **thj sees real drift next to its incumbent roles, live** (Shadow Access Audit, dogfood-full) | Dashboard renders thj's stale-access confront set + turnover + newly-eligible from the LIVE deployed audit, computed next to incumbent roles (shadow-read, no forced cutover) |
+| **G-3** | **Role-snapshot exporter** (freeside-characters) — produces the `RoleSnapshot` AND writes the member-object **FACTS** (D1 first writer) | Exporter emits a `RoleSnapshotSchema`-valid JSON; writes identity+eligibility facts (discord↔wallet, community, roles, eligibility state, last-verified, provenance) into the existing `profiles` substrate |
+| **G-4** | **thj onboarded** as an operated community (`community-onboarding` order) | Order fulfilled on the live ordering-service → thj is `isOperatedCommunity` (the shadow-audit's mode gate) |
+| **G-5** | **Contract Access-Risk Audit** — no-install, on-chain-only teaser (`access-risk-audit` preset) | Given `{chain, contract, snapshot/reference date, optional gating rule}` returns holder turnover · sold/lapsed count · newly-eligible count · whale/concentration notes · stale-access risk estimate · CTA "Map this to Discord roles with a no-install Shadow Access Audit" |
+| **G-6** | **Organization-as-code** convention + first instances + minimal agent gate | ≥2 buildings represented as `.railway/railway.ts` (shadow-audit + ordering-service, both PoC-pulled); agent gate: `config plan` on PR, fail on unexpected drift, human-approve production + all destructive |
 
-In distributed-systems language (§2): the estate's seams have **no acknowledgment protocol** — consumers cannot distinguish "no data" from "message lost" (the Two Generals problem), and no seam declares a **fault model or staleness bound**, so "quiet" and "down" are indistinguishable by construction.
+**Success gate (cycle DONE) — operator-selected "drift renders + hand-verified + quantitative coverage":**
+- **SM-1:** G-2 spine met — thj's real drift renders from the live audit, sanity-checked against **≥1
+  hand-verified known holder** (deploy-runbook §5 spot-check; wrong registry → silently-wrong audit).
+- **SM-2 (quantitative, denominator FIXED before the run — flatline IMP-006):** resolution rate =
+  `(role-holders resolved to a wallet) / (thj members holding a Freeside-audited role at the snapshot,
+  EXCLUDING known bots/webhooks and de-duplicated by discord_id)`. The denominator, bot/duplicate treatment,
+  and the measurement query are pinned in the SDD BEFORE the run (not self-calibrated post-hoc). **Target
+  ≥80%**; unmatched are FLAGGED, never dropped. Audit completes within the §10.1 latency bound (RoleSnapshot
+  max-age + audit SLO numerically bounded in the SDD — flatline IMP-007).
+- **SM-3:** G-1 deploy done via IaC with a green `config plan` and fail-closed verified.
+- **SM-4:** G-5 teaser returns the specified outputs for a real thj contract (Honeycomb) with no Discord access.
 
-> Sources: 2026-07-09-consumer-conformance-loop.md §1; 2026-07-02-consumption-truth-direction.md:19-64; grill R1.
-
-## 2. Distributed-Systems Framing (the language — Kleppmann → Freeside)
-
-Operator-requested vocabulary (2026-07-09): the loop is a distributed system; name its parts precisely.
-
-| Kleppmann concept | Freeside instance | What it prescribes here |
-|---|---|---|
-| Two Generals (no common knowledge over lossy channel) | Dashboard ↔ building seams; catch→zero | Explicit ack: every read renders `data \| error \| stale`, never a fabricated zero (FR-6) |
-| System models: partially-synchronous + crash-recovery | Buildings on Railway/Vercel; blue-green rotation | Every sensed seam declares timeout + cadence; **a missed cadence IS a violation** (quiet-vs-down becomes decidable) |
-| Failure detector (eventually-perfect) | Conformance suites on cron + immune rack | Suspect on timeout, recover on next green; transition-only alerting (matches kalfu constraints) |
-| Bounded staleness / consistency SLO | `expectations[]` thresholds: graphql-lag, event-max-age | Consumer contracts assert staleness bounds, not just shape (FR-2) |
-| Total-order broadcast / replicated log | `orders.lifecycle.*.v1` durable JetStream (replayable) | The order feed is consumed as a log (offset/replay), not polled state (FR-5) |
-| State machine replication | Order saga placed→routing→producing→fulfilled; shadow-mode member-graph ledger | UI order state = deterministic replay of the log; divergence = defect, testable |
-| Eventually-consistent derived replica | Registry `runtime_state` (hand-typed) vs live probes; BFO read-models | Derive-flip (S3): replicas follow the log, never hand-edited |
-| Quorum | Flatline 2-of-3; FAGAN council; adversarial verify votes | Loop verdicts that gate action need ≥2 independent confirmations |
-| Byzantine boundary | Third-party (Executor cloud, Dune) vs sovereign substrate; Legba ed25519 envelopes | Signed/verifiable at trust boundaries; third-party data is evidence, never verdict |
-| Graph cut vertex (EULER) | inventory-api (betweenness 8.0), score-api (6.0); belt-DAG has **0 machine-readable edges** | SPOF seams get contract suites FIRST; suites materialize the missing consumer→producer edges |
-
-Gap named as an order: summon a **KLEPPMANN lens** (lab-desk register, via CURATOR) owning fault-model + consistency-bound language for future seam reviews. Reference: Kleppmann Cambridge lecture series + notes (cl.cam.ac.uk/teaching/2122/ConcDisSys/dist-sys-notes.pdf).
-
-> Sources: operator mid-session request 2026-07-09; 2026-06-28-shadow-audit-belt-dag-subway-ordering.md:86-92 (cut vertices); order-system-mvp-brief.md:48-64.
-
-## 3. Goals
-
-| ID | Goal | Metric |
-|----|------|--------|
-| G-1 | Zero silent zeros on wired operator surfaces | Contract suites assert error/stale states render distinctly; 0 remaining `catch→zero/null` paths on the four S1 surfaces |
-| G-2 | Four surfaces REAL for Mibera (badges, access audit, inventories, order events) | Live data renders end-to-end for a known holder/member; each surface's suite green against the live seam |
-| G-3 | Requirements executable | `tests/contracts/<building>/` suite per wired building in dashboard CI; coverage matrix with MUST ≥95%; DISCREPANCIES.md exists; registry `expectations[]` gain additive `conformance_ref` |
-| G-4 | The pulse breathes | Sink adapter TESTED + first digest durably queued in the conformance ledger; live Discord delivery flips on webhook provision (one rule — S1 is decidable without the webhook; cures SKP-010) |
-| G-5 | Backpressure register live | reality-ledger classifies every dashboard surface (`live \| sample(order:<ref>) \| delete-proposed`); every gap discovered during wiring files an order (bead) |
-
-> Sources: grill R1–R2; testing-conformance-harnesses skill (coverage accounting).
-
-## 4. Consumers & Stakeholders
-
-1. **Operator** (primary): needs screens he can quote — a zero must be provably a real zero.
-2. **Internal team** (newly named colony, 2026-07-09 correction): requests **world onboardings** — the top-20 are worlds/communities entering Freeside at the first shadow-mode rung. Sonar is only the chain-surfacer fulfilling one onboarding step. Their requests are orders; S3 makes them visible.
-3. **End-users of the dashboard**: get graceful degradation, honestly labeled (Live / Sample / Unavailable), never fake data.
-4. **Agents** (second colony, R1): consume the same conformance verdicts + registry to navigate; whole-Fable at factory altitude, act within cells.
-
-## 5. Functional Requirements
-
-### FR-1 — Badges real (activities-api)
-The dashboard badge surface reads real earned badges from activities-api `/v1/badges` (identity-scoped Bearer minted by identity-api), replacing the stubbed grid and the score-api facade path.
-- **AC1**: A Mibera member with granted badges sees them render from live activities-api data.
-- **AC2**: When activities-api is unreachable or the Bearer is invalid, the surface renders an explicit error state (never an empty grid) — the silent-401 drift class is caught by the suite.
-- **AC3**: Contract suite `tests/contracts/activities/` asserts endpoint shape, auth flow, and staleness bound; runs in dashboard CI.
-- Adjacent: bead arrakis-mbs-s2.3 (mibera-dimensions surface) — verify repoint state before scoping overlap.
-
-> Sources: mibera-badge-surface-brief.md:23-32,66-67; architecture-overview.md:60-63; grill R2.
-
-### FR-2 — Access audit live (shadow-audit surface)
-The member audit page consumes the real Access-Risk Audit API (in-monolith module `packages/services/shadow-audit/bin/http.ts`); the MOCK_AUDIT fixture path is **deleted** (per silence rule — the config-client precedent).
-- **AC1**: A member's audit page shows real access decisions from the shadow spine.
-- **AC2**: `SHADOW_AUDIT_API_URL` resolution decided and recorded (expose from monolith edge; no new service extraction — [ASSUMPTION] confirmed at pre-generation gate).
-- **AC3**: Contract suite asserts response schema + auth; unavailable renders loud (operator surface).
-
-> Sources: api-surface.md:26-28; consumer-conformance-loop.md:55; pre-gen gate assumption [1] confirmed.
-
-### FR-3 — Inventories real (inventory-api, PUBLIC reads)
-**Operator decision (FR-5 fork, 2026-07-09): public reads.** Drop the Railway edge wall on read paths, point canonical DNS at the Railway deploy, dashboard client repoints; writes stay fenced.
-- **AC1**: A known holder's PFP/holdings render non-empty from live inventory-api (the read-plane user-truth check).
-- **AC2**: ONE canonical URL across producer, registry, consumer; registry `beacon_url` fixed; inventory-api #18 (beacon serving) merged.
-- **AC3**: Non-2xx renders as explicit error state; the dead-host-silence class is pinned in the catch-set + suite.
-- **AC4**: Suite asserts the Alchemy-shaped read surface the dashboard actually consumes (holdings/:address, metadata/:contract/:tokenId).
-
-> Sources: 2026-07-02-consumption-truth-direction.md:40-45,77-80,103-104; mibera-inventory-sovereignty-brief.md:114-120; fork answer R3-Q1.
-
-### FR-4 — World events via order lifecycle first
-**Operator decision (events fork): order-lifecycle-first.** The inbox renders real `orders.lifecycle.{placed,routing,producing,fulfilled}.v1` events **via the SDD D-5 transport: a server-side HTTP log-read of the order outbox (`GET /v1/orders/events`, monotonic `seq` cursor)** — the browser never touches JetStream/NATS and no broker credentials leave the sovereign side (cures SKP-003 CRITICAL). The outbox IS the durable log JetStream drains from; offset/replay semantics are preserved. Worlds-api inbox graduates in S2/S3 once verifiably deployed.
-
-**Consumer log contract (cures SKP-004 CRITICAL, IMP-011):** the versioned order state machine in `packages/protocol/ordering/src/events.ts` is the contract of record (initial `placed`; terminals `fulfilled|refused|failed`; legal transitions per its event union). Cursor is durable per consumer; ordering key = `seq`; dedup key = `order_id + event_type + seq`; unknown event versions render as `unknown-event`, never dropped silently. Suite ships canonical event-sequence fixtures (happy path, duplicate delivery, gap, late event, mid-replay crash) with expected projections — replay of the same log MUST reproduce the same inbox state.
-- **AC1**: Real order events render in the Hub inbox with lifecycle state; demo feed becomes labeled `sample`, then dies.
-- **AC2**: UI order state reproduces from log replay (state-machine-replication check in the suite).
-- **AC3**: Known blocker surfaced honestly: shadow_preview stub (#401) stalls new orders — replay of existing events is in-scope; unsticking #401 is filed as an order, not hidden.
-
-> Sources: order-system-mvp-brief.md:48-64,139-148; 2026-07-02-consumption-truth-direction.md:31-39; fork answer R3-Q2.
-
-### FR-5 — Consumer contract harness + registry pointer
-Per `/testing-conformance-harnesses`: `tests/contracts/<building>/` per wired building (Pattern 5), coverage matrix, DISCREPANCIES.md, fixture PROVENANCE. Registry `ModuleEntry.expectations[]` gains **additive** `conformance_ref` (freeside-cli decode stays green; single-prober rule untouched — conformance_ref is data, probing stays in loa-cli's lane).
-- **AC1**: Suites run in dashboard CI; a `consumer-conformance` doctor registers in `tools/immune-instruments.yaml` (literal ground-source token; inherits daily cron `17 13 * * *` = 13:17 UTC).
-- **AC2**: MUST-coverage ≥95% per wired building or gap documented in COVERAGE.md.
-
-> Sources: registry.ts:59-137,174-176; cadence-ledger-rehomed-brief.md:14-18,35-38; immune-instruments.yaml contract.
-
-### FR-6 — Silence rule codified (per-surface)
-Operator/analytics surfaces fail LOUD; end-user surfaces degrade gracefully AND emit a violation event to the conformance ledger. Feature-level honesty labels (Live / Sample / Unavailable) everywhere; reality-ledger (`freeside-dashboard/grimoires/loa/reality-ledger.md`) classifies all surfaces.
-- **AC1**: The four S1 surfaces have zero remaining catch→zero paths (grep-assertable).
-- **AC2**: Every fabricated community card carries its label + order ref (they are worlds at rung 0 — pre-orders, per §4.2).
-
-### FR-7 — The pulse (Discord)
-Daily digest + transition-only alerts (working→broken, broken→fixed) from the conformance ledger via Discord webhook. Includes worlds-onboarding progress + order-log lines.
-
-**S1 acceptance rule (one rule, decidable — cures SKP-010):** S1 ships the sink adapter WITH a test (mock webhook) plus durable digest queueing in the ledger; live delivery activates the moment the operator provides the webhook URL, with no code change. G-4 is met by tested-adapter + queued-digest evidence.
-
-**Alerting state model (cures SKP-009):** per-seam state starts `UNKNOWN` (no alert on first observation); flip to `broken` after 2 consecutive failing observations (hysteresis), back to `working` on 1 green; a missed cadence window IS an observation (`stale`); transitions computed in event-time (`observed_at`) order; sink delivery gets bounded retry/backoff, and undeliverable alerts dead-letter into the ledger (loud in the next digest) — sinks fail soft, the record never lies.
-
-## 6. Non-Functional Requirements
-
-- **NFR-1 Additive-only registry schema** — freeside-cli + probe.mjs must keep decoding (registry.ts:174-176).
-- **NFR-2 Truth-path sovereignty** — zero external SaaS in the truth path; sinks fail-soft; runners on owned substrates (kalfu constraints, cadence-ledger-rehomed-brief.md:35-38). Executor/Dune = evidence only, never verdict.
-- **NFR-3 Autonomy posture** — loop files beads autonomously; PR-generating fixes operator-pointed; DRAFT PRs only while the merge door is frozen (goal-0/goal-2 constraints). Reviews via local cheval council; fan-out tier-routed (haiku extract / sonnet implement / opus judge), never blanket-Opus.
-- **NFR-4 Catch-set discipline** — every real miss becomes a pinned conformance case (SHANNON pattern); seeds: 24-vs-0 parity, Zod-cap swallow, dead-host silence, sonar#120 zero-holders.
-- **NFR-5 Process-over-artifact** — a violation recurring twice gets its generator fixed, never a third hand-fix (Bun-rewrite doctrine).
-
-## 7. Scope
-
-**In (S1)**: FR-1..FR-6 + conformance ledger; FR-7 wiring behind webhook availability.
-**Out (explicit)**: probe_kind runner (loa-cli, next cycle — producer lane); worlds-api inbox wiring (S2/S3); campaigns persistence API (order-in-waiting, not picked for S1); on-chain badge mint (graduation seam preserved); belt-gateway registration + runtime_state derive-flip + top-20 world onboardings (S3); frames-doctrine dependency (loop runs as plain machinery).
-
-## 8. Risks & Dependencies
-
-| # | Risk / dependency | Mitigation |
-|---|---|---|
-| R-1 | identity-api Bearer minting for activities reads — secret drift = silent 401s | Suite asserts auth flow explicitly (FR-1 AC2); drift becomes a loud, sensed failure |
-| R-2 | Inventory unwall = Railway/DNS infra change (operator-adjacent) | Smallest infra diff: edge-wall off read paths only; keyed fallback documented if public posture fails review |
-| R-3 | shadow_preview stub #401 stalls NEW orders → event feed shows only replayed history | AC scoped to replay; #401 filed as order; golden-thread (Azuki order 6ddc06f5) remains the settle target |
-| R-4 | sonar#120 (0 Azuki holders) poisons inventory/holdings truth for that collection | Catch-set case; differential check vs Dune (inhale) flags indexer-vs-chain divergence |
-| R-5 | Cut vertices: inventory-api / score-api SPOFs (EULER) | Their seams get suites first; failure now visible + attributable, path redundancy = future work |
-| R-6 | Merge door frozen (loa-signoff absent → --admin merges) | Accept for S1 (documented); heal via bead qbt0r lane, precondition for unattended ACT |
-| R-7 | B1 donation wallet list exists in no repo (badge grants) | Operator/Gumi to deposit list; badge READ surface (FR-1) doesn't block on it |
-
-## 9. S3 Preview — Worlds, not "sonar communities" (operator correction 2026-07-09)
-
-The top-20 are **worlds entering Freeside** at the first shadow-mode rung, ordered by the internal team. Sonar indexing their chains is one fulfillment step of a world-onboarding order. S3 makes the onboarding ladder itself visible (per-world rung + order log), turning the dashboard's fabricated stand-ins into rung-0 worlds with live order refs. Execution doctrine: whole-Fable at factory altitude, act within cells.
-
-## 10. Flatline-Integrated Contracts (2026-07-09 · 3-voice fleet: SOL/codex + grok-4.5/native + composer/cursor)
-
-First fleet review returned 18 blockers + 15 two-voice improvements (800–970). Cures integrated here; each tagged with its finding. These are S1 requirements, not advisories.
-
-### 10.1 Seam contract table — numeric bounds (SKP-001 CRITICAL 930, SKP-006, IMP-006)
-All values **PROPOSED tier, observe-only until S2 ratification** (mirrors sonar chain-lag discipline). Machine-readable copy lands beside each contract suite; clock-skew allowance ±30s everywhere.
-
-| Seam (building → dashboard) | Request timeout | Probe cadence | Max data age (stale bound) |
-|---|---|---|---|
-| activities-api /v1/badges | 5s | 15m | 10m |
-| shadow-audit access decisions | 5s | 15m | 15m |
-| inventory-api holdings/profile | 8s (Alchemy-backed) | 15m | 30m |
-| order-events outbox read | 5s | 5m | 2m (event-max-age from newest `seq`) |
-
-Verdict semantics: response beyond max age renders `stale` (never `live`); missed cadence window = `stale` observation in the ledger (quiet-vs-down becomes decidable per §2).
-
-### 10.2 Acknowledgment/provenance protocol — no fabricated zeros via 200-empty (SKP-002 CRITICAL 925)
-A successful seam response MUST carry: `observed_at` (producer clock), a source checkpoint (block number / log `seq` / run marker as fits the seam), and a completeness flag. **An empty collection is authoritative ONLY when fresh (`observed_at` within max age) and `complete`** — otherwise it renders `stale`/`error`, never a zero. Each suite includes a failure-injection case: upstream fault yielding 200-empty MUST NOT render as a real zero. `SeamResult<T>` (SDD) gains these fields.
-
-### 10.3 Producer-side minimal ack + quorum wiring (SKP-002 860, SKP-004 780)
-S1 is not consumer-only: each wired building gets one immune-rack live probe (existing `probe.mjs` service-block classify) sharing §10.1 thresholds. **Reality-ledger flips to `live` only on QUORUM: dashboard contract suite green AND rack probe green; disagreement = a violation in the ledger**, not a pass. (Full producer `probe_kind` runner stays next-cycle; this is the minimal symmetric ack.)
-
-### 10.4 Public-read threat model for inventory (SKP-001 920, SKP-005 790, IMP-012)
-Before the edge wall drops: per-IP rate limit (PROPOSED 60 req/min) + 429 with Retry-After; pagination caps + address validation at the edge; cache headers on holdings/metadata; upstream circuit breaker + daily provider cost ceiling (Alchemy-backed); CORS allowlist; **rollback trigger** = re-wall + keyed-fallback documented and rehearsable in one step. Consumer suite asserts 429/503 render loud. Reads-only exposure verified (no write-adjacent route reachable) before DNS flips.
-
-### 10.5 Auth contracts (SKP-005 750, SKP-006 785)
-- **Shadow-audit (FR-2):** S1 exposure is operator-scoped only (admin reads; member-self deferred to S2); TLS-only; suite cases: unauthenticated → loud 401 render; cross-member access → denial.
-- **Activities Bearer (FR-1):** token minted and held server-side ONLY (never reaches the browser); issuer=identity-api, audience=activities-api, TTL + refresh documented in the suite's fixture notes; negative cases: wrong audience, expired, wrong issuer.
-
-### 10.6 CI split — hermetic vs live (SKP-007 755, IMP-010)
-Two lanes, never conflated: (a) **hermetic contract tests** (provenance-pinned fixtures) — deterministic, BLOCKING in dashboard CI; (b) **live conformance probes** — scheduled (immune rack + dashboard cron), informational-never-required per rack doctrine, feeding the ledger/pulse. **Coverage denominator (G-3):** enumerated MUST clauses per suite's COVERAGE.md; score = passing MUST / enumerated MUST; XFAIL = documented gap, never a pass.
-
-### 10.7 Conformance ledger schema (SKP-008 750)
-Versioned append-only JSONL: `{schema_version, seam_id, observed_at, ingested_at, verdict: live|stale|error|violation, evidence_ref, run_id, idempotency_key}`. One writer per lane (CI runner / rack cron); duplicate `idempotency_key` is a no-op; transition algorithm (§FR-7 state model) computes over per-seam `observed_at` order; ledger unavailable = loud failure in the next pulse, never silent.
-
-### 10.8 Cross-repo rollout invariant (SKP-011 710, IMP-004)
-Order: registry schema (additive) → producer changes (unwall/deploy/#18) → consumer wiring (dashboard) → DNS/beacon pointer flips. **Every intermediate state must be safe** (old consumers keep decoding; old pointers keep resolving until the flip). Rollback per step is a single revert. Sprint plan slices along this order; ADR-007 domain isolation per PR.
-
-### 10.9 Decidability + scope pins (IMP-001 970, IMP-003 955, IMP-005 925, IMP-007 875, SKP-015 705)
-- **Silence-rule scope (G-1):** "zero remaining catch→zero paths" applies to the four S1 wired surfaces only; the repo-wide sweep is S2+ (deferral list in reality-ledger).
-- **conformance_ref shape (registry):** `conformance_ref: "<repo>#<path>@<git-ref>"` — e.g. `freeside-dashboard#tests/contracts/activities@main`; worked example ships with the schema change.
-- **Pinned test identity:** one versioned Mibera holder fixture (address + expected collection evidence from TWO independent observations, with block/checkpoint + expiry date) checked into fixtures with PROVENANCE. Third-party evidence (Dune) informs but never settles a verdict alone. sonar#120 divergence classifies as `violation(indexer)`, not suite-weakening.
-- **Canonical surface index (IMP-002 850):** the reality-ledger's initial enumeration of ALL dashboard surfaces is an S1 deliverable, not emergent.
+**Timeline:** done-when-done (operator-confirmed). Sequence by dependency + BOEHM boring-box discipline;
+no deadline (near-zero-users / pre-PMF stage).
 
 ---
-> **Traceability**: every FR traces to the promoted brief, grill R1/R2 answers, fork answers (R3), or cited context/reality files. Assumptions confirmed at the pre-generation gate 2026-07-09: monolith-exposed audit surface; identity Bearer mintable today; top-20 worlds order real (pin during S1 — verify wording against internal-team request, not sonar issues).
+
+## 3. Users & Stakeholders
+
+- **End buyer / operator (external):** a Web3 community manager already running Collab.Land/Guild/Matrica.
+  Buyer story (lead with the MECHANISM, per #283): *"You already use Collab.Land. Freeside runs in Shadow
+  Mode — it finds role drift, stale access, no-longer-eligible sellers, eligible members missing roles, and
+  explains each divergence, without touching your incumbent roles."* Gets the **wow** (two-layer rule: the
+  end-user surface is where craft goes).
+- **First real consumer (this cycle):** **thj** (The Honey Jar) — operated by us, so we have the role
+  snapshot; the deployed-but-unconsumed first load-bearing consumer.
+- **Internal consumer:** the operator + agents driving the backend as code (crappiest-version-first;
+  agent-first Railway IaC).
+- **Adjacent stakeholders (deferred deliverables):** Eileen (ratifies the D1 contract, #283); Hermes
+  (drafting the holder-quality contract, Lane C).
+
+---
+
+## 4. Functional Requirements
+
+- **FR-1 (Shadow Access Audit, dogfood-full):** the live `GET /v1/audit` path (`runAudit`, ~35-line box +
+  Sonar/RPC ownership adapter) computes, for an operated community with a fresh `RoleSnapshot`, the drift
+  between incumbent Discord roles and current on-chain token qualification: `stale_access`, `sold_lapsed`,
+  `newly_eligible`, `holder_turnover`, whale concentration — k-anonymized. Reads only; NEVER mutates
+  incumbent roles. `[grounded: session Explore agent map + DoD brief]`
+- **FR-2 (Contract Access-Risk Audit, no-install teaser — G-5):** the `access-risk-audit` preset computes
+  the on-chain HALF of the audit from public data alone (chain + contract + date + optional gating rule) — no
+  Discord access required — returning turnover/sold-lapsed/newly-eligible/whale/stale-risk + the CTA. This is
+  the top-of-funnel wedge (targetable at any community's contract, e.g. Pythenians, without onboarding).
+- **FR-3 (Role-snapshot exporter — G-3):** a one-shot freeside-characters CLI (fork
+  `apps/bot/src/cli/member-graph.ts`) that enumerates the thj guild (privileged `GuildMembers` intent),
+  resolves discord→wallet via `member-identity-client`, and emits a `RoleSnapshotSchema`-valid JSON
+  (`role_ids` as Discord snowflakes; unmatched wallets FLAGGED not dropped). `[brief: freeside-characters
+  grimoires/loa/context/2026-07-10-role-export-exporter-brief.md]`
+- **FR-4 (member-graph FIRST WRITER — G-3, facts half):** the exporter ALSO writes the member object's
+  **identity+eligibility FACTS** (discord↔wallet, community, current roles, eligibility state, last-verified,
+  provenance) into the existing `profiles` substrate — D1's first real writer. **The REASONING half**
+  (holder-quality bands, reason codes, `AccessDecisionRecord`, explanation layer) is DEFERRED to #283 /
+  Option C / Eileen and is NOT implemented here. `[operator decision 2026-07-10: "facts now, reasoning
+  deferred"]`
+- **FR-5 (deploy via Railway IaC — G-1):** define the shadow-audit service in `.railway/railway.ts`
+  (source=loa-freeside monorepo, repo-root build context, `dockerfilePath=packages/services/shadow-audit/Dockerfile`),
+  env = the greenlit `COLLECTION_REGISTRY` (17 entries, chains 1/10/8453/42161/80094) + verified RPCs +
+  `SHADOW_AUDIT_API_KEY`; `config plan` → operator approves the exact plan → `apply`. `[registry brief]`
+- **FR-6 (thj onboarding — G-4):** place a `community-onboarding` order (POST /v1/orders on the live
+  ordering-service; inputs chain_id/contract=Honeycomb/contact_email/source="dashboard_onboarding") → thj
+  becomes an operated community. Operator action; tracked as a gate.
+- **FR-7 (organization-as-code — G-6):** establish the CONVENTION of representing buildings as native Railway
+  IaC + a minimal agent gate (plan-on-PR, fail-on-unexpected-drift, human-approve prod/destructive). First
+  instances: shadow-audit + ordering-service (both already PoC-pulled). NOT all buildings.
+
+---
+
+## 5. Technical & Non-Functional Requirements
+
+- **NFR-1 (stay on Railway):** deploy on Railway via native IaC. Cloudflare/Alchemy migration is OUT (Codex
+  research: agent-first requires code-first IaC, not leaving Railway; the persistent-gateway Discord bot +
+  long-running indexers fail the Cloudflare fit test).
+- **NFR-2 (Railway IaC v0 safety):** the feature is Experimental v0 (codegen bugs are agent-absorbable — PoC
+  patched a `postgresVolume` bug). **NEVER** `railway config apply --yes` / `--confirm-destructive` from an
+  agent without explicit operator approval of the exact plan. Pin the CLI/SDK version.
+- **NFR-3 (correctness where it costs — money/ops):** the audit's correctness risk is the Sonar/RPC
+  block-at-date reconstruction + the `COLLECTION_REGISTRY` mapping (a wrong address → silently-wrong audit).
+  Derisk THERE (hand-verified holder spot-check), not in plumbing.
+- **NFR-4 (Shadow-Mode invariant):** the audit is READ-ONLY and MUST NEVER mutate incumbent roles (D4
+  coexistence invariant, #283). No forced cutover; the community decides.
+- **NFR-5 (fail-closed):** the shadow-audit service refuses startup when a required var is absent; missing
+  `SHADOW_AUDIT_API_URL` in the dashboard → loud error, never fabricated data.
+- **NFR-6 (multi-repo coordination):** master=loa-freeside, child=freeside-characters, coordinator at
+  `~/bonfire/shadow-audit-mvp-coordinator` (scaffolded; bootstrap staged, not yet applied).
+
+---
+
+## 6. Scope & Prioritization
+
+**MVP (this cycle):** G-1..G-6 above. **The DONE gate is G-2 (the spine) — SM-1..SM-3.** G-5 (teaser) and
+G-6 (org-as-code) are **parallel, independent workstreams, NOT blockers on DONE** (flatline IMP-015): the
+cycle is done when thj sees drift + the box is deployed via IaC + the exporter writes facts; G-5/G-6 land
+alongside but their absence does not hold the spine. Sequencing bias: land the SPINE (G-2, needs G-1 + G-3 +
+G-4) first; G-5 + G-6 parallel; FR-4 member-graph write follows the exporter.
+
+**DEFERRED to a governed lane (explicit — these are ratified/in-flight elsewhere, not this PRD's to settle):**
+- **D1 holder-quality REASONING + explanation layer + `AccessDecisionRecord` contract** → issue #283 /
+  Option C / Eileen. This cycle writes member FACTS only.
+- **Lane C — holder-quality signal contract** (eligibility/lifecycle/retention/risk/contribution/monetization/
+  operator signal categories) → Hermes is drafting.
+- **Lane D — action layer** (what Freeside DOES with an insight: remove/warn/grant/re-engage/block/alert) →
+  "later" (operator: the wedge is the data model, not the actions, first).
+
+**EXPLICITLY OUT (non-goals):**
+- Cloudflare/Alchemy migration (parked behind a forcing function).
+- Inventory canonical DNS flip + inventory-api §10.4 hardening (bead `arrakis-jfm4e`, producer-side).
+- The `packages/services/shadow-mode` event-sourced ShadowLedger service as a NEW build — `[ASSUMPTION:
+  the member-graph write target is the existing profiles substrate, NOT the event-sourced ledger; which
+  substrate is canonical is a /architect decision]`.
+- Broader IaC rollout across all ~13 buildings beyond the convention + 2 first instances.
+- AI features, monetization, Telegram, quests (operator anti-pattern: scope collapse).
+
+---
+
+## 7. Risks & Dependencies
+
+| Risk / Dependency | Impact | Mitigation |
+|---|---|---|
+| Railway IaC is Experimental v0 | codegen/apply bugs | agent-patches v0 bugs (PoC proven); pin version; never unapproved destructive apply (NFR-2) |
+| Wrong `COLLECTION_REGISTRY` address | silently-wrong audit (money/ops) | grounded + greenlit registry; hand-verified holder §5 spot-check (SM-1) |
+| thj identity-link rate low | few members resolve to wallets | unmatched FLAGGED not dropped; SM-2 threshold calibrated to reality, not assumed |
+| D4 coexistence runtime unverified `[?]` (#283) — flatline IMP-002 | if the SPINE depended on D4 runtime, it couldn't be demonstrated | **the spine's audit path is the STANDALONE Sonar/RPC audit box, NOT the D4 coexistence runtime** — so G-2 is demonstrable end-to-end even with D4 unverified. D4 coexistence is the broader install-behind-incumbent *delivery* wedge; its runtime verification is a separate spike, out of this cycle's spine |
+| Member-graph substrate ambiguity (profiles vs shadow-mode ledger vs coexistence ledger) | mis-placed writes | resolve in /architect (flagged); write FACTS to profiles per #283 as the assumption |
+| Pre-empting the #283 D1 contract | process violation (Eileen-ratified) | strict facts/reasoning split (FR-4); reasoning deferred |
+| Cross-repo (loa-freeside ↔ freeside-characters) | coordination drift | shadow-audit-mvp coordinator; child runs its own loa cycle |
+| Dependency: ordering-service live (onboarding), identity-api live (discord→wallet), Sonar/RPC (ownership) | all required for the spine | all confirmed live this session (probed) |
+
+---
+
+## 8. Grounding & Source Map
+
+- Deployed-but-unconsumed cure + BOEHM discipline: `project_deployed-but-unconsumed-pattern`,
+  `2026-07-10-boehm-sovereignty-discriminator.md`.
+- Audit box + registry + deploy: `2026-07-10-shadow-audit-mvp-definition-of-done.md`,
+  `2026-07-10-shadow-audit-collection-registry.grounded.md`, bead `arrakis-ltokd`.
+- Exporter: `freeside-characters/grimoires/loa/context/2026-07-10-role-export-exporter-brief.md`.
+- D1/D4 grounding + Option C ratification: issue `#283`; repo `[OBSERVED]` tags therein.
+- Railway IaC direction: `reference_railway-graphql-api-full-automation`,
+  `project_agent-first-cloud-control-alchemy-vs-railway`; Codex research verdict.
+- Interview (2026-07-10): ledger fork = un-gate (member graph is the product, exporter is first writer);
+  success gate = drift+hand-verified+quantitative; timeline = done-when-done; member-graph write = facts now,
+  reasoning deferred; MVP lanes + Contract Access-Risk Audit spec provided verbatim.

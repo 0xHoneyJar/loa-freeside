@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "next_sprint_number": 415,
-  "active_cycle": "cycle-waggle-s1",
+  "active_cycle": null,
   "cycles": [
     {
       "id": "cycle-001",
@@ -2012,7 +2012,7 @@
       "label": "Waggle Loop S1 — Consumer Conformance + Four Real Surfaces",
       "type": "cycle",
       "domain": "shared",
-      "status": "active",
+      "status": "superseded",
       "created_at": "2026-07-09T21:47:51Z",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
@@ -2021,32 +2021,35 @@
         {
           "global_id": 411,
           "local_label": "sprint-1",
-          "status": "planned",
+          "status": "completed",
           "domain": "shared",
-          "theme": "Ack protocol + harness substrate + inventory suite"
+          "theme": "Ack protocol + harness substrate + inventory suite",
+          "completed": "2026-07-10T22:27:47Z"
         },
         {
           "global_id": 412,
           "local_label": "sprint-2",
-          "status": "planned",
+          "status": "completed",
+          "completion_note": "code-basis 2026-07-10; 2.5+2.7 deploys deferred to blocked beads arrakis-ltokd/arrakis-jfm4e",
           "domain": "shared",
           "theme": "Badges + audit real"
         },
         {
           "global_id": 413,
           "local_label": "sprint-3",
-          "status": "planned",
+          "status": "superseded",
           "domain": "shared",
           "theme": "Order log + registry pointer + doctor (3 domain-isolated monolith PRs + dashboard)"
         },
         {
           "global_id": 414,
           "local_label": "sprint-4",
-          "status": "planned",
+          "status": "superseded",
           "domain": "shared",
           "theme": "Pulse + coverage close-out + E2E goal validation"
         }
       ]
     }
-  ]
+  ],
+  "last_updated": "2026-07-10T22:27:49Z"
 }
