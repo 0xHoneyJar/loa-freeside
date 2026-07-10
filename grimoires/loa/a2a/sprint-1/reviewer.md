@@ -437,12 +437,30 @@ Added `validateActivitiesUrl(rawUrl: string)` to `src/lib/activities-api/client.
 - Grep: `cause.detail` does not appear in `audit/page.tsx`, `member/[wallet]/page.tsx`, or `access-audit-summary.tsx`
 - Render-shape: `AccessAuditError` function body contains `publicMessage`, does not contain `detail`
 
-### Sprint 2 Audit Gate Summary
+### A-3 (MEDIUM) — loopback must pass allowlist; http only outside production (`7ea3e923`)
+
+Cross-family re-audit surfaced a residual in `validateActivitiesUrl`. Two bugs:
+
+1. `if (parsed.protocol !== "https:" && !isLoopback)` — permitted `http://` for loopback in all environments. In production, a live session Bearer delivered to `http://127.0.0.1:<any-port>` is a local-port SSRF with a real credential.
+2. `if (!isLoopback && !allowedHosts.has(parsed.hostname))` — loopback bypassed the allowlist entirely. An operator setting `ACTIVITIES_API_ALLOWED_HOSTS` without localhost had that intent silently ignored.
+
+Fixes applied to `validateActivitiesUrl`:
+- `http://` is now allowed ONLY for loopback AND ONLY when `NODE_ENV !== "production"`. Both conditions must hold.
+- Allowlist check (`ACTIVITIES_API_ALLOWED_HOSTS` / `DEFAULT_ALLOWED_HOSTS`) now applies to every hostname including loopback — `!isLoopback &&` guard removed.
+
+Both reads remain lazy (`process.env` on each call) for test overrideability.
+
+**Tests (3 MUST added to `auth.test.ts`, all gate on `fetchCalled === false` for rejection cases)**:
+- `http://127.0.0.1:9999` in `NODE_ENV=production` → `kind:auth`, no fetch
+- `http://localhost:3001` with `ACTIVITIES_API_ALLOWED_HOSTS` excluding localhost → `kind:auth`, no fetch
+- `http://localhost:3001` in dev with localhost in effective allowlist → validation passes, fetch called, 401 mock surfaces correctly
+
+### Sprint 2 Audit Gate Summary (final)
 
 | Gate | Result |
 |------|--------|
-| `bun test tests/contracts/ tests/unit/seam/ tests/unit/inventory-api/ tests/unit/access-audit/` | 110 pass · 6 todo · 0 fail |
+| `bun test tests/contracts/activities/ tests/unit/seam/` | 43 pass · 4 todo · 0 fail |
 | `npx tsc --noEmit` | exit 0 (clean) |
-| Commits | A-1: `faf4e39e` · A-2: `a8eef2af` |
+| Commits | A-1: `faf4e39e` · A-2: `a8eef2af` · A-3: `7ea3e923` |
 | Branch | `feature/waggle-s1` (freeside-dashboard) |
 | Pre-sprint failures | 3 (unchanged, stash-verified N-6) |
