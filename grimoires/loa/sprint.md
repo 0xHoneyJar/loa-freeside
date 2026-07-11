@@ -28,6 +28,15 @@ Cut-vertex order: harden the service first (S1) — everything reads its contrac
 **Goal:** the built ~35-line box becomes the SDD-contract service: separated public/authed routes,
 deterministic formulas, per-community tenancy, the RoleSnapshot ingestion endpoint, k-anon, tests.
 
+> **RE-SCOPE 2026-07-10 (grounded against actual code — the service is ~2966 LOC, FAGAN-reviewed
+> across prior cycles, NOT a 35-line box).** VERIFIED-DONE + closed as beads (175 tests green):
+> **S1-T1** route separation (`GET /v1/audit` anon k-anon + `POST /v1/audit` authed — method-split,
+> `audit-router.ts:211,249`; rename to `/v1/access-risk` NOT done — would break the live dashboard
+> consumer), **S1-T2** block-at-date (`ownership-source.ts:40,59,78`), **S1-T3** tenancy + owner-waiver
+> (`association-verifier.ts:121,156`). GENUINE DELTA this pass: **S1-T4** (no `POST /v1/role-snapshot`
+> HTTP route exists — snapshot arrives only via a `load()` port; this is the S1↔S3 seam), **S1-T5**
+> (confirm the 6 test classes), **S1-T6** (role-snapshot contract fixture).
+
 - **S1-T1 — Route separation (SDD §4.1/§6, IMP-002/003):** `GET /v1/access-risk` (public teaser: on-chain
   only, k-anon, meaningful-or-`insufficient-data`, NO member data) vs `POST /v1/audit` (authed member-level).
   AC: distinct routes + auth; teaser never returns empty/always-true; contract tests for both.

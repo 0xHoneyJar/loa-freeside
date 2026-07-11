@@ -1,5 +1,27 @@
 # Notes
 
+## Decision Log — cycle-053 (shadow-audit-mvp) Sprint 1 (global 415), 2026-07-10
+
+- **RE-SCOPE.** The plan's "~35-line box" premise was stale — the shadow-audit service is ~2966 LOC,
+  FAGAN-reviewed across prior cycles. S1-T1/T2/T3 were already built + tested (175 green); closed as
+  VERIFIED-DONE beads with `file:line` evidence. Only the genuine S1↔S3 seam (S1-T4) + tests (T5) +
+  contract pin (T6) were built. Operator-confirmed re-scope.
+- **[ACCEPTED-DEFERRED] S1-T4 AC "stale → refused".** The ratified design (`mode-resolver.ts:6-7,51-52`)
+  DELIBERATELY serves a stale snapshot as `dogfood-full` with an `uncertain` label — it does NOT refuse.
+  Only an *absent* snapshot refuses (external-mode). Member-level ">2× freshness" refusal is S4-T3. The AC
+  wording contradicts the ratified design; the design wins (Authority Ladder). Ingestion feeds this
+  existing freshness path unchanged — no new staleness logic.
+- **DEVIATION-with-rationale: durable store = write-through file, NOT Postgres.** IMP-002 required durable
+  ingestion state and suggested "reuse the profiles Postgres." The audit service is deliberately
+  dependency-free (file-backed role source, in-memory event/rate state — `server.ts` F4). Durability is a
+  write-through file (atomic, seeded on boot), same posture as the existing in-memory `loa:shortcut`
+  markers — meets the AC ("DURABLE / holds latest per community") without adding a DB to a dependency-free
+  service. Upgrade trigger: multi-replica ingestion → shared store keyed by community. Marked in
+  `role-store.ts`.
+- **Topology:** built in the main checkout on `feat/shadow-audit-mvp` (not an isolated worktree — a fresh
+  worktree of this pnpm monorepo has no built dep dist; the env yak-shave wasn't worth it for a narrow
+  build with no live concurrent session). Commits are path-scoped to avoid the filthy working tree.
+
 ## Sprint Planning Session 2026-07-09 — waggle-s1 sprint plan
 
 Sprint plan generated at `grimoires/loa/sprint.md` (4 sprints, 28 tasks). Ledger: cycle-waggle-s1 registered, global sprints #411-414, next_sprint_number=415, active_cycle=cycle-waggle-s1. Beads: 4 epics + 28 tasks created (E1=arrakis-rv5eo, E2=arrakis-khh9j, E3=arrakis-6hqfl, E4=arrakis-rp1f1), domain+sprint labels per ADR-007, same-domain deps only (cross-domain ordering lives in sprint.md, not beads — rule 5).

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 415,
-  "active_cycle": null,
+  "next_sprint_number": 419,
+  "active_cycle": "cycle-053",
   "cycles": [
     {
       "id": "cycle-001",
@@ -2049,7 +2049,47 @@
           "theme": "Pulse + coverage close-out + E2E goal validation"
         }
       ]
+    },
+    {
+      "id": "cycle-053",
+      "label": "Shadow-Audit MVP",
+      "status": "active",
+      "created": "2026-07-10T22:45:35Z",
+      "archived": null,
+      "archive_path": null,
+      "prd": "/Users/zksoju/Documents/GitHub/loa-freeside/grimoires/loa/prd.md",
+      "sdd": null,
+      "sprints": [
+        {
+          "global_id": 415,
+          "local_label": "sprint-1",
+          "status": "planned",
+          "created": "2026-07-10T22:45:36Z",
+          "completed": null
+        },
+        {
+          "global_id": 416,
+          "local_label": "sprint-2",
+          "status": "planned",
+          "created": "2026-07-10T22:45:36Z",
+          "completed": null
+        },
+        {
+          "global_id": 417,
+          "local_label": "sprint-3",
+          "status": "planned",
+          "created": "2026-07-10T22:45:37Z",
+          "completed": null
+        },
+        {
+          "global_id": 418,
+          "local_label": "sprint-4",
+          "status": "planned",
+          "created": "2026-07-10T22:45:38Z",
+          "completed": null
+        }
+      ]
     }
   ],
-  "last_updated": "2026-07-10T22:27:49Z"
+  "last_updated": "2026-07-10T22:45:38Z"
 }

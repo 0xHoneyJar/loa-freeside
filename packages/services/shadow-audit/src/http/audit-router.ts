@@ -57,6 +57,9 @@ import {
   type EventStore,
   type RunEvent,
 } from '../event-store.js';
+import { createHash } from 'node:crypto';
+import { RoleSnapshotSchema } from '../role-snapshot.js';
+import { timingSafeEqualStr, type RoleSink } from '../role-store.js';
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
@@ -83,6 +86,9 @@ export interface AuditRouterDeps {
   clientKey: (xff: string | undefined) => string;
   k?: number;
   runWindowMs?: number;
+  /** S1-T4 (IMP-009): role-snapshot ingestion. Absent → the POST /v1/role-snapshot route is NOT mounted
+   *  (fail-closed: no ingest token configured ⇒ no ingestion surface, never an open one). */
+  ingest?: { token: string; sink: RoleSink };
 }
 
 const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
@@ -351,6 +357,46 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     await recordRun(deps, result.output);
     return c.html(renderAuditHtml(result.output, result.uncertain));
   });
+
+  // ---- POST /v1/role-snapshot — exporter ingestion (S1-T4, IMP-009) -------
+  // The freeside-characters exporter feeds the audit's role snapshot here (the S1↔S3 seam). Service-token
+  // auth — a DISTINCT principal from the dashboard X-API-Key (this path is exempted from that gate in
+  // server.ts). Byte-exact sha256 integrity over the raw body. Mounted ONLY when ingestion is configured,
+  // so an unconfigured deploy has NO ingestion surface (fail-closed), never an open one.
+  if (deps.ingest) {
+    const ingest = deps.ingest;
+    app.post('/v1/role-snapshot', async (c) => {
+      // Service-token, constant-time. Missing/wrong X-Ingest-Token → 401, no body detail.
+      if (!timingSafeEqualStr(c.req.header('x-ingest-token') ?? '', ingest.token)) {
+        return new Response(null, { status: 401 });
+      }
+      // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
+      // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an
+      // integrity failure, not a parse error.
+      const raw = await c.req.text();
+      const declared = (c.req.header('x-snapshot-sha256') ?? '').toLowerCase();
+      const actual = createHash('sha256').update(raw, 'utf8').digest('hex');
+      if (!declared || !timingSafeEqualStr(declared, actual)) {
+        return c.json({ error: 'integrity check failed' }, 422);
+      }
+      let json: unknown;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        return c.json({ error: 'invalid json' }, 400);
+      }
+      const parsed = RoleSnapshotSchema.safeParse(json);
+      if (!parsed.success) return c.json({ error: 'invalid role snapshot' }, 422);
+      await ingest.sink.store(parsed.data);
+      // Minimal receipt — the exporter reconciles on (community, captured_at, entries), no member data echoed.
+      return c.json({
+        ok: true,
+        community: parsed.data.community,
+        captured_at: parsed.data.captured_at,
+        entries: parsed.data.entries.length,
+      });
+    });
+  }
 
   return app;
 }
