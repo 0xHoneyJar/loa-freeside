@@ -1,0 +1,84 @@
+/**
+ * S2-T1 (SDD §8, G-1) — Railway Infrastructure-as-Code for `shadow-audit-api`.
+ *
+ * Grounded against docs.railway.com/infrastructure-as-code (the `railway/iac` TypeScript DSL:
+ * defineRailway / project / service / github / preserve). This file does what config-as-code CANNOT:
+ * declare the service, pin the GitHub source, and set the env. The Dockerfile BUILD + deploy settings
+ * (healthcheck, restart) live in `railway.json` at repo root — the split the shadow-audit Dockerfile
+ * comment itself endorses ("rely on railway.toml's dockerfilePath relative to repo root").
+ *
+ * Build context = repo ROOT (github source with NO rootDirectory), because the Dockerfile stages the
+ * transitive file: tree packages/core ← packages/adapters ← packages/services/shadow-audit (+ protocol).
+ *
+ * DEPLOY IS OPERATOR-GATED (SDD §8 / NFR-2):
+ *   railway config plan --json --detailed-exit-code   # read-only — validates against Railway's live schema
+ *   → operator reviews the EXACT plan →
+ *   railway config apply                               # NEVER --yes / --confirm-destructive from the agent
+ *
+ * Secrets (SHADOW_AUDIT_API_KEY, ROLE_SNAPSHOT_INGEST_TOKEN, CTA_*) use preserve() — set once in the
+ * Railway dashboard/secret store, never written into source. `railway config plan` shows them as «hidden».
+ */
+import { defineRailway, project, service, github, preserve } from "railway/iac";
+
+// Greenlit COLLECTION_REGISTRY — 17 verified erc721 collections across chains 1/10/8453/42161/80094
+// (grimoires/loa/context/2026-07-10-shadow-audit-collection-registry.grounded.md). Keys are
+// `<chainId>/<lowercase-address>`. Public config (contract addresses), so a literal, not a secret.
+const COLLECTION_REGISTRY = {
+  "1/0xa20cf9b0874c3e46b344deaeea9c2e0c3e1db37d": { collection: "HoneyJar1", standard: "erc721" },
+  "1/0x3f4dd25ba6fb6441bfd1a869cbda6a511966456d": { collection: "HoneyJar2", standard: "erc721" },
+  "1/0x49f3915a52e137e597d6bf11c73e78c68b082297": { collection: "HoneyJar3", standard: "erc721" },
+  "1/0x0b820623485dcfb1c40a70c55755160f6a42186d": { collection: "HoneyJar4", standard: "erc721" },
+  "1/0x39eb35a84752b4bd3459083834af1267d276a54c": { collection: "HoneyJar5", standard: "erc721" },
+  "1/0x98dc31a9648f04e23e4e36b0456d1951531c2a05": { collection: "HoneyJar6", standard: "erc721" },
+  "1/0xcb0477d1af5b8b05795d89d59f4667b59eae9244": { collection: "Honeycomb", standard: "erc721" },
+  "42161/0x1b2751328f41d1a0b91f3710edcd33e996591b72": { collection: "HoneyJar2", standard: "erc721" },
+  "10/0xe1d16cc75c9f39a2e0f5131eb39d4b634b23f301": { collection: "HoneyJar4", standard: "erc721" },
+  "8453/0xbad7b49d985bbfd3a22706c447fb625a28f048b4": { collection: "HoneyJar5", standard: "erc721" },
+  "80094/0xedc5dfd6f37464cc91bbce572b6fe2c97f1bc7b3": { collection: "HoneyJar1", standard: "erc721" },
+  "80094/0x1c6c24cac266c791c4ba789c3ec91f04331725bd": { collection: "HoneyJar2", standard: "erc721" },
+  "80094/0xf1e4a550772fabfc35b28b51eb8d0b6fcd1c4878": { collection: "HoneyJar3", standard: "erc721" },
+  "80094/0xdb602ab4d6bd71c8d11542a9c8c936877a9a4f45": { collection: "HoneyJar4", standard: "erc721" },
+  "80094/0x0263728e7f59f315c17d3c180aeade027a375f17": { collection: "HoneyJar5", standard: "erc721" },
+  "80094/0xb62a9a21d98478f477e134e175fd2003c15cb83a": { collection: "HoneyJar6", standard: "erc721" },
+  "80094/0x886d2176d899796cd1affa07eff07b9b2b80f1be": { collection: "Honeycomb", standard: "erc721" },
+};
+
+export default defineRailway(() => {
+  const audit = service("shadow-audit-api", {
+    // Build context = repo root (no rootDirectory) — the Dockerfile needs core+adapters+protocol siblings.
+    source: github("0xHoneyJar/loa-freeside", { branch: "main" }),
+    // Dockerfile build. FIELD-TO-VALIDATE: the exact IaC `build` shape for a Dockerfile is the ONE thing
+    // /infrastructure-as-code/reference did not quote verbatim (its examples show `build: "<command>"` for
+    // Railpack). `builder`/`dockerfilePath` ARE the grounded config-as-code build schema
+    // (docs.railway.com/reference/config-as-code) and IaC shares it. `railway config plan` (read-only,
+    // against Railway's LIVE schema) is the validator — if it rejects this, the fix is a per-service
+    // railway.json build block with the same two fields (the form the shadow-audit Dockerfile comment endorses).
+    build: { builder: "DOCKERFILE", dockerfilePath: "packages/services/shadow-audit/Dockerfile" },
+    // /healthz is the open liveness route (server.ts:134); everything else is X-API-Key gated.
+    healthcheck: "/healthz",
+    healthcheckTimeout: 30,
+    env: {
+      // Public config — literals.
+      OPERATED_COMMUNITIES: "thj",
+      COLLECTION_REGISTRY: JSON.stringify(COLLECTION_REGISTRY),
+      RPC_URL_1: "https://eth.drpc.org",
+      RPC_URL_10: "https://optimism-rpc.publicnode.com",
+      RPC_URL_8453: "https://base.drpc.org",
+      RPC_URL_42161: "https://arbitrum.drpc.org",
+      RPC_URL_80094: "https://berachain.drpc.org",
+      AUDIT_K: "5",
+      // S1-T4: where the durable role store write-throughs land. NOTE: Railway redeploys are fresh
+      // containers — for the ingested snapshot to survive a REDEPLOY (not just a restart) this path needs
+      // a Railway VOLUME mounted here. Follow-up (connects to the role-store.ts loa:shortcut); until then
+      // the exporter re-POSTs after a deploy. Kept as a plain path for the first cut.
+      ROLE_SNAPSHOT_DIR: "/data/role-snapshots",
+      // Secrets — set once in Railway, never in source. preserve() keeps the dashboard value.
+      SHADOW_AUDIT_API_KEY: preserve(),
+      ROLE_SNAPSHOT_INGEST_TOKEN: preserve(),
+      CTA_PRODUCT: preserve(),
+      CTA_CONVERSATION: preserve(),
+    },
+  });
+
+  return project("shadow-audit-api", { resources: [audit] });
+});
