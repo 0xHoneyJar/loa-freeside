@@ -14,7 +14,9 @@
 
 FROM node:22.12-alpine AS base
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+# pnpm via npm, NOT corepack: node:22.12's bundled corepack has stale signature keys and fails pnpm's
+# integrity check ("Cannot find matching keyid") on Railway's builder. Matches the sibling ordering Dockerfile.
+RUN npm install -g pnpm@9.15.9
 
 # Stage the transitive file: dependency tree: core <- adapters <- service (+ protocol).
 # (F1: packages/core was previously omitted, so the adapters install — which has file:../core — failed.)
