@@ -53,7 +53,11 @@ const COLLECTION_REGISTRY = {
 export default defineRailway(() => {
   const audit = service("shadow-audit-api", {
     // Build context = repo root (no rootDirectory) — the Dockerfile needs core+adapters+protocol siblings.
-    source: github("0xHoneyJar/loa-freeside", { branch: "main" }),
+    // TEMPORARY branch: the current shadow-audit (incl. §12.3 hardening + S1-T4 ingestion) lives on
+    // feat/shadow-audit-mvp, NOT yet on main (main is 42 mixed-domain commits behind ride-refresh). Deploy
+    // from the feature branch to get the real box live now; move back to "main" once the shadow-audit
+    // lineage is merged cleanly (a scoped merge, NOT a blind 42-commit admin-merge).
+    source: github("0xHoneyJar/loa-freeside", { branch: "feat/shadow-audit-mvp" }),
     // Dockerfile build. CONFIRMED against the SDK types (railway/dist: `build?: string | BuildConfig`;
     // BuildConfig.builder ∈ "DOCKERFILE"|… ; BuildConfig.dockerfilePath) AND a successful `railway config
     // plan`. dockerfilePath is relative to the repo-root build context.
