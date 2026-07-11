@@ -10,9 +10,16 @@
  * Build context = repo ROOT (github source with NO rootDirectory), because the Dockerfile stages the
  * transitive file: tree packages/core ← packages/adapters ← packages/services/shadow-audit (+ protocol).
  *
+ * ⚠️ RAILWAY IaC IS DECLARATIVE — this file is the COMPLETE desired state of its LINKED project. Applying
+ * it to a project that holds OTHER services DELETES every resource not declared here. `railway config plan`
+ * on 2026-07-10 was linked to the `ordering-service` project and planned "1 to add, 3 to DESTROY" (would
+ * have deleted ordering-service + its Postgres + fulfillment-orchestrator). shadow-audit-api MUST get its
+ * OWN Railway project. Operator: create/link a dedicated project (`railway link` → new/empty project), then
+ * re-plan — a correct plan reads "1 to add, 0 to destroy".
+ *
  * DEPLOY IS OPERATOR-GATED (SDD §8 / NFR-2):
  *   railway config plan --json --detailed-exit-code   # read-only — validates against Railway's live schema
- *   → operator reviews the EXACT plan →
+ *   → operator reviews the EXACT plan (ZERO destroys) →
  *   railway config apply                               # NEVER --yes / --confirm-destructive from the agent
  *
  * Secrets (SHADOW_AUDIT_API_KEY, ROLE_SNAPSHOT_INGEST_TOKEN, CTA_*) use preserve() — set once in the
@@ -47,12 +54,9 @@ export default defineRailway(() => {
   const audit = service("shadow-audit-api", {
     // Build context = repo root (no rootDirectory) — the Dockerfile needs core+adapters+protocol siblings.
     source: github("0xHoneyJar/loa-freeside", { branch: "main" }),
-    // Dockerfile build. FIELD-TO-VALIDATE: the exact IaC `build` shape for a Dockerfile is the ONE thing
-    // /infrastructure-as-code/reference did not quote verbatim (its examples show `build: "<command>"` for
-    // Railpack). `builder`/`dockerfilePath` ARE the grounded config-as-code build schema
-    // (docs.railway.com/reference/config-as-code) and IaC shares it. `railway config plan` (read-only,
-    // against Railway's LIVE schema) is the validator — if it rejects this, the fix is a per-service
-    // railway.json build block with the same two fields (the form the shadow-audit Dockerfile comment endorses).
+    // Dockerfile build. CONFIRMED against the SDK types (railway/dist: `build?: string | BuildConfig`;
+    // BuildConfig.builder ∈ "DOCKERFILE"|… ; BuildConfig.dockerfilePath) AND a successful `railway config
+    // plan`. dockerfilePath is relative to the repo-root build context.
     build: { builder: "DOCKERFILE", dockerfilePath: "packages/services/shadow-audit/Dockerfile" },
     // /healthz is the open liveness route (server.ts:134); everything else is X-API-Key gated.
     healthcheck: "/healthz",
