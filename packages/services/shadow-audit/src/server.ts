@@ -25,11 +25,12 @@ import type { Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 import type { CollectionRegistry } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
+import { makeDurableRoleStore } from './role-store.js';
 import { makeBalanceWhaleSource } from './whale-source.js';
 import { InMemoryEventStore } from './event-store.js';
 import { InMemoryNonceStore } from './association-verifier.js';
 import { FixedWindowRateLimiter } from './rate-limiter.js';
-import type { OwnershipSource } from './audit-service.js';
+import type { OwnershipSource, RoleSource } from './audit-service.js';
 
 export interface AuditServerConfig {
   /** X-API-Key shared secret the dashboard sends; when set, all routes (except /healthz) require it. */
@@ -43,6 +44,12 @@ export interface AuditServerConfig {
   k?: number;
   /** per-IP rate limit (default 30 req / 60s). */
   rateLimit?: { limit: number; windowMs: number };
+  /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
+   *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
+   *  the role source falls back to the file at `roleSnapshotPath` (existing behavior). */
+  ingestToken?: string;
+  /** S1-T4: directory the durable role store writes ingested snapshots to (default `./data/role-snapshots`). */
+  roleSnapshotDir?: string;
 }
 
 /** Fail-closed auth for the un-wired V2 POST path: `recover` returns a wallet that can never match a real
@@ -84,11 +91,37 @@ export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
 export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collectionRegistry?: CollectionRegistry): Hono {
   const now = () => Date.now();
   const rl = config.rateLimit ?? { limit: 30, windowMs: 60_000 };
+
+  // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
+  // the ingestion sink (POST /v1/role-snapshot writes it, load() reads it — the SAME instance, so an
+  // ingested snapshot is immediately auditable). Without a token, keep the existing file-backed source
+  // unchanged (no ingestion surface mounted — fail-closed).
+  let roles: RoleSource;
+  let ingest: AuditRouterDeps['ingest'];
+  if (config.ingestToken) {
+    // Fail loud on a half-wired ingest: a token with no operated community has nothing to serve on load().
+    const community = config.operatedCommunities[0];
+    if (!community) {
+      throw new Error(
+        'ROLE_SNAPSHOT_INGEST_TOKEN is set but OPERATED_COMMUNITIES is empty — ingestion needs a community to serve.',
+      );
+    }
+    const store = makeDurableRoleStore({
+      dir: config.roleSnapshotDir ?? './data/role-snapshots',
+      community,
+    });
+    roles = store;
+    ingest = { token: config.ingestToken, sink: store };
+  } else {
+    roles = makeFileRoleSource(config.roleSnapshotPath);
+  }
+
   const deps: AuditRouterDeps = {
     ownership,
     collectionRegistry,
     whale: makeBalanceWhaleSource(),
-    roles: makeFileRoleSource(config.roleSnapshotPath),
+    roles,
+    ingest,
     // F4: the event store + rate limiter are IN-MEMORY (per-replica, non-durable). That is correct for the
     // single-replica MVP — the audit is stateless read-modelling + best-effort anti-abuse, not a ledger.
     // loa:shortcut: in-memory event/rate state; if this scales past one replica, back both with Redis (the
@@ -114,9 +147,16 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
     const keyBuf = Buffer.from(config.apiKey);
     app.use('*', async (c, next) => {
       // /healthz + the OPEN capability read (membership only, no member data) skip the key gate.
+      // /v1/role-snapshot is exempt too — it is a DIFFERENT principal (the service exporter) authenticated
+      // by its OWN service token (X-Ingest-Token) inside the route, not the dashboard's X-API-Key.
       // Match the EXACT route only (/v1/collections/:chain/:contract) — a broad prefix could
       // accidentally expose a future /v1/collections/... route (FAGAN S3).
-      if (c.req.path === '/healthz' || /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)) return next();
+      if (
+        c.req.path === '/healthz' ||
+        c.req.path === '/v1/role-snapshot' ||
+        /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)
+      )
+        return next();
       const got = Buffer.from(c.req.header('x-api-key') ?? '');
       // §12.3 constant-time verify: always run timingSafeEqual — never short-circuit on length mismatch.
       // A `got.length === keyBuf.length &&` guard placed BEFORE timingSafeEqual turns the key length
@@ -165,6 +205,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
     operatedCommunities: operated,
     cta: { product, conversation },
     roleSnapshotPath: env.ROLE_SNAPSHOT_PATH || undefined,
+    ingestToken: env.ROLE_SNAPSHOT_INGEST_TOKEN || undefined,
+    roleSnapshotDir: env.ROLE_SNAPSHOT_DIR || undefined,
     k,
   };
 }
