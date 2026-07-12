@@ -15,7 +15,7 @@ const FAKE_OUTPUT = {
   run_id: 'demo',
   aggregate: { holder_turnover: 0.2, stale_access: { kind: 'exact', value: 3 } },
 } as unknown as AuditOutput;
-const OK: AuditServiceResult = { ok: true, output: FAKE_OUTPUT, uncertain: false, unmatchedRoleHolders: 0 };
+const OK: AuditServiceResult = { ok: true, output: FAKE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
 
 const VALID_BODY = {
   product: 'access-risk-audit',

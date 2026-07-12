@@ -48,7 +48,7 @@ const SAMPLE_OUTPUT: AuditOutput = AuditOutputSchema.parse({
 
 class DemoAuditAdapter implements AuditPort {
   async invoke(_req: AuditRequest): Promise<AuditServiceResult> {
-    return { ok: true, output: SAMPLE_OUTPUT, uncertain: false, unmatchedRoleHolders: 0 };
+    return { ok: true, output: SAMPLE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
   }
 }
 

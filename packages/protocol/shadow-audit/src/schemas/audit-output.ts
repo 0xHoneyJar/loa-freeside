@@ -37,6 +37,34 @@ export const AuditAggregateSchema = z
     /** Top-holder share in [0,1] (whale concentration). */
     whale_concentration: z.number().min(0).max(1),
     stale_access_risk_band: RiskBandSchema,
+
+    // ── ROLE COVERAGE — what we could NOT see (bug 20260712-486383) ────────────────────────────
+    // Every cohort above is computed over the role-holders whose wallet we RESOLVED. A role-holder we
+    // could not resolve is structurally indistinguishable from someone with no role, so they silently
+    // land in `newly_eligible` and shrink `stale_access_risk_band`'s denominator. These fields make the
+    // blind spot part of the answer instead of a hidden assumption. (Coverage below the documented floor
+    // does not reach here at all — it is refused as `role-coverage-too-low`.)
+
+    /**
+     * Role-holders whose wallet could not be resolved — FLAGGED, never dropped (IMP-005).
+     * k-anonymized like every other cohort.
+     */
+    unmatched_role_holders: CohortCountSchema,
+    /**
+     * matched / total role-holders, in [0,1] — how much of the role set this audit can actually see.
+     *
+     * NULL when `unmatched_role_holders` is k-anon-SUPPRESSED and non-zero. This is the same hard
+     * privacy rule as `access-risk.ts`'s `holder_turnover`: publishing a true-ratio-derived number
+     * beside a suppressed cohort back-computes the suppressed numerator the moment the total is known
+     * (and a Discord role's member count is visible to the guild) — "rounding is not suppression".
+     * A ZERO unmatched cohort is exempt: it identifies nobody, so `role_coverage: 1` is safe to state.
+     */
+    role_coverage: z.number().min(0).max(1).nullable(),
+    /**
+     * TRUE when coverage is below the confident bar: the numbers are DIRECTIONAL, not fact.
+     * Not derivable from `role_coverage` (which may be null), so it is stated explicitly.
+     */
+    coverage_uncertain: z.boolean(),
   })
   .strict();
 export type AuditAggregate = z.infer<typeof AuditAggregateSchema>;

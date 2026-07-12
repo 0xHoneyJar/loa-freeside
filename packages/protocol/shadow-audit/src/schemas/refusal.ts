@@ -12,6 +12,8 @@ export const RefusalCodeSchema = z.enum([
   'external-mode', // external community — v1 cannot serve (ModeResolver, SKP-002)
   'reconstruction-failed', // Transfer-replay validation failed (AC-8 / SKP-003)
   'cohort-too-small', // k-anonymity cannot safely serve even a bucket (AC-7)
+  'role-coverage-too-low', // too few role-holders resolve to a wallet — the aggregate would be
+  // meaningless, not merely uncertain (bug 20260712-486383)
   'upstream-exhausted', // sonar pagination / score call caps exceeded (IMP-009)
   'rate-limited', // per-IP rate limit (AC-6)
 ]);
@@ -37,6 +39,7 @@ export const REFUSAL_HTTP_STATUS: Record<RefusalCode, number> = {
   'external-mode': 422,
   'reconstruction-failed': 422,
   'cohort-too-small': 422,
+  'role-coverage-too-low': 422,
   'upstream-exhausted': 503,
   'rate-limited': 429,
 };

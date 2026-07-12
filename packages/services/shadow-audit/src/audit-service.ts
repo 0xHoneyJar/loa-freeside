@@ -24,7 +24,7 @@ import {
   type DiscrepancyReport,
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
-import { resolveMode } from './mode-resolver.js';
+import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
 import { resolveRoles, type RoleSnapshot } from './role-snapshot.js';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
 
@@ -70,7 +70,14 @@ export interface AuditDeps {
 }
 
 export type AuditServiceResult =
-  | { ok: true; output: AuditOutput; uncertain: boolean; unmatchedRoleHolders: number }
+  | {
+      ok: true;
+      output: AuditOutput;
+      uncertain: boolean;
+      /** WHY it is uncertain (stale export? unseeable members?) — so the reader is told which. */
+      uncertainReasons: UncertaintyReason[];
+      unmatchedRoleHolders: number;
+    }
   | { ok: false; refusal: Refusal };
 
 function isoFromUnix(unixSeconds: number): string {
@@ -160,6 +167,12 @@ export async function runAudit(
   if (soldLapsedCohort.kind === 'bucketed') {
     holder_turnover = Math.round(holder_turnover * 10) / 10;
   }
+  // Role coverage — the blind spot, stated (486383). The unmatched cohort is k-anon'd like every other
+  // cohort; the RATIO is published only when it cannot back-compute a suppressed numerator: either the
+  // cohort is exact (>= k), or it is empty (zero identifies nobody). "Rounding is not suppression."
+  const unmatchedCohort = kAnonCohort(unmatched.length, k);
+  const coverageRatioIsSafe = unmatchedCohort.kind === 'exact' || unmatched.length === 0;
+
   const aggregate: AuditAggregate = {
     holder_turnover,
     sold_lapsed: soldLapsedCohort,
@@ -167,6 +180,9 @@ export async function runAudit(
     stale_access: kAnonCohort(staleAccess.length, k),
     whale_concentration: whale,
     stale_access_risk_band: staleRiskBand(staleAccess.length, roleWallets.size),
+    unmatched_role_holders: unmatchedCohort,
+    role_coverage: coverageRatioIsSafe ? mode.roleCoverage : null,
+    coverage_uncertain: mode.uncertainReasons.includes('low-role-coverage'),
   };
 
   // 6. Determinism fingerprint → run_id (IMP-001/007).
@@ -228,5 +244,11 @@ export async function runAudit(
     cta: req.cta,
   });
 
-  return { ok: true, output, uncertain: mode.uncertain, unmatchedRoleHolders: unmatched.length };
+  return {
+    ok: true,
+    output,
+    uncertain: mode.uncertain,
+    uncertainReasons: mode.uncertainReasons,
+    unmatchedRoleHolders: unmatched.length,
+  };
 }

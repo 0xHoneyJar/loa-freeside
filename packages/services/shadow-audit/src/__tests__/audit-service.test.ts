@@ -115,7 +115,10 @@ describe('runAudit — aggregate + k-anonymity', () => {
     expect(r.output.aggregate.stale_access_risk_band).toBe('high'); // 1/3 role-holders stale
     expect(r.output.aggregate.whale_concentration).toBe(0.3);
     expect(r.output.records).toBeUndefined(); // anonymous
-    expect(r.uncertain).toBe(false); // snapshot fresh
+    // 3 of 4 role-holders resolved (75%) — fresh, but BELOW the confident-coverage bar, so the
+    // aggregate is labelled directional. Freshness alone no longer buys confidence (486383).
+    expect(r.uncertain).toBe(true);
+    expect(r.output.aggregate.coverage_uncertain).toBe(true);
     expect(r.unmatchedRoleHolders).toBe(1);
     expect(r.output.run_id).toMatch(/^run_[0-9a-f]{24}$/);
     expect(AuditOutputSchema.safeParse(r.output).success).toBe(true);
@@ -196,5 +199,99 @@ describe('runAudit — hardening fixes', () => {
       expect(r.output.aggregate.sold_lapsed.kind).toBe('bucketed');
       expect(r.output.aggregate.holder_turnover).toBe(0.3); // 1/3 coarsened to the 0.1 grid
     }
+  });
+});
+
+/**
+ * Bug 20260712-486383 — the confidently-wrong audit.
+ *
+ * LIVE (2026-07-12): the THJ exporter produced a FRESH, contract-valid snapshot of 515 role-holders
+ * of which exactly 1 resolved to a wallet. The audit computed every cohort over `roleWallets.size === 1`:
+ * `newly_eligible` swallowed essentially the ENTIRE holder set (every holder "has tokens but no role" —
+ * because we cannot SEE their role), and `stale_access_risk_band` ran on a denominator of 1. The output
+ * was contract-valid, deterministic, and wrong, with no signal that anything was off.
+ *
+ * The fix: coverage below a documented floor REFUSES; partial coverage is served but LABELLED, and the
+ * unmatched count reaches the wire so a reader can bound the error.
+ */
+describe('runAudit — role coverage (bug 20260712-486383)', () => {
+  /** `matchedCount` resolved of `total` role-holders; the matched ones all still qualify on-chain. */
+  function coverageSnapshot(matchedCount: number, total: number): RoleSnapshot {
+    return {
+      ...snapshot(),
+      entries: Array.from({ length: total }, (_, i) =>
+        i < matchedCount
+          ? {
+              discord_user_id: `u${i}`,
+              wallet: '0x' + (i + 1).toString(16).padStart(40, '0'),
+              role_ids: ['h'],
+            }
+          : { discord_user_id: `u${i}`, role_ids: ['h'] },
+      ),
+    };
+  }
+
+  /** A big current-holder set — the ~1813 real Honeycomb holders, none of them role-matched. */
+  function manyHolders(n: number): OwnershipSource {
+    const bal = new Map<string, bigint>(
+      Array.from({ length: n }, (_, i) => ['0x' + (i + 5000).toString(16).padStart(40, '0'), 1n]),
+    );
+    return {
+      resolveSnapshotBlock: async () => 1000,
+      balancesAt: async () => bal,
+      currentBalances: async () => bal,
+    };
+  }
+
+  it('REFUSES the real 1/515 THJ snapshot instead of emitting a confident aggregate', async () => {
+    const r = await runAudit(
+      req(),
+      deps({ roles: roles(coverageSnapshot(1, 515)), ownership: manyHolders(1813) }),
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.code).toBe('role-coverage-too-low');
+    // Names what we cannot see, rather than dressing it up as a number.
+    expect(r.refusal.reason).toContain('515');
+  });
+
+  it('surfaces coverage + the unmatched count ON THE WIRE when coverage is partial', async () => {
+    // 14/20 = 70%: above the floor, below the confident bar. 6 unmatched >= k(5) → exact cohort,
+    // so the true ratio may be published (it cannot back-compute a suppressed numerator).
+    const r = await runAudit(
+      req(),
+      deps({ roles: roles(coverageSnapshot(14, 20)), ownership: manyHolders(1813) }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.output.aggregate.coverage_uncertain).toBe(true);
+    expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'exact', value: 6 });
+    expect(r.output.aggregate.role_coverage).toBe(0.7);
+    expect(AuditOutputSchema.safeParse(r.output).success).toBe(true);
+  });
+
+  it('SUPPRESSES the coverage ratio when the unmatched cohort is k-anon-suppressed', async () => {
+    // 18/20 = 90% (confident) with 2 unmatched < k(5). Publishing the exact ratio alongside a
+    // suppressed cohort back-computes the suppressed numerator once the total is known —
+    // "rounding is not suppression" (the access-risk.ts / BB-4 lesson).
+    const r = await runAudit(
+      req(),
+      deps({ roles: roles(coverageSnapshot(18, 20)), ownership: manyHolders(1813) }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'bucketed', bucket: '<5' });
+    expect(r.output.aggregate.role_coverage).toBeNull();
+    expect(r.output.aggregate.coverage_uncertain).toBe(false); // 90% clears the bar
+  });
+
+  it('still serves a CONFIDENT aggregate at full coverage (no false-positive uncertainty)', async () => {
+    const r = await runAudit(req(), deps({ roles: roles(coverageSnapshot(20, 20)) }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uncertain).toBe(false);
+    expect(r.output.aggregate.coverage_uncertain).toBe(false);
+    expect(r.output.aggregate.role_coverage).toBe(1);
+    expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'bucketed', bucket: '<5' });
   });
 });

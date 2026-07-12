@@ -16,7 +16,7 @@ const CTA: Cta = { product: 'https://example.test/audit', conversation: 'https:/
 // audit aggregate's shape). A representative object stands in; the audit's output validity is the
 // audit package's own concern.
 const FAKE_OUTPUT = { run_id: 'run_test', mode: 'dogfood-full', note: 'opaque-to-ordering' } as unknown as AuditOutput;
-const OK_RESULT: AuditServiceResult = { ok: true, output: FAKE_OUTPUT, uncertain: false, unmatchedRoleHolders: 0 };
+const OK_RESULT: AuditServiceResult = { ok: true, output: FAKE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
 
 class FakeAudit implements AuditPort {
   calls = 0;

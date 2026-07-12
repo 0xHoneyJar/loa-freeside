@@ -243,3 +243,68 @@ describe('GET /v1/collections/:chain/:contract — capability read (FR-2)', () =
     expect(Object.keys(body).sort()).toEqual(['chain', 'collection', 'contract', 'standard']);
   });
 });
+
+/**
+ * Bug 20260712-486383 — the signal must reach THE WIRE, not just `runAudit`'s return value.
+ *
+ * `uncertain` was already returned by runAudit — and dropped by every JSON route (it was once a
+ * top-level field and was REMOVED because it broke the dashboard's strict decode). So "flip
+ * uncertain" was a no-op fix: the JSON channel the dashboard reads carried no signal at all.
+ */
+describe('role coverage on the wire (bug 20260712-486383)', () => {
+  /** `matchedCount` of `total` role-holders resolve to a wallet. */
+  function coverageRoles(matchedCount: number, total: number): RoleSource {
+    return {
+      load: async () => ({
+        ...snapshot(),
+        entries: Array.from({ length: total }, (_, i) =>
+          i < matchedCount
+            ? {
+                discord_user_id: `u${i}`,
+                wallet: '0x' + (i + 1).toString(16).padStart(40, '0'),
+                role_ids: ['h'],
+              }
+            : { discord_user_id: `u${i}`, role_ids: ['h'] },
+        ),
+      }),
+    };
+  }
+
+  it('GET /v1/audit REFUSES 422 role-coverage-too-low for the real 1/515 THJ shape', async () => {
+    const app = createAuditRouter(makeDeps({ roles: coverageRoles(1, 515) }));
+    const res = await app.request(GET_URL);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: { code: string; reason: string; retryable: boolean } };
+    expect(body.error.code).toBe('role-coverage-too-low');
+    expect(body.error.reason).toContain('515'); // names what we cannot see
+    expect(body.error.retryable).toBe(false); // re-running changes nothing; the missing links do
+  });
+
+  it('GET /v1/audit (the JSON channel the dashboard reads) carries the coverage signal', async () => {
+    // 14/20 = 70%: served, but labelled. 6 unmatched >= k → exact cohort, so the ratio is publishable.
+    const app = createAuditRouter(makeDeps({ roles: coverageRoles(14, 20), k: 5 }));
+    const res = await app.request(GET_URL);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      aggregate: {
+        coverage_uncertain: boolean;
+        role_coverage: number | null;
+        unmatched_role_holders: { kind: string; value?: number };
+      };
+    };
+    expect(body.aggregate.coverage_uncertain).toBe(true);
+    expect(body.aggregate.role_coverage).toBe(0.7);
+    expect(body.aggregate.unmatched_role_holders).toEqual({ kind: 'exact', value: 6 });
+  });
+
+  it('GET /v1/audit/view names the blind spot instead of calling it "stale"', async () => {
+    const app = createAuditRouter(makeDeps({ roles: coverageRoles(14, 20), k: 5 }));
+    const res = await app.request(GET_URL.replace('/v1/audit?', '/v1/audit/view?'));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('could only resolve');
+    expect(html).toContain('could not resolve');
+    // The snapshot is FRESH — calling it stale would be its own small lie.
+    expect(html).not.toContain('snapshot is stale');
+  });
+});
