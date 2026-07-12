@@ -64,3 +64,63 @@ describe('CohortCountSchema (k-anonymity, AC-7)', () => {
     expect(CohortCountSchema.safeParse(3).success).toBe(false);
   });
 });
+
+/**
+ * The k-anon coverage invariant is a CONTRACT, not a comment (bug 20260712-486383, C-2).
+ *
+ * Publishing a true ratio beside a k-anon-SUPPRESSED cohort back-computes the suppressed numerator
+ * (`unmatched = total × (1 − coverage)`) the moment the total is known — and a Discord role's member
+ * count is visible to the guild. That is the exact BB-4 leak access-risk.ts documents:
+ * "rounding is not suppression". Before this refinement the invariant lived only in the producer,
+ * so any other producer — a replay, a cache, a hand-built fixture — could violate it silently.
+ *
+ * These are KNOWN-BAD inputs: each one MUST fail to parse.
+ */
+describe('AuditAggregateSchema — the coverage/k-anon invariant has teeth', () => {
+  function agg(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      holder_turnover: 0.25,
+      sold_lapsed: { kind: 'exact', value: 42 },
+      newly_eligible: { kind: 'exact', value: 17 },
+      stale_access: { kind: 'bucketed', bucket: '<5' },
+      whale_concentration: 0.6,
+      stale_access_risk_band: 'elevated',
+      unmatched_role_holders: { kind: 'exact', value: 8 },
+      role_coverage: 0.92,
+      coverage_uncertain: false,
+      ...over,
+    };
+  }
+  const parse = (a: Record<string, unknown>) =>
+    AuditOutputSchema.safeParse({ ...output(), aggregate: a }).success;
+
+  it('REJECTS a suppressed cohort published beside a true ratio (the back-computation leak)', () => {
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'bucketed', bucket: '<5' }, role_coverage: 0.7 })),
+    ).toBe(false);
+  });
+
+  it('REJECTS a positive unmatched cohort claiming full coverage (a contradiction)', () => {
+    expect(parse(agg({ unmatched_role_holders: { kind: 'exact', value: 8 }, role_coverage: 1 }))).toBe(
+      false,
+    );
+  });
+
+  it('ACCEPTS a suppressed cohort with a NULL ratio (the suppression the rule demands)', () => {
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'bucketed', bucket: '<5' }, role_coverage: null })),
+    ).toBe(true);
+  });
+
+  it('ACCEPTS full coverage (ratio 1 ⇔ zero unmatched — an empty cohort identifies nobody)', () => {
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'bucketed', bucket: '<5' }, role_coverage: 1 })),
+    ).toBe(true);
+  });
+
+  it('ACCEPTS an EXACT cohort with its true ratio (>= k cannot be back-computed into a hidden number)', () => {
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'exact', value: 6 }, role_coverage: 0.7 })),
+    ).toBe(true);
+  });
+});

@@ -58,6 +58,16 @@ export const AuditAggregateSchema = z
      * beside a suppressed cohort back-computes the suppressed numerator the moment the total is known
      * (and a Discord role's member count is visible to the guild) — "rounding is not suppression".
      * A ZERO unmatched cohort is exempt: it identifies nobody, so `role_coverage: 1` is safe to state.
+     *
+     * HONEST COST OF THAT EXEMPTION: because a zero cohort publishes a ratio and a suppressed non-zero
+     * one does not, `role_coverage === null` now *implies* `unmatched ∈ [1, k)` — narrowing the public
+     * `<k` bucket from `{0..k-1}` to `{1..k-1}`. That discloses EXISTENCE ("at least one member is
+     * unlinked"), never IDENTITY, so k-anonymity holds — but it is a real narrowing, so it is stated
+     * rather than pretended away.
+     *
+     * ENFORCED below by `superRefine` — the rule is a CONTRACT, not a comment. It previously lived only
+     * in the producer, which meant any other producer (a replay, a cache, a hand-built fixture) could
+     * violate it silently. A declared bound with no enforcement site is fiction.
      */
     role_coverage: z.number().min(0).max(1).nullable(),
     /**
@@ -66,7 +76,33 @@ export const AuditAggregateSchema = z
      */
     coverage_uncertain: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((agg, ctx) => {
+    const unmatched = agg.unmatched_role_holders;
+    const coverage = agg.role_coverage;
+
+    // (1) A SUPPRESSED cohort may not be accompanied by a true ratio — that back-computes the
+    //     suppressed numerator (`unmatched = total × (1 − coverage)`) and defeats the bucket entirely.
+    //     The sole exemption is full coverage (ratio 1 ⇔ zero unmatched), which identifies nobody.
+    if (unmatched.kind === 'bucketed' && coverage !== null && coverage !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['role_coverage'],
+        message:
+          'role_coverage must be null when unmatched_role_holders is k-anon-suppressed (a true ratio ' +
+          'beside a suppressed cohort back-computes it). Only role_coverage === 1 (zero unmatched) is exempt.',
+      });
+    }
+
+    // (2) Contradiction: a positive unmatched cohort cannot coexist with full coverage.
+    if (unmatched.kind === 'exact' && unmatched.value > 0 && coverage === 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['role_coverage'],
+        message: `role_coverage === 1 contradicts unmatched_role_holders === ${unmatched.value} (coverage must be < 1)`,
+      });
+    }
+  });
 export type AuditAggregate = z.infer<typeof AuditAggregateSchema>;
 
 export const CtaSchema = z
