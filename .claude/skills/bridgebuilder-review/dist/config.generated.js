@@ -9,6 +9,13 @@
 //
 // cycle-099 sprint-1 (T1.1). See SDD §1.4.3 + §3.4 + §5.3.
 export const GENERATED_MODEL_REGISTRY = {
+    "claude-fable-5": {
+        provider: "anthropic",
+        modelId: "claude-fable-5",
+        contextWindow: 200000,
+        capabilities: ["chat", "function_calling", "thinking_traces", "tools"],
+        pricing: { inputPerMtok: 10000000, outputPerMtok: 50000000 },
+    },
     "claude-haiku-4-5-20251001": {
         provider: "anthropic",
         modelId: "claude-haiku-4-5-20251001",
@@ -170,6 +177,18 @@ export const GENERATED_MODEL_REGISTRY = {
         endpointFamily: "responses",
         capabilities: ["chat", "code", "function_calling", "tools"],
         pricing: { inputPerMtok: 30000000, outputPerMtok: 180000000 },
+    },
+    "grok-build": {
+        provider: "xai",
+        modelId: "grok-build",
+        contextWindow: 256000,
+        capabilities: ["chat", "code"],
+    },
+    "grok-composer-2.5-fast": {
+        provider: "xai",
+        modelId: "grok-composer-2.5-fast",
+        contextWindow: 256000,
+        capabilities: ["chat", "code"],
     },
 };
 //# sourceMappingURL=config.generated.js.map

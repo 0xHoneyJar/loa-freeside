@@ -1,0 +1,31 @@
+name: fable-readiness
+
+# Gate: a review/council skill or output-schema must not instruct the MODEL to emit its
+# reasoning as response text. On Fable-5 that triggers a reasoning_extraction refusal and a
+# silent fallback to Opus 4.8 — quietly defeating the upgrade. Blocks only on HIGH triggers;
+# MEDIUM (grounds-not-CoT fields) warns. Verified shell-authored fields are allowlisted in
+# tools/fable-readiness/reasoning-extraction-allowlist.txt.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  reasoning-extraction:
+    name: reasoning_extraction gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit skills/schemas for Fable-5 reasoning_extraction triggers
+        run: |
+          code=0
+          bash tools/fable-readiness/reasoning-extraction-audit.sh || code=$?
+          if [ "$code" -ge 2 ]; then
+            echo "::error::HIGH reasoning_extraction trigger(s): a review/council skill would silently fall back to Opus on Fable-5. Fix under .claude/, or allowlist a verified shell-authored field."
+            exit 1
+          fi
+          if [ "$code" -eq 1 ]; then
+            echo "::warning::MEDIUM reasoning_extraction finding(s) — review (non-blocking)."
+          fi
+          echo "OK — no HIGH reasoning_extraction triggers."

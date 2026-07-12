@@ -17,17 +17,34 @@
 #       added: ISO-8601 date
 #       runtime_state: enum         # deployed | scaffolded | not-built
 #       notes: string               # free-form (deploy quirks, health-path mismatches, etc.)
+#       service:                    # OPTIONAL — ADR-012 Phase 0 declared health contract
+#         deployment_url: string    #   must equal the entry-level deployment_url (decode filter)
+#         health_path: string       #   starts with /
+#         expected_status: int      #   100–599
+#         auth_class: enum          #   none | static-key
+#         expected_body_marker: str #   optional substring guard vs wrong-app-answering
+#         probed_at: ISO date       #   provenance: when the value was live-probed
+#         probe_source: enum        #   adr-012-appendix | live-probe
+#       expectations:               # OPTIONAL — cadence ledger (staleness-against-declared-cadence)
+#         - ref: slug               #   identity = <cell-slug>/<ref>, unique per cell
+#           probe_kind: enum        #   http | graphql-lag | event-max-age (gh-workflow NOT yet valid)
+#           cadence: duration       #   e.g. 15m / 6h / 1d
+#           owner: string
+#           target/expect: per-kind # see packages/freeside-registry/src/registry.ts
 #
 # Reference: decisions/007-loa-freeside-absorption.md §D-1 (L1 Module Registry)
 #            decisions/009-freeside-hexagonal-federation.md §D-2 (cells canonical list)
 #
-# Live-probe state (2026-05-25):
-#   DEPLOYED at Railway: sonar-api, score-api, storage-api, inventory-api (auth-gated MCP), identity-api
-#   NOT-BUILT runtime:   mint-api, activities-api, mediums-api (npm libraries only, no HTTP runtime)
+# Live-probe state (2026-06-19, via `freeside-cli doctor` + direct /health probes):
+#   DEPLOYED (HTTP live): sonar-api (+ belt-gateway 200), score-api (302, live),
+#                         storage-api, identity-api, inventory-api (401, auth-gated MCP),
+#                         activities-api
+#   SCAFFOLDED (404):     mint-api (routeless Express shell), ledger-api (not yet deployed)
+#   NOT-BUILT runtime:    mediums-api (npm lib only), events-api (in-repo library)
 #
-# Subdomain *.0xhoneyjar.xyz beacon endpoints currently 404 for ALL cells — DNS not yet
-# pointed at deployed Railway URLs, and beacon-serving routes not yet implemented in cells.
-# This is the federation-discovery gap (the awareness surface from
+# Subdomain *.0xhoneyjar.xyz beacon endpoints STILL 404 for ALL cells (re-verified
+# 2026-06-19) — DNS not yet pointed at Railway URLs, and beacon-serving routes not yet
+# implemented in cells. This is the federation-discovery gap (the awareness surface from
 # grimoires/loa/specs/enhance-freeside-api-surface.md T1/T2 follow-up).
 #
 # ─── Cluster auth model (de-quirked 2026-06-03 via the cubquests dogfood) ──────────
@@ -65,6 +82,14 @@ modules:
     owner: 0xHoneyJar
     added: "2026-05-18"
     runtime_state: deployed
+    service:
+      deployment_url: https://activities-api-production.up.railway.app
+      health_path: /health
+      expected_status: 200
+      auth_class: none
+      expected_body_marker: '"service":"activities-api"'
+      probed_at: "2026-07-05"
+      probe_source: adr-012-appendix # value matched the ADR-012 appendix on live re-probe
     notes: |
       Unified Activity supertype substrate (quest/mission/badge/raffle).
       DEPLOYED 2026-05-30 (Lane A, cubquests-activities-extraction cycle):
@@ -107,6 +132,14 @@ modules:
     owner: 0xHoneyJar
     added: "2026-05-25"
     runtime_state: deployed
+    service:
+      deployment_url: https://identity-api-production-317b.up.railway.app
+      health_path: /health
+      expected_status: 200
+      auth_class: none
+      expected_body_marker: '"ok":true'
+      probed_at: "2026-07-05"
+      probe_source: live-probe # ADR-012 appendix pointed at identity-api-production (now Railway-edge 404); canonical -317b host probed 200
     notes: |
       Central identity SoR (Phase 1 BUILT + DEPLOYED 2026-05-25 to Railway).
       Custom domain identity.0xhoneyjar.xyz queued behind DNS — beacon_url
@@ -126,17 +159,49 @@ modules:
   inventory-api:
     git_url: https://github.com/0xHoneyJar/inventory-api.git
     beacon_url: https://inventory.0xhoneyjar.xyz/.well-known/beacon.json
-    deployment_url: https://inventory-mcp-production.up.railway.app
+    deployment_url: https://inventory-api-production-3f25.up.railway.app
     visibility: internal
     owner: 0xHoneyJar
     added: "2026-05-18"
     runtime_state: deployed
+    service:
+      deployment_url: https://inventory-api-production-3f25.up.railway.app
+      health_path: /health
+      expected_status: 200
+      auth_class: none
+      expected_body_marker: '"service":"inventory-api"'
+      probed_at: "2026-07-05"
+      probe_source: live-probe # ADR-012 appendix (`/` 401 static-key) was the edge-walled OLD deployment; -3f25 serves open /health 200, / 404s
     notes: |
       sonar⨝codex inventory/collections read API + ACVP completeness.
-      Deployed as MCP server at inventory-mcp-production.up.railway.app (returns
-      401 — auth-gated, requires API key). Per memory the inventory-api npm
-      library has live read counts; the MCP server is the federation-facing
-      shape. visibility: internal because of the auth gate.
+      Live HTTP read API at inventory-api-production-3f25.up.railway.app
+      (/health 200, /holdings + /profile open — privacy-gated fields verified
+      chain-derived 2026-07-03). The older inventory-mcp-production deployment
+      is edge-walled (401 on every path incl /health) — NOT the read plane.
+      Beacon 404 until inventory-api#18 merges.
+
+  ledger-api:
+    git_url: https://github.com/0xHoneyJar/ledger-api.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-06-19"
+    runtime_state: scaffolded
+    notes: |
+      Event-sourced resource ledger — the most-upstream building on the belt DAG.
+      EXTRACTED from the monolith 2026-06-03 (repo github.com/0xHoneyJar/ledger-api,
+      PRIVATE; last commit 2026-06-03 "alias workspace package to src so the
+      conformance suite runs without a build"). Scaffolded: conformance suite runs,
+      write-path DEFERRED (NG-1 gate — activities-api does not own balances this
+      cycle). NOT deployed — ledger-api-production.up.railway.app/health → 404
+      (probed 2026-06-19). beacon_url ~ (internal cell, no public subdomain planned;
+      exercises the NullOr beacon_url schema fix). Credit-lot logic ALSO still lives
+      in the monolith (packages/services/credit-lot-service.ts) — dual-home until
+      cutover; do NOT assume ledger-api is the live balance authority yet. Registered
+      2026-06-19 to close the registry-vs-territory drift the 2026-06-04 gecko census
+      flagged (DRIFT-2: "freeside-ledger IS extracted; doctrine said it wasn't").
+      billing remains genuinely un-extracted (no repo).
 
   mediums-api:
     # NOTE: GH repo still at freeside-mediums (only mediums of the 8 cells not yet
@@ -176,6 +241,31 @@ modules:
       only → false-healthy; a /health 404 should read as unhealthy.
       (de-quirked 2026-06-03 via cubquests dogfood probes.)
 
+  ordering:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: https://ordering-service-production.up.railway.app
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-01"
+    runtime_state: deployed
+    service:
+      deployment_url: https://ordering-service-production.up.railway.app
+      health_path: /healthz
+      expected_status: 200
+      auth_class: none
+      expected_body_marker: '"service":"ordering-service"'
+      probed_at: "2026-07-05"
+      probe_source: live-probe # OQ-1: outside the ADR-012 appendix; declared per its own documented /healthz contract, live-confirmed
+    notes: |
+      Order intake + kitchen triage for community-onboarding (packages/services/ordering,
+      in-monolith — deploys as its own Railway service). Health: GET /healthz → 200
+      {"ok":true,...,"write_routes":...}; non-200/timeout(5s)/refused = down (PRD FR-9a).
+      Write routes (advance-ingredient, reprobe) are Bearer SERVICE_TOKEN gated and
+      fail-closed when the token is unset in deployed envs. Consumed by freeside-dashboard
+      (Vercel) and freeside-cli order/kitchen/fulfill verbs. Beacon deferred — not a
+      federation cell yet; registry entry is the declaration keystone (transmission.md).
+
   score-api:
     # The runtime building (was 'score-mibera' in pre-2026-05-23 registry). GH repo
     # renamed score-mibera → score-api. The SCHEMA package @freeside/freeside-score
@@ -187,11 +277,25 @@ modules:
     owner: 0xHoneyJar
     added: "2026-05-18"
     runtime_state: deployed
+    service:
+      deployment_url: https://score-api-production.up.railway.app
+      health_path: /v1/health
+      expected_status: 200
+      auth_class: none
+      expected_body_marker: '"service":"score-api"'
+      probed_at: "2026-07-05"
+      probe_source: live-probe # FR-2 resolution: / now 302→/v1/health; the direct path is declared, the 302 is NEVER encoded (ADR-012 DO-NOT-TRANSCRIBE discharged)
     notes: |
-      Hono runtime — factor metadata + behavioral signals. LIVE at Railway
-      with full health response at `/` (NOT `/healthz`):
-        {status:"ok", service:"score-api", db:"connected", scoring_version:"v0.7",
-         last_run_id:5903, last_run_at:"2026-05-26 03:35:21+00"}
+      Hono runtime — factor metadata + behavioral signals. LIVE at Railway.
+      HEALTH RESOLUTION (2026-07-05, cadence-ledger FR-2): `/` now returns
+      302 → /v1/health; GET /v1/health directly serves the full health JSON
+      ({status:"ok", service:"score-api", db:"connected", ...}); /health 404s.
+      The declared contract above uses the direct /v1/health path — encoding
+      the 302 would re-create the drift ADR-012 kills. Prior note claiming the
+      health response lived at `/` described the pre-redirect deployment.
+      Canonical public URL: https://score.0xhoneyjar.xyz (DNS CNAME → Railway).
+      ECS module.world_score_api + score-api.0xhoneyjar.xyz ALB path is DORMANT
+      (loa-freeside#417) — do not treat as production compute.
       mcp-gateway's probeTenant() calls `/healthz` which 404s — the gateway will
       show this tenant as "down" even though the service is operational. Fix
       candidate: per-tenant `health_path` field in tenants.ts (deferred —
@@ -205,9 +309,50 @@ modules:
     owner: 0xHoneyJar
     added: "2026-05-18"
     runtime_state: deployed
+    service:
+      deployment_url: https://sonar-api-production.up.railway.app
+      health_path: /
+      expected_status: 200
+      auth_class: none
+      expected_body_marker: '"name":"Sonar API"'
+      probed_at: "2026-07-05"
+      probe_source: live-probe # ADR-012 appendix marker `"message":"Sonar API"` drifted; live body is `{"name":"Sonar API",...}` (also serves /health 200 {"status":"ok"} — `/` kept for the service-identity marker)
+    expectations:
+      # Identity = sonar-api/<ref>. Consumers dispatch on probe_kind (loa-cli, next cycle).
+      - ref: chain-lag
+        probe_kind: graphql-lag
+        cadence: 15m # SLO windows are ~10-60 min; 15m gives ≥2 samples per window
+        owner: zerker # SCALE.md doc owner
+        target:
+          # Live-verified 2026-07-05: belt-gateway serves chain_metadata for all 6
+          # chains (OQ-2 resolved). Endpoint is declared DATA — deployment ids
+          # rotate blue-green; rotation is a yaml edit, never a schema change.
+          endpoint: https://belt-gateway-production.up.railway.app/v1/graphql
+          query: "{ chain_metadata { chain_id latest_processed_block block_height } }"
+          rows_path: data.chain_metadata
+          key: chain_id
+          minuend: block_height
+          subtrahend: latest_processed_block
+        expect:
+          thresholds: # sonar SCALE.md Guardrail 2 (PROPOSED tier — observe-only posture
+            "1": 50 #      is a runner concern; the declaration records the targets)
+            "10": 600
+            "42161": 2400
+            "8453": 600
+            "80094": 300 # Berachain — primary chain, strictest SLO
+            "7777777": 1800
+      # svm-reconcile (event-max-age) DELIBERATELY OMITTED (verify-or-omit, FR-4):
+      # the assumed projection svm_run_marker does NOT exist in the live GraphQL
+      # schema (introspected 2026-07-05); svm_collection_event.block_time measures
+      # EVENT recency, not RUN recency — declaring it would re-create the exact
+      # quiet-vs-down confusion this lane kills. Candidate future projection:
+      # sonar /v1/runs (REST, X-API-Key) once a REST-freshness kind exists, or a
+      # run-marker table exposed via belt-gateway.
     notes: |
-      EVM event indexer across 6 chains (Berachain primary). LIVE at Railway
-      with `{"message":"Sonar API"}` at `/`.
+      EVM event indexer across 6 chains (Berachain primary). LIVE at Railway —
+      `/` serves `{"name":"Sonar API",...}` (body drifted from the earlier
+      `{"message":"Sonar API"}` claim; corrected 2026-07-05) and /health serves
+      200 {"status":"ok"}.
       ⚠ READ PLANE: the GraphQL endpoint consumers actually query is the eRPC
       belt-gateway — a SEPARATE Railway service —
         https://belt-gateway-production.up.railway.app/v1/graphql  (live 200, no auth).
@@ -227,6 +372,14 @@ modules:
     owner: 0xHoneyJar
     added: "2026-05-18"
     runtime_state: deployed
+    service:
+      deployment_url: https://storage-api-production.up.railway.app
+      health_path: /
+      expected_status: 200
+      auth_class: none
+      # no expected_body_marker: `/` serves GraphQL Playground HTML (no stable JSON marker)
+      probed_at: "2026-07-05"
+      probe_source: adr-012-appendix # value matched the ADR-012 appendix on live re-probe
     notes: |
       Static-asset CDN + NFT metadata serving (StorageAdapter abstraction).
       LIVE at Railway — serves GraphQL Playground HTML at `/`, suggesting

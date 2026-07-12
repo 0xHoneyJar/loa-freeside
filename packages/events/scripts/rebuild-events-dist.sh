@@ -22,7 +22,7 @@
 #   - pnpm install --ignore-scripts (no post-install from transitive deps)
 #   - SOURCE_DATE_EPOCH=0 for reproducible timestamps
 #   - dist/src/SOURCE_SHA provenance file
-#   - All 8 export specifiers verified (per packages/events/package.json)
+#   - All 9 export specifiers verified (per packages/events/package.json)
 #   - Stale-detection via SCHEMA_VERSION literal + SOURCE_SHA match
 #
 # Called automatically via "postinstall" in the consuming repo's
@@ -231,7 +231,7 @@ echo "$TAG Embedded SOURCE_SHA: $ACTUAL_SHA"
 # =============================================================================
 
 echo "$TAG Verifying export specifiers..."
-SPECIFIERS=("" "/envelope" "/jcs" "/signer" "/topics" "/publisher" "/subscriber" "/schemas/nft-mint-detected")
+SPECIFIERS=("" "/envelope" "/jcs" "/signer" "/topics" "/publisher" "/subscriber" "/schemas/nft-mint-detected" "/schemas/nft-activity")
 for specifier in "${SPECIFIERS[@]}"; do
   if [[ -z "$specifier" ]]; then
     ENTRY_FILE="dist/src/index.js"

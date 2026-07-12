@@ -1,0 +1,1 @@
+../constructs/packs/construct-creator/commands/create-construct.md

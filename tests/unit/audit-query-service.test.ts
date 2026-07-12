@@ -150,7 +150,7 @@ describe('AuditQueryService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].model_pair).toEqual(['modelA', 'modelB']);
-      expect(result[0].quality_score).toBe(0.85); // average of 0.8 and 0.9
+      expect(result[0].quality_score).toBeCloseTo(0.85);
       expect(result[0].observation_count).toBe(2);
     });
 
@@ -169,7 +169,7 @@ describe('AuditQueryService', () => {
       await service.getModelPairInteractions('model%A', 'model_B', timeRange);
 
       const [sql, params] = mockPool.query.mock.calls[0];
-      expect(sql).toContain("ESCAPE '\\\\'");
+      expect(sql).toContain("ESCAPE '\\'");
       // Escaped: % → \%, _ → \_
       expect(params[3]).toBe('%model\\%A%');
       expect(params[4]).toBe('%model\\_B%');

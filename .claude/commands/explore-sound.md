@@ -1,0 +1,1 @@
+../constructs/packs/the-speakers/commands/explore-sound.md

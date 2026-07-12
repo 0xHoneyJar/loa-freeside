@@ -1,0 +1,273 @@
+{
+  "schema_version": 3,
+  "name": "Gecko",
+  "slug": "gecko",
+  "version": "0.1.0",
+  "description": "Estate coherence sensing \u2014 health monitoring for the construct ecosystem and any other estate. Runs automated checks, detects when constructs drift from their documentation, and tracks lifecycle status. Ten skills: patrol (automated network loops), observe (single network check), diagnose (deep investigation), report (findings summary), sweep-bonfire (walks the operator's local working copies and emits to the wall \u2014 sibling altitude to patrol), sense-estate (senses an arbitrary estate's coherence and emits a STATUS|SIGNAL|MISMATCH tile \u2014 the portable, fail-closed immune-relay doctor), sensing-path-friction (senses wrong-weight coordination paths \u2014 reach-in vs spawn-in-cell vs coord \u2014 and recurring cross-cell desire-paths that want to become rails, from the audit trail; DETECTOR-tier, surfaces never gates), sensing-construct-console (senses the live construct estate \u2014 declared \u2194 governed \u2194 earned \u2014 and emits the tile + Exhibit A + a three-row composition console; the composition+earned-authority sibling of probe_constructs's install-state), sensing-runtime-fit (senses whether each construct's declared runtime contract \u2014 model_tier, agent, allowed-tools, downgrade, workflow.gates \u2014 coheres with the runtime that runs it; detects capability-reality drift: the #553 write/agent-conflict that silently drops output, model tiers the runtime doesn't offer, write/web denials contradicted by tools, opus pinned for light work; surfaces gate-owners; reads against the taxonomy in identity/environment.md; sense-only, never gates), sensing-deployment-seam (GECKO's 4th eye \u2014 senses the deployment seam between where the framework PUTS things at ~/.loa/source repos and where each harness consumer LOOKS for them at ~/.claude/installed runtime; the manifest-numbness / scattered-symlink / source-vs-installed-lag class; classifies CONFLICT (hard, path-provable) vs SMELL per consumer-expects \u2194 producer-provides; sense-only, never gates).",
+  "short_description": "Estate coherence sensor \u2014 a portable, fail-closed immune relay (constructs, runtime, paths, deployment seam, any estate)",
+  "author": "0xHoneyJar",
+  "license": "MIT",
+  "type": "skill-pack",
+  "visibility": "public",
+  "domain": {
+    "primary": "observability",
+    "supporting": [
+      "ecosystem-intelligence"
+    ],
+    "ubiquitous_language": [
+      "drift",
+      "patrol",
+      "estate",
+      "STATUS|SIGNAL|MISMATCH",
+      "construct health"
+    ],
+    "owns": {
+      "streams": [
+        "Intent",
+        "Operator-Model",
+        "Signal",
+        "Verdict",
+        "Artifact"
+      ],
+      "invariants": [
+        "gecko operates within its declared bounded context",
+        "sense-only constructs never gate operator decisions"
+      ]
+    },
+    "out_of_domain": [
+      "implementation in consumer world repos",
+      "schema changes in loa-constructs unless explicitly owned"
+    ]
+  },
+  "skills": [
+    {
+      "slug": "patrol",
+      "path": "skills/patrol"
+    },
+    {
+      "slug": "observe",
+      "path": "skills/observe"
+    },
+    {
+      "slug": "diagnose",
+      "path": "skills/diagnose"
+    },
+    {
+      "slug": "report",
+      "path": "skills/report"
+    },
+    {
+      "slug": "sweep-bonfire",
+      "path": "skills/sweep-bonfire"
+    },
+    {
+      "slug": "sense-estate",
+      "path": "skills/sense-estate"
+    },
+    {
+      "slug": "sensing-path-friction",
+      "path": "skills/sensing-path-friction"
+    },
+    {
+      "slug": "sensing-construct-console",
+      "path": "skills/sensing-construct-console"
+    },
+    {
+      "slug": "sensing-runtime-fit",
+      "path": "skills/sensing-runtime-fit"
+    },
+    {
+      "slug": "sensing-deployment-seam",
+      "path": "skills/sensing-deployment-seam"
+    },
+    {
+      "slug": "sensing-config-drift",
+      "path": "skills/sensing-config-drift"
+    }
+  ],
+  "commands": [
+    {
+      "name": "patrol",
+      "path": "commands/patrol.md"
+    },
+    {
+      "name": "observe",
+      "path": "commands/observe.md"
+    },
+    {
+      "name": "diagnose",
+      "path": "commands/diagnose.md"
+    },
+    {
+      "name": "report",
+      "path": "commands/report.md"
+    },
+    {
+      "name": "sweep-bonfire",
+      "path": "commands/sweep-bonfire.md"
+    },
+    {
+      "name": "sense-estate",
+      "path": "commands/sense-estate.md"
+    },
+    {
+      "name": "sensing-path-friction",
+      "path": "commands/sensing-path-friction.md"
+    },
+    {
+      "name": "sensing-construct-console",
+      "path": "commands/sensing-construct-console.md"
+    },
+    {
+      "name": "sensing-runtime-fit",
+      "path": "commands/sensing-runtime-fit.md"
+    },
+    {
+      "name": "sensing-deployment-seam",
+      "path": "commands/sensing-deployment-seam.md"
+    },
+    {
+      "name": "sensing-config-drift",
+      "path": "commands/sensing-config-drift.md"
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/0xHoneyJar/construct-gecko.git",
+    "homepage": "https://constructs.network/constructs/gecko"
+  },
+  "streams": {
+    "reads": [
+      "Intent",
+      "Operator-Model"
+    ],
+    "writes": [
+      "Signal",
+      "Verdict",
+      "Artifact"
+    ]
+  },
+  "events": {
+    "emits": [
+      {
+        "type": "gecko.health_observed",
+        "description": "Emitted after a single-pass observation completes",
+        "data_schema": {
+          "health_score": "number",
+          "constructs_checked": "number",
+          "anomalies": "number",
+          "timestamp": "string"
+        }
+      },
+      {
+        "type": "gecko.drift_detected",
+        "description": "Emitted when identity-reality drift exceeds threshold",
+        "data_schema": {
+          "construct_slug": "string",
+          "drift_type": "string",
+          "severity": "string",
+          "details": "string"
+        }
+      },
+      {
+        "type": "gecko.patrol_complete",
+        "description": "Emitted when a full patrol cycle finishes",
+        "data_schema": {
+          "iterations": "number",
+          "health_delta": "number",
+          "findings_path": "string"
+        }
+      },
+      {
+        "type": "gecko.diagnosis_complete",
+        "description": "Emitted when a deep diagnosis of a construct finishes",
+        "data_schema": {
+          "construct_slug": "string",
+          "finding_count": "number",
+          "recommendations": "number"
+        }
+      },
+      {
+        "type": "gecko.path_friction_observed",
+        "description": "Emitted after a path-friction sense completes \u2014 wrong-weight coordination acts + recurring cross-cell desire-paths (DETECTOR-tier; surfaced, never gated)",
+        "data_schema": {
+          "status": "string",
+          "cross_cell_mutates": "number",
+          "reach_in": "number",
+          "under_ceremony": "number",
+          "desire_paths": "number",
+          "top_desire_path": "string"
+        }
+      },
+      {
+        "type": "gecko.runtime_fit_observed",
+        "description": "Emitted after a runtime-fit sense completes \u2014 capability-reality drift across the construct estate (CONFLICTS hard / drive drift, SMELLS soft / surfaced; DETECTOR-tier, never gated)",
+        "data_schema": {
+          "status": "string",
+          "packs_checked": "number",
+          "conflicts": "number",
+          "smells": "number",
+          "gate_owners": "number"
+        }
+      }
+    ],
+    "consumes": [
+      {
+        "type": "forge.k-hole.emergence_complete",
+        "description": "Picks up research emergence for ecosystem pattern matching"
+      }
+    ]
+  },
+  "identity": {
+    "persona": "identity/persona.yaml",
+    "expertise": "identity/expertise.yaml"
+  },
+  "paths": {
+    "reads": [
+      "construct.yaml",
+      "identity/persona.yaml",
+      "skills/*/SKILL.md",
+      "skills/*/index.yaml"
+    ],
+    "writes": [
+      "grimoires/gecko/"
+    ]
+  },
+  "composition_paths": {
+    "reads": [
+      "grimoires/"
+    ]
+  },
+  "compose_with": [
+    "observer",
+    "k-hole"
+  ],
+  "pack_dependencies": [],
+  "capabilities": {
+    "model_tier": "quantum",
+    "danger_level": "moderate",
+    "effort_hint": "large",
+    "downgrade_allowed": false,
+    "execution_hint": "sequential",
+    "requires": {
+      "tool_calling": true,
+      "thinking_traces": true,
+      "vision": false
+    }
+  },
+  "hooks": {
+    "post_install": "scripts/install.sh"
+  },
+  "quick_start": {
+    "command": "/observe",
+    "description": "Run a single-pass health check on the constructs network"
+  },
+  "validation_tier": "strict",
+  "context_policy": {
+    "mode": "fresh",
+    "persistence_scope": "stage",
+    "allowed_context": [
+      "grimoires/gecko/"
+    ]
+  },
+  "migrated_to_substrate": "2026-06-30"
+}

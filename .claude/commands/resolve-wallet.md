@@ -1,0 +1,1 @@
+../constructs/packs/dynamic-auth/commands/resolve-wallet.md

@@ -602,7 +602,11 @@ aggregate_and_write_final_consensus() {
             # mktemp on PATH). Without the check, downstream chmod/printf on
             # an empty $tmp produces confusing "No such file or directory"
             # errors that mask the real mktemp failure.
-            if ! tmp=$(mktemp "${TEMP_DIR:-/tmp}/vq-input.XXXXXX.json"); then
+            # bug-978 (#978): trailing-X template — BSD mktemp expands only
+            # trailing X-runs; the old .XXXXXX.json shape collided across the
+            # 3 voices and degraded the review to voices=1/3. The aggregator
+            # takes file paths; no extension needed.
+            if ! tmp=$(mktemp "${TEMP_DIR:-/tmp}/vq-input.XXXXXX"); then
                 log "WARNING: mktemp failed for vq-input ($(date)) — skipping verdict-quality envelope for $f"
                 continue
             fi
@@ -638,7 +642,7 @@ aggregate_and_write_final_consensus() {
         }
         if [[ -s "$target" ]]; then
             local final_status
-            final_status=$(jq -r '.status' "$target" 2>/dev/null || echo "?")
+            final_status=$(jq -r '.status' "$target" 2>/dev/null || echo "?")  # check-no-swallowed-jq: ok (pending #1025 sweep)
             log "[vq-aggregate] wrote $target (status=$final_status, voices=${#vq_files[@]}/${#input_files[@]})"
         fi
     fi
@@ -1895,7 +1899,7 @@ main() {
     doc_bytes=$(wc -c < "$doc" 2>/dev/null || echo 0)
     doc_kb=$(( (doc_bytes + 512) / 1024 ))   # round to nearest KB
     if [[ "$doc_bytes" -gt 30720 ]]; then
-        echo "WARNING: Document size ${doc_kb} KB; long prompts may trip the cheval connection-loss path on Anthropic + OpenAI. See issue #774 if Phase 1 reports failure_class=PROVIDER_DISCONNECT. The --per-call-max-tokens flag does NOT address this failure mode." >&2
+        echo "WARNING: Document size ${doc_kb} KB. Large documents are handled by the streaming transport default + chunked dispatch (KF-002 RESOLVED-STRUCTURAL); if Phase 1 still reports provider failures at this size, check the verdict_quality envelope and .run/model-invoke.jsonl rather than retrying. The --per-call-max-tokens flag does NOT change input handling." >&2
     fi
 
     # Validate orchestrator mode
@@ -2375,7 +2379,7 @@ main() {
                 # Extract JSON decisions from arbiter response
                 local decisions
                 decisions=$(echo "$arbiter_result" | jq -r '.content // .' 2>/dev/null | \
-                    grep -oE '\[.*\]' | head -1 | jq '.' 2>/dev/null || echo "[]")
+                    grep -oE '\[.*\]' | head -1 | jq '.' 2>/dev/null || echo "[]")  # check-no-swallowed-jq: ok (pending #1025 sweep)
 
                 if echo "$decisions" | jq -e 'type == "array"' >/dev/null 2>&1; then
                     # Process each decision

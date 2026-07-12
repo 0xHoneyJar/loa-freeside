@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://loa.dev/hivemind/labels.schema.json",
+  "title": "Hivemind Laboratory Labels",
+  "description": "Standalone schema for the Hivemind Laboratory taxonomy (CultureTech's experimentation framework). Anti-spiral tether — binds artifact outputs to user truth so AI work doesn't drift. Canonical: Eileen Dec 2025 'Linear Issue Label Taxonomy Guide' (supersedes Jun 2024 v1). Lives in 0xHoneyJar/loa-hivemind so the taxonomy evolves independently of any single consumer. Composition schema (loa-constructs), framework artifacts (PRD/SDD/Sprint), and future canvas types all $ref this schema by stable $id URL. VENDORED into loa-freeside tools/hivemind/ for the fresh-clone Cloud Routine; canon @2bd219ad.",
+  "type": "object",
+  "additionalProperties": false,
+  "schema_version": "1.0",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Standalone hivemind-labels schema version. Bumps independently from composition.schema.json. v1.0 baseline matches the embedded $defs as it existed at composition v1.1."
+    },
+    "artifact_type": {
+      "type": "string",
+      "enum": [
+        "user-truth-canvas",
+        "experiment-design",
+        "atomic-learning",
+        "product-spec",
+        "bug-report",
+        "incident-postmortem",
+        "competitor-analysis",
+        "user-interview-synthesis",
+        "technical-rfc",
+        "launch-plan",
+        "meeting-notes"
+      ],
+      "description": "Hivemind Lab artifact category (11 types per Dec 2025 canon). atomic-learning is the most valuable artifact — a single, validated, reusable insight."
+    },
+    "workstream": {
+      "type": "string",
+      "enum": ["discovery", "delivery", "experimentation", "tech-debt", "sorry-for-ur-loss"],
+      "description": "What kind of work is this? discovery = understanding problem space. delivery = building production features. experimentation = minimal versions to test a hypothesis. tech-debt = refactor/upgrade. sorry-for-ur-loss = emergency, app on fire."
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["urgent", "high", "medium", "low"],
+      "description": "How important right now? urgent = system down / all-hands. high = major feature broken, fix this sprint. medium = workaround exists. low = cosmetic."
+    },
+    "product_area": {
+      "type": "string",
+      "description": "Where in the product this lives. Free-form per project (e.g., 'Onboarding', 'Wallet Integration', 'NFT Minting Flow', 'Governance Dashboard', 'User Profile', 'Core App Performance', 'Design System', or project-specific like 'Henlo Arcade')."
+    },
+    "jtbd": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Job-to-be-done. Why does the user care? The most important question we can answer.",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": ["functional", "personal", "social"],
+          "description": "functional = perform action (Make Transaction, Find Information, Organize Assets). personal = internal feeling (Reassure Me This Is Safe, Help Me Feel Smart, Give Me Peace of Mind, Reduce My Anxiety). social = outward expression (Help Me Look Smart Cool, Help Me Feel Like An Insider, Let Me Express My Identity)."
+        },
+        "description": {
+          "type": "string",
+          "description": "The user job in plain language. Use Dec 2025 canonical phrasing where applicable."
+        }
+      },
+      "required": ["category", "description"]
+    },
+    "learning_status": {
+      "type": "string",
+      "enum": [
+        "strongly-validated",
+        "directionally-correct",
+        "hypothesis-failed",
+        "smol-evidence",
+        "cant-make-a-conclusion"
+      ],
+      "description": "How sure are we? strongly-validated = quant+qual proof. directionally-correct = strong qual feedback, not data-proven. hypothesis-failed = clear evidence initial belief was wrong (valuable learning). smol-evidence = single comment. cant-make-a-conclusion = ambiguous evidence."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "team-internal",
+        "dm-to-team-member",
+        "analytics-anomaly",
+        "discord-support-or-feedback"
+      ],
+      "description": "How do we know this matters? team-internal = internal team idea. dm-to-team-member = direct user/external conversation. analytics-anomaly = metrics. discord-support-or-feedback = community channels (consolidates June's discord+support). NOTE per Dec 2025: competitor signals moved from source to artifact_type (competitor-analysis)."
+    }
+  }
+}

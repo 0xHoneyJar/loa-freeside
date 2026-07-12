@@ -22,6 +22,7 @@ declare -A MODEL_PROVIDERS=(
     ["gemini-3.1-pro-preview"]="google"
     ["deep-research-pro"]="google"
     ["gemini-headless"]="google"
+    ["claude-fable-5"]="anthropic"
     ["claude-opus-4-8"]="anthropic"
     ["claude-opus-4-7"]="anthropic"
     ["claude-opus-4-6"]="anthropic"
@@ -33,10 +34,13 @@ declare -A MODEL_PROVIDERS=(
     ["us.anthropic.claude-opus-4-7"]="bedrock"
     ["us.anthropic.claude-sonnet-4-6"]="bedrock"
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="bedrock"
+    ["grok-build"]="xai"
+    ["grok-composer-2.5-fast"]="xai"
     ["gemini-2.0"]="google"
     ["reviewer"]="openai"
     ["reasoning"]="openai"
     ["cheap"]="anthropic"
+    ["fable"]="anthropic"
     ["opus"]="anthropic"
     ["tiny"]="anthropic"
     ["deep-thinker"]="google"
@@ -51,6 +55,11 @@ declare -A MODEL_PROVIDERS=(
     ["claude-headless"]="anthropic"
     ["codex-headless"]="openai"
     ["gemini-headless"]="google"
+    ["gemini-api"]="google"
+    ["grok-build"]="xai"
+    ["grok-composer"]="xai"
+    ["grok-fast"]="xai"
+    ["grok-headless"]="xai"
     ["gpt-5.2-codex"]="openai"
     ["gpt-5.3-codex"]="openai"
     ["claude-opus-4-8"]="anthropic"
@@ -81,6 +90,7 @@ declare -A MODEL_IDS=(
     ["gemini-3.1-pro-preview"]="gemini-3.1-pro-preview"
     ["deep-research-pro"]="deep-research-pro"
     ["gemini-headless"]="gemini-headless"
+    ["claude-fable-5"]="claude-fable-5"
     ["claude-opus-4-8"]="claude-opus-4-8"
     ["claude-opus-4-7"]="claude-opus-4-7"
     ["claude-opus-4-6"]="claude-opus-4-6"
@@ -92,10 +102,13 @@ declare -A MODEL_IDS=(
     ["us.anthropic.claude-opus-4-7"]="us.anthropic.claude-opus-4-7"
     ["us.anthropic.claude-sonnet-4-6"]="us.anthropic.claude-sonnet-4-6"
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    ["grok-build"]="grok-build"
+    ["grok-composer-2.5-fast"]="grok-composer-2.5-fast"
     ["gemini-2.0"]="gemini-2.0-flash"
     ["reviewer"]="gpt-5.5"
     ["reasoning"]="gpt-5.5"
     ["cheap"]="claude-sonnet-4-6"
+    ["fable"]="claude-fable-5"
     ["opus"]="claude-opus-4-8"
     ["tiny"]="claude-haiku-4-5-20251001"
     ["deep-thinker"]="gemini-3.1-pro-preview"
@@ -110,6 +123,11 @@ declare -A MODEL_IDS=(
     ["claude-headless"]="claude-headless"
     ["codex-headless"]="codex-headless"
     ["gemini-headless"]="gemini-headless"
+    ["gemini-api"]="gemini-2.5-pro"
+    ["grok-build"]="grok-build"
+    ["grok-composer"]="grok-composer-2.5-fast"
+    ["grok-fast"]="grok-composer-2.5-fast"
+    ["grok-headless"]="grok-build"
     ["gpt-5.2-codex"]="gpt-5.3-codex"
     ["gpt-5.3-codex"]="gpt-5.3-codex"
     ["claude-opus-4-8"]="claude-opus-4-8"
@@ -144,6 +162,7 @@ declare -A MODEL_AUTH_TYPE=(
     ["gemini-3.1-pro-preview"]="http_api"
     ["deep-research-pro"]="http_api"
     ["gemini-headless"]="headless"
+    ["claude-fable-5"]="http_api"
     ["claude-opus-4-8"]="http_api"
     ["claude-opus-4-7"]="http_api"
     ["claude-opus-4-6"]="http_api"
@@ -155,6 +174,8 @@ declare -A MODEL_AUTH_TYPE=(
     ["us.anthropic.claude-opus-4-7"]="aws_iam"
     ["us.anthropic.claude-sonnet-4-6"]="aws_iam"
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="aws_iam"
+    ["grok-build"]="headless"
+    ["grok-composer-2.5-fast"]="headless"
 )
 
 declare -A MODEL_DISPATCH_GROUP=(
@@ -170,6 +191,7 @@ declare -A MODEL_DISPATCH_GROUP=(
     ["gemini-3.1-pro-preview"]="google-gemini"
     ["deep-research-pro"]="google-gemini"
     ["gemini-headless"]="google-gemini"
+    ["claude-fable-5"]="anthropic-claude"
     ["claude-opus-4-8"]="anthropic-claude"
     ["claude-opus-4-7"]="anthropic-claude"
     ["claude-opus-4-6"]="anthropic-claude"
@@ -181,6 +203,8 @@ declare -A MODEL_DISPATCH_GROUP=(
     ["us.anthropic.claude-opus-4-7"]="bedrock-anthropic"
     ["us.anthropic.claude-sonnet-4-6"]="bedrock-anthropic"
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="bedrock-anthropic"
+    ["grok-build"]="xai-grok"
+    ["grok-composer-2.5-fast"]="xai-grok"
 )
 
 declare -A COST_INPUT=(
@@ -194,6 +218,7 @@ declare -A COST_INPUT=(
     ["gemini-2.5-pro"]="0.00125"
     ["gemini-3.1-pro-preview"]="0.00125"
     ["deep-research-pro"]="0.005"
+    ["claude-fable-5"]="0.01"
     ["claude-opus-4-8"]="0.005"
     ["claude-opus-4-7"]="0.005"
     ["claude-opus-4-6"]="0.005"
@@ -208,6 +233,7 @@ declare -A COST_INPUT=(
     ["reviewer"]="0.005"
     ["reasoning"]="0.005"
     ["cheap"]="0.003"
+    ["fable"]="0.01"
     ["opus"]="0.005"
     ["tiny"]="0.001"
     ["deep-thinker"]="0.00125"
@@ -219,6 +245,7 @@ declare -A COST_INPUT=(
     ["gpt-5.5"]="0.005"
     ["gpt-5.5-pro"]="0.03"
     ["gpt-5.3-codex"]="0.00175"
+    ["gemini-api"]="0.00125"
     ["gpt-5.2-codex"]="0.00175"
     ["gpt-5.3-codex"]="0.00175"
     ["claude-opus-4-8"]="0.005"
@@ -247,6 +274,7 @@ declare -A COST_OUTPUT=(
     ["gemini-2.5-pro"]="0.01"
     ["gemini-3.1-pro-preview"]="0.01"
     ["deep-research-pro"]="0.02"
+    ["claude-fable-5"]="0.05"
     ["claude-opus-4-8"]="0.025"
     ["claude-opus-4-7"]="0.025"
     ["claude-opus-4-6"]="0.025"
@@ -261,6 +289,7 @@ declare -A COST_OUTPUT=(
     ["reviewer"]="0.03"
     ["reasoning"]="0.03"
     ["cheap"]="0.015"
+    ["fable"]="0.05"
     ["opus"]="0.025"
     ["tiny"]="0.005"
     ["deep-thinker"]="0.01"
@@ -272,6 +301,7 @@ declare -A COST_OUTPUT=(
     ["gpt-5.5"]="0.03"
     ["gpt-5.5-pro"]="0.18"
     ["gpt-5.3-codex"]="0.014"
+    ["gemini-api"]="0.01"
     ["gpt-5.2-codex"]="0.014"
     ["gpt-5.3-codex"]="0.014"
     ["claude-opus-4-8"]="0.025"
@@ -298,6 +328,7 @@ declare -A COST_OUTPUT=(
 # Excludes claude-code: synthetic provider (Claude Code native runtime).
 declare -a VALID_FLATLINE_MODELS=(
     cheap
+    claude-fable-5
     claude-haiku-4-5-20251001
     claude-headless
     claude-opus-4-0
@@ -317,6 +348,7 @@ declare -a VALID_FLATLINE_MODELS=(
     codex-headless
     deep-research-pro
     deep-thinker
+    fable
     gemini-2.0
     gemini-2.0-flash
     gemini-2.5-flash
@@ -325,12 +357,18 @@ declare -a VALID_FLATLINE_MODELS=(
     gemini-3-flash-preview
     gemini-3.1-pro
     gemini-3.1-pro-preview
+    gemini-api
     gemini-headless
     gpt-5.2
     gpt-5.2-codex
     gpt-5.3-codex
     gpt-5.5
     gpt-5.5-pro
+    grok-build
+    grok-composer
+    grok-composer-2.5-fast
+    grok-fast
+    grok-headless
     opus
     reasoning
     researcher

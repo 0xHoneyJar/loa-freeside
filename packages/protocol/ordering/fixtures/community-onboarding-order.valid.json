@@ -1,0 +1,19 @@
+{
+  "product": "community-onboarding",
+  "placed_by": "dashboard_onboarding",
+  "inputs": {
+    "chain_id": "8453",
+    "contract_address": "0x1234567890123456789012345678901234567890",
+    "contact_email": "cm@example.com",
+    "community_name": "Pythenians",
+    "source": "dashboard_onboarding",
+    "callback_url": "https://dashboard.example.com/api/onboarding/orders/shadow-audit/webhook"
+  },
+  "expected_initial_ingredients": {
+    "sonar": "pending",
+    "score": "pending",
+    "worlds_manifest": "pending",
+    "discord_observer": "optional",
+    "shadow_preview": "blocked"
+  }
+}

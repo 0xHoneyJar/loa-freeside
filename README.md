@@ -5,6 +5,18 @@
 
 Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
 
+<!-- straylight-governance (tools/governance-doctor.sh)
+use_label: usable
+read_state: validated
+source_type: operator-authored
+as_of: 2026-06-19
+live_state_sot: >-
+  Which cells exist + are deployed = packages/freeside-registry/registry.yaml
+  (probe: `freeside-cli doctor --registry packages/freeside-registry/registry.yaml`
+  — the bare command reads a stale bundled copy, see contract-and-sot-topology.md
+  HAZARD-1). This README is orientation; for live runtime state read the registry.
+-->
+
 <!-- cite: loa-freeside:themes/sietch/src/api/routes/agents.routes.ts -->
 <!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
 <!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
@@ -66,10 +78,10 @@ On-chain conviction scoring drives capability access:
 <!-- cite: loa-freeside:themes/sietch/src/discord/ -->
 <!-- cite: loa-freeside:themes/sietch/src/telegram/ -->
 
-- **Discord** — 22+ slash commands, Rust/Axum gateway proxy with multi-shard pool via Twilight
+- **Discord** — 23 slash commands, Rust/Axum gateway proxy with multi-shard pool via Twilight
 <!-- cite: loa-freeside:apps/gateway/src/main.rs -->
-- **Telegram** — Grammy bot framework with 10+ commands and throttled streaming edits
-- **REST API** — 80+ Express endpoints with Zod validation
+- **Telegram** — Grammy bot framework with 12 commands and throttled streaming edits
+- **REST API** — 300+ endpoints across 48 route modules with Zod validation
 <!-- cite: loa-freeside:themes/sietch/src/api/routes/ -->
 - **NATS protocol** — Cross-language wire format with Zod schemas and JSON fixtures
 <!-- cite: loa-freeside:packages/shared/nats-schemas/ -->
@@ -242,7 +254,7 @@ Layer 1  Framework    loa             Agent dev framework, skills, Bridgebuilder
 | **loa-freeside** | **Platform infrastructure + ecosystem parent for freeside-* modules** | **REST API, Discord/TG, billing, Terraform, BeaconV3 registry, MCP federation** |
 | [loa-dixie](https://github.com/0xHoneyJar/loa-dixie) | dNFT Oracle product | First platform customer (L5) |
 
-The `freeside-*` namespace contains **installable modules** that deploy onto the loa-freeside platform. Currently registered ([packages/freeside-registry/registry.yaml](packages/freeside-registry/registry.yaml)): `freeside-sonar`, `freeside-storage`, `freeside-mint`, `freeside-activities`, `freeside-inventory`, `score-mibera`. Each broadcasts a BeaconV3 declaration at `/.well-known/beacon.json` and is aggregated into the federation manifest at `mcp.0xhoneyjar.xyz/.well-known/federation.json`.
+The `freeside-*` namespace contains **installable modules** that deploy onto the loa-freeside platform. Currently registered ([packages/freeside-registry/registry.yaml](packages/freeside-registry/registry.yaml)) — the registry is the authoritative list: **8 canonical cells** (`sonar-api`, `storage-api`, `mint-api`, `activities-api`, `inventory-api`, `score-api`, `identity-api`, `mediums-api`) **plus 2 further entries** (`ledger-api`, `events-api`) = **10 registry entries**. Each broadcasts a BeaconV3 declaration at `/.well-known/beacon.json` and is aggregated into the federation manifest at `mcp.0xhoneyjar.xyz/.well-known/federation.json`. For per-cell runtime + beacon status (deployed / scaffolded / not-built, and which beacon subdomains are live) probe the registry via `freeside-cli doctor --remote` — do not treat this doc as a live status source.
 
 Protocol contracts flow upward: loa-hounfour schemas are consumed by loa-freeside's gateway adapter and validated with the same Zod types used by the Rust gateway.
 
@@ -256,14 +268,17 @@ loa-freeside/                  ⟶ Factory monorepo (per ADR-007 + ADR-008)
 ├── packages/  ── PLATFORM ──  (vertical-SaaS substrate)
 │   ├── core/                  # Port interfaces + domain types
 │   │   └── ports/             # IChainProvider, IStorageProvider, IAgentGateway
-│   ├── adapters/              # 8 adapter modules
+│   ├── adapters/              # 11 adapter modules
 │   │   ├── agent/             # Gateway, BudgetManager, BYOK, ensemble, audit
 │   │   ├── chain/             # RPC, Dune Sim API, hybrid provider
 │   │   ├── storage/           # Drizzle ORM + PostgreSQL + RLS
+│   │   ├── sonar/             # On-chain raw signal client (holders, transfers)
+│   │   ├── score/             # Member value / conviction scoring client
 │   │   ├── synthesis/         # BullMQ queue for Discord API
 │   │   ├── wizard/            # 8-step onboarding orchestrator
 │   │   ├── themes/            # ThemeRegistry, SietchTheme
 │   │   ├── security/          # Vault, KillSwitch, MFA
+│   │   ├── telemetry/         # Metrics / observability adapter
 │   │   └── coexistence/       # Shadow mode, migration engine
 │   ├── cli/                   # @freeside/cli — gaib IaC CLI (platform tooling)
 │   ├── sandbox/               # Schema provisioning, event routing
@@ -277,17 +292,18 @@ loa-freeside/                  ⟶ Factory monorepo (per ADR-007 + ADR-008)
 │    not a separate folder. CI enforces no cross-domain PRs.)
 │
 ├── themes/sietch/             # PLATFORM — Main Discord/Telegram service (v6.0.0)
-│   ├── src/api/               # Express REST API (80+ routes)
-│   ├── src/discord/           # Slash commands (22+)
-│   ├── src/telegram/          # Grammy bot (10+ commands)
-│   ├── src/trigger/           # Scheduled tasks (7 cron jobs)
+│   ├── src/api/               # Express REST API (48 route modules, 300+ endpoints)
+│   ├── src/discord/           # Slash commands (23)
+│   ├── src/telegram/          # Grammy bot (12 commands)
+│   ├── src/trigger/           # Scheduled tasks (9 cron jobs)
 │   └── drizzle/               # Database migrations
 │
 ├── apps/                      # Execution-plane services
 │   ├── gateway/               # PLATFORM — Rust/Axum Discord gateway proxy (multi-shard)
 │   ├── ingestor/              # PLATFORM — Event ingestion service
 │   ├── worker/                # PLATFORM — Background job worker (NATS + RabbitMQ)
-│   └── mcp-gateway/           # NETWORK — TS MCP federation router (absorbed from freeside-mcp-gateway)
+│   ├── mcp-gateway/           # NETWORK — TS MCP federation router (absorbed from freeside-mcp-gateway)
+│   └── freeside-operator-dash/ # NETWORK — operator dashboard (events tracing)
 │
 ├── grimoires/
 │   ├── freeside-platform/     # PLATFORM — vertical-platform cycle artifacts

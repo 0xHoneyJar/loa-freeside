@@ -1,114 +1,43 @@
-# Types
+---
+source_type: ai-autogen
+use_label: usable
+read_state: read
+as_of: 2026-07-06
+generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
+---
 
-> Generated: 2026-05-18 by /ride
+# Types, Data Models & Contracts — loa-freeside (current)
 
-## Domain Entities (sietch SQLite/Postgres)
+> Generated 2026-07-06 by /ride. CODE IS TRUTH. Dual-persistence: legacy SQLite (sietch v1) + PostgreSQL (Drizzle, current).
 
-Per `themes/sietch/src/db/schema.ts` (verbatim):
+## PostgreSQL — Drizzle (multi-tenant, RLS)
+`packages/adapters/storage/schema.ts:50-476` — **9 tables**, all tenant-scoped via FK to `communities.id`; RLS enforces `community_id = app.current_community_id()`:
+- `communities`, `profiles`, `badges`, `creditLots`, `lotEntries`, `usageEvents`, `webhookEvents`, `cryptoPayments`, `reconciliationCursor`, `s2sJwksPublicKeys`
+- Inferred TS types per table (`DrizzleProfile`, `DrizzleNewProfile`, …). Relations: `profiles→badges` (self-ref `awarded_by` for Water-Sharer lineage); `creditLots→lotEntries` (1:many).
+- Migrations: `themes/sietch/drizzle/migrations/` — **19 SQL** (`0000_swift_sleeper.sql` → `0018_admin_audit_log.sql`). Notables: `0001_rls_policies.sql`, `0008_tenant_context_guard.sql`, `0009_credit_lots_lot_entries.sql`, `0011_usage_events_pg.sql`, `0017_economic_policies.sql`.
 
-```sql
--- eligibility_snapshots
-{ id: int PK, created_at: text, data: text(JSON) }
+## SQLite — legacy v1 (eligibility)
+`themes/sietch/src/db/schema.ts:1-300` — **8 tables**: `eligibility_snapshots`, `current_eligibility`, `admin_overrides`, `audit_log`, `health_status`, `wallet_mappings`, `cached_claim_events`, `cached_burn_events`. CHECK `role IN ('naib','fedaykin','none')`. No RLS.
+- Migrations: `themes/sietch/src/db/migrations/` — **68 TS** (`001_initial.ts` → `068_micro_usd_parse_failures.ts`). Notables: `006_tier_system.ts` (9-tier), `007_water_sharer.ts`, `009_billing.ts`, `030_credit_ledger.ts`. Cold-restart config strategy (cycle-040 FR-4).
 
--- current_eligibility
-{ address: text PK COLLATE NOCASE,
-  rank: int,
-  bgt_held: text(bigint-as-string),
-  role: 'naib' | 'fedaykin' | 'none',
-  updated_at: text }
+## Domain ports (DDD hexagonal — `packages/core/ports/`)
+- `agent-gateway.ts` — `AccessLevel: 'free'|'pro'|'enterprise'`, `tier: 1..9`, `ModelAlias`, JWT config
+- `chain-provider.ts` — `Tier1Methods` (direct RPC), `Tier2Methods` (Score Service gRPC), `ChainConfig`, `ActionHistoryConfig`
+- `feature-gate.ts` — `VerificationTier: 'incumbent_only'|'arrakis_basic'|'arrakis_full'`, `Feature` discriminated union, `FeatureAccessResult`, `FeatureAccessDeniedError`
+- `storage-provider.ts` — `SubscriptionTier`, `Profile` (tier/rank/wallet/badges), `Community` (`settings` jsonb), `PaginatedResult`
+- `theme-provider.ts` — `TierConfig` (minRank/maxRank/roleColor/permissions), `BadgeConfig` (evaluators: tenure|tier_reached|activity|manual), `NamingConfig`
+- `shadow-sync.ts` — `CommunityVerificationStatus`, `TierUpgradeRequirements`
 
--- admin_overrides
-{ id: int PK, address: text COLLATE NOCASE,
-  action: 'add' | 'remove',
-  reason: text, created_by: text,
-  created_at: text, expires_at: text|null,
-  active: int(bool) }
+## Tier systems
+- **9-tier membership** progression (hajra → naib) — `themes/sietch/src/db/migrations/006_tier_system.ts`.
+- **3-tier verification**: shadow / parallel / full ≡ `incumbent_only` / `arrakis_basic` / `arrakis_full` (`feature-gate.ts`).
 
--- audit_log
-{ id: int PK, event_type: text, event_data: text(JSON), created_at: text }
+## Federation / protocol contracts (Effect + Zod)
+- **registry schema** `packages/freeside-registry/src/registry.ts` — `ModuleEntry` (git_url, beacon_url NullOr, deployment_url, visibility public|unlisted|internal, runtime_state), `ServiceBlock` (ADR-012: deployment_url, health_path, expected_status, auth_class none|static-key, expected_body_marker, probed_at, probe_source), `Expectations[]` (discriminated by probe_kind: http|graphql-lag|event-max-age). Filters: service.deployment_url must equal entry deployment_url; target-less http expectation requires a service block.
+- **BeaconV3** `packages/beacon-schema/src/beacon-v3.ts` — identity schema (slug, publisher, is/is_not, cycle_state, composes_with, acvp_invariants, sealed_schemas sha256-of-JCS).
+- **shadow-mode protocol** `packages/protocol/shadow-mode/src/schemas/` — eligibility verdict (status/source/tier/score), subject/collection-entity (JCS canonical), divergence (`match|freeside_higher|incumbent_higher|mismatch`).
+- **events** `@0xhoneyjar/events` — envelope/jcs/signer/topics; schemas: nft-mint-detected, nft-activity, registry.
+- **nats-schemas** `@freeside/nats-schemas` — event-data, gateway-event, interaction-payload, usage-finalized (Rust↔TS wire).
 
--- health_status (singleton, id=1)
-{ id: 1, last_successful_query: text|null, last_query_attempt: text|null,
-  consecutive_failures: int, in_grace_period: int(bool),
-  last_synced_block: text|null, updated_at: text }
-
--- wallet_mappings
-{ discord_user_id: text PK, wallet_address: text COLLATE NOCASE, verified_at: text }
-
--- cached_claim_events
-{ id: int PK, tx_hash: text, log_index: int,
-  block_number: text, address: text COLLATE NOCASE,
-  amount: text(bigint-as-string),
-  vault_address: text COLLATE NOCASE,
-  created_at: text,
-  UNIQUE(tx_hash, log_index) }
-
--- cached_burn_events
-{ id: int PK, tx_hash: text, log_index: int,
-  block_number: text, from_address: text COLLATE NOCASE,
-  amount: text(bigint-as-string), created_at: text,
-  UNIQUE(tx_hash, log_index) }
-```
-
-Plus re-exported feature schemas (themes/sietch/src/db/schema.ts:149-199):
-- SOCIAL_LAYER_SCHEMA_SQL (v2.0)
-- NAIB_THRESHOLD_SCHEMA_SQL (v2.1)
-- WATER_SHARER_SCHEMA_SQL (v3.0, Sprint 17)
-- USUL_ASCENDED_SCHEMA_SQL (v3.0, Sprint 18)
-- BILLING_SCHEMA_SQL (v4.0, Sprint 23)
-- BADGES_SCHEMA_SQL (v4.0, Sprint 27)
-- BOOSTS_SCHEMA_SQL (v4.0, Sprint 28)
-- TELEGRAM_IDENTITY_SCHEMA_SQL (v4.1, Sprint 30)
-- DASHBOARD_CONFIG_SCHEMA_SQL (cycle-004, Sprint 117)
-- GOM_JABBAR_USERS_SCHEMA_SQL (cycle-004, Sprint 139)
-- CRYPTO_PAYMENTS_SCHEMA_SQL (cycle-005, Sprint 155)
-- CREDIT_LEDGER_SCHEMA_SQL (cycle-025, Sprint 230)
-
-## Postgres Schemas
-
-Concentrated in `themes/sietch/drizzle/migrations/` (30+ SQL files) and `packages/adapters/storage/migrations/`. Entity discovery happens via Drizzle ORM at runtime — TS types under `themes/sietch/src/db/` are the source.
-
-## Port Interfaces (packages/core/ports/)
-
-13+ ports. Verified examples:
-
-```typescript
-// IChainProvider — chain provider abstraction
-interface IChainProvider {
-  getBalance(chainId, address, token): Promise<bigint>
-  ownsNFT(chainId, address, collection): Promise<boolean>
-  // optional extensions on Dune Sim provider
-  getBalanceWithUSD?(chainId, address, token): Promise<{ balance, priceUsd, valueUsd }>
-  getActivity?(address, opts): Promise<{ activities: Activity[] }>
-}
-```
-
-(Full enumeration: `find packages/core/ports -name "*.ts" -not -path "*/dist/*" -not -path "*/__tests__/*"`)
-
-## Domain Types (packages/core/domain/)
-
-Per prior SDD: wizard, coexistence, tiers, migration. Current count not enumerated this pass — see `find packages/core/domain` for current state.
-
-## Agent Gateway Types (packages/adapters/agent/)
-
-Per CLAUDE.md (informational, verify via TS exports):
-
-```typescript
-// ensemble accounting result
-{
-  model_breakdown: Array<{ model, cost_micro, tokens_in, tokens_out, … }>,
-  platform_cost_micro: number,
-  byok_cost_micro: number,
-  savings_micro: number
-}
-
-// capability audit event types
-'pool_access' | 'byok_usage' | 'ensemble_invocation'
-
-// request lifecycle states
-'RECEIVED' | 'AUTHORIZED' | 'INVOKED' | 'FINALIZED'  // probable; verify in request-lifecycle.ts
-```
-
-## NATS Event Schemas
-
-`packages/shared/nats-schemas/src/schemas/` — versioned JSON Schemas for inter-service events. Fixtures under `fixtures/`. Validated by Ajv.
+## Config
+Canonical env/config Zod schema: `themes/sietch/src/config.ts` (**~1850 lines**) — all env validation, feature flags, secrets; cold-restart strategy (validates at module load).

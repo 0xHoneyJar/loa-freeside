@@ -1,0 +1,18 @@
+{
+  "wallet": "0x3333333333333333333333333333333333333333",
+  "community": "the-honey-jar",
+  "holds_role": true,
+  "qualifies": false,
+  "band": "stale",
+  "evidence": {
+    "balance_at_snapshot": 0,
+    "last_held_block": 18000000,
+    "sold_at": 18500000
+  },
+  "provenance": {
+    "rule_id": "nft-balance:1",
+    "snapshot_block": 19000000,
+    "computed_at": "2026-06-22T00:00:00.000Z",
+    "sources": ["sonar", "role-snapshot"]
+  }
+}

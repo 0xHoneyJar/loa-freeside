@@ -1,4 +1,4 @@
-@.Codex/loa/Codex.loa.md
+@.claude/loa/CLAUDE.loa.md
 
 # Project-Specific Instructions
 
@@ -93,7 +93,7 @@ CHAIN_PROVIDER_RPC_ONLY_CHAINS=80094  # If Dune Sim doesn't support Berachain
 ### Usage
 
 ```typescript
-import { createChainProvider } from '@arrakis/adapters/chain';
+import { createChainProvider } from '@freeside/adapters/chain';
 
 const { provider, mode } = createChainProvider(logger);
 
@@ -128,7 +128,7 @@ Per-model ensemble accounting, contract protocol negotiation, and fleet-wide obs
 Ensemble requests produce a `model_breakdown` array with per-model cost attribution:
 
 ```typescript
-import { computeEnsembleAccounting } from '@arrakis/adapters/agent';
+import { computeEnsembleAccounting } from '@freeside/adapters/agent';
 
 const result = computeEnsembleAccounting(strategy, invocationResults);
 // result.model_breakdown — per-model costs

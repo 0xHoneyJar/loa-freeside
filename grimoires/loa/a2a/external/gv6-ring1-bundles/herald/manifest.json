@@ -1,0 +1,128 @@
+{
+  "schema_version": 3,
+  "name": "Herald",
+  "slug": "herald",
+  "version": "0.1.0",
+  "description": "Changelog and announcement generation grounded in code evidence. Three skills: draft community announcements from shipping history (commits + PRs), extract voice profiles from existing content for consistency, and produce structured change timelines from git history. Every claim traces to a real commit.",
+  "short_description": "Evidence-grounded changelog + announcements",
+  "domain": [
+    "operations"
+  ],
+  "author": "0xHoneyJar",
+  "license": "MIT",
+  "visibility": "public",
+  "skills": [
+    {
+      "slug": "grounding-announcements",
+      "path": "skills/grounding-announcements"
+    },
+    {
+      "slug": "synthesizing-voice",
+      "path": "skills/synthesizing-voice"
+    },
+    {
+      "slug": "chronicling-changes",
+      "path": "skills/chronicling-changes"
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/0xHoneyJar/construct-herald.git",
+    "homepage": "https://constructs.network/constructs/herald"
+  },
+  "events": {
+    "emits": [
+      {
+        "type": "forge.herald.announcement_grounded",
+        "description": "Announcement drafted from code reality with evidence citations",
+        "data_schema": {
+          "scope": "string",
+          "type": "string",
+          "features": "array",
+          "evidence_commits": "array"
+        }
+      },
+      {
+        "type": "forge.herald.voice_synthesized",
+        "description": "Voice profile extracted or refined from content analysis",
+        "data_schema": {
+          "source_count": "integer",
+          "dimensions_updated": "array"
+        }
+      },
+      {
+        "type": "forge.herald.changes_chronicled",
+        "description": "Structured change timeline produced from git evidence",
+        "data_schema": {
+          "scope": "string",
+          "features": "array",
+          "date_range": "string"
+        }
+      },
+      {
+        "type": "forge.herald.stench_gated",
+        "description": "Copy passed (or was held at) the AI-stench markov blanket",
+        "data_schema": {
+          "scope": "string",
+          "high": "integer",
+          "verdict": "string"
+        }
+      }
+    ],
+    "consumes": []
+  },
+  "streams": {
+    "reads": [
+      "Intent",
+      "Artifact"
+    ],
+    "writes": [
+      "Artifact"
+    ]
+  },
+  "composition_paths": {
+    "reads": [
+      "grimoires/laboratory/"
+    ],
+    "writes": [
+      "grimoires/herald/"
+    ]
+  },
+  "governed_by": [
+    "vocabulary-bank"
+  ],
+  "verifiers": [
+    {
+      "id": "ai-stench",
+      "file": "scripts/ai-stench-check.mjs",
+      "runtime": "node",
+      "scope": "voice",
+      "contract": "stdin-or-files",
+      "pass_when": "exit-0",
+      "blocking": true,
+      "findings": "--json"
+    }
+  ],
+  "capabilities": {
+    "model_tier": "sonnet",
+    "danger_level": "moderate",
+    "effort_hint": "medium",
+    "downgrade_allowed": true,
+    "execution_hint": "sequential",
+    "requires": {
+      "tool_calling": true,
+      "thinking_traces": false,
+      "vision": false
+    }
+  },
+  "identity": {
+    "persona": "identity/persona.yaml",
+    "expertise": "identity/expertise.yaml"
+  },
+  "hooks": {
+    "post_install": "scripts/install.sh"
+  },
+  "quick_start": {
+    "command": "/announce",
+    "description": "Draft a grounded community announcement from product changes"
+  }
+}

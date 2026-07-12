@@ -1,94 +1,41 @@
-# Entry Points
+---
+source_type: ai-autogen
+use_label: usable
+read_state: read
+as_of: 2026-07-06
+generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
+---
 
-> Generated: 2026-05-18 by /ride
+# Entry Points & Runtime Behaviors — loa-freeside (current)
 
-## Application Entry Points
+> Generated 2026-07-06 by /ride. CODE IS TRUTH.
 
-| Service | Entry File | Notes |
-|---------|------------|-------|
-| sietch | `themes/sietch/src/index.ts` | Main bot + REST API; dev: `pnpm dev` (tsx watch); prod: `node dist/index.js` |
-| worker (RabbitMQ legacy) | `apps/worker/src/index.ts` | Bootstraps via `main.ts` |
-| worker (NATS) | `apps/worker/src/main-nats.ts` | NATS-first path (in-flight migration) |
-| ingestor | `apps/ingestor/src/index.ts` (assumed) | Event ingestion |
-| Rust gateway | `apps/gateway/src/main.rs` | Twilight shards → NATS |
-| gaib CLI | `packages/cli/src/bin/gaib.ts` | `bin: gaib` in package.json |
-| gaib-cli (alt) | `packages/gaib-cli/dist/cli.js` | Built only; canonical-ness unclear (hygiene flag) |
+## Entry points
+| Component | Entry file | Runtime | How it starts |
+|---|---|---|---|
+| sietch (incumbent) | `themes/sietch/src/index.ts` | Node/TS (Express 5) | HTTP + Discord + Telegram service (`sietch-service` v6.0.0) |
+| worker | `apps/worker/src/main-nats.ts` | Node/TS | 4 NATS consumers (command, event, eligibility, usage) + agent-gateway thread routing + ownership re-verification; fallback on agent-init failure |
+| gateway | `apps/gateway/src/main.rs` | Rust (Twilight + tokio) | Discord shard pool → NATS publish; health/metrics endpoints |
+| ingestor | `apps/ingestor/src/index.ts` | Node/TS | Discord Gateway → RabbitMQ (zero business logic, SDD §3.2.1) |
+| mcp-gateway | `apps/mcp-gateway/bin/http.ts` | Node/TS (Hono) | MCP federation HTTP on `PORT`; unhandled-rejection safety net |
+| shadow-audit svc | `packages/services/shadow-audit/bin/http.ts` | Node/TS (Hono) | Access-Risk Audit API |
+| ordering svc | `packages/services/ordering/bin/{http,worker,fulfillment-orchestrator}.ts` | Node/TS | Order intake + orchestrator |
+| gaib CLI | `packages/cli/bin/gaib.ts` | Node/TS (Commander) | IaC orchestration |
+| freeside-cli | `packages/freeside-cli/bin/freeside-cli.ts` | Node/TS | Federation verbs |
 
-## Health Endpoints
+## Config & env
+- Canonical Zod schema `themes/sietch/src/config.ts` (~1850 lines). Cold-restart strategy: config validated at module load; drift → process refuses to boot.
+- Env vars: 100+ unique (Zod-validated). Key classes: provider keys (`DUNE_SIM_API_KEY`, AI provider keys, `MIDI/HUB/API/ADMIN_API_KEY` for score), secrets (`JWT_SECRET`, `IDENTITY_API_JWT_SECRET` — MUST byte-equal identity's), infra (`DATABASE_URL`, `REDIS_URL`, NATS/RabbitMQ URLs), `CHAIN_PROVIDER` (rpc|dune_sim|hybrid).
 
-| Service | Health Path | File |
-|---------|-------------|------|
-| sietch | (mounted via api/) | themes/sietch/src/api/ |
-| worker (legacy) | (http) | `apps/worker/src/health.ts` |
-| worker (NATS) | (http) | `apps/worker/src/health-nats.ts` |
-| Rust gateway | (http) | `apps/gateway/src/health/mod.rs` |
-| sietch /api/agents/health | `/api/agents/health` | sietch api routes |
+## Scheduled / cron
+- **9 Trigger.dev** scheduled tasks.
+- BullMQ / queue jobs; registry `expectations[]` cadence ledger (probe kinds http | graphql-lag | event-max-age).
+- **39 GitHub Actions** workflows (`.github/workflows/`): ci, cluster-compliance, security-audit, deploy-staging/production, e2e-billing, post-merge, secret-scanning, container-security, …
 
-## CLI Commands (`gaib`)
+## Event handlers
+- NATS JetStream consumers (worker: command/event/eligibility/usage); ACVP-enveloped events verified before routing (`@0xhoneyjar/events` — JCS + Ed25519).
+- RabbitMQ (ingestor path, legacy/coexistence).
+- Discord event handlers (sietch + worker); webhook handlers (billing/crypto/telegram).
 
-Available subcommands live under `packages/cli/src/commands/`. Run `gaib --help` for canonical list.
-
-Required env (subset):
-- AWS credentials (via aws-sdk credential providers)
-- Discord bot token (for direct Discord REST calls)
-- Service URLs for the platform components
-
-## Required Env (top categories — see env-vars.txt for 181 total)
-
-### Database / Infra
-- `DATABASE_URL`, `DATABASE_PATH` (SQLite for local sietch)
-- `REDIS_URL`, related connection params
-
-### Discord
-- `DISCORD_BOT_TOKEN`
-- `DISCORD_ANNOUNCEMENTS_CHANNEL_ID`, `DISCORD_CHANNEL_CAVE_ENTRANCE`, `DISCORD_CHANNEL_CENSUS`, …
-
-### Chain
-- `CHAIN_PROVIDER` = `rpc` | `dune_sim` | `hybrid`
-- `CHAIN_PROVIDER_FALLBACK_ENABLED`
-- `CHAIN_PROVIDER_RPC_ONLY_CHAINS`
-- `DUNE_SIM_API_KEY`
-- `BERACHAIN_RPC_URL`, `BERACHAIN_RPC_URLS`
-- `BGT_ADDRESS`
-
-### Agent Gateway
-- `AGENT_JWT_KEY_ID`, `AGENT_JWT_PRIVATE_KEY`, `AGENT_JWT_SIGNING_KEY`
-- `POOL_PROVIDER_HINTS` (JSON map of pool→provider)
-- `BILLING_CEILING_MICRO`
-- `BILLING_MODE`, `BILLING_PRICING_JSON`
-- `BILLING_ADMIN_JWT_SECRET`, `BILLING_ADMIN_JWT_SECRET_PREV`, `BILLING_INTERNAL_JWT_SECRET`
-
-### Security / Auth
-- `API_KEY`, `API_KEY_PEPPER`
-- `ADMIN_API_KEYS`
-- `AUDIT_HMAC_KEY`
-- `AUTH_BYPASS` (dev only)
-
-### CORS
-- `CORS_ALLOWED_ORIGINS`, `CORS_ALLOW_WILDCARD_IN_PRODUCTION`, `CORS_CREDENTIALS`, `CORS_MAX_AGE`
-
-### Activity scoring
-- `ACTIVITY_DECAY_PERIOD_HOURS`, `ACTIVITY_DECAY_RATE`
-- `ACTIVITY_POINTS_MESSAGE`, `ACTIVITY_POINTS_REACTION_GIVEN`, `ACTIVITY_POINTS_REACTION_RECEIVED`
-
-### Misc
-- `BASE_URL`, `DASHBOARD_URL`, `API_HOST`, `API_PORT`
-- `BOOST_BUNDLES`, `BOOST_LEVEL`, `BOOST_PRICE_PER_MONTH_CENTS`
-- `BOOK_LANG`, `BUILDING`, `CI`, `DISABLE_PII_SCRUBBING`
-- `ALLOWED_WEBHOOKS`
-- `CHAT_ALLOWED_ADDRESSES`
-- `AVATAR_DEFAULT_SIZE`, `AVATAR_GRID_HEIGHT`, `AVATAR_GRID_WIDTH`
-- `DEVELOPER_API_S`
-
-Full list: `grimoires/loa/reality/env-vars.txt` (181 unique vars).
-
-## Top-Level Scripts (root `package.json`)
-
-```json
-{
-  "build:hounfour": "scripts/rebuild-hounfour-dist.sh",
-  "postinstall": "scripts/rebuild-hounfour-dist.sh"
-}
-```
-
-(Per-package scripts: `pnpm -r run <script>` or `pnpm --filter <pkg> run <script>`.)
+## Feature flags
+9 feature flags defined in `themes/sietch/src/config.ts` (Zod). Read at boot; gate coexistence/shadow modes and product features.

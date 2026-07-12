@@ -30,7 +30,7 @@
  */
 
 import { Data, Duration, Effect, Schedule, Schema } from "effect";
-import { BeaconV2Schema, type BeaconV2 } from "@0xhoneyjar/beacon-schema";
+import { BeaconV2Schema, type BeaconV2 } from "@freeside/beacon-schema";
 import { TENANTS } from "./tenants.js";
 
 // ────── constants ──────

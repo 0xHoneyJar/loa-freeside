@@ -28,6 +28,13 @@ import type {
   DivergenceSummary,
 } from '../../core/ports/ICoexistenceStorage.js';
 import type { MigrationStrategy } from '../storage/schema.js';
+import {
+  validateTakeoverStep as validateTakeoverStepImpl,
+  isTakeoverConfirmationComplete as isTakeoverConfirmationCompleteImpl,
+  type TakeoverStep,
+  type TakeoverConfirmationState,
+} from './takeover-confirmation.js';
+import { evaluateCutoverReadiness } from './cutover-readiness.js';
 import { createLogger, type ILogger } from '../../infrastructure/logging/index.js';
 
 // =============================================================================
@@ -39,6 +46,18 @@ export const MIN_SHADOW_DAYS = 14;
 
 /** Minimum accuracy percentage required before migration (Sprint 62 requirement) */
 export const MIN_ACCURACY_PERCENT = 95;
+
+/**
+ * Minimum number of compared members the accuracy % must be computed over before a
+ * cutover may graduate (arrakis-dkf9). Without a floor a tiny sample (3/3 = 100%)
+ * clears the 95% accuracy gate and grants real access on meaningless data.
+ */
+// loa:shortcut: MIN_SAMPLE_SIZE=30 (conventional small-sample floor for a proportion).
+// CEILING: n=30 at 95% still admits a community whose TRUE accuracy is ~80% by sampling luck
+// (Wilson 95% lower bound). UPGRADE TRIGGER: before cutting over any community where a wrongful
+// role grant is costly, raise toward n>=100, or replace this flat floor with a Wilson-lower-bound
+// gate (require the 95% CI lower bound — not the point estimate — to clear MIN_ACCURACY_PERCENT).
+export const MIN_SAMPLE_SIZE = 30;
 
 /** Default batch size for gradual migration */
 export const DEFAULT_BATCH_SIZE = 100;
@@ -83,10 +102,15 @@ export interface ReadinessCheckResult {
   accuracyPercent: number;
   /** Required accuracy percentage */
   requiredAccuracyPercent: number;
+  /** Number of compared members the accuracy was computed over (the sample size) */
+  sampleSize: number;
+  /** Required minimum sample size before the accuracy gate counts (arrakis-dkf9) */
+  requiredSampleSize: number;
   /** Individual check results */
   checks: {
     shadowDaysCheck: boolean;
     accuracyCheck: boolean;
+    sampleSizeCheck: boolean;
     incumbentConfigured: boolean;
     modeCheck: boolean;
   };
@@ -293,32 +317,9 @@ export interface AutoRollbackCheckResult {
   maxRollbacksReached: boolean;
 }
 
-/**
- * Takeover confirmation step
- */
-export type TakeoverStep = 'community_name' | 'acknowledge_risks' | 'rollback_plan';
-
-/**
- * Takeover confirmation state
- */
-export interface TakeoverConfirmationState {
-  /** Community ID */
-  communityId: string;
-  /** Admin initiating takeover */
-  adminId: string;
-  /** Steps completed */
-  completedSteps: TakeoverStep[];
-  /** Community name confirmation */
-  communityNameConfirmed?: boolean;
-  /** Risk acknowledgment */
-  risksAcknowledged?: boolean;
-  /** Rollback plan acknowledged */
-  rollbackPlanAcknowledged?: boolean;
-  /** When confirmation started */
-  startedAt: Date;
-  /** Confirmation expires after 5 minutes */
-  expiresAt: Date;
-}
+// TakeoverStep + TakeoverConfirmationState moved to ./takeover-confirmation.ts (typed + testable);
+// re-exported here so existing importers (index.ts, admin-takeover.ts) are unchanged.
+export type { TakeoverStep, TakeoverConfirmationState } from './takeover-confirmation.js';
 
 /**
  * Takeover result
@@ -411,9 +412,12 @@ export class MigrationEngine {
         requiredShadowDays: MIN_SHADOW_DAYS,
         accuracyPercent: 0,
         requiredAccuracyPercent: MIN_ACCURACY_PERCENT,
+        sampleSize: 0,
+        requiredSampleSize: MIN_SAMPLE_SIZE,
         checks: {
           shadowDaysCheck: false,
           accuracyCheck: false,
+          sampleSizeCheck: false,
           incumbentConfigured: false,
           modeCheck: false,
         },
@@ -431,31 +435,23 @@ export class MigrationEngine {
     // Calculate shadow days
     const shadowDays = this.calculateShadowDays(state);
 
-    // Perform checks
-    const shadowDaysCheck = shadowDays >= MIN_SHADOW_DAYS;
-    const accuracyCheck = divergenceSummary.accuracyPercent >= MIN_ACCURACY_PERCENT;
-    const modeCheck = state.currentMode === 'shadow' || state.currentMode === 'parallel';
-
-    const ready = shadowDaysCheck && accuracyCheck && incumbentConfigured && modeCheck;
-
-    // Build reason if not ready
-    let reason: string | undefined;
-    if (!ready) {
-      const reasons: string[] = [];
-      if (!incumbentConfigured) {
-        reasons.push('No incumbent bot configured');
-      }
-      if (!modeCheck) {
-        reasons.push(`Invalid mode for migration: ${state.currentMode} (must be shadow or parallel)`);
-      }
-      if (!shadowDaysCheck) {
-        reasons.push(`Insufficient shadow days: ${shadowDays}/${MIN_SHADOW_DAYS}`);
-      }
-      if (!accuracyCheck) {
-        reasons.push(`Insufficient accuracy: ${divergenceSummary.accuracyPercent.toFixed(1)}%/${MIN_ACCURACY_PERCENT}%`);
-      }
-      reason = reasons.join('; ');
-    }
+    // Perform checks. The cutover-graduation DECISION is a pure, typed function
+    // (cutover-readiness.ts), extracted so this highest-stakes gate is type-checked
+    // and unit-tested despite this file being @ts-nocheck. It adds the
+    // minimum-sample-size floor (arrakis-dkf9): a tiny sample (e.g. 3/3 = 100%) must
+    // NOT clear the 95% accuracy gate and grant real access on meaningless data.
+    const modeValid = state.currentMode === 'shadow' || state.currentMode === 'parallel';
+    const { ready, checks, reason } = evaluateCutoverReadiness({
+      shadowDays,
+      minShadowDays: MIN_SHADOW_DAYS,
+      accuracyPercent: divergenceSummary.accuracyPercent,
+      minAccuracyPercent: MIN_ACCURACY_PERCENT,
+      sampleSize: divergenceSummary.totalMembers,
+      minSampleSize: MIN_SAMPLE_SIZE,
+      incumbentConfigured,
+      modeValid,
+      currentMode: state.currentMode,
+    });
 
     const result: ReadinessCheckResult = {
       ready,
@@ -463,12 +459,9 @@ export class MigrationEngine {
       requiredShadowDays: MIN_SHADOW_DAYS,
       accuracyPercent: divergenceSummary.accuracyPercent,
       requiredAccuracyPercent: MIN_ACCURACY_PERCENT,
-      checks: {
-        shadowDaysCheck,
-        accuracyCheck,
-        incumbentConfigured,
-        modeCheck,
-      },
+      sampleSize: divergenceSummary.totalMembers,
+      requiredSampleSize: MIN_SAMPLE_SIZE,
+      checks,
       reason,
     };
 
@@ -1344,83 +1337,16 @@ export class MigrationEngine {
     input: string,
     expectedValue?: string
   ): { valid: boolean; error?: string; updatedConfirmation: TakeoverConfirmationState } {
-    // Check if expired
-    if (new Date() > confirmation.expiresAt) {
-      return {
-        valid: false,
-        error: 'Confirmation expired - please start again',
-        updatedConfirmation: confirmation,
-      };
-    }
-
-    // Validate based on step
-    switch (step) {
-      case 'community_name':
-        if (expectedValue && input.toLowerCase() !== expectedValue.toLowerCase()) {
-          return {
-            valid: false,
-            error: 'Community name does not match',
-            updatedConfirmation: confirmation,
-          };
-        }
-        return {
-          valid: true,
-          updatedConfirmation: {
-            ...confirmation,
-            completedSteps: [...confirmation.completedSteps, step],
-            communityNameConfirmed: true,
-          },
-        };
-
-      case 'acknowledge_risks':
-        if (input.toLowerCase() !== 'i understand') {
-          return {
-            valid: false,
-            error: 'Please type "I understand" to acknowledge risks',
-            updatedConfirmation: confirmation,
-          };
-        }
-        return {
-          valid: true,
-          updatedConfirmation: {
-            ...confirmation,
-            completedSteps: [...confirmation.completedSteps, step],
-            risksAcknowledged: true,
-          },
-        };
-
-      case 'rollback_plan':
-        if (input.toLowerCase() !== 'confirmed') {
-          return {
-            valid: false,
-            error: 'Please type "confirmed" to acknowledge rollback plan',
-            updatedConfirmation: confirmation,
-          };
-        }
-        return {
-          valid: true,
-          updatedConfirmation: {
-            ...confirmation,
-            completedSteps: [...confirmation.completedSteps, step],
-            rollbackPlanAcknowledged: true,
-          },
-        };
-
-      default:
-        return {
-          valid: false,
-          error: `Unknown confirmation step: ${step}`,
-          updatedConfirmation: confirmation,
-        };
-    }
+    // Delegates to the pure, type-checked gate (takeover-confirmation.ts), which fails CLOSED
+    // on a missing/empty expected name (arrakis-25r6) — the original guard skipped this gate.
+    return validateTakeoverStepImpl(confirmation, step, input, expectedValue);
   }
 
   /**
    * Check if all takeover confirmation steps are complete
    */
   isTakeoverConfirmationComplete(confirmation: TakeoverConfirmationState): boolean {
-    const requiredSteps: TakeoverStep[] = ['community_name', 'acknowledge_risks', 'rollback_plan'];
-    return requiredSteps.every(step => confirmation.completedSteps.includes(step));
+    return isTakeoverConfirmationCompleteImpl(confirmation);
   }
 
   /**

@@ -1,0 +1,80 @@
+# Immune Verdict Schema — NFR-7 enforcement (SDD §3.1).
+#
+# The shared verdict contract (grimoires/loa/schemas/immune-verdict.schema.json) is the ONE record
+# every immune sensor emits. This workflow proves two things on every PR that could touch it:
+#   1. the schema itself COMPILES under ajv 8.18 (a broken schema is a hard failure — a contract
+#      that won't compile can never enforce anything), and
+#   2. the validator ACCEPTS a valid sample record and REJECTS a non-conforming one (missing
+#      exit_code / exit_code out of the frozen {0,1,2} set) — "a record that fails the schema does
+#      not ship" (NFR-7).
+#
+# DESIGN — the schema-compile step is a REAL gate (continue-on-error: false): an uncompilable
+# contract is a defect, not a soft signal. This is NOT the same class as the always-green
+# immune-doctors.yml jobs (which stay soft so they never deepen the merge-gate freeze). Here the
+# check IS the point — a contract you can't compile enforces nothing, and there is no freeze risk
+# in a schema that must parse. Consistent with immune-doctors.yml conventions: node 22, checkout@v4,
+# least-privilege read-only token, PR-scoped concurrency.
+#
+# Read-only: no mutation, no merge.
+
+name: Immune Verdict Schema
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: immune-verdict-schema-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  schema:
+    name: immune verdict schema (NFR-7)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ajv 8.18 (+ formats) for standalone compile/validate
+        run: npm install --no-save ajv@8.18.0 ajv-formats@3.0.1
+
+      # A schema that will not compile enforces nothing — hard-fail (continue-on-error: false).
+      - name: Schema compiles under ajv 8.18
+        run: |
+          node -e '
+            const Ajv = require("ajv");
+            const addFormats = require("ajv-formats");
+            const schema = require("./grimoires/loa/schemas/immune-verdict.schema.json");
+            const ajv = new Ajv({ allErrors: true, strict: false });
+            addFormats(ajv);
+            ajv.compile(schema);
+            console.log("schema compiles OK");
+          '
+
+      # A valid record MUST pass; a non-conforming one MUST fail — "a record that fails the schema
+      # does not ship" (NFR-7). We assert BOTH directions so the validator can never degrade to a
+      # rubber-stamp that accepts everything.
+      - name: Validator accepts a valid record and rejects invalid ones (NFR-7)
+        run: |
+          set +e
+          valid='{"schema_version":"1.0.0","sensor":"scope-checks","target":"pkg:@freeside/adapters","verdict":"pass","evidence":{"commands":["pnpm --filter @freeside/adapters test"]},"exit_code":0,"generated_at":"2026-07-03T00:00:00Z"}'
+          node tools/validate-immune-verdict.mjs --json "$valid"; rc_valid=$?
+
+          missing_exit='{"schema_version":"1.0.0","sensor":"scope-checks","target":"pkg:x","verdict":"pass","evidence":{},"generated_at":"2026-07-03T00:00:00Z"}'
+          node tools/validate-immune-verdict.mjs --json "$missing_exit"; rc_missing=$?
+
+          bad_exit='{"schema_version":"1.0.0","sensor":"scope-checks","target":"pkg:x","verdict":"pass","evidence":{},"exit_code":3,"generated_at":"2026-07-03T00:00:00Z"}'
+          node tools/validate-immune-verdict.mjs --json "$bad_exit"; rc_bad=$?
+
+          fail=0
+          [ "$rc_valid" -eq 0 ] || { echo "::error::valid record was REJECTED (rc=$rc_valid)"; fail=1; }
+          [ "$rc_missing" -eq 1 ] || { echo "::error::record missing exit_code was NOT rejected (rc=$rc_missing)"; fail=1; }
+          [ "$rc_bad" -eq 1 ] || { echo "::error::record with exit_code=3 was NOT rejected (rc=$rc_bad)"; fail=1; }
+          exit "$fail"

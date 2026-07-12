@@ -197,3 +197,226 @@ class TestDirectValidatorCall:
             _validate_model_auth_metadata({
                 "providers": {"openai": {"models": {"gpt-5.2": "not-a-dict"}}}
             })
+
+
+# ---------------------------------------------------------------------------
+# sprint-bug-197 (#979): auth_type / dispatch_group inference for custom
+# *-headless providers declared in .loa.config.yaml (hounfour: section).
+#
+# The framework's own .loa.config.yaml.example (~803-895) and the headless
+# adapter docstrings document a FIELD-LESS model shape for the three headless
+# provider types. PR #904 stamped auth_type/dispatch_group only onto the
+# System-Zone defaults, so operators copying the documented example got a
+# config-dead multi-model lane: _validate_model_auth_metadata raised
+# [CONFIG-INVALID] at load time.
+# ---------------------------------------------------------------------------
+
+
+def _write_project_with_custom_provider(
+    tmp_path, provider_id, ptype, models, include_type=True
+):
+    """Defaults with empty providers + .loa.config.yaml custom provider."""
+    root = tmp_path
+    (root / ".claude" / "defaults").mkdir(parents=True, exist_ok=True)
+    with (root / ".claude" / "defaults" / "model-config.yaml").open("w") as f:
+        yaml.safe_dump({"providers": {}, "aliases": {}}, f, sort_keys=False)
+
+    provider = {
+        "endpoint": "",
+        "auth": "",
+        "read_timeout": 600.0,
+        "models": models,
+    }
+    if include_type:
+        provider["type"] = ptype
+    loa_config = {"hounfour": {"providers": {provider_id: provider}}}
+    with (root / ".loa.config.yaml").open("w") as f:
+        yaml.safe_dump(loa_config, f, sort_keys=False)
+    return str(root)
+
+
+# The documented field-less model shape (mirrors .loa.config.yaml.example
+# gemini-headless / claude-headless blocks: capabilities, context_window,
+# pricing — no auth_type, no dispatch_group).
+def _fieldless_model():
+    return {
+        "capabilities": ["chat"],
+        "context_window": 200000,
+        "pricing": {"input_per_mtok": 0, "output_per_mtok": 0},
+    }
+
+
+class TestHeadlessProviderInference:
+    def test_custom_claude_headless_fieldless_model_loads(self, tmp_path):
+        """The exact documented example shape must load — not die [CONFIG-INVALID]."""
+        root = _write_project_with_custom_provider(
+            tmp_path, "claude-headless", "claude-headless",
+            {"claude-opus-4-7": _fieldless_model()},
+        )
+        merged, _ = load_config(project_root=root)
+        entry = merged["providers"]["claude-headless"]["models"]["claude-opus-4-7"]
+        assert entry["auth_type"] == "headless"
+        assert entry["dispatch_group"] == "anthropic-claude"
+
+    def test_codex_headless_infers_openai_gpt_group(self, tmp_path):
+        root = _write_project_with_custom_provider(
+            tmp_path, "my-codex", "codex-headless",
+            {"gpt-5.5": _fieldless_model()},
+        )
+        merged, _ = load_config(project_root=root)
+        entry = merged["providers"]["my-codex"]["models"]["gpt-5.5"]
+        assert entry["auth_type"] == "headless"
+        assert entry["dispatch_group"] == "openai-gpt"
+
+    def test_gemini_headless_infers_google_gemini_group(self, tmp_path):
+        root = _write_project_with_custom_provider(
+            tmp_path, "gemini-headless", "gemini-headless",
+            {"gemini-3.1-pro-preview": _fieldless_model()},
+        )
+        merged, _ = load_config(project_root=root)
+        entry = merged["providers"]["gemini-headless"]["models"]["gemini-3.1-pro-preview"]
+        assert entry["auth_type"] == "headless"
+        assert entry["dispatch_group"] == "google-gemini"
+
+    def test_operator_explicit_values_never_overwritten(self, tmp_path):
+        model = _fieldless_model()
+        model["auth_type"] = "http_api"
+        model["dispatch_group"] = "operator-custom-group"
+        root = _write_project_with_custom_provider(
+            tmp_path, "claude-headless", "claude-headless",
+            {"claude-opus-4-7": model},
+        )
+        merged, _ = load_config(project_root=root)
+        entry = merged["providers"]["claude-headless"]["models"]["claude-opus-4-7"]
+        assert entry["auth_type"] == "http_api"
+        assert entry["dispatch_group"] == "operator-custom-group"
+
+    def test_non_headless_custom_provider_still_rejected_with_fix_hint(self, tmp_path):
+        root = _write_project_with_custom_provider(
+            tmp_path, "my-proxy", "openai_compat",
+            {"some-model": _fieldless_model()},
+        )
+        with pytest.raises(ConfigError, match=r"\[CONFIG-INVALID\].*auth_type") as exc_info:
+            load_config(project_root=root)
+        # The diagnostic must now tell the operator WHERE to fix it.
+        assert ".loa.config.yaml" in str(exc_info.value)
+
+    def test_unknown_type_gets_no_inference(self, tmp_path):
+        root = _write_project_with_custom_provider(
+            tmp_path, "mystery", "some-future-type",
+            {"some-model": _fieldless_model()},
+        )
+        with pytest.raises(ConfigError, match=r"\[CONFIG-INVALID\].*auth_type"):
+            load_config(project_root=root)
+
+    def test_missing_type_gets_no_inference(self, tmp_path):
+        root = _write_project_with_custom_provider(
+            tmp_path, "typeless", "claude-headless",
+            {"some-model": _fieldless_model()},
+            include_type=False,
+        )
+        with pytest.raises(ConfigError, match=r"\[CONFIG-INVALID\].*auth_type"):
+            load_config(project_root=root)
+
+    def test_inferred_groups_satisfy_dispatch_group_pattern(self, tmp_path):
+        from loa_cheval.config.loader import _DISPATCH_GROUP_PATTERN
+
+        for group in ("anthropic-claude", "openai-gpt", "google-gemini"):
+            assert _DISPATCH_GROUP_PATTERN.match(group)
+
+    # Iter-1 B1: chain_resolver defaults kind to "http" — field-less custom
+    # headless providers loaded but resolved as HTTP entries, breaking the
+    # headless-mode ordering/filter transforms.
+    def test_fieldless_headless_models_infer_kind_cli(self, tmp_path):
+        for provider_id, ptype, model in [
+            ("claude-headless", "claude-headless", "claude-opus-4-7"),
+            ("my-codex", "codex-headless", "gpt-5.5"),
+            ("gemini-headless", "gemini-headless", "gemini-3.1-pro-preview"),
+        ]:
+            clear_config_cache()
+            root = _write_project_with_custom_provider(
+                tmp_path / ptype, provider_id, ptype, {model: _fieldless_model()},
+            )
+            merged, _ = load_config(project_root=root)
+            assert merged["providers"][provider_id]["models"][model]["kind"] == "cli"
+
+    def test_operator_explicit_kind_never_overwritten(self, tmp_path):
+        model = _fieldless_model()
+        model["kind"] = "http"
+        root = _write_project_with_custom_provider(
+            tmp_path, "claude-headless", "claude-headless",
+            {"claude-opus-4-7": model},
+        )
+        merged, _ = load_config(project_root=root)
+        assert (
+            merged["providers"]["claude-headless"]["models"]["claude-opus-4-7"]["kind"]
+            == "http"
+        )
+
+    # sprint-bug-209 repro (a): the documented cursor custom-provider config
+    # shape loads end-to-end. The original PR #966 review found this died
+    # [CONFIG-INVALID] at load because _HEADLESS_TYPE_INFERENCE had no
+    # cursor-headless entry; f4c00c19 added it — this pins the load path,
+    # not just the dict literal.
+    def test_cursor_custom_provider_shape_loads(self, tmp_path):
+        clear_config_cache()
+        root = _write_project_with_custom_provider(
+            tmp_path, "my-cursor", "cursor-headless",
+            {"composer-1": _fieldless_model()},
+        )
+        merged, _ = load_config(project_root=root)
+        m = merged["providers"]["my-cursor"]["models"]["composer-1"]
+        assert m["auth_type"] == "headless"
+        assert m["dispatch_group"] == "cursor-composer"
+        assert m["kind"] == "cli"
+
+    # Reviewer advisory: inference keys must stay registered adapter types —
+    # a registry rename would otherwise silently kill inference.
+    def test_inference_keys_are_registered_adapter_types(self):
+        from loa_cheval.config.loader import _HEADLESS_TYPE_INFERENCE
+        from loa_cheval.providers import _ADAPTER_REGISTRY
+
+        for key in _HEADLESS_TYPE_INFERENCE:
+            assert key in _ADAPTER_REGISTRY, (
+                f"inference key {key!r} is not a registered adapter type"
+            )
+
+    # R1-interim (refactor review 2026-06-12): the THIRD headless registry,
+    # _CLI_ADAPTER_BY_PROVIDER in cheval.py, drives kind:cli dispatch. PR #966
+    # shipped config-dead because a registry drifted; the two existing parity
+    # tests above cover _HEADLESS_TYPE_INFERENCE but not this one. Pin that the
+    # CLI-adapter VALUES are registered types. Closes the last unguarded leg
+    # of the documented three-registry hand-sync (full fix = R1, derive all
+    # three from one declarative table).
+    def test_cli_adapter_registry_values_are_registered_types(self):
+        import cheval
+        from loa_cheval.providers import _ADAPTER_REGISTRY
+
+        for family, adapter_type in cheval._CLI_ADAPTER_BY_PROVIDER.items():
+            assert adapter_type in _ADAPTER_REGISTRY, (
+                f"_CLI_ADAPTER_BY_PROVIDER[{family!r}] = {adapter_type!r} is not "
+                f"a registered adapter type — kind:cli dispatch for {family} "
+                f"would raise at invocation (the PR #966 config-dead class)"
+            )
+
+    # sprint-bug-209 (#966 review fix 6): the REVERSE direction of the
+    # inference parity above. Every REGISTERED adapter that declares the
+    # headless class contract (auth_type == "headless" — the same attribute
+    # keying cli_adapter_types(), providers/__init__.py) must carry a
+    # _HEADLESS_TYPE_INFERENCE entry, or the documented custom-provider
+    # config shape dies [CONFIG-INVALID] at load. Fails on pre-f4c00c19
+    # code, where cursor-headless was registered without an inference
+    # entry — the exact config-dead gap PR #966 originally shipped with.
+    # With the forward test above, the pair pins inference == registry-headless.
+    def test_registry_headless_types_have_inference_entries(self):
+        from loa_cheval.config.loader import _HEADLESS_TYPE_INFERENCE
+        from loa_cheval.providers import _ADAPTER_REGISTRY
+
+        for adapter_type, cls in _ADAPTER_REGISTRY.items():
+            if getattr(cls, "auth_type", None) == "headless":
+                assert adapter_type in _HEADLESS_TYPE_INFERENCE, (
+                    f"registered headless adapter {adapter_type!r} has no "
+                    f"_HEADLESS_TYPE_INFERENCE entry — the documented "
+                    f"custom-provider config shape for it dies "
+                    f"[CONFIG-INVALID] at load (the PR #966 config-dead class)"
+                )

@@ -94,3 +94,28 @@ export function parallelModeEnabledTopic(opts: { specifier?: string } = {}): str
     version: 1,
   });
 }
+
+// --- nft.activity.recorded.v1 (chain-agnostic NFT activity — canonical-event-normalization) ---
+
+/**
+ * Wildcard subject for subscribing to ALL chain-agnostic NFT activity across all
+ * collections (`nft.activity.recorded.>`). Subscribe-only — never publish to a wildcard.
+ */
+export const NFT_ACTIVITY_WILDCARD = "nft.activity.recorded.>";
+
+/**
+ * Build the publish subject for a chain-agnostic NFT-activity event.
+ *   nftActivityTopic({collectionSlug: "pythians"}) → "nft.activity.recorded.pythians.v1"
+ *   nftActivityTopic()                             → "nft.activity.recorded.v1"  (base; no discriminator)
+ * The `verb` (mint/transfer/sale/burn) lives in the PAYLOAD, not the subject, so this is one stream a
+ * consumer reads. 3-segment grammar: aggregate=nft, noun=activity, verb=recorded.
+ */
+export function nftActivityTopic(opts: { collectionSlug?: string; version?: number } = {}): string {
+  return buildTopic({
+    aggregate: "nft",
+    noun: "activity",
+    verb: "recorded",
+    specifier: opts.collectionSlug,
+    version: opts.version ?? 1,
+  });
+}
