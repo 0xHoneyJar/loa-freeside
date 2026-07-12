@@ -42,8 +42,11 @@ export interface AuditServerConfig {
   roleSnapshotPath?: string;
   /** k-anonymity threshold (AuditService default 5). */
   k?: number;
-  /** per-IP rate limit (default 30 req / 60s). */
+  /** per-IP rate limit for the authed routes (default 30 req / 60s). */
   rateLimit?: { limit: number; windowMs: number };
+  /** S2-T3: per-IP limit for the PUBLIC /v1/access-risk teaser (default 6 req / 60s — tighter, because it
+   *  is unauthenticated and each call does real chain work). */
+  teaserRateLimit?: { limit: number; windowMs: number };
   /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
    *  the role source falls back to the file at `roleSnapshotPath` (existing behavior). */
@@ -91,6 +94,8 @@ export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
 export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collectionRegistry?: CollectionRegistry): Hono {
   const now = () => Date.now();
   const rl = config.rateLimit ?? { limit: 30, windowMs: 60_000 };
+  // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP.
+  const teaserRl = config.teaserRateLimit ?? { limit: 6, windowMs: 60_000 };
 
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
   // the ingestion sink (POST /v1/role-snapshot writes it, load() reads it — the SAME instance, so an
@@ -128,6 +133,13 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
     //   rate window + the nonce/event store), else limits + replay-dedup are per-replica.
     eventStore: new InMemoryEventStore(),
     rateLimiter: new FixedWindowRateLimiter({ limit: rl.limit, windowMs: rl.windowMs, now }),
+    // S2-T3 (IMP-006): the PUBLIC teaser gets its OWN, tighter budget — it is unauthenticated and each call
+    // costs a block-at-date resolve + two balance reconstructions. Default 6/min vs the authed 30/min.
+    teaserRateLimiter: new FixedWindowRateLimiter({
+      limit: teaserRl.limit,
+      windowMs: teaserRl.windowMs,
+      now,
+    }),
     auth: failClosedAuth(),
     isOperatedCommunity: (id) => config.operatedCommunities.includes(id),
     cta: config.cta,
@@ -149,11 +161,15 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
       // /healthz + the OPEN capability read (membership only, no member data) skip the key gate.
       // /v1/role-snapshot is exempt too — it is a DIFFERENT principal (the service exporter) authenticated
       // by its OWN service token (X-Ingest-Token) inside the route, not the dashboard's X-API-Key.
+      // /v1/access-risk (S2-T3, G-5) is exempt BY DESIGN — it is the public lead-magnet teaser and must
+      // work for a community we have no relationship with. Its abuse budget is its own tighter per-IP
+      // limiter + registry gating + k-anon, NOT an API key (see audit-router.ts).
       // Match the EXACT route only (/v1/collections/:chain/:contract) — a broad prefix could
       // accidentally expose a future /v1/collections/... route (FAGAN S3).
       if (
         c.req.path === '/healthz' ||
         c.req.path === '/v1/role-snapshot' ||
+        c.req.path === '/v1/access-risk' ||
         /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)
       )
         return next();

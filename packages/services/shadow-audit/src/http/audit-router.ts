@@ -60,6 +60,7 @@ import {
 import { createHash } from 'node:crypto';
 import { RoleSnapshotSchema } from '../role-snapshot.js';
 import { timingSafeEqualStr, type RoleSink } from '../role-store.js';
+import { computeAccessRisk } from '../access-risk.js';
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
@@ -89,6 +90,10 @@ export interface AuditRouterDeps {
   /** S1-T4 (IMP-009): role-snapshot ingestion. Absent → the POST /v1/role-snapshot route is NOT mounted
    *  (fail-closed: no ingest token configured ⇒ no ingestion surface, never an open one). */
   ingest?: { token: string; sink: RoleSink };
+  /** S2-T3 (IMP-006): dedicated, TIGHTER limiter for the PUBLIC teaser. That route is unauthenticated and
+   *  does real chain work (RPC + reconstruction), so it must not share the authed routes' budget. Falls
+   *  back to `rateLimiter` when absent. */
+  teaserRateLimiter?: RateLimiter;
 }
 
 const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
@@ -211,6 +216,62 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     const ref = deps.collectionRegistry({ chain, contract });
     if (!ref) return c.json({ error: 'not_found', chain, contract }, 404);
     return c.json({ chain, contract, collection: ref.collection, standard: ref.standard });
+  });
+
+  // ---- GET /v1/access-risk — the PUBLIC teaser (S2-T3, G-5, IMP-006) ------
+  // UNAUTHENTICATED by design (exempted from the X-API-Key gate in server.ts): this is the lead magnet —
+  // it must work for a community whose Discord we have NO access to. On-chain only, aggregate only, k-anon.
+  // It never returns member data and never claims to know the real stale-access set (see access-risk.ts).
+  const AccessRiskQuerySchema = z.object({
+    chain: z.string().min(1),
+    contract: z.string().min(1),
+    snapshot_date: z.string().min(1),
+    threshold: z.string().optional(),
+  });
+
+  app.get('/v1/access-risk', async (c) => {
+    // Anti-abuse #1 — a TIGHTER per-IP limit than the authed routes: this endpoint is open and each call
+    // does real chain work (block-at-date + two balance reconstructions).
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+
+    const q = AccessRiskQuerySchema.safeParse(c.req.query());
+    if (!q.success) return c.json({ error: 'missing/invalid query params' }, 400);
+
+    // Anti-abuse #2 — ANTI-ENUMERATION: only collections in the registry are auditable, so an open caller
+    // cannot walk the chain/contract space using this endpoint as a probe oracle.
+    if (!deps.collectionRegistry) return c.json({ error: 'registry unavailable' }, 503);
+    if (!deps.collectionRegistry({ chain: q.data.chain, contract: q.data.contract })) {
+      const r: Refusal = {
+        code: 'unindexed-contract',
+        reason: 'contract is not in the audited collection registry',
+        retryable: false,
+      };
+      return c.json({ error: r }, refusalStatus(r));
+    }
+
+    const threshold = Number(q.data.threshold ?? '1');
+    if (!Number.isInteger(threshold) || threshold < 1) {
+      return c.json({ error: 'threshold must be a positive integer' }, 400);
+    }
+
+    // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
+    // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
+    const result = await computeAccessRisk(
+      {
+        chain: q.data.chain,
+        contract: q.data.contract,
+        snapshotDate: q.data.snapshot_date,
+        threshold,
+        nowUnixSeconds: Math.floor(deps.now() / 1000),
+        cta: deps.cta,
+      },
+      { ownership: deps.ownership, whale: deps.whale, k: deps.k },
+    );
+    if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
+    return c.json(result.output);
   });
 
   // ---- GET /v1/audit — anonymous aggregate -------------------------------
