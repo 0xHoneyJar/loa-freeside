@@ -8,7 +8,10 @@
     "newly_eligible": { "kind": "exact", "value": 17 },
     "stale_access": { "kind": "bucketed", "bucket": "<5" },
     "whale_concentration": 0.6,
-    "stale_access_risk_band": "elevated"
+    "stale_access_risk_band": "elevated",
+    "unmatched_role_holders": { "kind": "exact", "value": 8 },
+    "role_coverage": 0.92,
+    "coverage_uncertain": false
   },
   "cta": { "product": "/shadow-access", "conversation": "/talk-to-us" }
 }

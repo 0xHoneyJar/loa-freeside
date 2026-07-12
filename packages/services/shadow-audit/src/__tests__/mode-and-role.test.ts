@@ -9,6 +9,20 @@ import {
 
 const NOW = Math.floor(Date.UTC(2026, 5, 22, 12, 0, 0) / 1000);
 
+/** A wallet-bearing (matched) entry. */
+function matched(n: number): RoleSnapshot['entries'][number] {
+  return {
+    discord_user_id: `u${n}`,
+    wallet: '0x' + n.toString(16).padStart(40, '0'),
+    role_ids: ['holder'],
+  };
+}
+/** A role-holder whose wallet did NOT resolve — flagged, never dropped. */
+function unmatched(n: number): RoleSnapshot['entries'][number] {
+  return { discord_user_id: `u${n}`, role_ids: ['holder'] };
+}
+
+/** Default: FULLY-COVERED (every role-holder resolved) — the confident case. */
 function snapshot(over: Partial<RoleSnapshot> = {}): RoleSnapshot {
   return {
     source: 'discord:guild:123',
@@ -17,12 +31,17 @@ function snapshot(over: Partial<RoleSnapshot> = {}): RoleSnapshot {
     export_method: 'discord-bot-export',
     owner: '0x' + '1'.repeat(40),
     freshness_threshold_seconds: 86_400, // 24h
-    entries: [
-      { discord_user_id: 'u1', wallet: '0x' + 'A'.repeat(40), role_ids: ['holder'] },
-      { discord_user_id: 'u2', role_ids: ['holder'] }, // unresolved wallet
-    ],
+    entries: [matched(1), matched(2)],
     ...over,
   };
+}
+
+/** `matchedCount` resolved wallets out of `total` role-holders. */
+function coverageSnapshot(matchedCount: number, total: number): RoleSnapshot {
+  const entries = Array.from({ length: total }, (_, i) =>
+    i < matchedCount ? matched(i + 1) : unmatched(i + 1),
+  );
+  return snapshot({ entries });
 }
 
 describe('resolveMode (AC-5)', () => {
@@ -39,20 +58,102 @@ describe('resolveMode (AC-5)', () => {
     if (!r.ok) expect(r.refusal.code).toBe('external-mode');
   });
 
-  it('serves dogfood-full with a fresh snapshot (not uncertain)', () => {
+  it('serves dogfood-full with a fresh, fully-covered snapshot (not uncertain)', () => {
     const r = resolveMode({ isOperatedCommunity: true, roleSnapshot: snapshot(), nowUnixSeconds: NOW });
-    expect(r).toEqual({ ok: true, mode: 'dogfood-full', snapshotFresh: true, uncertain: false });
+    expect(r).toEqual({
+      ok: true,
+      mode: 'dogfood-full',
+      snapshotFresh: true,
+      uncertain: false,
+      uncertainReasons: [],
+      roleCoverage: 1,
+    });
   });
 
   it('serves dogfood-full but LABELS uncertain when the snapshot is stale (no silent degradation)', () => {
     const stale = snapshot({ captured_at: '2026-06-20T11:00:00.000Z' }); // >24h before NOW
     const r = resolveMode({ isOperatedCommunity: true, roleSnapshot: stale, nowUnixSeconds: NOW });
-    expect(r).toEqual({ ok: true, mode: 'dogfood-full', snapshotFresh: false, uncertain: true });
+    expect(r).toEqual({
+      ok: true,
+      mode: 'dogfood-full',
+      snapshotFresh: false,
+      uncertain: true,
+      uncertainReasons: ['stale-snapshot'],
+      roleCoverage: 1,
+    });
   });
 
   it('is deterministic for identical context', () => {
     const ctx: ModeContext = { isOperatedCommunity: true, roleSnapshot: snapshot(), nowUnixSeconds: NOW };
     expect(resolveMode(ctx)).toEqual(resolveMode(ctx));
+  });
+});
+
+/**
+ * THE BUG (live, 2026-07-12): the THJ export produced a FRESH, contract-valid snapshot of 515
+ * role-holders of which exactly 1 resolved to a wallet (their links live in CollabLand, not
+ * identity-api). Freshness was the ONLY input to uncertainty, so the audit reported `uncertain:
+ * false` — most confident precisely when the role data was least trustworthy.
+ */
+describe('resolveMode — role coverage drives uncertainty (bug 20260712-486383)', () => {
+  it('REFUSES a fresh snapshot below the coverage floor — the real 1/515 THJ case', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(1, 515),
+      nowUnixSeconds: NOW,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.code).toBe('role-coverage-too-low');
+    // The refusal must NAME what we cannot see — "be honest about what we cannot see".
+    expect(r.refusal.reason).toContain('1');
+    expect(r.refusal.reason).toContain('515');
+    expect(r.refusal.retryable).toBe(false);
+  });
+
+  it('REFUSES when the snapshot has no role-holders at all (a vacuous audit is still a lie)', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(0, 0),
+      nowUnixSeconds: NOW,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refusal.code).toBe('role-coverage-too-low');
+  });
+
+  it('serves but LABELS uncertain when coverage is partial (above the floor, below confident)', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(14, 20), // 70% — above the 50% floor, below the 90% bar
+      nowUnixSeconds: NOW,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uncertain).toBe(true);
+    expect(r.uncertainReasons).toEqual(['low-role-coverage']);
+    expect(r.roleCoverage).toBe(0.7);
+    expect(r.snapshotFresh).toBe(true); // NOT stale — coverage alone drove the uncertainty
+  });
+
+  it('names BOTH reasons when a snapshot is stale AND under-covered', () => {
+    const snap = coverageSnapshot(14, 20);
+    snap.captured_at = '2026-06-20T11:00:00.000Z'; // >24h before NOW
+    const r = resolveMode({ isOperatedCommunity: true, roleSnapshot: snap, nowUnixSeconds: NOW });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uncertainReasons).toEqual(['stale-snapshot', 'low-role-coverage']);
+  });
+
+  it('does NOT flag a healthy-coverage community as uncertain (no false positives)', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(19, 20), // 95%
+      nowUnixSeconds: NOW,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uncertain).toBe(false);
+    expect(r.uncertainReasons).toEqual([]);
   });
 });
 
@@ -70,7 +171,14 @@ describe('isSnapshotFresh', () => {
 
 describe('resolveRoles (IMP-005 — flag, never drop)', () => {
   it('collects lowercased role wallets and flags unmatched role-holders', () => {
-    const res = resolveRoles(snapshot());
+    const res = resolveRoles(
+      snapshot({
+        entries: [
+          { discord_user_id: 'u1', wallet: '0x' + 'A'.repeat(40), role_ids: ['holder'] },
+          { discord_user_id: 'u2', role_ids: ['holder'] }, // unresolved wallet
+        ],
+      }),
+    );
     expect(res.roleWallets.has('0x' + 'a'.repeat(40))).toBe(true); // lowercased
     expect(res.unmatched).toEqual([{ discord_user_id: 'u2', role_ids: ['holder'] }]);
   });

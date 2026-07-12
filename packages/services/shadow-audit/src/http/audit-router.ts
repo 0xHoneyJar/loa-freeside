@@ -466,7 +466,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       return c.html(renderRefusalHtml(result.refusal), refusalStatus(result.refusal));
     }
     await recordRun(deps, result.output);
-    return c.html(renderAuditHtml(result.output, result.uncertain));
+    return c.html(renderAuditHtml(result.output, result.uncertain, result.uncertainReasons));
   });
 
   // ---- POST /v1/role-snapshot — exporter ingestion (S1-T4, IMP-009) -------
@@ -542,18 +542,37 @@ function renderRefusalHtml(refusal: Refusal): string {
 function renderAuditHtml(
   output: { run_id: string; aggregate: AuditAggregateLike; cta: Cta },
   uncertain: boolean,
+  uncertainReasons: readonly string[] = [],
 ): string {
   const a = output.aggregate;
   const turnoverPct = (a.holder_turnover * 100).toFixed(0);
+  // Name the uncertainty rather than lumping it under one banner: a fresh-but-unseeable snapshot is
+  // NOT "stale", and telling the reader it is would be its own small lie (486383).
+  const stale = uncertainReasons.includes('stale-snapshot');
+  const staleBanner = stale
+    ? '<p><em>Heads up: the role snapshot is stale — treat these numbers as directional.</em></p>'
+    : '';
+  const coverageBanner = a.coverage_uncertain
+    ? `<p><em>Heads up: we could only resolve ${
+        a.role_coverage === null ? 'some' : `${(a.role_coverage * 100).toFixed(0)}% of`
+      } your role-holders to a wallet — the ${escapeHtml(
+        cohortText(a.unmatched_role_holders),
+      )} we could not see are counted as role-holders, but their on-chain holdings are invisible to this audit. Treat these numbers as directional.</em></p>`
+    : '';
+  // Legacy fallback: uncertain for a reason we were not told about (defensive; keeps the old banner).
+  const genericBanner = uncertain && !stale && !a.coverage_uncertain
+    ? '<p><em>Heads up: treat these numbers as directional.</em></p>'
+    : '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>Shadow Access Audit</title></head><body>
   <h1>Shadow Access Audit</h1>
-  ${uncertain ? '<p><em>Heads up: the role snapshot is stale — treat these numbers as directional.</em></p>' : ''}
+  ${staleBanner}${coverageBanner}${genericBanner}
   <ul>
     <li>Stale access (role, no longer qualifies): <strong>${escapeHtml(cohortText(a.stale_access))}</strong></li>
     <li>Sold / lapsed: <strong>${escapeHtml(cohortText(a.sold_lapsed))}</strong></li>
     <li>Newly eligible: <strong>${escapeHtml(cohortText(a.newly_eligible))}</strong></li>
     <li>Holder turnover: <strong>${turnoverPct}%</strong></li>
     <li>Stale-access risk: <strong>${escapeHtml(a.stale_access_risk_band)}</strong></li>
+    <li>Role-holders we could not resolve: <strong>${escapeHtml(cohortText(a.unmatched_role_holders))}</strong></li>
   </ul>
   <form method="post" action="/v1/audit/reaction">
     <input type="hidden" name="run_id" value="${escapeHtml(output.run_id)}">
@@ -575,4 +594,9 @@ interface AuditAggregateLike {
   sold_lapsed: CohortCount;
   newly_eligible: CohortCount;
   stale_access_risk_band: string;
+  /** Role-holders we could not resolve to a wallet — flagged, never dropped (486383). */
+  unmatched_role_holders: CohortCount;
+  /** matched/total, or NULL when the unmatched cohort is k-anon-suppressed. */
+  role_coverage: number | null;
+  coverage_uncertain: boolean;
 }
