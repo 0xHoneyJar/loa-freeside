@@ -7,7 +7,6 @@
 # - standard: Commit grimoire and beads to repo (default)
 # - stealth: Add state files to .gitignore, local-only operation
 persistence_mode: standard
-
 # =============================================================================
 # Integrity Enforcement (Projen-Level)
 # =============================================================================
@@ -15,7 +14,6 @@ persistence_mode: standard
 # - warn: Warn but allow execution (development only)
 # - disabled: No integrity checks (not recommended)
 integrity_enforcement: strict
-
 # =============================================================================
 # Drift Resolution Policy
 # =============================================================================
@@ -23,7 +21,6 @@ integrity_enforcement: strict
 # - docs: Create beads to fix code to match documentation (greenfield)
 # - ask: Always prompt for human decision
 drift_resolution: code
-
 # =============================================================================
 # Agent Configuration
 # =============================================================================
@@ -37,18 +34,16 @@ disabled_agents: []
 # =============================================================================
 # Prevents silent goal failures by mapping PRD goals through sprint tasks
 goal_traceability:
-  enabled: true              # Enable goal ID system
-  require_goal_ids: true     # Require G-N IDs in PRD
-  auto_assign_ids: true      # Auto-assign if missing
-  generate_appendix_c: true  # Generate goal mapping in sprint
-  generate_e2e_task: true    # Auto-generate E2E validation task
-
+  enabled: true # Enable goal ID system
+  require_goal_ids: true # Require G-N IDs in PRD
+  auto_assign_ids: true # Auto-assign if missing
+  generate_appendix_c: true # Generate goal mapping in sprint
+  generate_e2e_task: true # Auto-generate E2E validation task
 goal_validation:
-  enabled: true              # Enable goal validation
-  block_on_at_risk: false    # Block review on AT_RISK (default: warn)
-  block_on_blocked: true     # Block review on BLOCKED
-  require_e2e_task: true     # Require E2E task in final sprint
-
+  enabled: true # Enable goal validation
+  block_on_at_risk: false # Block review on AT_RISK (default: warn)
+  block_on_blocked: true # Block review on BLOCKED
+  require_e2e_task: true # Require E2E task in final sprint
 # =============================================================================
 # Tool Preferences (Enforcement)
 # =============================================================================
@@ -60,16 +55,14 @@ tool_preferences:
   search_cli: ck
   # Deprecation warnings
   deprecated_tools:
-    - bd   # Use br instead
+    - bd # Use br instead
     - grep # Use ck instead
-
 # =============================================================================
 # Custom Paths
 # =============================================================================
 paths:
   grimoire: grimoires/loa
   beads: .beads
-
 # =============================================================================
 # Structured Agentic Memory (Anthropic-Level)
 # =============================================================================
@@ -82,13 +75,11 @@ memory:
   trajectory_retention_days: 30
   # Restore context from NOTES.md on session start
   auto_restore: true
-
   # -------------------------------------------------------------------------
   # NOTES.md Learnings Sync (v1.8.0)
   # -------------------------------------------------------------------------
   # Auto-sync learnings from NOTES.md to vector database on session start
   auto_sync: false
-
   # -------------------------------------------------------------------------
   # PreToolUse Hook - Mid-Stream Memory Injection (v1.8.0)
   # -------------------------------------------------------------------------
@@ -110,7 +101,6 @@ memory:
       - Grep
       - WebFetch
       - WebSearch
-
   # -------------------------------------------------------------------------
   # Vector Database Configuration
   # -------------------------------------------------------------------------
@@ -121,7 +111,6 @@ memory:
     model: all-MiniLM-L6-v2
     # Embedding dimension (must match model)
     dimension: 384
-
   # -------------------------------------------------------------------------
   # QMD Integration - Document Search (v1.8.0)
   # -------------------------------------------------------------------------
@@ -141,7 +130,6 @@ memory:
       - path: grimoires/loa/reality
         name: loa-reality
         include: ["*.md"]
-
 # =============================================================================
 # Evaluation-Driven Development (ADK-Level)
 # =============================================================================
@@ -153,7 +141,6 @@ edd:
   trajectory_audit: true
   # Require explicit grounding for all claims
   require_citations: true
-
 # =============================================================================
 # Context Hygiene
 # =============================================================================
@@ -161,14 +148,12 @@ compaction:
   enabled: true
   # Trigger compaction after this many closed tasks in a sprint
   threshold: 5
-
 # =============================================================================
 # Integrations
 # =============================================================================
 integrations:
   - github
   - linear
-
 # =============================================================================
 # Drift Detection (Sprint 4 - FR-9.1, GitHub Issue #10)
 # =============================================================================
@@ -180,7 +165,6 @@ drift_detection:
     # Add custom directories as needed:
     # - ".meta/"
     # - "docs/architecture/"
-
   # Patterns to exclude from drift detection
   exclude_patterns:
     - "**/node_modules/**"
@@ -189,24 +173,20 @@ drift_detection:
     - "**/dist/**"
     - "**/build/**"
     - "**/__pycache__/**"
-
 # =============================================================================
 # Context Filtering (Sprint 4 - FR-9.2, GitHub Issue #10)
 # =============================================================================
 context_filtering:
   # Master toggle: set to false to disable all filtering
   enable_filtering: true
-
   # Archive zone - automatically excluded from all searches
   archive_zone: "grimoires/loa/archive/"
-
   # Signal threshold: exclude documents below this level
   # Options: low, medium, high
   # - high: Only include high-signal documents
   # - medium: Include medium and high (default)
   # - low: Include all (effectively no filtering)
   signal_threshold: "medium"
-
   # Patterns for low-signal documents to exclude
   default_excludes:
     - "**/brainstorm-*.md"
@@ -215,13 +195,10 @@ context_filtering:
     - "**/draft-*.md"
     - "**/scratch-*.md"
     - "**/temp-*.md"
-
   # Auto-archive drafts older than N days (0 = disabled)
   draft_ttl_days: 30
-
   # Frontmatter signal marker support
   respect_frontmatter_signals: true
-
 # =============================================================================
 # Lossless Ledger Protocol (v0.9.0)
 # =============================================================================
@@ -240,7 +217,6 @@ grounding:
     similarity_threshold: 0.4
     # Require 2 diverse queries for verification
     require_diverse_queries: true
-
 # Attention Budget - advisory thresholds for context management
 attention_budget:
   # Green zone: under this, no action needed
@@ -253,7 +229,6 @@ attention_budget:
   red_threshold: 10000
   # Advisory only (never blocks, just warns)
   advisory_only: true
-
 # Session Continuity - recovery after /clear or new session
 session_continuity:
   # Enable tiered recovery (Level 1/2/3)
@@ -264,7 +239,6 @@ session_continuity:
   level2_tokens: 500
   # Auto-load Session Continuity section on session start
   auto_restore: true
-
 # Synthesis Checkpoint - pre-clear validation
 synthesis_checkpoint:
   # Enable blocking validation before /clear
@@ -276,7 +250,6 @@ synthesis_checkpoint:
     enabled: true
     min_test_scenarios: 3
     warn_only: true
-
 # JIT Retrieval - lightweight identifiers instead of eager loading
 jit_retrieval:
   # Prefer ck for semantic search when available
@@ -285,7 +258,6 @@ jit_retrieval:
   fallback_enabled: true
   # Maximum lines to retrieve at once
   max_line_range: 100
-
 # =============================================================================
 # Registry Integration (v0.9.2+)
 # =============================================================================
@@ -322,7 +294,6 @@ registry:
     - riding-codebase
     - mounting-framework
     - translating-for-executives
-
 # =============================================================================
 # Structured Outputs (Claude Platform Integration)
 # =============================================================================
@@ -342,7 +313,6 @@ structured_outputs:
     trajectory: "trajectory-entry.schema.json"
   # Auto-validate outputs before writing
   auto_validate: true
-
 # =============================================================================
 # Extended Thinking (Claude Platform Integration)
 # =============================================================================
@@ -369,7 +339,6 @@ extended_thinking:
     - evaluation
     - decision
     - reflection
-
 # =============================================================================
 # Trajectory Logging (Claude Platform Integration)
 # =============================================================================
@@ -402,7 +371,6 @@ trajectory:
     days: 30
     # Archive old files instead of deleting
     archive: true
-
 # =============================================================================
 # Tool Search (Claude Platform Integration)
 # =============================================================================
@@ -425,7 +393,6 @@ tool_search:
     name_weight: 100
     description_weight: 50
     scope_weight: 30
-
 # =============================================================================
 # Context Management (Claude Platform Integration v0.11.0)
 # =============================================================================
@@ -454,7 +421,6 @@ context_management:
       - verbose_debug
       - redundant_file_reads
       - intermediate_outputs
-
   # -------------------------------------------------------------------------
   # Probe-Before-Load (RLM Pattern) - v0.14.0
   # -------------------------------------------------------------------------
@@ -490,7 +456,6 @@ context_management:
     medium_codebase: 150000
     # Codebases over medium are "large" - probe + excerpts only
     large_codebase: 500000
-
 # =============================================================================
 # Update Check (v0.14.0)
 # =============================================================================
@@ -506,7 +471,6 @@ update_check:
   include_prereleases: false
   # Custom upstream repo (for forks)
   upstream_repo: "0xHoneyJar/loa"
-
 # =============================================================================
 # Continuous Learning (v0.17.0)
 # =============================================================================
@@ -542,7 +506,6 @@ continuous_learning:
     prune_min_matches: 2
     # Require confirmation before pruning
     auto_prune: false
-
 # =============================================================================
 # Compound Learning (v1.10.0) - Cross-Session Pattern Detection
 # =============================================================================
@@ -551,7 +514,6 @@ continuous_learning:
 compound_learning:
   # Master toggle - set to false to disable all compound learning
   enabled: true
-
   # -------------------------------------------------------------------------
   # Similarity Strategy (Layered: Semantic → Keyword fallback)
   # -------------------------------------------------------------------------
@@ -559,28 +521,23 @@ compound_learning:
   similarity:
     # Prefer semantic tools (ck, Memory Stack) when available
     prefer_semantic: true
-
     # ck integration for code patterns
     ck:
-      enabled: auto  # auto | true | false
+      enabled: auto # auto | true | false
       threshold: 0.7
-
     # Memory Stack integration for text embeddings
     memory_stack:
-      enabled: auto  # auto | true | false
+      enabled: auto # auto | true | false
       model: all-MiniLM-L6-v2
       threshold: 0.35
-
     # qmd integration for grimoire search
     qmd:
-      enabled: auto  # auto | true | false
-      search_mode: hybrid  # hybrid | semantic | keyword
-
+      enabled: auto # auto | true | false
+      search_mode: hybrid # hybrid | semantic | keyword
     # Fallback settings (when semantic tools unavailable)
     fallback:
       jaccard_threshold: 0.6
       min_keyword_overlap: 3
-
   # -------------------------------------------------------------------------
   # Pattern Detection Configuration
   # -------------------------------------------------------------------------
@@ -597,7 +554,6 @@ compound_learning:
       - convergent_solution
       - anti_pattern
       - project_convention
-
   # -------------------------------------------------------------------------
   # Quality Gates (4-Gate Filter)
   # -------------------------------------------------------------------------
@@ -617,9 +573,8 @@ compound_learning:
       weight: 1.0
     # Verification: Was solution verified to work?
     verification:
-      min_score: 3  # Lower bar for verification
+      min_score: 3 # Lower bar for verification
       weight: 0.8
-
   # -------------------------------------------------------------------------
   # Effectiveness Feedback Loop (Goal G-4)
   # -------------------------------------------------------------------------
@@ -634,9 +589,9 @@ compound_learning:
       user_negative: -5
     # Effectiveness tier thresholds
     tiers:
-      high: 80      # Score >= 80: increase retrieval priority
-      medium: 50    # Score >= 50: normal
-      low: 20       # Score >= 20: flag for review
+      high: 80 # Score >= 80: increase retrieval priority
+      medium: 50 # Score >= 50: normal
+      low: 20 # Score >= 20: flag for review
       # Score < 20: ineffective, queue for pruning
     # Pruning settings
     pruning:
@@ -644,7 +599,6 @@ compound_learning:
       failures_before_prune: 3
       # Require human review before archiving
       require_review: true
-
   # -------------------------------------------------------------------------
   # Learning Synthesis (Goal G-3)
   # -------------------------------------------------------------------------
@@ -657,7 +611,6 @@ compound_learning:
     archive_on_synthesis: false
     # Require human approval for all proposals
     require_approval: true
-
   # -------------------------------------------------------------------------
   # Morning Context Loading (Goal G-2)
   # -------------------------------------------------------------------------
@@ -674,7 +627,6 @@ compound_learning:
     max_dismissals: 3
     # Performance target (must complete within)
     timeout_ms: 5000
-
   # -------------------------------------------------------------------------
   # Mermaid Visualization (PRD FR-10)
   # -------------------------------------------------------------------------
@@ -684,7 +636,7 @@ compound_learning:
     # Enable Mermaid diagram generation
     enabled: true
     # Output format
-    format: mermaid  # mermaid | ascii | both
+    format: mermaid # mermaid | ascii | both
     # Output directory for diagrams
     output_dir: grimoires/loa/diagrams/
     # Include diagrams in compound reports
@@ -693,11 +645,10 @@ compound_learning:
     include_preview_urls: true
     # Color scheme for effectiveness levels
     color_scheme:
-      high_effectiveness: "#10b981"   # green
+      high_effectiveness: "#10b981" # green
       medium_effectiveness: "#fbbf24" # amber
-      low_effectiveness: "#f4f4f5"    # gray
-      current_focus: "#3b82f6"        # blue
-
+      low_effectiveness: "#f4f4f5" # gray
+      current_focus: "#3b82f6" # blue
   # -------------------------------------------------------------------------
   # Archive Management (PRD FR-9)
   # -------------------------------------------------------------------------
@@ -708,7 +659,6 @@ compound_learning:
     compress: false
     # Archive directory
     dir: grimoires/loa/archive/
-
 # =============================================================================
 # Run Mode (v0.18.0)
 # =============================================================================
@@ -744,10 +694,9 @@ run_mode:
     # Default branch name for multi-sprint execution
     default_branch_name: "release"
     # Compound learning hook on sprint-plan completion (Task 8.8-8.9)
-    compound_on_complete: true     # Trigger compound review after all sprints
-    compound_auto_approve: false   # Auto-approve extracted skills
-    compound_fail_action: warn     # warn | fail - what to do if compound fails
-
+    compound_on_complete: true # Trigger compound review after all sprints
+    compound_auto_approve: false # Auto-approve extracted skills
+    compound_fail_action: warn # warn | fail - what to do if compound fails
 # =============================================================================
 # Recursive JIT Context System (v0.20.0)
 # =============================================================================
@@ -763,7 +712,6 @@ recursive_jit:
     max_size_mb: 100
     # Time-to-live in days (entries expire after this period)
     ttl_days: 30
-
   # -------------------------------------------------------------------------
   # Condensation Engine
   # -------------------------------------------------------------------------
@@ -778,7 +726,6 @@ recursive_jit:
       - verdict
       - severity_counts
       - top_findings
-
   # -------------------------------------------------------------------------
   # Semantic Recovery Enhancement
   # -------------------------------------------------------------------------
@@ -789,7 +736,6 @@ recursive_jit:
     fallback_to_positional: true
     # Prefer ck for semantic search when available
     prefer_ck: true
-
   # -------------------------------------------------------------------------
   # Early-Exit Coordination
   # -------------------------------------------------------------------------
@@ -798,7 +744,6 @@ recursive_jit:
     enabled: true
     # Grace period in seconds before cleanup
     grace_period_seconds: 5
-
   # -------------------------------------------------------------------------
   # Continuous Synthesis (Anti-Platform-Summarization)
   # -------------------------------------------------------------------------
@@ -819,7 +764,6 @@ recursive_jit:
     target: notes_decision_log
     # Also update active bead (if beads_rust available)
     update_bead: true
-
 # =============================================================================
 # GPT 5.2 Cross-Model Review (v0.20.0)
 # =============================================================================
@@ -848,7 +792,6 @@ gpt_review:
     sdd: true
     sprint: true
     implementation: true
-
 # =============================================================================
 # Plan and Analyze Configuration (v1.6.0)
 # =============================================================================
@@ -863,7 +806,6 @@ plan_and_analyze:
     ride_timeout_minutes: 20
     # Auto-skip to Phase -1 if /ride fails (not recommended)
     skip_on_ride_error: false
-
 # =============================================================================
 # Claude Code 2.1.x Features (v1.9.0)
 # =============================================================================
@@ -875,31 +817,26 @@ setup_hook:
   enabled: true
   # Run full health check (vs quick check)
   run_health_check: true
-
 # Skill Forking - isolated execution for read-only skills
 skill_forking:
   # Master toggle for skill forking features
   enabled: true
   # Fork read-only skills (ride, validators) by default
   fork_read_only_skills: true
-
 # One-Time Hooks - prevent duplicate hook execution
 hooks:
   # Run update check only once per session (not on resume)
   check_updates_once: true
-
 # Trajectory Session ID - cross-session correlation
 trajectory_session_id:
   # Include CLAUDE_SESSION_ID in trajectory entries
   enabled: true
-
 # File Read Limits (Claude Code environment variable)
 # Set CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS to limit file read output
 # Default: 4000 tokens
 # Example: export CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS=8000
 file_read_limits:
   max_output_tokens: 4000
-
 # =============================================================================
 # Visual Communication (v1.10.0)
 # =============================================================================
@@ -907,16 +844,12 @@ file_read_limits:
 visual_communication:
   # Master toggle for visual output
   enabled: true
-
   # Rendering service URL
   service: "https://agents.craft.do/mermaid"
-
   # Default theme (github | dracula | nord | tokyo-night | solarized-light | solarized-dark | catppuccin)
   theme: "github"
-
   # Include clickable preview URLs in output
   include_preview_urls: true
-
   # Diagram types to support
   diagram_types:
     flowchart: true
@@ -924,7 +857,6 @@ visual_communication:
     class: true
     state: true
     er: true
-
 # =============================================================================
 # Oracle Configuration (v1.11.0)
 # =============================================================================
@@ -935,10 +867,9 @@ oracle:
   # -------------------------------------------------------------------------
   # Results are ranked by weighted_score = match_score * source_weight
   weights:
-    loa: 1.0         # Highest priority - Loa's own proven patterns
-    anthropic: 0.8   # Authoritative - Anthropic official documentation
-    community: 0.5   # Useful but less verified community contributions
-
+    loa: 1.0 # Highest priority - Loa's own proven patterns
+    anthropic: 0.8 # Authoritative - Anthropic official documentation
+    community: 0.5 # Useful but less verified community contributions
   # -------------------------------------------------------------------------
   # Loa Source Configuration
   # -------------------------------------------------------------------------
@@ -956,7 +887,6 @@ oracle:
     learnings:
       enabled: true
       paths: ["grimoires/loa/a2a/compound/learnings.json"]
-
   # -------------------------------------------------------------------------
   # Index Settings
   # -------------------------------------------------------------------------
@@ -965,7 +895,6 @@ oracle:
     auto_refresh_hours: 24
     # Cache directory for index files
     cache_dir: "~/.loa/cache/oracle"
-
   # -------------------------------------------------------------------------
   # Query Settings
   # -------------------------------------------------------------------------
@@ -977,7 +906,6 @@ oracle:
     default_limit: 10
     # Default scope when not specified: all | loa | anthropic
     default_scope: all
-
 # =============================================================================
 # Two-Tier Learnings Architecture (v1.15.1 - PR #139)
 # =============================================================================
@@ -996,7 +924,6 @@ learnings:
       weight: 1.0
       # Source directory (relative to project root)
       source_dir: ".claude/loa/learnings"
-
     # Project Tier (Tier 2) - Accumulates in grimoires/loa/
     project:
       # Enable project learnings
@@ -1007,7 +934,6 @@ learnings:
       sources:
         - "grimoires/loa/a2a/compound/learnings.json"
         - "grimoires/loa/feedback/*.yaml"
-
   # -------------------------------------------------------------------------
   # Query Settings
   # -------------------------------------------------------------------------
@@ -1018,7 +944,6 @@ learnings:
     max_results: 10
     # Deduplicate by content hash across tiers
     deduplicate: true
-
   # -------------------------------------------------------------------------
   # Index Settings
   # -------------------------------------------------------------------------
@@ -1027,7 +952,6 @@ learnings:
     rebuild_on_update: true
     # Index cache directory
     cache_dir: "~/.loa/cache/oracle/loa"
-
 # =============================================================================
 # Upstream Learning Detection (v1.16.0 - Upstream Learning Flow)
 # =============================================================================
@@ -1036,29 +960,22 @@ learnings:
 upstream_detection:
   # Master toggle - set to false to disable upstream detection entirely
   enabled: true
-
   # Minimum occurrences (applications) before eligible for upstream
   # Lower values find candidates earlier, higher values require more proof
   min_occurrences: 3
-
   # Minimum success rate (0.0-1.0) for upstream eligibility
   # 0.8 = 80% of applications must be successful
   min_success_rate: 0.8
-
   # Minimum upstream score (0-100) for eligibility
   # Score is weighted: quality(25%) + effectiveness(30%) + novelty(25%) + generality(20%)
   min_upstream_score: 70
-
   # Novelty threshold (0.0-1.0) for duplicate detection via Jaccard similarity
   # Learnings with similarity >= threshold to existing proposals are blocked
   novelty_threshold: 0.7
-
   # Check learnings from last N days during post-retrospective hook
   check_days: 1
-
   # Silent mode - only show candidates, never auto-propose
   silent: true
-
 # =============================================================================
 # Upstream Proposals (v1.16.0 - Upstream Learning Flow)
 # =============================================================================
@@ -1066,10 +983,8 @@ upstream_detection:
 upstream_proposals:
   # Target repository for upstream proposals
   target_repo: "0xHoneyJar/loa"
-
   # GitHub label for learning proposals
   label: "learning-proposal"
-
   # -------------------------------------------------------------------------
   # Anonymization Settings
   # -------------------------------------------------------------------------
@@ -1080,16 +995,13 @@ upstream_proposals:
     validate: true
     # Strict mode - fail if validation finds potential PII
     strict: false
-
   # -------------------------------------------------------------------------
   # Rejection Handling
   # -------------------------------------------------------------------------
   # Days to wait before resubmitting a rejected proposal
   rejection_cooldown_days: 90
-
   # Auto-check proposal status on session start
   auto_check_status: false
-
 # =============================================================================
 # Autonomous Agent Orchestration (v1.11.0)
 # =============================================================================
@@ -1103,7 +1015,6 @@ autonomous_agent:
   operator:
     # Detection mode: auto | human | ai
     type: auto
-
     # AI-specific configuration (when operator=ai detected)
     ai_config:
       # Auto-wrap skills with /autonomous
@@ -1114,7 +1025,6 @@ autonomous_agent:
       require_audit_before_pr: true
       # Must pass audit before deploy
       require_audit_before_deploy: true
-
   # -------------------------------------------------------------------------
   # Quality Thresholds
   # -------------------------------------------------------------------------
@@ -1122,13 +1032,11 @@ autonomous_agent:
   audit_threshold: 4
   # Maximum remediation loops before escalation
   max_remediation_loops: 3
-
   # -------------------------------------------------------------------------
   # Deployment Settings
   # -------------------------------------------------------------------------
   # Require human approval for deployment
   require_human_deploy_approval: true
-
   # -------------------------------------------------------------------------
   # Attention Budget (Tokens)
   # -------------------------------------------------------------------------
@@ -1140,7 +1048,6 @@ autonomous_agent:
     accumulated: 5000
     # Session total before checkpoint & yield
     session_total: 15000
-
   # -------------------------------------------------------------------------
   # Context Management
   # -------------------------------------------------------------------------
@@ -1151,7 +1058,6 @@ autonomous_agent:
     hard_limit_tokens: 150000
     # Write checkpoint after each phase
     checkpoint_after_each_phase: true
-
   # -------------------------------------------------------------------------
   # Feedback Capture (Issue #48)
   # -------------------------------------------------------------------------
@@ -1170,7 +1076,6 @@ autonomous_agent:
       - friction
       - pattern
       - improvement
-
   # -------------------------------------------------------------------------
   # PRD Iteration (Issue #29)
   # -------------------------------------------------------------------------
@@ -1185,7 +1090,6 @@ autonomous_agent:
     auto_recommend_refine: true
     # Block autonomous execution on major gaps
     block_on_major_gaps: true
-
   # -------------------------------------------------------------------------
   # Structured Notes (Issue #23)
   # -------------------------------------------------------------------------
@@ -1205,7 +1109,6 @@ autonomous_agent:
     auto_cleanup: false
     # Archive location for cleaned notes
     archive_dir: grimoires/loa/archive/notes/
-
 # =============================================================================
 # Feedback Routing (v1.11.0 - Issue #81)
 # =============================================================================
@@ -1220,14 +1123,12 @@ feedback:
     require_confirmation: true
     # Create tracking issue in loa repo for non-loa feedback (future)
     cross_reference: false
-
   # Repository mapping
   repos:
     framework: "0xHoneyJar/loa"
     constructs: "0xHoneyJar/loa-constructs"
     forge: "0xHoneyJar/forge"
-    project: "${GITHUB_REPOSITORY}"  # Current repo
-
+    project: "${GITHUB_REPOSITORY}" # Current repo
   # Label configuration
   labels:
     # Don't fail if labels don't exist
@@ -1236,7 +1137,6 @@ feedback:
     default:
       - "feedback"
       - "user-report"
-
 # =============================================================================
 # Update-Loa Branch Testing (v1.11.0 - Issue #91)
 # =============================================================================
@@ -1256,7 +1156,6 @@ update_loa:
     test_branch_prefix: "test/loa-"
     # State file location
     state_file: ".loa/branch-testing.json"
-
 # =============================================================================
 # Effort Parameter (v1.13.0 - Issue #94)
 # =============================================================================
@@ -1277,7 +1176,6 @@ effort:
   # - medium: Balanced quality/cost (~8,000-16,000 budget_tokens) [RECOMMENDED]
   # - high: Maximum reasoning depth (~24,000-32,000 budget_tokens)
   default_level: medium
-
   # Budget token ranges for each effort level (runtime uses these)
   # NOTE: Gaps between ranges (4K-8K, 16K-24K) are intentional separation zones.
   # Skills wanting intermediate budgets should use the higher level.
@@ -1292,7 +1190,6 @@ effort:
     high:
       min: 24000
       max: 32000
-
   # Per-skill effort overrides
   # Skills can declare their recommended effort in SKILL.md frontmatter
   per_skill:
@@ -1310,7 +1207,6 @@ effort:
     discovering-requirements: medium
     # Executive translation is simpler summarization
     translating-for-executives: low
-
   # AI operator adjustment (when autonomous_agent.operator.type = ai)
   # AI operators may use lower effort by default to conserve tokens
   ai_operator_adjustment:
@@ -1318,7 +1214,6 @@ effort:
     # Reduce effort level by this amount for AI operators
     # 0 = no reduction, 1 = reduce by one level, 2 = always use low
     reduction: 0
-
 # =============================================================================
 # Context Editing Protocol (v1.13.0 - Issue #95)
 # =============================================================================
@@ -1336,37 +1231,31 @@ effort:
 context_editing:
   # Master toggle for context editing protocol
   enabled: true
-
   # Trigger compaction when context reaches this % of limit
   # Runtime should signal CONTEXT_NEAR_LIMIT when this threshold is reached
   compact_threshold_percent: 80
-
   # Minimum turns to preserve (recent context stays intact)
   preserve_recent_turns: 5
-
   # What to clear (priority order, lowest priority cleared first)
   clear_targets:
-    - stale_tool_results        # Old tool call results
-    - completed_phase_details   # Details from finished phases
-    - superseded_file_reads     # Files that were re-read with newer content
-    - intermediate_outputs      # Temporary/intermediate results
-    - verbose_debug             # Debug logs and verbose output
-
+    - stale_tool_results # Old tool call results
+    - completed_phase_details # Details from finished phases
+    - superseded_file_reads # Files that were re-read with newer content
+    - intermediate_outputs # Temporary/intermediate results
+    - verbose_debug # Debug logs and verbose output
   # Phase-based clearing triggers
   # Clear after these phases complete (for autonomous agent)
   clear_after_phases:
-    - initialization    # Phase 1: After init complete
-    - implementation    # Phase 5: After code written
-    - testing           # Phase 6: After tests pass
-
+    - initialization # Phase 1: After init complete
+    - implementation # Phase 5: After code written
+    - testing # Phase 6: After tests pass
   # Artifacts to always preserve (never clear)
   preserve_artifacts:
-    - trajectory_events         # Audit trail
-    - quality_gate_results      # Gate decisions
-    - decision_records          # Architecture decisions
-    - notes_session_continuity  # Recovery anchor
-    - active_beads              # Current task state
-
+    - trajectory_events # Audit trail
+    - quality_gate_results # Gate decisions
+    - decision_records # Architecture decisions
+    - notes_session_continuity # Recovery anchor
+    - active_beads # Current task state
   # Runtime integration signals
   # These are hints for runtime implementations
   runtime_signals:
@@ -1376,7 +1265,6 @@ context_editing:
     compaction_complete: "COMPACTION_COMPLETE"
     # Token threshold percentage that triggers the signal
     signal_threshold_percent: 80
-
 # =============================================================================
 # Skills Configuration (v1.14.0 - Issue #97)
 # =============================================================================
@@ -1389,12 +1277,10 @@ skills:
   # Master toggle for deferred loading (disabled by default)
   # When true, skills with defer_loading: true are loaded on-demand
   defer_loading: false
-
   # Skills that are NEVER deferred (always loaded)
   always_load:
     - autonomous-agent
     - run-mode
-
   # Semantic categories for skill search
   # Used by future skill search implementation
   categories:
@@ -1416,7 +1302,6 @@ skills:
       - run-mode
       - riding-codebase
       - mounting-framework
-
 # =============================================================================
 # Memory Schema (v1.13.0 - Issue #96)
 # =============================================================================
@@ -1434,10 +1319,8 @@ skills:
 memory_schema:
   # Master toggle for formalized memory schema
   enabled: true
-
   # Storage directory for memory files
   storage_dir: grimoires/loa/memory
-
   # Memory categories with their characteristics
   categories:
     # Stable facts about the project (rarely change)
@@ -1449,15 +1332,15 @@ memory_schema:
     decision:
       ttl: permanent
       confidence_required: 0.9
-      storage_file: decisions.yaml  # Already exists, formalize it
+      storage_file: decisions.yaml # Already exists, formalize it
     # Extracted patterns from experience
     learning:
-      ttl: 90d  # Learnings can become stale
+      ttl: 90d # Learnings can become stale
       confidence_required: 0.7
       storage_file: learnings.yaml
     # Error-solution pairs for debugging
     error:
-      ttl: 30d  # Errors are context-specific
+      ttl: 30d # Errors are context-specific
       confidence_required: 0.6
       storage_file: errors.yaml
     # User/project preferences
@@ -1465,7 +1348,6 @@ memory_schema:
       ttl: permanent
       confidence_required: 0.5
       storage_file: preferences.yaml
-
   # Auto-capture from existing systems
   auto_capture:
     # Capture from decision protocol (PR #86)
@@ -1474,7 +1356,6 @@ memory_schema:
     errors: true
     # Capture from compound learning (PR #67)
     learnings: true
-
   # Retrieval settings
   retrieval:
     # Maximum memories to return per query
@@ -1485,7 +1366,6 @@ memory_schema:
     recency_weight: 0.2
     # Integration with oracle queries
     integrate_with_oracle: true
-
   # Lifecycle management
   lifecycle:
     # Auto-archive expired memories
@@ -1496,7 +1376,6 @@ memory_schema:
     check_on_session_start: true
     # Warn before archiving (days before TTL)
     warn_before_archive_days: 7
-
 # =============================================================================
 # Prompt Enhancement (v1.14.0 - Issue #108, #109)
 # =============================================================================
@@ -1505,44 +1384,42 @@ memory_schema:
 prompt_enhancement:
   # Master toggle - set to false to disable prompt enhancement
   enabled: true
-
   # Quality score threshold for auto-enhancement (0-10)
   # Prompts scoring below this are automatically enhanced
   auto_enhance_threshold: 4
-
   # Show quality analysis in output (before/after scores, components)
   show_analysis: true
-
   # Maximum refinement iterations (feedback loop)
   max_refinement_iterations: 3
-
   # Path to custom templates (overrides defaults)
   # custom_templates_path: ".claude/overrides/templates/prompts/"
 
   # Task types to enable (empty array = all enabled)
   enabled_task_types: []
-
   # Middleware mode: enhance before other skills
   middleware:
     # Enable middleware mode (enhance prompts before skill execution)
     enabled: false
     # Skills to exclude from middleware enhancement
     exclude_skills:
-      - "enhancing-prompts"  # Prevent recursion
-      - "run-mode"           # Don't enhance autonomous mode
-
+      - "enhancing-prompts" # Prevent recursion
+      - "run-mode" # Don't enhance autonomous mode
 # =============================================================================
 # Flatline Protocol (v1.17.0 - Issue #29)
 # =============================================================================
 # Multi-model adversarial review for planning documents
 # Uses Claude Opus 4.5 + GPT-5.2 for cross-validation with consensus extraction
 flatline_protocol:
+  code_review:
+    # Cross-model adversarial dissent at /review-sprint Phase 2.5 (enabled 2026-07-01 by operator)
+    enabled: true
+    model: "codex-headless"   # cheval CLI route — never raw API key (operator doctrine 2026-06-07)
+    budget_cents: 150
+    timeout_seconds: 120
   # Master toggle - set to false to disable Flatline Protocol
   enabled: true
-
   # Auto-trigger after planning commands (plan-and-analyze, architect, sprint-plan)
   auto_trigger: true
-
   # Models for adversarial review
   #
   # Operator decision 2026-05-25 PM: use *-headless aliases for ALL THREE providers.
@@ -1556,10 +1433,21 @@ flatline_protocol:
   # now (they merged the general + code lineages), so no codex-specialized variant
   # needed in the alias chain.
   models:
-    primary: "claude-headless"
-    secondary: "codex-headless"
-    tertiary: "gemini-headless"
-
+    # 2026-07-04 operator: best model is gpt-5.5 (5.2 outdated) AND "I use headless
+    # as well" — codex-headless wraps gpt-5.5 via the codex CLI session, so it is
+    # both directives at once. All-headless chain per the 2026-05-25 doctrine above.
+    # Chain is PROVEN-BY-DISPATCH (real OK round-trips, 2026-07-04), not readiness-
+    # asserted. Four voices verified: codex, grok, cursor, claude(fable). Chain
+    # ordered for cross-family dissent (openai → xai → cursor); claude-headless
+    # stays out — same family as the runtime, dedicated to Bridgebuilder/fable.
+    # Dead routes, excluded until repaired:
+    #   gemini-headless — gemini CLI deprecated by Google; returns as Antigravity
+    #                     (`agy` installed locally) once loa#1109 AgyHeadlessAdapter
+    #                     merges upstream and we /update-loa
+    #   openai:gpt-5.5  — API quota exhausted; GOOGLE_API_KEY invalid (400)
+    primary: "codex-headless"
+    secondary: "grok-headless"
+    tertiary: "cursor-headless"
   # Consensus thresholds (0-1000 scale)
   thresholds:
     # Both models >700 = auto-integrate improvement
@@ -1570,13 +1458,11 @@ flatline_protocol:
     low_value: 400
     # Skeptic concern >700 = blocker, must address
     blocker: 700
-
   # Phase-specific toggles
   phases:
     prd: true
     sdd: true
     sprint: true
-
   # Budget controls
   budget:
     # Maximum tokens per review phase
@@ -1587,7 +1473,6 @@ flatline_protocol:
     hard_limit_cents: 300
     # Block if budget exceeded (vs warn and continue)
     block_on_exceed: false
-
   # Knowledge retrieval (Two-Tier Hub)
   knowledge:
     # Local grimoire search (Tier 1 - P0)
@@ -1601,16 +1486,18 @@ flatline_protocol:
     # Requires Python 3.10+, Patchright, and one-time Google authentication
     # Setup: python3 .claude/skills/flatline-knowledge/resources/notebooklm-query.py --setup-auth
     notebooklm:
+      # Re-enable to TRUE once notebooklm-query.py is patched (modal-dismiss +
+      # domcontentloaded + refreshed response selectors). Broken script = 90s
+      # penalty per flatline before local fallback. notebook_id is ready.
       enabled: false
       # NotebookLM notebook ID to query (from URL)
-      notebook_id: ""
+      notebook_id: "ac1d0292-5165-4495-ad0e-2df58e73bf57"
       # Query timeout in milliseconds
       timeout_ms: 30000
       # Run browser in headless mode (set false for debugging)
       headless: true
       # Custom auth directory (optional, default: ~/.claude/notebooklm-auth/)
       # auth_dir: ""
-
 # =============================================================================
 # Run Bridge (v1.35.0)
 # =============================================================================
@@ -1641,7 +1528,6 @@ run_bridge:
     categories:
       - mibera
       - neuromancer
-
 # =============================================================================
 # Spiral — autopoietic multi-cycle meta-orchestrator (RFC-060)
 # =============================================================================
@@ -1657,33 +1543,32 @@ run_bridge:
 #       be exceeded by these values.
 spiral:
   enabled: true
-  default_max_cycles: 3            # safety clamp: 50
-  budget_cents: 6000               # $60 total ceiling (safety clamp: $100)
-  wall_clock_seconds: 28800        # 8h (safety clamp: 24h)
-  max_budget_per_cycle_usd: 20     # ≥ phase-budget sum + bridgebuilder headroom
-  max_total_budget_usd: 60
-  flatline:                        # kaironic convergence — halt when findings-rate plateaus
+  default_max_cycles: 3 # safety clamp: 50
+  budget_cents: 8000 # $80 total ceiling (safety clamp: $100) — raised 2026-07-05: $20/cycle starved REVIEW on the zero-operator-fulfill cycle ($22 > $17 gate floor)
+  wall_clock_seconds: 28800 # 8h (safety clamp: 24h)
+  max_budget_per_cycle_usd: 35 # ≥ phase-budget sum + bridgebuilder headroom (was 20; impl alone hit $8 and fix loops overshot the review reserve)
+  max_total_budget_usd: 80
+  flatline: # kaironic convergence — halt when findings-rate plateaus
     min_new_findings_per_cycle: 3
     consecutive_low_cycles: 2
   seed:
-    mode: degraded                 # prior-cycle sidecar; vision-registry full-seed optional
+    mode: degraded # prior-cycle sidecar; vision-registry full-seed optional
   harness:
-    executor_model: sonnet         # planning + implementation
-    advisor_model: opus            # review + audit judgment
+    executor_model: sonnet # planning + implementation
+    advisor_model: opus # review + audit judgment
     max_phase_retries: 3
     planning_budget_usd: 2
-    implement_budget_usd: 8        # real work needs headroom (default 5 was tight)
+    implement_budget_usd: 12 # real work needs headroom (was 8 — the zero-operator-fulfill impl hit the cap exactly)
     review_budget_usd: 3
-    audit_budget_usd: 3            # reserved — never starved by earlier phases
+    audit_budget_usd: 3 # reserved — never starved by earlier phases
     bb_fix_budget_usd: 3
     bb_max_iterations: 3
     discovery_timeout_sec: 1200
     architecture_timeout_sec: 1200
     planning_timeout_sec: 900
-    pipeline_profile: standard     # "full" adds gpt-5.3-codex + gemini (more cost)
+    pipeline_profile: standard # "full" adds gpt-5.3-codex + gemini (more cost)
   step_timeouts:
-    simstim_sec: 7200              # 2h per embedded cycle
-
+    simstim_sec: 7200 # 2h per embedded cycle
 # =============================================================================
 # Agent Teams (v1.39.0)
 # =============================================================================
@@ -1693,7 +1578,6 @@ spiral:
 agent_teams:
   # auto: use if available | true: require | false: disable
   enabled: true
-
 # =============================================================================
 # Behavior Preferences
 # =============================================================================
@@ -1701,3 +1585,39 @@ preferences:
   auto_bead_on_review: true
   require_security_audit: true
   confirm_app_writes: true
+# =============================================================================
+# Bridgebuilder — operational-readiness PR review (2026-06-11 operator directive)
+# =============================================================================
+# CRITICAL-PR doctrine: substantive PRs (runtime routing, emitters, auth,
+# schemas, cross-repo merges) get MORE EYES — the FAGAN cross-model council
+# for code defects, AND Bridgebuilder for operational readiness / educational
+# depth. INTENT: BB on the top intelligence tier (fable) via the operator's
+# subscription — pending the operator-gated canonical routing design
+# (fable through cheval's claude-fable-5 + a model-aware headless adapter;
+# the forked claude-fable-headless entry was reverted, loa#1005). Until then
+# BB stays on claude-headless.
+bridgebuilder:
+  enabled: true
+  # 2026-07-04 operator: Fable for BB. claude-headless already dispatches fable —
+  # model-config.yaml pins `cli_model: fable` (2026-06-11 decision), so this IS
+  # the fable-tier intent, live via the operator's subscription. Dispatch-proven
+  # 2026-07-04 (the 2026-06-29 "deadlock" observation did not reproduce).
+  model: "claude-headless"
+
+# =============================================================================
+# Simstim — HITL accelerated development workflow (enabled for the
+# shadow-mode-ledger build cycle; worktree-local on feat/shadow-mode-ledger)
+# =============================================================================
+simstim:
+  enabled: true
+
+# =============================================================================
+# Post-PR validation — Bridgebuilder loop closure (enabled 2026-07-04 for the
+# full-autonomy posture; BB now routes via codex-headless, proven by dispatch).
+# CRITICAL/BLOCKER findings queue to .run/bridge-pending-bugs.jsonl for /bug;
+# HIGH logs to trajectory; PRAISE queues for lore mining.
+# =============================================================================
+post_pr_validation:
+  phases:
+    bridgebuilder_review:
+      enabled: true

@@ -125,17 +125,44 @@ const ComposesWithEntry = Schema.Struct({
   required: Schema.optionalWith(Schema.Boolean, { default: () => true }),
 });
 
+// Key pattern: two branches.
+//   1. ^[a-z][a-z0-9-]*$        — building slug (will tighten to *-api in #234 sub-step B)
+//   2. ^outer:[a-z][a-z0-9-]+$  — outer-dep (constructs, upstream substrates)
+// See loa-freeside#235 (mibera-codex-api as the first transition instance).
+const ComposesWithKeyPattern = /^([a-z][a-z0-9-]*|outer:[a-z][a-z0-9-]+)$/;
+
 const ComposesWith = Schema.Record({
-  key: Schema.String.pipe(
-    Schema.pattern(/^[a-z][a-z0-9-]*$/, {
-      message: () =>
-        "composes_with keys must be lowercase-kebab building slugs (e.g., sonar-api)",
-    }),
-  ),
+  // NOTE — DO NOT add Schema.pattern to this key. `Schema.Record({key: Schema.pattern(...)})`
+  // SILENTLY DROPS keys that fail the pattern instead of failing validation
+  // (Effect 3.21 behavior, verified 2026-05-26 during loa-freeside#234/#235 work).
+  // Key validation is enforced by the Schema.filter on the whole record below.
+  key: Schema.String,
   value: ComposesWithEntry,
-}).annotations({
+}).pipe(
+  Schema.filter(
+    (record) => {
+      const invalid = Object.keys(record).filter(
+        (k) => !ComposesWithKeyPattern.test(k),
+      );
+      if (invalid.length === 0) return true;
+      return `composes_with keys must be lowercase-kebab building slugs (e.g., sonar-api) OR an outer-dep with the outer: prefix (e.g., outer:mibera-codex). Invalid: ${invalid.join(", ")}`;
+    },
+    {
+      // Mirror the runtime filter into JSON Schema so non-Effect downstream
+      // validators (Ajv, ajv-formats, etc.) reject the same invalid keys.
+      // Without this, Effect's JSON Schema export drops the refinement and
+      // BeaconV3JsonSchema would accept inner:mibera-codex etc.
+      jsonSchema: {
+        propertyNames: {
+          type: "string",
+          pattern: ComposesWithKeyPattern.source,
+        },
+      },
+    },
+  ),
+).annotations({
   identifier: "ComposesWith",
-  description: "Sibling building composition declarations (per ADR-007 §D-4)",
+  description: "Sibling building composition declarations (per ADR-007 §D-4). The outer: prefix admits non-cell dependencies (constructs · upstream data substrates) until their *-api surface ships — see loa-freeside#235 (mibera-codex-api as the first instance).",
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -165,6 +192,18 @@ const AcvpInvariant = Schema.Struct({
   }),
   private: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
     description: "If true, invariant omitted from public federation manifest (per D-8)",
+  }),
+  status: Schema.optionalWith(Schema.Literal("active", "aspirational"), {
+    default: () => "active",
+  }).annotations({
+    description:
+      "active = backed by a passing proof + correct runtime binding; aspirational = declared-but-not-yet-backed (MUST appear dated in .freeside/acvp-aspirational-allowlist.yaml — the binding validator warns w/ countdown, errors at expiry). Default 'active' is load-bearing: a missing status means 'claims to be backed' (default-FAIL on a missing proof), never an aspirational free pass.",
+  }),
+  runtime_class: Schema.optional(
+    Schema.Literal("envelope", "storage", "construct-local"),
+  ).annotations({
+    description:
+      "Disambiguates the audit_replay binding (ACVP-OD): 'storage' = Postgres append-only (auth/identity); 'envelope' = events re-chain (sonar); 'construct-local' = no I/O. Optional; the binding validator's ID->class table is the default.",
   }),
 });
 

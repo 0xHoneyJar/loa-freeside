@@ -20,6 +20,10 @@ class CompletionRequest:
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[str] = None  # "auto" | "required" | "none"
     metadata: Optional[Dict[str, Any]] = None  # agent, trace_id, sprint_id (not sent to provider)
+    # cycle-114 FR-2: reasoning-depth control. Serialized as output_config.effort
+    # by adapters that support it (Anthropic Opus 4.5+/Sonnet 4.6). NEVER mapped
+    # to thinking.budget_tokens — Opus 4.7/4.8 reject that with HTTP 400.
+    effort: Optional[str] = None  # "low" | "medium" | "high" | "xhigh" | "max"
 
 
 @dataclass
@@ -47,6 +51,10 @@ class Usage:
     input_tokens: int
     output_tokens: int
     reasoning_tokens: int = 0
+    # cycle-114 FR-12: prompt-cache token telemetry (surfacing only). Names mirror
+    # Anthropic's API + claude_headless_adapter. Default 0 when absent (NFR-2).
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
     source: str = "actual"  # "actual" | "estimated"
 
 

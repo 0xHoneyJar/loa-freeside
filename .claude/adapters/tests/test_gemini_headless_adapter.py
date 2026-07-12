@@ -259,7 +259,7 @@ class TestPromptFlattening:
 class TestJsonParsing:
     def test_parses_response_and_stats(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
             result = adapter.complete(_make_request())
         assert result.content == "pong"
@@ -289,7 +289,7 @@ class TestJsonParsing:
             }
         )
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(stats_under_alt)
             result = adapter.complete(_make_request())
         assert result.usage.input_tokens == 100
@@ -298,7 +298,7 @@ class TestJsonParsing:
     def test_missing_stats_yields_estimated_source(self):
         no_stats = json.dumps({"session_id": "x", "response": "ok"})
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(no_stats)
             result = adapter.complete(_make_request())
         assert result.content == "ok"
@@ -315,7 +315,7 @@ class TestJsonParsing:
             }
         )
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(with_warnings)
             result = adapter.complete(_make_request())
         assert result.metadata.get("warnings") == ["some non-fatal warning", "another"]
@@ -335,7 +335,7 @@ class TestJsonParsing:
             }
         )
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(with_cached)
             result = adapter.complete(_make_request())
         assert result.metadata.get("cached_tokens") == 80
@@ -351,7 +351,7 @@ class TestErrorClassification:
         adapter = GeminiHeadlessAdapter(_make_config())
         # gemini may exit non-zero AND emit JSON error — verify we surface the
         # structured diagnostic.
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _fail_proc(41, stdout=AUTH_ERROR_JSON)
             with pytest.raises(ConfigError) as exc_info:
                 adapter.complete(_make_request())
@@ -359,21 +359,21 @@ class TestErrorClassification:
 
     def test_quota_error_raises_rate_limit(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _fail_proc(8, stdout=QUOTA_ERROR_JSON)
             with pytest.raises(RateLimitError):
                 adapter.complete(_make_request())
 
     def test_stderr_429_raises_rate_limit(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _fail_proc(1, stderr="HTTP 429 Too Many Requests")
             with pytest.raises(RateLimitError):
                 adapter.complete(_make_request())
 
     def test_generic_failure_raises_provider_unavailable(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _fail_proc(2, stderr="some unexpected internal error")
             with pytest.raises(ProviderUnavailableError) as exc_info:
                 adapter.complete(_make_request())
@@ -381,7 +381,7 @@ class TestErrorClassification:
 
     def test_timeout_raises_provider_unavailable(self):
         adapter = GeminiHeadlessAdapter(_make_config(read_timeout=5.0))
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd=["gemini"], timeout=5)
             with pytest.raises(ProviderUnavailableError) as exc_info:
                 adapter.complete(_make_request())
@@ -389,7 +389,7 @@ class TestErrorClassification:
 
     def test_gemini_not_on_path_raises_config_error(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.side_effect = FileNotFoundError("gemini: command not found")
             with pytest.raises(ConfigError) as exc_info:
                 adapter.complete(_make_request())
@@ -397,7 +397,7 @@ class TestErrorClassification:
 
     def test_unparseable_stdout_raises_provider_unavailable(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc("this is not json at all")
             with pytest.raises(ProviderUnavailableError) as exc_info:
                 adapter.complete(_make_request())
@@ -455,7 +455,7 @@ class TestValidateAndHealth:
 class TestEndToEnd:
     def test_complete_round_trip(self):
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
             result = adapter.complete(
                 _make_request(
@@ -498,7 +498,7 @@ class TestSubprocessEnvFilter:
         monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
         monkeypatch.delenv("LOA_HEADLESS_KEEP_API_KEY", raising=False)
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
             adapter.complete(_make_request())
         kwargs = mock_run.call_args.kwargs
@@ -511,7 +511,7 @@ class TestSubprocessEnvFilter:
         monkeypatch.setenv("PATH", "/test/bin:/usr/bin")
         monkeypatch.setenv("HOME", "/test/home")
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
             adapter.complete(_make_request())
         env = mock_run.call_args.kwargs.get("env", {})
@@ -523,12 +523,98 @@ class TestSubprocessEnvFilter:
         monkeypatch.setenv("GEMINI_API_KEY", "test-gemini")
         monkeypatch.setenv("LOA_HEADLESS_KEEP_API_KEY", "1")
         adapter = GeminiHeadlessAdapter(_make_config())
-        with patch("loa_cheval.providers.gemini_headless_adapter.subprocess.run") as mock_run:
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
             mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
             adapter.complete(_make_request())
         env = mock_run.call_args.kwargs.get("env", {})
         assert env.get("GOOGLE_API_KEY") == "test-google"
         assert env.get("GEMINI_API_KEY") == "test-gemini"
+
+    # sprint-bug-173 / #894: auth-mode-selector env vars (GOOGLE_GENAI_USE_*)
+    # push the gemini CLI off the ~/.gemini/settings.json OAuth path onto
+    # rate-limited Vertex / GCA API auth. They must be scrubbed by default,
+    # and preserved under the LOA_HEADLESS_KEEP_API_KEY=1 opt-out (parity
+    # with GOOGLE_API_KEY / GEMINI_API_KEY semantics).
+    def test_genai_mode_selectors_scrubbed_by_default(self, monkeypatch):
+        monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+        monkeypatch.setenv("GOOGLE_GENAI_USE_GCA", "true")
+        monkeypatch.delenv("LOA_HEADLESS_KEEP_API_KEY", raising=False)
+        adapter = GeminiHeadlessAdapter(_make_config())
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
+            mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
+            adapter.complete(_make_request())
+        kwargs = mock_run.call_args.kwargs
+        assert "env" in kwargs, "subprocess.run must pass explicit env="
+        assert "GOOGLE_GENAI_USE_VERTEXAI" not in kwargs["env"]
+        assert "GOOGLE_GENAI_USE_GCA" not in kwargs["env"]
+
+    def test_genai_mode_selectors_preserved_under_keep_api_key_opt_in(self, monkeypatch):
+        monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+        monkeypatch.setenv("GOOGLE_GENAI_USE_GCA", "true")
+        monkeypatch.setenv("LOA_HEADLESS_KEEP_API_KEY", "1")
+        adapter = GeminiHeadlessAdapter(_make_config())
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
+            mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
+            adapter.complete(_make_request())
+        env = mock_run.call_args.kwargs.get("env", {})
+        assert env.get("GOOGLE_GENAI_USE_VERTEXAI") == "true"
+        assert env.get("GOOGLE_GENAI_USE_GCA") == "true"
+
+    # sprint-bug-173 cross-model adversarial review (DISS-001) caught two
+    # additional auth-mode selectors from gemini-cli's getAuthTypeFromEnv()
+    # that dig-search.ts did NOT scrub:
+    #   - GOOGLE_GEMINI_BASE_URL → AuthType.GATEWAY
+    #   - GEMINI_CLI_USE_COMPUTE_ADC → AuthType.COMPUTE_ADC
+    # Verified directly against gemini-cli main branch
+    # (packages/core/src/core/contentGenerator.ts). The same defense-in-depth
+    # pattern (default-scrub + KEEP_API_KEY=1 preserves) applies.
+    def test_gemini_base_url_scrubbed_by_default(self, monkeypatch):
+        monkeypatch.setenv("GOOGLE_GEMINI_BASE_URL", "https://gateway.example.com")
+        monkeypatch.delenv("LOA_HEADLESS_KEEP_API_KEY", raising=False)
+        adapter = GeminiHeadlessAdapter(_make_config())
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
+            mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
+            adapter.complete(_make_request())
+        assert "GOOGLE_GEMINI_BASE_URL" not in mock_run.call_args.kwargs["env"]
+
+    def test_compute_adc_selector_scrubbed_by_default(self, monkeypatch):
+        monkeypatch.setenv("GEMINI_CLI_USE_COMPUTE_ADC", "true")
+        monkeypatch.delenv("LOA_HEADLESS_KEEP_API_KEY", raising=False)
+        adapter = GeminiHeadlessAdapter(_make_config())
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
+            mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
+            adapter.complete(_make_request())
+        assert "GEMINI_CLI_USE_COMPUTE_ADC" not in mock_run.call_args.kwargs["env"]
+
+    def test_all_mode_selectors_preserved_under_keep_api_key_opt_in(self, monkeypatch):
+        # Confirms the docstring contract: KEEP_API_KEY=1 is a full env-bypass,
+        # not a credential-only opt-out. ALL entries in
+        # _HEADLESS_STRIPPED_AUTH_VARS are preserved verbatim.
+        monkeypatch.setenv("GOOGLE_GEMINI_BASE_URL", "https://gateway.example.com")
+        monkeypatch.setenv("GEMINI_CLI_USE_COMPUTE_ADC", "true")
+        monkeypatch.setenv("LOA_HEADLESS_KEEP_API_KEY", "1")
+        adapter = GeminiHeadlessAdapter(_make_config())
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
+            mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
+            adapter.complete(_make_request())
+        env = mock_run.call_args.kwargs.get("env", {})
+        assert env.get("GOOGLE_GEMINI_BASE_URL") == "https://gateway.example.com"
+        assert env.get("GEMINI_CLI_USE_COMPUTE_ADC") == "true"
+
+    def test_cloud_shell_preserved_legitimate_environment_signal(self, monkeypatch):
+        # CLOUD_SHELL=true is set by Google Cloud Shell to mark the runtime.
+        # gemini-cli's getAuthTypeFromEnv() reads it as a COMPUTE_ADC selector,
+        # but operators legitimately running cheval from Cloud Shell expect
+        # COMPUTE_ADC to be the natural auth path. Scrubbing CLOUD_SHELL would
+        # surprise that operator class. Documented decision; this test pins it.
+        monkeypatch.setenv("CLOUD_SHELL", "true")
+        monkeypatch.delenv("LOA_HEADLESS_KEEP_API_KEY", raising=False)
+        adapter = GeminiHeadlessAdapter(_make_config())
+        with patch("loa_cheval.providers.gemini_headless_adapter.run_subprocess_pgkill") as mock_run:
+            mock_run.return_value = _ok_proc(SAMPLE_OK_JSON)
+            adapter.complete(_make_request())
+        env = mock_run.call_args.kwargs.get("env", {})
+        assert env.get("CLOUD_SHELL") == "true"
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import signal
 import socket
+import subprocess
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -469,12 +473,54 @@ def http_post_stream(
 # parent process the CLI falls back to API mode — defeating the headless
 # adapter's purpose. Operators who explicitly want API-mode routing through
 # the CLI opt in via LOA_HEADLESS_KEEP_API_KEY=1.
+#
+# Two sub-classes are scrubbed:
+#   1. Credential vars — the secret itself (ANTHROPIC_API_KEY, OPENAI_API_KEY,
+#      GOOGLE_API_KEY, GEMINI_API_KEY, GOOGLE_APPLICATION_CREDENTIALS).
+#   2. Auth-mode-selector vars — flags that flip the CLI's auth strategy
+#      off the persisted OAuth subscription path even when no credential
+#      is present. For gemini, verified against gemini-cli's
+#      `packages/core/src/core/contentGenerator.ts::getAuthTypeFromEnv()`:
+#        - GOOGLE_GENAI_USE_GCA=true             → AuthType.LOGIN_WITH_GOOGLE
+#        - GOOGLE_GENAI_USE_VERTEXAI=true        → AuthType.USE_VERTEX_AI
+#        - GOOGLE_GEMINI_BASE_URL=<url>          → AuthType.GATEWAY
+#        - GEMINI_CLI_USE_COMPUTE_ADC=true       → AuthType.COMPUTE_ADC
+#      (`CLOUD_SHELL=true` also routes to COMPUTE_ADC but is set by Google
+#      Cloud Shell as a legitimate environment signal; scrubbing it would
+#      surprise operators running cheval from Cloud Shell, so it stays.)
+#      The codex + claude CLIs have no analogous env-var selectors as of
+#      2026-05-20 (sprint-bug-173 audit); their auth-mode is selected by
+#      CLI flags (claude `--bare`) or by file presence (`~/.codex/auth.json`),
+#      not env vars. See KF-013 for the recurring-class taxonomy.
+#
+#      grok (xAI Grok Build CLI): grounded 2026-06-13 by stringing the binary
+#      (grok 0.2.51). It persists OIDC auth in ~/.grok/auth.json (auth_mode:
+#      oidc); an API-key env present in the parent process flips it off that
+#      OAuth path. Two API-key selectors are read by the binary:
+#        - XAI_API_KEY            (the public xAI API key)
+#        - GROK_CODE_XAI_API_KEY  (the grok-code API key — NOT in the brief;
+#                                  surfaced by the explore-first binary scan)
+#      GROK_API_KEY is ALSO scrubbed: the binary does NOT read it today (no
+#      string match), but it is the obvious operator-typo / forward-compat
+#      shape, and scrubbing a non-present var is a no-op. Base-URL overrides
+#      (GROK_GATEWAY_URL / GROK_CLI_CHAT_PROXY_BASE_URL / GROK_MODELS_BASE_URL)
+#      are endpoint redirects, NOT proven auth-MODE selectors, and a custom
+#      auth-provider command (GROK_AUTH_PROVIDER_COMMAND) is a legitimate
+#      managed-auth path — left intact (same reasoning that KEEPS CLOUD_SHELL
+#      for gemini).
 _HEADLESS_STRIPPED_AUTH_VARS: tuple = (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "GOOGLE_API_KEY",
     "GEMINI_API_KEY",
     "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "GOOGLE_GENAI_USE_GCA",
+    "GOOGLE_GEMINI_BASE_URL",
+    "GEMINI_CLI_USE_COMPUTE_ADC",
+    "XAI_API_KEY",
+    "GROK_CODE_XAI_API_KEY",
+    "GROK_API_KEY",
 )
 
 
@@ -482,8 +528,12 @@ def build_headless_subprocess_env(parent_env=None) -> Dict[str, str]:
     """Return an env dict suitable for headless adapter subprocess.run(env=...).
 
     Default: copy parent env (or os.environ if parent_env is None) and remove
-    auth-class vars per `_HEADLESS_STRIPPED_AUTH_VARS`. Operator opt-out via
-    `LOA_HEADLESS_KEEP_API_KEY=1` preserves the auth vars verbatim.
+    every entry in `_HEADLESS_STRIPPED_AUTH_VARS` — both the credential
+    sub-class (e.g., GOOGLE_API_KEY) and the auth-mode-selector sub-class
+    (e.g., GOOGLE_GENAI_USE_VERTEXAI). Operator opt-out via
+    `LOA_HEADLESS_KEEP_API_KEY=1` preserves ALL entries verbatim
+    (credentials AND mode-selectors — the opt-in is a full env-bypass,
+    not credential-only).
 
     The kwarg is ALWAYS supposed to be passed explicitly by callers — even
     when no key needs stripping. The headless adapter's contract is
@@ -502,6 +552,238 @@ def build_headless_subprocess_env(parent_env=None) -> Dict[str, str]:
     for var in _HEADLESS_STRIPPED_AUTH_VARS:
         base.pop(var, None)
     return base
+
+
+# --- Headless subprocess with process-group kill (#982 / sprint-bug-196) ----
+
+# Per-stream cap for captured CLI output. Mirrors doctor.py's C2-closure
+# rationale: a runaway/malicious CLI flooding stdout must not buffer unbounded
+# in memory. 64 MiB comfortably exceeds any legitimate completion payload.
+_PGKILL_MAX_BYTES_DEFAULT = 64 * 1024 * 1024
+
+
+class SubprocessOutputCapExceeded(RuntimeError):
+    """A headless CLI exceeded the per-stream output byte cap.
+
+    Sprint-bug-196 iteration-1 (cross-model B2): a capped-but-successful
+    CompletedProcess would let a truncated JSONL prefix parse as a valid,
+    silently incomplete model answer. Exceeding the cap is a provider
+    failure — adapters convert this to ProviderUnavailableError so the
+    fallback chain advances. run_subprocess_pgkill kills the process group
+    before this propagates.
+    """
+
+
+def _pgkill_stdin_writer(proc: subprocess.Popen, payload: bytes) -> None:
+    """Feed pre-encoded `input=` on a side thread so the read loop drains.
+
+    Writing a large prompt (> pipe buffer, ~64 KiB) from the main thread
+    before reading would deadlock against a child that writes output while
+    consuming stdin. BrokenPipe means the child exited or closed stdin
+    early — subprocess.run swallows that too. ValueError covers the
+    timeout-path race where run_subprocess_pgkill's finally block closes
+    proc.stdin while this thread is mid-write ("I/O operation on closed
+    file") — without it the daemon thread dumps a traceback onto our
+    stderr, polluting orchestrator diagnostics.
+
+    #1011 delta 1 (salvaged from PR #983, credit @notzerker): the payload
+    arrives as BYTES — encoding happens in the MAIN thread so a lone
+    surrogate raises UnicodeEncodeError immediately instead of being
+    swallowed here as a ValueError subclass, which left stdin open and a
+    stdin-reading CLI waiting for EOF until the full ~610s timeout.
+    """
+    try:
+        proc.stdin.write(payload)
+        proc.stdin.close()
+    except (BrokenPipeError, OSError, ValueError):
+        pass
+
+
+def _pgkill_capture(
+    proc: subprocess.Popen,
+    *,
+    max_bytes: int,
+    timeout_s: float,
+) -> Tuple[bytes, bytes, int]:
+    """Read stdout + stderr with byte-cap and deadline — NEVER proc.communicate().
+
+    Port of doctor.py's _capture_with_byte_cap (cycle-110 C2 closure) to the
+    completion path. communicate() blocks until the pipe write-ends close,
+    which includes any grandchild that inherited them — exactly the #982
+    unbounded-hang mechanism.
+
+    Raises:
+        subprocess.TimeoutExpired: on deadline exceed, or when both pipes are
+            closed but the child (or a pipe-holding descendant) is still
+            running. The caller kills the process group.
+    """
+    import select
+
+    deadline = time.monotonic() + timeout_s
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+    stdout_fd = proc.stdout.fileno() if proc.stdout else -1
+    stderr_fd = proc.stderr.fileno() if proc.stderr else -1
+    open_fds = [fd for fd in (stdout_fd, stderr_fd) if fd >= 0]
+
+    while open_fds:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            # #1011 delta 3: carry partial output — stderr often holds the
+            # CLI's throttle/error message (diagnostics, MODELINV later).
+            raise subprocess.TimeoutExpired(
+                proc.args, timeout_s,
+                output=bytes(stdout_buf), stderr=bytes(stderr_buf),
+            )
+        readable, _, _ = select.select(open_fds, [], [], remaining)
+        if not readable:
+            raise subprocess.TimeoutExpired(
+                proc.args, timeout_s,
+                output=bytes(stdout_buf), stderr=bytes(stderr_buf),
+            )
+        for fd in readable:
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                open_fds.remove(fd)
+                continue
+            if fd == stdout_fd:
+                if len(stdout_buf) + len(chunk) > max_bytes:
+                    # Iter-1 B2: never return truncated output as success —
+                    # the caller kills the process group, adapters convert
+                    # to ProviderUnavailableError (chain advances).
+                    raise SubprocessOutputCapExceeded(
+                        f"stdout exceeded the {max_bytes}-byte cap"
+                    )
+                stdout_buf.extend(chunk)
+            elif fd == stderr_fd:
+                if len(stderr_buf) + len(chunk) > max_bytes:
+                    raise SubprocessOutputCapExceeded(
+                        f"stderr exceeded the {max_bytes}-byte cap"
+                    )
+                stderr_buf.extend(chunk)
+    if proc.poll() is None:
+        # Pipes closed, child still alive — bounded wait, then treat as
+        # timeout so the caller performs the process-group kill (doctor.py
+        # BB iter-1 #907 F-001 closure).
+        try:
+            proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            # #1011 iter-1: wait() raises a FRESH TimeoutExpired without the
+            # captured buffers — re-raise with partial output like the
+            # explicit raise sites.
+            raise subprocess.TimeoutExpired(
+                proc.args, timeout_s,
+                output=bytes(stdout_buf), stderr=bytes(stderr_buf),
+            ) from None
+    rc = proc.returncode
+    if rc is None:
+        raise subprocess.TimeoutExpired(
+            proc.args, timeout_s,
+            output=bytes(stdout_buf), stderr=bytes(stderr_buf),
+        )
+    return bytes(stdout_buf), bytes(stderr_buf), rc
+
+
+def run_subprocess_pgkill(
+    cmd: List[str],
+    *,
+    input: Optional[str] = None,
+    timeout: float,
+    env: Optional[Dict[str, str]] = None,
+    max_bytes: int = _PGKILL_MAX_BYTES_DEFAULT,
+    cwd: Optional[str] = None,
+) -> subprocess.CompletedProcess:
+    """Drop-in for subprocess.run(capture_output=True, text=True) that kills
+    the WHOLE process tree on timeout.
+
+    Closes #982: subprocess.run's timeout path kills only the immediate
+    child. An agentic CLI's grandchildren (1) survive as orphans, still
+    consuming the rate-limited subscription, and (2) hold the inherited
+    stdout/stderr write-ends, so run()'s post-kill communicate() drain blocks
+    until they exit — the observed unbounded hang with no fallback-chain
+    advance. doctor.py shipped the correct pattern (cycle-110) on the
+    health-probe path only; this is that pattern as a shared completion-path
+    helper.
+
+    Contract parity with the subprocess.run call shape it replaces:
+    returns CompletedProcess[str]; raises subprocess.TimeoutExpired on
+    deadline (after SIGKILLing the process group) and FileNotFoundError when
+    cmd[0] is absent; `input=` is fed without large-prompt deadlock; stdin is
+    DEVNULL when `input=` is not given. Divergence from subprocess.run:
+    output beyond max_bytes raises SubprocessOutputCapExceeded (group killed
+    first) instead of buffering unbounded — truncated output must never
+    masquerade as a successful completion.
+
+    Known limitation (shared with doctor.py's probe path): killpg reaps only
+    descendants that remain in the child's process group. A CLI that
+    double-forks + setsid escapes the group and survives — acceptable for
+    the known agentic CLIs, which do not daemonize their workers.
+
+    `cwd=` runs the child in the given directory (subprocess.Popen
+    passthrough) — used by adapters that confine the CLI to an isolated
+    empty workspace as part of an untrusted-prompt defense (cursor-headless).
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        # The child leads its own process group so one killpg reaps the
+        # entire CLI tree (start_new_session ⇒ setsid in the child).
+        start_new_session=True,
+        bufsize=0,
+        close_fds=True,
+        env=env,
+        cwd=cwd,
+    )
+    try:
+        if input is not None:
+            # #1011 delta 1: encode HERE (main thread) — UnicodeEncodeError
+            # propagates through the except-BaseException teardown below,
+            # reaping the just-spawned child instead of burning the timeout.
+            payload = input.encode("utf-8")
+            threading.Thread(
+                target=_pgkill_stdin_writer, args=(proc, payload), daemon=True
+            ).start()
+        stdout_b, stderr_b, rc = _pgkill_capture(
+            proc, max_bytes=max_bytes, timeout_s=timeout
+        )
+    except BaseException:
+        # Every post-Popen failure — deadline, injected error, KeyboardInterrupt —
+        # tears down the process group. ProcessLookupError-safe (C6 pattern).
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            # #1011 delta 2: EPERM (e.g. a setuid descendant joined the
+            # group) must not replace the in-flight exception — fall back
+            # to killing the direct child.
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    finally:
+        for stream in (proc.stdout, proc.stderr, proc.stdin):
+            if stream:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+    return subprocess.CompletedProcess(
+        cmd,
+        rc,
+        stdout_b.decode("utf-8", errors="replace"),
+        stderr_b.decode("utf-8", errors="replace"),
+    )
 
 
 def estimate_tokens(messages: List[Dict[str, Any]]) -> int:

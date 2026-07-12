@@ -1,59 +1,71 @@
+---
+source_type: ai-autogen
+use_label: usable
+read_state: read
+as_of: 2026-07-06
+generated_by: /ride reality+ground-truth refresh
+supersedes:
+  previous_generated_at: 2026-05-18
+  previous_status: CORPSE (monolith capture, quarantined by governance-doctor.sh)
+note: >-
+  Refreshed to current federation truth. For LIVE cell runtime state, still probe
+  packages/freeside-registry/registry.yaml + `freeside-cli doctor --remote`.
+---
+
 # loa-freeside Reality Index
 
-> Generated: 2026-05-18 by /ride | Branch: feat/mature-freeside-operator
-> Token-optimized routing hub. Use `/reality <topic>` to fetch specific files.
+> Generated 2026-07-06 by /ride | Branch: feat/spiral-spiral-20260706-359e28-cycle-1
+> Token-optimized routing hub. A **dual-concern hexagonal federation** (ADR-007/009).
 
-## Stats
+## Stats (current)
 
-- **Source files**: ~2,800+ TypeScript + Rust + Lua + SQL
-- **Lines of code**: ~360K (themes/sietch 182K + apps 44K + packages 116K + infra/tests)
-- **Workspace packages**: 10 (`packages/{adapters,auth-module,cli,core,gaib-cli,routes,sandbox,services,shared}` + `themes/sietch`)
-- **Adapters**: 9 subdomains (agent, chain, coexistence, security, storage, synthesis, telemetry, themes, wizard)
-- **API endpoints**: 80+ REST routes in sietch
-- **Discord commands**: 20+ slash commands
-- **Telegram commands**: present (grammy framework)
-- **CLI commands**: 40+ subcommands (gaib)
-- **Database tables**: 8 top-level in sietch schema + 12+ re-exported feature schemas
-- **Drizzle migrations**: 30+ SQL files (latest: 0018_admin_audit_log.sql) + JS-format migrations
-- **Tests**: 528 test files
-- **Env vars**: 181+ unique (Zod-validated)
-- **ADRs**: 8 in `decisions/`
-- **Worlds in production**: 4 (rektdrop, mibera, apdao, score-api)
+- **Workspace packages**: 30 package.json — **18 `@freeside/*`** (platform) + **3 `@0xhoneyjar/*`** (network) + `sietch-service` + protocol/theme pkgs
+- **Namespace**: migrated **`@arrakis/*` → `@freeside/*`** (0 `@arrakis` refs remain) — AGENTS.md still stale
+- **Apps**: 5 — gateway (Rust `arrakis-gateway`), worker, ingestor, mcp-gateway, freeside-operator-dash
+- **Incumbent monolith**: `themes/sietch` `sietch-service` v6.0.0
+- **Federation cells**: 11 registered (`packages/freeside-registry/registry.yaml`); 8 canonical `*-api` external; 7 deployed / 2 scaffolded / 2 not-built (probe 2026-06-19)
+- **REST**: 48 route modules → 300+ endpoints (sietch) + in-repo Hono services + `/federation.json`
+- **Discord**: 23 commands · **Telegram**: 12 (Grammy) · **CLIs**: 2 (freeside-cli 6 verbs, gaib 4 groups) · **MCP**: 2 tenants
+- **DB**: 9 PostgreSQL tables (Drizzle, RLS) + 8 legacy SQLite tables · migrations: 68 TS + 19 SQL (latest `0018_admin_audit_log.sql`)
+- **Env vars**: 100+ (Zod, `themes/sietch/src/config.ts` ~1850 lines) · **Feature flags**: 9
+- **Scheduled**: 9 Trigger.dev tasks · **CI**: 39 GitHub Actions workflows
+- **Tests**: 200+ files (Vitest 3.2.4 + fast-check) · **Debt**: 36+ TODO, 27 `@ts-nocheck`
+- **ADRs**: root `decisions/` (federation 007/009/012) + `grimoires/loa/decisions/` (billing 008–015)
 
 ## Spokes
 
 | Surface | File | Status |
-|---------|------|--------|
-| Structure | [structure.md](structure.md) | Required (regenerated 2026-05-18) |
-| API surface | [api-surface.md](api-surface.md) | Required |
-| Types | [types.md](types.md) | Required |
-| Interfaces | [interfaces.md](interfaces.md) | Required |
-| Entry points | [entry-points.md](entry-points.md) | Required |
-| Architecture overview | [architecture-overview.md](architecture-overview.md) | Required |
-| Hygiene flags | [hygiene-report.md](hygiene-report.md) | Required |
-| Legacy reality (Feb 13) | [api.md](api.md), [services.md](services.md), [database.md](database.md), [commands.md](commands.md), [environment.md](environment.md), [triggers.md](triggers.md) | Preserved |
+|---|---|---|
+| Structure & workspace | [structure.md](structure.md) | Refreshed 2026-07-06 |
+| Architecture overview | [architecture-overview.md](architecture-overview.md) | Refreshed 2026-07-06 |
+| API & command surface | [api-surface.md](api-surface.md) | Refreshed 2026-07-06 |
+| Types, models & contracts | [types.md](types.md) | Refreshed 2026-07-06 |
+| Entry points & behaviors | [entry-points.md](entry-points.md) | Refreshed 2026-07-06 |
+| Hygiene flags (Phase 2b) | [hygiene-report.md](hygiene-report.md) | Refreshed 2026-07-06 |
+| Three-way drift | ../drift-report.md | Local analysis (gitignored; regenerate via /ride, summarized in NOTES.md) |
+| Legacy (Feb–May) | api.md, services.md, database.md, commands.md, environment.md, triggers.md, interfaces.md | Preserved (older) |
 
 ## Tech Stack
 
-- **Runtime**: Node.js >=22 (root, sietch), Node.js >=20 (worker), Rust (gateway)
-- **Language**: TypeScript (strict, ES modules), Rust 2021
-- **Database**: PostgreSQL + Drizzle ORM + RLS; SQLite for sietch eligibility/world per-instance storage
-- **Cache**: Redis 7 (ioredis), atomic Lua scripts for budget ops
-- **Queue**: NATS (primary, Rust gateway → TS worker), RabbitMQ (legacy/coexistence), Trigger.dev (scheduled)
-- **Discord**: discord.js (sietch), Twilight 0.17 (Rust gateway), @discordjs/rest (worker + cli)
-- **Telegram**: Grammy
-- **Blockchain**: viem 2.46, Dune Sim API, multi-tier hybrid provider
-- **AI**: agent gateway with ensemble routing, BYOK support, ES256 JWT
-- **Infrastructure**: Terraform on AWS (ECS, RDS, ElastiCache, ALB, EFS, S3, DynamoDB)
-- **Observability**: Prometheus + Grafana + AWS embedded metrics + CloudWatch
-- **Testing**: Vitest, fast-check (property), supertest (HTTP)
+- **Runtime**: Node ≥22, Rust 2021. **Lang**: TypeScript 5.3–5.7 (strict, ESM).
+- **HTTP**: Express 5 (sietch), Hono (services + mcp-gateway), Twilight (Rust gateway).
+- **DB**: PostgreSQL + Drizzle + RLS; SQLite (sietch v1). **Cache**: Redis 7 (Lua atomic).
+- **Messaging**: NATS JetStream (primary), RabbitMQ (ingestor), Trigger.dev (cron).
+- **Chat**: discord.js, Grammy. **Chain**: viem, Dune Sim (hybrid provider).
+- **Schema**: Effect Schema (registry/beacon) + Zod (config/wire) + Ajv. **Infra**: Terraform/AWS ECS. **Test**: Vitest + fast-check.
 
-## Naming Surfaces (See consistency-report.md)
+## Naming Surfaces
 
 | Surface | Name |
-|---------|------|
+|---|---|
 | Git repo | `loa-freeside` |
-| npm namespace | `@arrakis/*` |
+| npm — platform | `@freeside/*` (was `@arrakis/*`) |
+| npm — network | `@0xhoneyjar/*` |
 | Rust crate | `arrakis-gateway` |
-| sietch service | `sietch-service` v6.0.0 |
+| Incumbent service | `sietch-service` v6.0.0 |
 | Platform / infra | "Freeside" |
+
+## Live truth
+
+Reality docs are a snapshot. For cell runtime state, probe:
+`packages/freeside-registry/registry.yaml` + `freeside-cli doctor --remote`.

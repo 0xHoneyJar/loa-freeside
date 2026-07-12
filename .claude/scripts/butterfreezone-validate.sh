@@ -19,6 +19,7 @@ export TZ=UTC
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/compat-lib.sh"
 SCRIPT_VERSION="1.0.0"
 
 # =============================================================================
@@ -284,6 +285,16 @@ validate_references() {
         [[ "$file" == "head_sha" ]] && continue
         [[ "$file" == "generated_at" ]] && continue
         [[ "$file" == "generator" ]] && continue
+        # #938: skip Express/Fastify-style route patterns. Routes always
+        # start with `/` and don't carry filesystem extensions; real
+        # filesystem references either start with `./`, `../`, or a
+        # relative segment (e.g., `src/foo.ts`). Real absolute paths
+        # would have extensions (e.g., `/usr/bin/foo.sh:42`); those
+        # still match below. Heuristic chosen for low blast radius —
+        # see issue #938 candidate-fix-A.
+        if [[ "$file" == /* && "$file" != *.* ]]; then
+            continue
+        fi
 
         checked=$((checked + 1))
 
@@ -471,7 +482,7 @@ validate_freshness() {
 
     # Parse the timestamp and compare with current time
     local gen_epoch
-    gen_epoch=$(date -d "$generated_at" +%s 2>/dev/null || echo 0)
+    gen_epoch=$(_date_to_epoch "$generated_at" 2>/dev/null || echo 0)
     local now_epoch
     now_epoch=$(date +%s)
     local diff_days=$(( (now_epoch - gen_epoch) / 86400 ))

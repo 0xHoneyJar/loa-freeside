@@ -16,7 +16,7 @@ import {
 } from "../src/beacon-resolver.js";
 import { BEACON_CACHE } from "../src/beacon-cache.js";
 import type { Tenant } from "../src/tenants.js";
-import type { BeaconV2 } from "@0xhoneyjar/beacon-schema";
+import type { BeaconV2 } from "@freeside/beacon-schema";
 
 // ── fixtures ──
 

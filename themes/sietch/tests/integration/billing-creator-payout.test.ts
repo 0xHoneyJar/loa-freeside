@@ -62,7 +62,7 @@ function createSettledEarnings(accountDb: Database.Database, accountId: string, 
   accountDb.prepare(`
     INSERT INTO referral_codes (id, account_id, code, status, created_at)
     VALUES (?, ?, ?, 'active', datetime('now'))
-  `).run(codeId, accountId, `CODE${Date.now()}`);
+  `).run(codeId, accountId, `CODE${accountId}${Date.now()}`); // namespace by account → unique across same-ms calls (UNIQUE constraint)
 
   accountDb.prepare(`
     INSERT INTO referral_registrations
@@ -106,7 +106,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000, // $5
-      payoutAddress: '0xAliceWallet',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac',
     });
 
     expect(result.success).toBe(true);
@@ -120,7 +120,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 500_000, // $0.50
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
 
     expect(result.success).toBe(false);
@@ -134,7 +134,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000, // $5
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
 
     expect(result.success).toBe(false);
@@ -149,14 +149,14 @@ describe('Task 9.1: CreatorPayoutService', () => {
     const result1 = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result1.success).toBe(true);
 
     const result2 = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result2.success).toBe(false);
     expect(result2.error).toContain('Rate limit');
@@ -170,7 +170,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
       const result = service.requestPayout({
         accountId: 'alice',
         amountMicro: 50_000_000, // $50
-        payoutAddress: '0xAlice',
+        payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       });
 
       expect(result.success).toBe(true);
@@ -183,7 +183,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
       const result = service.requestPayout({
         accountId: 'alice',
         amountMicro: 150_000_000, // $150 → total > $100
-        payoutAddress: '0xAlice',
+        payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       });
 
       expect(result.success).toBe(false);
@@ -199,7 +199,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
       const result = service.requestPayout({
         accountId: 'alice',
         amountMicro: 150_000_000,
-        payoutAddress: '0xAlice',
+        payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       });
 
       expect(result.success).toBe(true);
@@ -214,7 +214,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
       const result = service.requestPayout({
         accountId: 'alice',
         amountMicro: 700_000_000, // $700 → total > $600
-        payoutAddress: '0xAlice',
+        payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       });
 
       expect(result.success).toBe(false);
@@ -230,7 +230,7 @@ describe('Task 9.1: CreatorPayoutService', () => {
       const result = service.requestPayout({
         accountId: 'alice',
         amountMicro: 1_000_000_000, // $1000
-        payoutAddress: '0xAlice',
+        payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       });
 
       expect(result.success).toBe(true);
@@ -271,7 +271,7 @@ describe('Task 9.3: getWithdrawableBalance', () => {
     service.requestPayout({
       accountId: 'alice',
       amountMicro: 3_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
 
     const balance = service.getWithdrawableBalance('alice');
@@ -335,7 +335,7 @@ describe('e2e-payout-service', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 10_000_000, // $10
-      payoutAddress: '0xAliceWallet',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac',
       currency: 'usdc',
     });
     expect(result.success).toBe(true);
@@ -361,7 +361,7 @@ describe('e2e-payout-service', () => {
     const result1 = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result1.success).toBe(true);
 
@@ -369,7 +369,7 @@ describe('e2e-payout-service', () => {
     const result2 = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result2.success).toBe(false);
     expect(result2.error).toContain('Rate limit');
@@ -379,7 +379,7 @@ describe('e2e-payout-service', () => {
     const result3 = service.requestPayout({
       accountId: 'bob',
       amountMicro: 5_000_000,
-      payoutAddress: '0xBob',
+      payoutAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     });
     expect(result3.success).toBe(true);
   });

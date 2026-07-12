@@ -393,15 +393,21 @@ setup() {
 # Pattern Format Tests
 # =============================================================================
 
-@test "all allow patterns use Bash() format" {
+@test "all allow patterns use Bash()/Write()/Edit() format" {
+    # sprint-bug-212 (#1043): State-Zone Write()/Edit() allow-rules joined the
+    # previously Bash-only allow-list. Widen the format predicate accordingly.
     local bad_patterns
-    bad_patterns=$(jq -r '.permissions.allow[] | select(startswith("Bash(") | not)' "$SETTINGS_FILE" | wc -l)
+    bad_patterns=$(jq -r '.permissions.allow[] | select((startswith("Bash(") or startswith("Write(") or startswith("Edit(")) | not)' "$SETTINGS_FILE" | wc -l)
     [ "$bad_patterns" -eq 0 ]
 }
 
-@test "all deny patterns use Bash() format" {
+@test "all deny patterns use Bash()/Write()/Edit() format" {
+    # sprint-bug-213 (#1044): State-Zone executable/lifecycle Write()/Edit() deny
+    # rules joined the previously Bash-only deny-list (deny > allow overrides the
+    # #1043 data-write allows for the protected subpaths). Widen the format
+    # predicate accordingly — mirrors the allow-format widening done in #1043.
     local bad_patterns
-    bad_patterns=$(jq -r '.permissions.deny[] | select(startswith("Bash(") | not)' "$SETTINGS_FILE" | wc -l)
+    bad_patterns=$(jq -r '.permissions.deny[] | select((startswith("Bash(") or startswith("Write(") or startswith("Edit(")) | not)' "$SETTINGS_FILE" | wc -l)
     [ "$bad_patterns" -eq 0 ]
 }
 
@@ -423,4 +429,77 @@ setup() {
     run jq -e '[.hooks.SessionStart[].hooks[].command] | any(test("check-updates"))' "$SETTINGS_FILE"
     [ "$status" -eq 0 ]
     [ "$output" = "true" ]
+}
+
+# =============================================================================
+# State-Zone Write/Edit Permission Tests (sprint-bug-212 / #1043)
+# Encode the Three-Zone Model's State-Zone (grimoires/, .beads/, .run/, .ck/)
+# write-freedom in the permission allow-list so gate-skill artifact writes
+# (reviewer.md, engineer-feedback.md, auditor-sprint-feedback.md, COMPLETED,
+# ledger.json, NOTES.md, beads JSONL) never stall on a declined Write prompt.
+# =============================================================================
+
+@test "SZ1: State-Zone Write() rules present (grimoires/.beads/.run/.ck)" {
+    for p in 'Write(grimoires/**)' 'Write(.beads/**)' 'Write(.run/**)' 'Write(.ck/**)'; do
+        run jq -e --arg p "$p" '.permissions.allow | index($p)' "$SETTINGS_FILE"
+        [ "$status" -eq 0 ] || { echo "MISSING allow rule: $p" >&2; return 1; }
+    done
+}
+
+@test "SZ2: State-Zone Edit() rules present (grimoires/.beads/.run/.ck)" {
+    for p in 'Edit(grimoires/**)' 'Edit(.beads/**)' 'Edit(.run/**)' 'Edit(.ck/**)'; do
+        run jq -e --arg p "$p" '.permissions.allow | index($p)' "$SETTINGS_FILE"
+        [ "$status" -eq 0 ] || { echo "MISSING allow rule: $p" >&2; return 1; }
+    done
+}
+
+@test "SZ3: NO over-grant — System Zone (.claude/**) and wildcard writes are NOT allowed" {
+    # The fix must NOT grant Write/Edit to the System Zone or globally.
+    for forbidden in 'Write(.claude/**)' 'Edit(.claude/**)' 'Write(**)' 'Edit(**)' 'Write(*)' 'Edit(*)'; do
+        run jq -e --arg p "$forbidden" '.permissions.allow | index($p)' "$SETTINGS_FILE"
+        [ "$status" -ne 0 ] || { echo "OVER-GRANT present: $forbidden" >&2; return 1; }
+    done
+}
+
+@test "SZ4: NO App-Zone write grant (src/lib/app stay confirm-on-write)" {
+    for forbidden in 'Write(src/**)' 'Edit(src/**)' 'Write(lib/**)' 'Write(app/**)'; do
+        run jq -e --arg p "$forbidden" '.permissions.allow | index($p)' "$SETTINGS_FILE"
+        [ "$status" -ne 0 ] || { echo "App-Zone grant present: $forbidden" >&2; return 1; }
+    done
+}
+
+# =============================================================================
+# State-Zone Executable/Lifecycle DENY Tests (sprint-bug-213 / #1044)
+# The State Zone (#1043) is broadly writable, but its executable/lifecycle
+# subset must NOT be: .run/cron.d/** (deferred-execution cron), .run/**/*.sh
+# incl. merged-model-aliases.sh (sourced for model routing), and
+# grimoires/loa/skills/** (skill-approval lifecycle). deny > allow overrides
+# the #1043 Write(.run/**)/Write(grimoires/**) allows for exactly these paths.
+# This is the tool-layer half; the Bash-path half lives in
+# block-destructive-bash.sh (tests/unit/block-destructive-bash.bats).
+# =============================================================================
+
+@test "SZE1: executable/lifecycle Write()/Edit() deny rules present" {
+    for p in \
+        'Write(.run/cron.d/**)'              'Edit(.run/cron.d/**)' \
+        'Write(.run/*.sh)'                   'Edit(.run/*.sh)' \
+        'Write(.run/**/*.sh)'                'Edit(.run/**/*.sh)' \
+        'Write(.run/merged-model-aliases.sh)' 'Edit(.run/merged-model-aliases.sh)' \
+        'Write(grimoires/loa/skills/**)'     'Edit(grimoires/loa/skills/**)'; do
+        run jq -e --arg p "$p" '.permissions.deny | index($p)' "$SETTINGS_FILE"
+        [ "$status" -eq 0 ] || { echo "MISSING deny rule: $p" >&2; return 1; }
+    done
+}
+
+@test "SZE2: NO over-reach — broad State-Zone data writes stay allowed (not denied)" {
+    # The #1043 data-write allows MUST remain in allow[] ...
+    for p in 'Write(.run/**)' 'Edit(.run/**)' 'Write(grimoires/**)' 'Edit(grimoires/**)'; do
+        run jq -e --arg p "$p" '.permissions.allow | index($p)' "$SETTINGS_FILE"
+        [ "$status" -eq 0 ] || { echo "REGRESSION: #1043 allow dropped: $p" >&2; return 1; }
+    done
+    # ... and must NOT have been blanket-denied (only the exec/lifecycle subset is).
+    for forbidden in 'Write(.run/**)' 'Edit(.run/**)' 'Write(grimoires/**)' 'Edit(grimoires/**)'; do
+        run jq -e --arg p "$forbidden" '.permissions.deny | index($p)' "$SETTINGS_FILE"
+        [ "$status" -ne 0 ] || { echo "OVER-DENY: broad data path denied: $forbidden" >&2; return 1; }
+    done
 }

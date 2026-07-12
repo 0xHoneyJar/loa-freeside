@@ -1,0 +1,172 @@
+"""cycle-113 Sprint 2 T2.7 — Google recovery-integration tests (FR-B-5).
+
+Mirrors test_anthropic_integration.py for Gemini streaming parser.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "cycle-113" / "streaming-parity"
+
+
+def _load(name: str) -> bytes:
+    return (FIXTURES_DIR / f"{name}.google.sse").read_bytes()
+
+
+def _byte_iter(data: bytes):
+    return iter([data])
+
+
+class _FakeClock:
+    def __init__(self, step_s: float = 100.0) -> None:
+        self._t = 0.0
+        self._step = step_s
+
+    def __call__(self) -> float:
+        self._t += self._step
+        return self._t
+
+
+class _PinnedClock:
+    def __init__(self, t: float = 0.0) -> None:
+        self._t = t
+
+    def __call__(self) -> float:
+        return self._t
+
+
+# ---------------------------------------------------------------------------
+# Google — healthy + abort paths
+# ---------------------------------------------------------------------------
+
+
+def test_google_healthy_attaches_telemetry():
+    from loa_cheval.providers.google_streaming import parse_google_stream
+
+    r = parse_google_stream(
+        _byte_iter(_load("healthy-short")),
+        model_data={},
+        reasoning_class=False,
+        now_provider=_PinnedClock(0.0),
+    )
+    sr = r.metadata["streaming_recovery"]
+    assert sr["triggered"] is False
+    assert r.content, "healthy fixture must produce non-empty content"
+
+
+def test_google_aborts_on_empty_content_window():
+    from loa_cheval.providers.google_streaming import parse_google_stream
+    from loa_cheval.streaming import StreamingRecoveryAbort
+
+    with pytest.raises(StreamingRecoveryAbort) as info:
+        parse_google_stream(
+            _byte_iter(_load("abort-empty-content-window")),
+            model_data={},
+            reasoning_class=False,
+            now_provider=_PinnedClock(0.0),
+        )
+    assert info.value.reason == "empty_content_window"
+    assert info.value.tokens_before_abort == 200
+
+
+def test_google_aborts_on_first_token_deadline():
+    from loa_cheval.providers.google_streaming import parse_google_stream
+    from loa_cheval.streaming import StreamingRecoveryAbort
+
+    with pytest.raises(StreamingRecoveryAbort) as info:
+        parse_google_stream(
+            _byte_iter(_load("abort-first-token-deadline")),
+            model_data={},
+            reasoning_class=False,
+            now_provider=_FakeClock(step_s=100.0),
+        )
+    assert info.value.reason == "first_token_deadline"
+    assert info.value.tokens_before_abort == 0
+
+
+def test_google_aborts_on_cot_budget_when_reasoning_class():
+    from loa_cheval.providers.google_streaming import parse_google_stream
+    from loa_cheval.streaming import StreamingRecoveryAbort
+
+    with pytest.raises(StreamingRecoveryAbort) as info:
+        parse_google_stream(
+            _byte_iter(_load("abort-cot-budget-exhausted")),
+            model_data={},
+            reasoning_class=True,
+            now_provider=_PinnedClock(0.0),
+        )
+    assert info.value.reason == "cot_budget_exhausted"
+
+
+def test_google_cot_budget_does_not_fire_when_non_reasoning():
+    from loa_cheval.providers.google_streaming import parse_google_stream
+
+    r = parse_google_stream(
+        _byte_iter(_load("abort-cot-budget-non-reasoning")),
+        model_data={},
+        reasoning_class=False,
+        now_provider=_PinnedClock(0.0),
+    )
+    assert r.metadata["streaming_recovery"]["triggered"] is False
+
+
+def test_google_kwargs_default_safe():
+    from loa_cheval.providers.google_streaming import parse_google_stream
+
+    r = parse_google_stream(_byte_iter(_load("healthy-short")))
+    sr = r.metadata.get("streaming_recovery")
+    assert sr is not None
+    assert sr["triggered"] is False
+
+
+# ---------------------------------------------------------------------------
+# FR-B-3: thoughtsTokenCount observability
+# ---------------------------------------------------------------------------
+
+
+def test_google_thoughts_token_count_surfaced_when_present():
+    """FR-B-3: when usageMetadata.thoughtsTokenCount is present, it
+    appears in streaming_recovery.config_applied as observability
+    (NOT in the abort decision path)."""
+    from loa_cheval.providers.google_streaming import parse_google_stream
+
+    # The healthy fixture's terminator has usageMetadata with
+    # thoughtsTokenCount=... — but our generator only emits
+    # candidatesTokenCount + promptTokenCount + totalTokenCount. So
+    # this assertion pins absence-tolerance: when thoughtsTokenCount
+    # is NOT present, config_applied stays at the standard 4-field shape.
+    r = parse_google_stream(
+        _byte_iter(_load("healthy-short")),
+        now_provider=_PinnedClock(0.0),
+    )
+    sr = r.metadata["streaming_recovery"]
+    assert "config_applied" in sr
+    # absent thoughtsTokenCount = no `thoughts_token_count` field in
+    # config_applied (generator currently emits without it)
+    assert "thoughts_token_count" not in sr["config_applied"]
+
+
+# ---------------------------------------------------------------------------
+# Adapter source pins (translation arm ordering)
+# ---------------------------------------------------------------------------
+
+
+def test_google_adapter_orders_streaming_recovery_abort_arm_first():
+    import inspect
+    from loa_cheval.providers import google_adapter
+
+    src = inspect.getsource(google_adapter)
+    assert "StreamingRecoveryAbort" in src
+    assert "except StreamingRecoveryAbort" in src
+    abort_idx = src.index("except StreamingRecoveryAbort")
+    stream_idx = src.index("except ProviderStreamError")
+    value_idx = src.index("except ValueError as ve")
+    assert abort_idx < stream_idx < value_idx

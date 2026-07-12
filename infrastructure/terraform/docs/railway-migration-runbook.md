@@ -2,9 +2,18 @@
 
 Issue: https://github.com/0xHoneyJar/loa-freeside/issues/159
 
+> **2026-07-01 — score-api compute posture (loa-freeside#417)**  
+> **DORMANT for score-api.** Production score-api remains on **Railway** at
+> `https://score.0xhoneyjar.xyz`. The ECS `module.world_score_api` stack and
+> Phases 3–4 below are **not** an active migration — they are archived experiment
+> scaffolding. Do not run Phase 3–4 for score-api unless operator explicitly
+> re-opens posture B per #417. Upstream score-api repo removed stale ECS deploy
+> CI ([score-api#390](https://github.com/0xHoneyJar/score-api/issues/390)).
+
 ## Overview
 
-Migrate 3 Railway Postgres databases to existing AWS RDS and deploy score-api as an ECS world.
+Migrate 3 Railway Postgres databases to existing AWS RDS. **score-api application
+compute stays on Railway** (dormant ECS path documented for historical context only).
 
 ## Prerequisites
 
@@ -83,7 +92,9 @@ pg_restore -d "postgresql://arrakis_admin:<pass>@${RDS_HOST}:5432/cubquests?sslm
   /tmp/cubquests_dump.sql
 ```
 
-## Phase 3: Apply Terraform (score-api ECS world)
+## Phase 3: Apply Terraform (score-api ECS world) — **DORMANT**
+
+> **Do not apply** unless operator re-opens ECS cutover (posture B, #417).
 
 ```bash
 cd infrastructure/terraform
@@ -99,9 +110,11 @@ This creates:
 - Security group rules for RDS access
 - GitHub OIDC CI deploy role
 
-## Phase 4: Deploy score-api Container
+## Phase 4: Deploy score-api Container — **DORMANT**
 
-### 4a. Add deploy workflow to score-api repo
+> score-api deploys via Railway (`score-api/railway.toml`). ECS deploy workflow removed upstream.
+
+### 4a. Add deploy workflow to score-api repo (ARCHIVED — do not copy)
 
 Copy the template from `ci-templates/world-deploy.yml` and set:
 
@@ -160,7 +173,7 @@ Update `DATABASE_URL` environment variable in Vercel for each app:
 
 ## Phase 6: Verify
 
-1. **score-api**: `curl https://score-api.0xhoneyjar.xyz/health`
+1. **score-api (Railway — canonical)**: `curl https://score.0xhoneyjar.xyz/`
 2. **mibera-interface**: Check site loads, data displays correctly
 3. **midi-interface**: Check site loads, data displays correctly
 4. **cubquests-interface**: Check site loads, data displays correctly

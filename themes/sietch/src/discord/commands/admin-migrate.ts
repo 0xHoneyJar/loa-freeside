@@ -410,6 +410,11 @@ function buildReadinessEmbed(readiness: ReadinessCheckResult): EmbedBuilder {
         inline: true,
       },
       {
+        name: 'Sample Size',
+        value: `${readiness.sampleSize} / ${readiness.requiredSampleSize} ${readiness.checks.sampleSizeCheck ? '✅' : '❌'}`,
+        inline: true,
+      },
+      {
         name: 'Incumbent Configured',
         value: readiness.checks.incumbentConfigured ? '✅ Yes' : '❌ No',
         inline: true,

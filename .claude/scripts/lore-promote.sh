@@ -29,6 +29,10 @@ shopt -s nullglob
 # Defaults
 # =============================================================================
 
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 QUEUE_PATH=".run/bridge-lore-candidates.jsonl"
 LORE_PATH="grimoires/loa/lore/patterns.yaml"
 JOURNAL_PATH=".run/lore-promote-journal.jsonl"
@@ -248,7 +252,7 @@ append_lore_entry() {
     #
     # Strategy: build a JSON object with --argjson via jq (which escapes
     # all string content correctly), then yq merges it into the YAML file.
-    local tmp; tmp=$(mktemp -p "${TMPDIR:-/tmp}" lore-promote.XXXXXX)
+    local tmp; tmp=$(mktemp "${TMPDIR:-/tmp}/lore-promote.XXXXXX")
     cp "$LORE_PATH" "$tmp"
 
     local entry_json
@@ -279,7 +283,12 @@ append_lore_entry() {
     # eval-all. fileIndex selectors mean no attacker-influenceable content
     # ever flows into the yq expression itself — the values come from the
     # parsed JSON file. This is the injection-safe pattern.
-    local entry_file; entry_file=$(mktemp -p "${TMPDIR:-/tmp}" lore-entry.XXXXXX.json)
+    # bug-978 (#978): trailing-X create then rename — yq format-detects via
+    # the .json extension, and BSD mktemp has neither -p nor mid-template X
+    # expansion.
+    local entry_file; entry_file=$(mktemp "${TMPDIR:-/tmp}/lore-entry.XXXXXX")
+    mv "$entry_file" "${entry_file}.json" || { rm -f "$entry_file"; return 1; }
+    entry_file="${entry_file}.json"
     printf '%s' "$entry_json" > "$entry_file"
     yq ea -i 'select(fi==0) + [select(fi==1)]' "$tmp" "$entry_file"
     rm -f "$entry_file"
@@ -310,13 +319,13 @@ process_candidate() {
     context=$(extract_finding_field "$entry" "reasoning")
     [[ -z "$context" ]] && context=$(echo "$entry" | jq -r '.reasoning // ""')
     tags_json=$(echo "$entry" | jq -c '(.finding_content.tags // .tags // [])')
-    content_hash=$(echo "$entry" | sha256sum | cut -c1-64)
+    content_hash=$(echo "$entry" | sha256_portable | cut -c1-64)
 
     # Sanitize each field. On rejection, log + journal + return.
     local sterm sshort scontext rejection_reason=""
     # Bridgebuilder F1 (HIGH): use mktemp for the rejection-reason capture
     # rather than predictable /tmp/lp-rej.$$ to avoid race + symlink attack.
-    local rej_tmp; rej_tmp=$(mktemp -p "${TMPDIR:-/tmp}" lp-rej.XXXXXX)
+    local rej_tmp; rej_tmp=$(mktemp "${TMPDIR:-/tmp}/lp-rej.XXXXXX")
     if ! sterm=$(sanitize "$term" $MAX_TERM_LEN 2>"$rej_tmp"); then
         rejection_reason="term: $(cat "$rej_tmp")"
     elif ! sshort=$(sanitize "$short" $MAX_SHORT_LEN 2>"$rej_tmp"); then
@@ -465,7 +474,7 @@ main() {
     # pending set to a temp file rather than env var. Multi-line JSON via env
     # is brittle (unbounded length, quoting issues with special chars). File
     # path via env is safe and threshold-mode jq can read it cleanly.
-    ALL_PENDING_FILE=$(mktemp -p "${TMPDIR:-/tmp}" lore-pending.XXXXXX)
+    ALL_PENDING_FILE=$(mktemp "${TMPDIR:-/tmp}/lore-pending.XXXXXX")
     printf '%s' "$all_pending" > "$ALL_PENDING_FILE"
     export ALL_PENDING_FILE
     trap 'rm -f "$ALL_PENDING_FILE"' EXIT

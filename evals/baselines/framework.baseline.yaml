@@ -55,6 +55,11 @@ tasks:
     trials: 1
     mean_score: 100
     status: active
+  genome-integrity:
+    pass_rate: 1
+    trials: 1
+    mean_score: 100
+    status: active
   golden-bug-journey:
     pass_rate: 1
     trials: 1
@@ -134,6 +139,11 @@ tasks:
     pass_rate: 1
     trials: 1
     mean_score: 100
+    status: active
+  rail-hardness-aligned:
+    pass_rate: 1
+    trials: 1
+    mean_score: 53
     status: active
   setup-check-nfr8:
     pass_rate: 1

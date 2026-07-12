@@ -104,12 +104,12 @@ render_attack_template() {
 
     # Phase is short and safe for inline sed (portable: temp-file-and-mv)
     local tmpphase
-    tmpphase=$(mktemp -p "$TEMP_DIR")
+    tmpphase=$(mktemp "$TEMP_DIR/rt-phase.XXXXXX")
     sed "s|{{PHASE}}|${phase}|g" "$output_file" > "$tmpphase" && mv "$tmpphase" "$output_file"
 
     # For large content blocks, use file-based replacement via awk to avoid shell escaping
     local tmpwork
-    tmpwork=$(mktemp -p "$TEMP_DIR")
+    tmpwork=$(mktemp "$TEMP_DIR/rt-work.XXXXXX")
 
     # Replace {{SURFACE_CONTEXT}} with file content
     awk -v marker="{{SURFACE_CONTEXT}}" -v file="$surface_context_file" '
@@ -140,12 +140,12 @@ render_counter_template() {
     # Use sed/awk for safe template variable substitution (portable: temp-file-and-mv)
     cp "$COUNTER_TEMPLATE" "$output_file"
     local tmpphase2
-    tmpphase2=$(mktemp -p "$TEMP_DIR")
+    tmpphase2=$(mktemp "$TEMP_DIR/rt-phase2.XXXXXX")
     sed "s|{{PHASE}}|${phase}|g" "$output_file" > "$tmpphase2" && mv "$tmpphase2" "$output_file"
 
     # Replace {{ATTACKS_JSON}} with file content via awk
     local tmpwork
-    tmpwork=$(mktemp -p "$TEMP_DIR")
+    tmpwork=$(mktemp "$TEMP_DIR/rt-work.XXXXXX")
     awk -v marker="{{ATTACKS_JSON}}" -v file="$attacks_json_file" '
         index($0, marker) { while ((getline line < file) > 0) print line; close(file); next }
         { print }
@@ -363,7 +363,7 @@ run_phase1_attacks() {
 
         # Record tokens from adapter output
         local tokens_used
-        tokens_used=$(jq '.tokens_used // 0' "$attacker_output" 2>/dev/null || echo 0)
+        tokens_used=$(jq '.tokens_used // 0' "$attacker_output" 2>/dev/null || echo 0)  # check-no-swallowed-jq: ok (pending #1025 sweep)
         record_tokens "phase1" "$tokens_used" || true
 
         cp "$attacker_output" "$result_file"
@@ -514,7 +514,7 @@ run_phase2_validation() {
             local total_tokens=0
             for out in "${outputs[@]}"; do
                 local t
-                t=$(jq '.tokens_used // 0' "$out" 2>/dev/null || echo 0)
+                t=$(jq '.tokens_used // 0' "$out" 2>/dev/null || echo 0)  # check-no-swallowed-jq: ok (pending #1025 sweep)
                 total_tokens=$((total_tokens + t))
             done
             record_tokens "phase2" "$total_tokens" || true
@@ -536,7 +536,7 @@ run_phase2_validation() {
             }
 
             local tokens_used
-            tokens_used=$(jq '.tokens_used // 0' "$result_file" 2>/dev/null || echo 0)
+            tokens_used=$(jq '.tokens_used // 0' "$result_file" 2>/dev/null || echo 0)  # check-no-swallowed-jq: ok (pending #1025 sweep)
             record_tokens "phase2" "$tokens_used" || true
         fi
     else
@@ -683,12 +683,12 @@ run_phase4_counter_design() {
             }
 
             local tokens_used
-            tokens_used=$(jq '.tokens_used // 0' "$result_file" 2>/dev/null || echo 0)
+            tokens_used=$(jq '.tokens_used // 0' "$result_file" 2>/dev/null || echo 0)  # check-no-swallowed-jq: ok (pending #1025 sweep)
             record_tokens "phase4" "$tokens_used" || true
 
             # Merge counter-designs into consensus result
             local counter_designs
-            counter_designs=$(jq '.counter_designs // []' "$result_file" 2>/dev/null || echo "[]")
+            counter_designs=$(jq '.counter_designs // []' "$result_file" 2>/dev/null || echo "[]")  # check-no-swallowed-jq: ok (pending #1025 sweep)
             jq --argjson cds "$counter_designs" '. + {counter_designs: $cds}' "$consensus_file" > "$result_file"
         else
             log "Phase 4: Counter-design synthesis (placeholder — requires model-adapter.sh)"

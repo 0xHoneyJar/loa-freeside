@@ -2,7 +2,14 @@
 name: audit
 description: Security and quality audit of application codebase
 role: review
+effort: high  # cycle-114 FR-3: deep-reasoning skill — override baseline /effort
 allowed-tools: Read, Grep, Glob, WebFetch, WebSearch
+# cycle-114 FR-4: pure-review skill (write_files: false) — harness removes the
+# write tools while active, mechanically enforcing C-PROC-001.
+disallowed-tools:
+  - Write
+  - Edit
+  - NotebookEdit
 capabilities:
   schema_version: 1
   read_files: true
@@ -716,7 +723,7 @@ Generate a JSONL record with:
   "score": 2,
   "file": "src/path/to/file.ts",
   "line": 42,
-  "reasoning_trace": "How the issue was discovered...",
+  "evidence": "Observed data-flow / vulnerable pattern, with file:line references",
   "finding": "Description of the issue",
   "critique": "Specific guidance for improvement",
   "remediation": "Exact fix with code example",
@@ -725,15 +732,15 @@ Generate a JSONL record with:
 }
 ```
 
-### Reasoning Trace Requirements
+### Evidence Requirements
 
-Each finding MUST include a `reasoning_trace` explaining:
-1. What code/files were analyzed
-2. What patterns triggered the finding
-3. Evidence chain from input to vulnerability
-4. Why this score was assigned
+Each finding MUST include an `evidence` field citing the observable basis:
+1. The code/files inspected (paths)
+2. The vulnerable pattern found
+3. The data-flow from input (source) to sink, with file:line
+4. The observable basis for the assigned score
 
-**Example reasoning_trace**:
+**Example evidence**:
 ```
 "Traced user input from req.params.userId at controllers/user.ts:23 through 
 to database query at repositories/user.ts:42. Found string interpolation 

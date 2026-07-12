@@ -2,6 +2,16 @@
 name: bridgebuilder-review
 description: "Bridgebuilder — Autonomous PR Review"
 role: review
+effort: xhigh  # cycle-114 FR-3: multi-model deep review — deepest reasoning
+# cycle-114 FR-4: this review skill legitimately writes STATE-zone artifacts
+# (review records, vision/lore entries), so Write is retained; app-code
+# prevention is governed by zones. The harness removes implementation-only
+# mutations (notebook edits + git index/commit/push) so it cannot land code.
+disallowed-tools:
+  - NotebookEdit
+  - Bash(git add *)
+  - Bash(git commit *)
+  - Bash(git push *)
 capabilities:
   schema_version: 1
   read_files: true
@@ -70,6 +80,18 @@ Set in `.loa.config.yaml` under `bridgebuilder:` section, or via environment var
 | max_input_tokens | — | `8000` |
 | max_output_tokens | — | `4000` |
 | persona_path | — | `grimoires/bridgebuilder/BEAUVOIR.md` |
+
+### Invocation trust contract (#1050)
+
+Run `/bridgebuilder` from a **trusted checkout** (your default branch or a clean clone) — never
+from a working tree where untrusted PR-head content has been checked out (e.g. after a manual
+`gh pr checkout`). BB fetches PR data via `gh api` (diff-as-data) and never writes PR files to the
+working tree, so the reviewed diff is safe; but `.loa.config.yaml` (models, budgets,
+`cross_repo.allowed_owners`, `cross_repo.manual_refs`) is read from the **local checkout**, which
+must therefore be trusted. The auto-detected cross-repo allowlist defaults to the reviewed PR's own
+org (derived from PR metadata, independent of config); `allowed_owners` / `manual_refs` only widen
+that and assume a trusted config source. Investigated + closed as not-applicable in the shipped
+invocation model (no PR-head checkout) — see #1050.
 
 ## Self-Review Opt-In (#796 / vision-013)
 

@@ -86,6 +86,16 @@
       "type": "integer",
       "minimum": 0
     },
+    "tokens_input": {
+      "description": "Post-flight input token count reported by the provider (Anthropic usage.input_tokens, OpenAI usage.prompt_tokens, Gemini usageMetadata.promptTokenCount). Cycle-112 Phase A.1 D-7 (#948). Populated from CompletionResult.usage on successful invocations; absent on chain-exhausted / cancelled paths and on legacy emits.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens_output": {
+      "description": "Post-flight output token count reported by the provider (Anthropic usage.output_tokens, OpenAI usage.completion_tokens, Gemini usageMetadata.candidatesTokenCount). Cycle-112 Phase A.1 D-7 (#948). Together with tokens_input replaces the pre-flight capability_evaluation.estimated_input_tokens used as a cost-estimate proxy in Phase A.",
+      "type": "integer",
+      "minimum": 0
+    },
     "kill_switch_active": {
       "description": "True iff LOA_FORCE_LEGACY_MODELS=1 at invocation time (SDD section 11 / gemini IMP-004 HIGH). Audits operator-driven legacy-mode use.",
       "type": "boolean"
@@ -204,7 +214,7 @@
       ]
     },
     "capability_evaluation": {
-      "description": "cycle-109 Sprint 1 T1.4 (SDD §3.3.1). Snapshot of the capability-aware substrate pre-flight gate decision for THIS invocation. Optional/additive — legacy emitters and unmigrated callers omit the field; v1.3 emitters populate when the pre-flight gate ran (whether it preempted, dispatched, or routed through chunking). preflight_decision enum: 'dispatch' = passthrough to chain walk; 'preempt' = exit 7 ContextTooLarge emitted before adapter dispatch; 'chunk' = routed through Sprint 4 chunking primitive. effective_input_ceiling MAY be null when the head chain entry's model-config is still v2-shape (gate disabled but evaluation ran). recommended_for echoes the v3 capability surface verbatim (allow-all default `[review, audit, implementation, dissent, arbiter]` per SKP-004 v5 closure).",
+      "description": "cycle-109 Sprint 1 T1.4 (SDD §3.3.1). Snapshot of the capability-aware substrate pre-flight gate decision for THIS invocation. Optional/additive — legacy emitters and unmigrated callers omit the field; v1.3 emitters populate when the pre-flight gate ran (whether it preempted, dispatched, or routed through chunking). preflight_decision enum: 'dispatch' = passthrough to chain walk; 'preempt' = exit 7 ContextTooLarge emitted before adapter dispatch; 'chunk' = (RETIRED #937/sprint-bug-211 — the loa_cheval.chunking dispatch path was deleted as dead+fail-closed; the enum value is RETAINED so historical envelopes still validate, but no current emitter produces it; oversized input now always preempts). effective_input_ceiling MAY be null when the head chain entry's model-config is still v2-shape (gate disabled but evaluation ran). recommended_for echoes the v3 capability surface verbatim (allow-all default `[review, audit, implementation, dissent, arbiter]` per SKP-004 v5 closure).",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -298,7 +308,7 @@
       }
     },
     "chunked_review": {
-      "description": "cycle-109 Sprint 4 T4.7 (SDD §3.3.1 v1.3 additive + §5.4). Snapshot of the chunked-review dispatch state when the pre-flight gate routed input through the chunking package (loa_cheval.chunking). Absent when chunking was not invoked. Operator-facing PR-comment header (T4.8) renders this distinctly from the overall verdict so chunk-count + per-chunk degradation is visible.",
+      "description": "cycle-109 Sprint 4 T4.7 (SDD §3.3.1 v1.3 additive + §5.4). RETIRED #937/sprint-bug-211 — the loa_cheval.chunking package was deleted (dead + fail-closed). This field + its sub-properties are RETAINED so historical envelopes still validate; no current emitter populates it. Previously: snapshot of the chunked-review dispatch state when the pre-flight gate routed input through the chunking package. Operator-facing PR-comment header (T4.8) renders this distinctly from the overall verdict so chunk-count + per-chunk degradation is visible.",
       "type": "object",
       "additionalProperties": false,
       "required": ["chunked"],
@@ -312,7 +322,7 @@
       }
     },
     "streaming_recovery": {
-      "description": "cycle-109 Sprint 4 T4.7 (SDD §5.4.4 / IMP-014). Streaming-with-recovery telemetry: triggered = true when one of the three thresholds (first-token-deadline / empty-content-window / CoT-budget) aborted the stream. tokens_before_abort + reason populated only when triggered = true.",
+      "description": "cycle-109 Sprint 4 T4.7 (SDD §5.4.4 / IMP-014) + cycle-113 sprint-170 T3.1 (FR-C-1, SDD §4.2). Streaming-with-recovery telemetry: triggered = true when one of the three thresholds (first-token-deadline / empty-content-window / CoT-budget) aborted the stream. tokens_before_abort + reason populated only when triggered = true. config_applied (cycle-113 additive) is the snapshot of operator-configured thresholds in effect at call time — populated on EVERY streaming invocation (healthy or aborted) per I-3 so operators can audit threshold-config drift over time. Optional for back-compat with v1.3 readers (cycle-110 forward-compat contract; I-6).",
       "type": "object",
       "additionalProperties": false,
       "required": ["triggered"],
@@ -329,6 +339,28 @@
             { "type": "null" },
             { "enum": ["first_token_deadline", "empty_content_window", "cot_budget_exhausted"] }
           ]
+        },
+        "config_applied": {
+          "description": "cycle-113 sprint-170 T3.1 (FR-C-1). Snapshot of recovery thresholds in effect at call time. Field names match the shipped library API (first_token_deadline_s / empty_content_window_tokens / cot_budget_tokens / reasoning_class) per cycle-113 operator-approved lib-wins naming. May include provider-specific observability extensions (e.g., thoughts_token_count for Google when usageMetadata.thoughtsTokenCount is present).",
+          "type": "object",
+          "properties": {
+            "first_token_deadline_s": { "type": "number", "minimum": 0 },
+            "empty_content_window_tokens": { "type": "integer", "minimum": 1 },
+            "cot_budget_tokens": {
+              "anyOf": [
+                { "type": "null" },
+                { "type": "integer", "minimum": 1 }
+              ]
+            },
+            "reasoning_class": { "type": "boolean" },
+            "thoughts_token_count": {
+              "description": "Google FR-B-3: observability-only post-hoc accounting from usageMetadata.thoughtsTokenCount. Absent when usageMetadata lacks this field (not all Gemini variants report it).",
+              "anyOf": [
+                { "type": "null" },
+                { "type": "integer", "minimum": 0 }
+              ]
+            }
+          }
         }
       }
     },
@@ -374,6 +406,19 @@
     "semaphore_exhausted": {
       "description": "Cycle-110 sprint-2b1 T2.8 (C12 carry-in): true when the headless-concurrency semaphore (sprint-2b2 T2.11) rejected the call after exhausting bounded retries; distinct from chain_exhausted. Future-compat — sprint-2b2 wires the actual emitter; sprint-2b1 only declares the schema slot so the readers can be coded against it now.",
       "type": "boolean"
+    },
+    "effort": {
+      "description": "Cycle-114 FR-8: reasoning-effort level requested for this invocation (Anthropic output_config.effort on Opus 4.5+/Sonnet 4.6). Optional — absent on calls that did not set effort (model default = high). Lets the Empirical Model Economy roll-up report cost-per-clean-output by (skill x model x effort).",
+      "enum": ["low", "medium", "high", "xhigh", "max"]
+    },
+    "loop_context": {
+      "description": "cycle-114 FR-11 (sprint-4): orchestrator loop this invocation ran inside, for per-iteration cost telemetry. Set from LOA_LOOP_CONTEXT by the bridge/post-pr orchestrators. Absent for one-shot (non-loop) calls; readers treat absence as 'not in a tracked loop'. Additive/optional.",
+      "enum": ["bridge", "audit", "e2e", "spiral"]
+    },
+    "loop_iteration": {
+      "description": "cycle-114 FR-11 (sprint-4): 1-based iteration index within loop_context, enabling cost-O(depth) analysis. Set from LOA_LOOP_ITERATION. Absent for one-shot calls.",
+      "type": "integer",
+      "minimum": 1
     }
   }
 }

@@ -58,11 +58,25 @@ jobs:
       # construct-freeside/skills/{auditing-cluster-cells,auditing-cell-capabilities}/resources/
       # (canonical homes; refresh via cluster-meta cycle when scripts evolve).
 
-      - name: Setup yq + jq + gh
+      - name: Setup yq (Go/mikefarah) + jq + gh
         run: |
-          # Standard runner already has gh + jq; yq via apt
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq yq || pip install yq
+          # The roster parse uses `yq -o=json` (mikefarah Go-yq syntax). apt's `yq`
+          # is unreliable and the old `|| pip install yq` fallback installs PYTHON-yq,
+          # which does NOT accept -o=json — the RED-CI bug (FL T7). Pin the mikefarah
+          # Go-yq binary explicitly so the JSON conversion is deterministic.
+          YQ_VERSION=v4.44.3
+          # SHA-256 supply-chain hardening (T-4/RC-3a): hash hardcoded from the official
+          # mikefarah/yq v4.44.3 release (extracted via extract-checksum.sh SHA-256 yq_linux_amd64).
+          # Never fetch the hash at runtime — that defeats the integrity check.
+          YQ_SHA256="a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7"
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict || {
+            echo "::error::yq binary SHA-256 mismatch — possible CDN corruption or substitution"
+            exit 1
+          }
+          sudo chmod +x /usr/local/bin/yq
+          yq --version | grep -q "mikefarah" || { echo "::error::yq is not the mikefarah Go build"; exit 1; }
+          yq --version | grep -q "${YQ_VERSION#v}" || { echo "::error::yq version mismatch (expected ${YQ_VERSION})"; exit 1; }
 
       - name: Parse cell roster from registry
         id: roster
@@ -71,8 +85,17 @@ jobs:
           # Registry shape: top-level `modules:` is a MAP keyed by slug (e.g. freeside-sonar).
           # Pipeline: Go-yq converts YAML→JSON, jq processes JSON with full filter language
           # (Go-yq's own query language doesn't support jq-style sub()/capture()/to_entries).
-          yq -o=json packages/freeside-registry/registry.yaml | \
-            jq -r '.modules | to_entries | .[] |
+          #
+          # RC-3b guard: check for null/empty .modules before proceeding. A null result means
+          # the registry.yaml key changed or the file is empty — emit a specific error rather
+          # than silently producing an empty roster and passing vacuously.
+          roster=$(yq -o=json '.modules' packages/freeside-registry/registry.yaml)
+          if [ -z "$roster" ] || [ "$roster" = "null" ]; then
+            echo "::error::yq produced empty/null .modules from packages/freeside-registry/registry.yaml — registry.yaml shape may have changed or the file is corrupt"
+            exit 1
+          fi
+          echo "$roster" | \
+            jq -r 'to_entries | .[] |
               "\(.key):\(.value.git_url | sub("https://github.com/"; "") | sub("\\.git$"; ""))"' \
             > cell-list.txt
           echo "Cells found:"
@@ -94,15 +117,31 @@ jobs:
             echo ""
             echo "═══ Auditing $slug ($repo) ═══"
 
-            # Shallow-clone the cell into a working dir
+            # Shallow-clone the cell into a working dir.
+            # RC-3c guard: 403/404 responses from gh repo clone indicate the workflow's
+            # GITHUB_TOKEN lacks contents:read on private cells. Classify as 'inaccessible'
+            # (::warning::, does not fail the job) — not as 'non-compliant' (::error::).
             CELL_DIR="cell-$slug"
-            gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1 || {
-              echo "  ⚠ Could not clone $repo — skipping"
-              echo "{ \"slug\": \"$slug\", \"status\": \"UNREACHABLE\", \"reason\": \"clone failed\" }" \
-                > "audit-results/$slug.json"
+            # `var=$(cmd) || rc=$?` keeps errexit from killing the step AND captures the
+            # REAL exit code. (Two prior attempts were both wrong: a bare assignment dies
+            # under `bash -e {0}` before classification; `if ! var=$(cmd); then rc=$?`
+            # captures the NEGATION's status, which is always 0 — FAGAN DISS-001.)
+            clone_exit=0
+            clone_output=$(gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1) || clone_exit=$?
+            if [ $clone_exit -ne 0 ]; then
+              # Check if this is an access error (403/404) vs other failure
+              if echo "$clone_output" | grep -qE '(403|404|Repository not found|access denied|not found)'; then
+                echo "::warning::$slug ($repo): inaccessible — GITHUB_TOKEN lacks read access (403/404). Classifying as inaccessible, not non-compliant."
+                echo "{ \"slug\": \"$slug\", \"status\": \"inaccessible\", \"reason\": \"403/404 from gh repo clone — private repo or no token access\" }" \
+                  > "audit-results/$slug.json"
+              else
+                echo "::warning::$slug ($repo): could not clone ($clone_exit). Classifying as inaccessible."
+                echo "{ \"slug\": \"$slug\", \"status\": \"inaccessible\", \"reason\": \"clone failed: $clone_output\" }" \
+                  > "audit-results/$slug.json"
+              fi
               WARN_CELLS+=("$slug")
               continue
-            }
+            fi
 
             # Run existence + topology audit (vendored from construct-freeside auditing-cluster-cells skill)
             EXISTENCE_JSON=$(GITHUB_DIR="$(pwd)" bash .github/scripts/audit-cluster-cells.sh \
@@ -143,14 +182,26 @@ jobs:
           echo "warn_count=${#WARN_CELLS[@]}" >> $GITHUB_OUTPUT
           echo "failed_cells=${FAILED_CELLS[*]}" >> $GITHUB_OUTPUT
 
-          # Aggregate JSON report
-          jq -s '{
-            audit_ts: now | strftime("%Y-%m-%dT%H:%M:%SZ"),
-            total: length,
-            failed: [.[] | select(.capabilities.overall == "FAIL" or .existence.cells[0].drift_findings != "clean") | .slug],
-            passed: [.[] | select(.capabilities.overall == "PASS" and .existence.cells[0].drift_findings == "clean") | .slug],
-            cells: .
-          }' audit-results/*.json > cluster-audit-report.json
+          # Aggregate JSON report. Guard the glob: an empty audit-results/ would
+          # otherwise pass the literal string `audit-results/*.json` to jq and crash
+          # the job (the RED-CI bug, FL T7). nullglob → an empty array, handled below.
+          shopt -s nullglob
+          audit_files=(audit-results/*.json)
+          if [ ${#audit_files[@]} -eq 0 ]; then
+            echo "::warning::no per-cell audit JSON produced — emitting empty aggregate"
+            jq -n '{
+              audit_ts: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+              total: 0, failed: [], passed: [], cells: []
+            }' > cluster-audit-report.json
+          else
+            jq -s '{
+              audit_ts: now | strftime("%Y-%m-%dT%H:%M:%SZ"),
+              total: length,
+              failed: [.[] | select(.capabilities.overall == "FAIL" or .existence.cells[0].drift_findings != "clean") | .slug],
+              passed: [.[] | select(.capabilities.overall == "PASS" and .existence.cells[0].drift_findings == "clean") | .slug],
+              cells: .
+            }' "${audit_files[@]}" > cluster-audit-report.json
+          fi
 
           echo ""
           echo "═══ AGGREGATE ═══"
@@ -224,3 +275,113 @@ jobs:
           echo "::error::Cluster compliance failed for: ${{ steps.audit.outputs.failed_cells }}"
           echo "::error::See workflow summary for details."
           exit 1
+
+  # ─── ACVP bindings — REPORT-ONLY (FL-B1 Phase 0) ──────────────────────────
+  # Runs the ACVP-binding validator (freeside-cli doctor) across the registry
+  # and posts findings to the job summary. It NEVER fails the PR at this phase.
+  # The gate flips to fail-block only via the separate named PR
+  # `chore(network): acvp-bindings → fail-block` once Tier-A receipts + the dated
+  # allowlist are in place (SDD §8 / sprint-400 T8). Wired by sprint-400 T7.
+  acvp-bindings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout loa-freeside
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm + Node
+        # No `version:` — pnpm/action-setup reads it from the root package.json
+        # `packageManager: pnpm@9.15.4` (specifying both is an ERR_PNPM_BAD_PM_VERSION
+        # conflict — the acvp-bindings job's first-run failure).
+        uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install + build the CLI chain (standalone packages, no workspace)
+        run: |
+          set -e
+          # packages/* are standalone (file: sibling deps, no root workspace
+          # lockfile). Install + build in dependency order so each file: sibling
+          # is built BEFORE its consumer installs — the consumer's install then
+          # copies the freshly-built sibling dist (beacon-schema → registry → cli).
+          for pkg in beacon-schema freeside-registry freeside-cli; do
+            echo "──────── packages/$pkg ────────"
+            pnpm -C "packages/$pkg" install --no-frozen-lockfile
+            pnpm -C "packages/$pkg" build
+          done
+
+      - name: Run ACVP-binding audit (report-only)
+        id: acvp
+        run: |
+          set +e
+          node packages/freeside-cli/dist/bin/freeside-cli.js doctor --acvp > acvp-report.json 2> acvp.err
+          doctor_exit=$?
+          echo "doctor_exit=$doctor_exit" >> "$GITHUB_OUTPUT"
+          # FAGAN iter-2: guarantee a VALID JSON artifact even if doctor crashed —
+          # the report-only job stays green AND the crash is surfaced (not silent).
+          if ! jq -e . acvp-report.json >/dev/null 2>&1; then
+            jq -n --arg err "$(tail -c 2000 acvp.err 2>/dev/null)" --argjson ex "${doctor_exit:-1}" \
+              '{doctor_crashed: true, doctor_exit: $ex, summary: {ok:0, warn:0, error:1}, findings: [], stderr: $err}' \
+              > acvp-report.json
+          fi
+          errors=$(jq '[.findings[] | select(.severity=="error")] | length' acvp-report.json 2>/dev/null || echo "?")
+          warns=$(jq '[.findings[] | select(.severity=="warn")] | length' acvp-report.json 2>/dev/null || echo "?")
+          echo "errors=$errors" >> "$GITHUB_OUTPUT"
+          echo "warns=$warns" >> "$GITHUB_OUTPUT"
+          # report-only: this step always succeeds regardless of doctor's exit code
+          exit 0
+
+      - name: Render ACVP summary
+        if: always()
+        run: |
+          {
+            echo "## ACVP bindings — report-only (FL-B1 Phase 0) — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "**errors:** ${{ steps.acvp.outputs.errors }} · **warns:** ${{ steps.acvp.outputs.warns }} · doctor exit: ${{ steps.acvp.outputs.doctor_exit }}"
+            echo ""
+            echo "> This job does NOT block the PR. The fail-block flip is a separate named"
+            echo "> PR (\`chore(network): acvp-bindings → fail-block\`) once Tier-A receipts +"
+            echo "> the dated allowlist land (sprint-400 T8)."
+            echo ""
+            if [ -f acvp-report.json ]; then
+              echo '```json'
+              jq '{summary, acvp_and_seal: [.findings[] | select((.check|startswith("acvp_")) or (.check|startswith("sealed_")) or (.check=="compose_unknown_sibling"))]}' acvp-report.json 2>/dev/null | head -200
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ACVP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acvp-bindings-report
+          path: acvp-report.json
+          retention-days: 30
+
+      - name: Open issue on nightly ACVP drift
+        if: github.event_name == 'schedule' && steps.acvp.outputs.errors != '0' && steps.acvp.outputs.errors != '?'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Ensure labels exist (idempotent) so issue creation never fails on
+          # missing repo metadata unrelated to ACVP findings (FAGAN).
+          for L in cluster-compliance acvp drift; do gh label create "$L" --force >/dev/null 2>&1 || true; done
+          gh issue create \
+            --title "ACVP binding drift — $(date -u +%Y-%m-%d)" \
+            --label "cluster-compliance,acvp,drift" \
+            --body "$(cat <<EOF
+          ## ACVP binding drift detected by nightly cluster-compliance
+
+          **error findings**: ${{ steps.acvp.outputs.errors }} · **warn findings**: ${{ steps.acvp.outputs.warns }}
+
+          Run \`freeside-cli doctor --acvp\` locally, or see the \`acvp-bindings-report\`
+          artifact on the workflow run [here](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+          Un-backed \`acvp_invariant\`s must be backed by a proof receipt OR land a dated entry
+          in \`.freeside/acvp-aspirational-allowlist.yaml\` (default-FAIL, SDD §6).
+
+          🤖 Auto-opened by \`.github/workflows/cluster-compliance.yml\` (acvp-bindings job, report-only)
+          EOF
+          )"

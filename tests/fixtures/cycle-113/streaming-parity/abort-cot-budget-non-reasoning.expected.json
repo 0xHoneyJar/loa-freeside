@@ -1,0 +1,11 @@
+{
+  "description": "501 tokens of CoT-shaped prose with reasoning_class=False; CoT-budget enforcement is reasoning-only, so this PROCEEDS (per recovery.py:219-228 \u2014 `if self.config.reasoning_class`).",
+  "expected": {
+    "reason": null,
+    "tokens_before_abort": null,
+    "triggered": false
+  },
+  "name": "abort-cot-budget-non-reasoning",
+  "notes": "Mirror of abort-cot-budget-exhausted with reasoning_class flipped. Confirms the library's reasoning-class-gated CoT-budget design (I-4: cross-provider behavior identical modulo reasoning_class).",
+  "reasoning_class": false
+}

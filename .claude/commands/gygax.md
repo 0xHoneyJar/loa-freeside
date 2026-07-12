@@ -1,0 +1,1 @@
+../constructs/packs/gygax/commands/gygax.md

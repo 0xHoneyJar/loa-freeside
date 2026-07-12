@@ -57,14 +57,40 @@ export function scoreFindings(modelResults, thresholds = {}) {
         const maxScore = Math.max(...scores);
         const delta = maxScore - minScore;
         const agreeingModels = [...new Set(group.map((g) => g.model))];
+        // Consensus is cross-FAMILY, not cross-model. Two models from the same
+        // provider (e.g. two Anthropic models) are ONE family, not two independent
+        // voices — counting them as two manufactures false consensus. Dedupe by
+        // provider/family for every gating decision (G2 / G-HONEST).
+        // loa:shortcut: family == raw `provider` string; two aliases for one vendor
+        // (e.g. "anthropic" + "bedrock") would count as two families. Upgrade to a
+        // canonical-vendor map if the council ever fans one vendor over two provider
+        // strings. The BB pipeline supplies distinct review providers today.
+        const agreeingFamilies = [...new Set(group.map((g) => g.provider))];
+        const familyCount = agreeingFamilies.length;
+        // A finding gates as a BLOCKER only when ≥2 DISTINCT families EACH rated it
+        // at blocking severity. Two families that merely touch the same issue at
+        // different severities (one CRITICAL, one MEDIUM) are a severity
+        // disagreement → DISPUTED, never a BLOCKER. Counting total group families
+        // would let a single family's CRITICAL gate whenever any other family
+        // co-touched the finding (council finding — fixed in review).
+        const isBlockingSeverity = (sev) => sev === "CRITICAL" || sev === "BLOCKER";
+        const criticalFamilies = new Set(group.filter((g) => isBlockingSeverity(g.finding.severity)).map((g) => g.provider));
         // Pick the finding with the highest severity as canonical
         const canonical = group.reduce((best, curr) => severityScore(curr.finding.severity) > severityScore(best.finding.severity) ? curr : best);
+        const isCritical = isBlockingSeverity(canonical.finding.severity);
         let classification;
-        if (canonical.finding.severity === "CRITICAL" || canonical.finding.severity === "BLOCKER") {
-            // Critical/blocker findings from any model are always BLOCKER
+        if (isCritical && criticalFamilies.size >= 2) {
+            // Blocking severity corroborated by ≥2 DISTINCT families → BLOCKER. The
+            // only path that gates: a blocker needs real cross-family consensus on
+            // blocking severity, never a single voice.
             classification = "BLOCKER";
         }
-        else if (agreeingModels.length >= 2 && avgScore >= t.high_consensus) {
+        else if (isCritical) {
+            // Blocking severity from only ONE family — surfaced as DISPUTED, but it
+            // MUST NOT gate. A single model alone cannot produce a BLOCKER.
+            classification = "DISPUTED";
+        }
+        else if (familyCount >= 2 && avgScore >= t.high_consensus) {
             classification = "HIGH_CONSENSUS";
         }
         else if (delta >= t.disputed_delta) {
@@ -73,11 +99,11 @@ export function scoreFindings(modelResults, thresholds = {}) {
         else if (avgScore < t.low_value) {
             classification = "LOW_VALUE";
         }
-        else if (agreeingModels.length >= 2) {
+        else if (familyCount >= 2) {
             classification = "HIGH_CONSENSUS";
         }
         else {
-            // Single-model finding with moderate score
+            // Single-family finding with moderate score
             classification = avgScore >= t.high_consensus ? "HIGH_CONSENSUS" : "DISPUTED";
         }
         convergence.push({

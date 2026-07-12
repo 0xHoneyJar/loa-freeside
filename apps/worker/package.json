@@ -12,6 +12,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts",
+    "lint:fast": "../../node_modules/.bin/oxlint src",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -33,7 +34,7 @@
     "amqplib": "^0.10.4",
     "cassandra-driver": "^4.7.2",
     "discord-api-types": "^0.38.40",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.9.3",
     "nats": "^2.28.2",
     "opossum": "^8.1.4",
@@ -55,6 +56,8 @@
     "vitest": "^4.0.17"
   },
   "overrides": {
-    "undici": "^6.23.0"
+    "undici": "^6.27.0",
+    "picomatch": "^4.0.4",
+    "ws": "^8.21.0"
   }
 }

@@ -283,3 +283,123 @@ test("V3 JSON Schema can be exported (for downstream tooling)", () => {
   assert.ok(json.includes('"is_not"'), "is_not field should appear in schema");
   assert.ok(json.includes('"cycle_state"'), "cycle_state field should appear");
 });
+
+// ─── ComposesWith key regex — outer: namespace (refs #234, #235) ──────────
+// The regex admits two shapes:
+//   1. ^[a-z][a-z0-9-]*$          — building slugs (the eventual *-api cells)
+//   2. ^outer:[a-z][a-z0-9-]+$    — outer-dep prefix (constructs, upstream
+//                                   data substrates) until their API surface
+//                                   ships (#235 mibera-codex transition).
+// Both branches valid through the transition. #234 sub-step B tightens
+// branch 1 to ^[a-z][a-z0-9-]*-api$; branch 2 stays.
+
+test("V3 composes_with accepts outer:mibera-codex key", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "outer:mibera-codex": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected outer:mibera-codex to validate, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+});
+
+test("V3 composes_with rejects bare outer: with empty suffix", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "outer:": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(
+    result._tag,
+    "Failure",
+    "expected outer: with no suffix to be rejected",
+  );
+});
+
+test("V3 composes_with rejects unknown prefix:foo (only outer: is admitted)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "inner:mibera-codex": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(
+    result._tag,
+    "Failure",
+    "expected non-outer prefix to be rejected (colon disallowed in branch 1)",
+  );
+});
+
+test("V3 composes_with still accepts canonical -api slug (sonar-api)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "sonar-api": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected sonar-api to validate, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+});
+
+// ─── AcvpInvariant.status + runtime_class (ACVP-OD · sprint-400 T1) ─────────
+// SDD §6: status gates the aspirational-allowlist escape hatch; runtime_class
+// disambiguates audit_replay (envelope vs storage). Both additive + optional.
+
+test("V3 acvp_invariant.status defaults to 'active' when omitted (additive bump)", () => {
+  const result = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  if (result._tag === "Failure") {
+    assert.fail(`expected success, got: ${JSON.stringify(result.cause)}`);
+  }
+  const invs = result.value.acvp_invariants ?? [];
+  assert.ok(invs.length >= 1, "fixture should declare acvp_invariants");
+  for (const inv of invs) {
+    assert.equal(inv.status, "active", "missing status must default to 'active'");
+  }
+});
+
+test("V3 acvp_invariant.status accepts 'aspirational'", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.acvp_invariants[0].status = "aspirational";
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected aspirational to decode, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+  assert.equal(result.value.acvp_invariants?.[0].status, "aspirational");
+});
+
+test("V3 acvp_invariant.status rejects unknown literal", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.acvp_invariants[0].status = "provisional"; // not in {active, aspirational}
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected status enum rejection");
+});
+
+test("V3 acvp_invariant.runtime_class is optional and accepts the 3 literals", () => {
+  for (const rc of ["envelope", "storage", "construct-local"]) {
+    const beacon = fix("freeside-inventory-v3.yaml");
+    beacon.acvp_invariants[0].runtime_class = rc;
+    const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+    if (result._tag === "Failure") {
+      assert.fail(
+        `expected runtime_class=${rc} to decode, got: ${JSON.stringify(result.cause)}`,
+      );
+    }
+    assert.equal(result.value.acvp_invariants?.[0].runtime_class, rc);
+  }
+  // omitted → still decodes (runtime_class undefined)
+  const omitted = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  assert.equal(omitted._tag, "Success");
+});
+
+test("V3 acvp_invariant.runtime_class rejects unknown literal", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.acvp_invariants[0].runtime_class = "db"; // not in enum
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected runtime_class enum rejection");
+});

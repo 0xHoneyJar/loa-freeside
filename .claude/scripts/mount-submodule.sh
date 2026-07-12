@@ -369,27 +369,61 @@ get_repo_root() {
 # Returns: 0 if safe, 1 if escapes bounds
 validate_symlink_target() {
   local target="$1"
+  # #927: accept optional `source` (the symlink file path) as 2nd arg
+  # so we can resolve RELATIVE targets correctly. Pre-fix, this function
+  # resolved targets from the CWD, which is wrong for symlinks like
+  # `.claude/scripts -> ../.loa/.claude/scripts` (target is relative to
+  # `.claude/`, not to CWD). Result was a "Cannot resolve symlink target"
+  # warning fired for every valid relative target — ~100+ warnings per
+  # install on the mount-submodule path.
+  local source="${2:-}"
   local repo_root
   repo_root=$(get_repo_root)
 
-  # Resolve the target to an absolute path
+  # Determine the base directory against which a relative target should
+  # be resolved:
+  #   - Absolute target → no base needed
+  #   - Source provided → dirname of source (the symlink's parent dir)
+  #   - Source omitted  → CWD (legacy behavior — preserves call sites
+  #     that haven't been migrated)
+  local resolve_base=""
+  if [[ "$target" != /* ]]; then
+    if [[ -n "$source" ]]; then
+      resolve_base=$(cd "$(dirname "$source")" 2>/dev/null && pwd)
+    fi
+    if [[ -z "$resolve_base" ]]; then
+      resolve_base="$(pwd)"
+    fi
+  fi
+
+  # Build the candidate absolute path
+  local candidate
+  if [[ "$target" = /* ]]; then
+    candidate="$target"
+  else
+    candidate="$resolve_base/$target"
+  fi
+
+  # Resolve the candidate to a canonical absolute path
   local resolved_target
-  if [[ -e "$target" ]]; then
-    resolved_target=$(cd "$(dirname "$target")" && pwd)/$(basename "$target")
+  if [[ -e "$candidate" ]]; then
+    resolved_target=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")
   else
     # For not-yet-existing paths, resolve the parent
     local parent_dir
-    parent_dir=$(dirname "$target")
+    parent_dir=$(dirname "$candidate")
     if [[ -d "$parent_dir" ]]; then
-      resolved_target=$(cd "$parent_dir" && pwd)/$(basename "$target")
+      resolved_target=$(cd "$parent_dir" 2>/dev/null && pwd)/$(basename "$candidate")
     else
-      # Cannot resolve, allow but warn
-      warn "Cannot resolve symlink target: $target"
+      # Genuinely unresolvable — neither candidate nor its parent exists.
+      # Allow but warn (preserves existing fail-soft behavior for the
+      # actually-pathological case).
+      warn "Cannot resolve symlink target: $target (source=${source:-<unset>})"
       return 0
     fi
   fi
 
-  # Normalize paths (remove trailing slashes, resolve ..)
+  # Normalize paths (resolve .. components)
   repo_root=$(realpath "$repo_root" 2>/dev/null || echo "$repo_root")
   resolved_target=$(realpath "$resolved_target" 2>/dev/null || echo "$resolved_target")
 
@@ -410,8 +444,9 @@ safe_symlink() {
   local source="$1"
   local target="$2"
 
-  # Validate target is within repository
-  if ! validate_symlink_target "$target"; then
+  # #927: pass source so validate_symlink_target can resolve relative
+  # targets correctly (against dirname source, not CWD).
+  if ! validate_symlink_target "$target" "$source"; then
     return 1
   fi
 
@@ -487,6 +522,11 @@ create_symlinks() {
     safe_symlink "$link_path" "$target"
     log "  Linked command: $cmd_name"
   done
+
+  # #842: Phase 5 — COPY phase. Extracted to refresh_copy_set (#968) so
+  # --reconcile / --check-symlinks and update-loa.sh's submodule path can
+  # refresh these without a destructive --force re-mount.
+  refresh_copy_set "true"
 
   # Also link settings.local.json if it exists (not in manifest — optional file)
   if [[ -f "$SUBMODULE_PATH/.claude/settings.local.json" ]]; then
@@ -810,6 +850,78 @@ update_gitignore_for_submodule() {
   log ".gitignore updated for submodule mode"
 }
 
+# === Refresh #842 COPY set (issue #968) ===
+# The #842 copy set (.claude/hooks, .claude/settings.json) cannot be
+# symlinked (macOS hook executors can't traverse `..` symlinks from
+# subprocess context) and previously was written ONLY by a full mount —
+# after a submodule bump it silently went stale, and on repos mounted
+# pre-#842 the destinations were stale SYMLINKS (the exact breakage #842
+# exists to avoid). Mode mirrors verify_and_reconcile_symlinks:
+#   "true"  = refresh (replace dest with a fresh copy from the submodule)
+#   "false" = check-only (report COPY-STALE / COPY-MISSING, mutate nothing)
+# Returns non-zero when issues are found in check mode or an entry is
+# refused/fails in apply mode (#660 fail-loud contract).
+_refresh_copy_entry() {
+  local apply="$1" entry="$2" repo_root="$3"
+  local dest="${entry%%:*}"
+  local target="${entry#*:}"
+  # Deletion-surface guard: every manifest copy destination is .claude/-rooted.
+  # Refuse anything else so a future manifest edit cannot widen the deletion
+  # surface of the refresh below.
+  if [[ "$dest" != .claude/* ]]; then
+    warn "  COPY-SET: refusing non-.claude destination '$dest'"
+    return 1
+  fi
+  local abs_dest="${repo_root}/${dest}"
+  local abs_target="${repo_root}/${target}"
+  if [[ ! -e "$abs_target" ]]; then
+    warn "  Copy source missing: $target — skipping $dest"
+    return 0
+  fi
+  if [[ "$apply" != "true" ]]; then
+    if [[ -L "$abs_dest" ]]; then
+      warn "  COPY-STALE: $dest is a symlink (pre-#842 state) — run --reconcile"
+      return 1
+    elif [[ ! -e "$abs_dest" ]]; then
+      warn "  COPY-MISSING: $dest — run --reconcile"
+      return 1
+    fi
+    return 0
+  fi
+  # Apply: replace whatever is at the destination with a fresh copy.
+  if [[ -L "$abs_dest" ]] || [[ -e "$abs_dest" ]]; then
+    rm -rf "$abs_dest"
+  fi
+  mkdir -p "$(dirname "$abs_dest")"
+  if [[ -d "$abs_target" ]]; then
+    cp -R "$abs_target" "$abs_dest"
+  else
+    cp "$abs_target" "$abs_dest"
+  fi
+  log "  Refreshed copy: $dest"
+  return 0
+}
+
+refresh_copy_set() {
+  local apply="${1:-true}"
+  local repo_root
+  repo_root=$(get_repo_root)
+  local submodule="${SUBMODULE_PATH:-.loa}"
+  get_symlink_manifest "$submodule" "$repo_root"
+
+  local issues=0
+  local entry
+  step "Copy set (#842): $([[ "$apply" == "true" ]] && echo refreshing || echo checking)..."
+  for entry in ${MANIFEST_COPY_DIRS[@]+"${MANIFEST_COPY_DIRS[@]}"} ${MANIFEST_COPY_FILES[@]+"${MANIFEST_COPY_FILES[@]}"}; do
+    _refresh_copy_entry "$apply" "$entry" "$repo_root" || issues=$((issues + 1))
+  done
+  if [[ $issues -gt 0 ]]; then
+    warn "Copy set: ${issues} issue(s)$([[ "$apply" != "true" ]] && echo " — run --reconcile")"
+    return 1
+  fi
+  return 0
+}
+
 # === Verify and Reconcile Symlinks (Task 2.6 — cycle-035 sprint-2) ===
 # Authoritative symlink manifest. Detects dangling, removes stale, recreates from manifest.
 # Uses canonical path resolver (realpath) to avoid CWD assumptions (Flatline SKP-002).
@@ -905,6 +1017,8 @@ check_symlinks_subcommand() {
   echo ""
   verify_and_reconcile_symlinks "false"
   local result=$?
+  # #968: report #842 copy-set state too (stale symlink / missing dest)
+  refresh_copy_set "false" || result=1
   if [[ $result -eq 0 ]]; then
     log "All symlinks healthy."
   else
@@ -925,8 +1039,12 @@ main() {
   if [[ "$RECONCILE_SYMLINKS" == "true" ]]; then
     echo ""
     log "Reconciling symlinks..."
-    verify_and_reconcile_symlinks "true"
-    exit $?
+    reconcile_rc=0
+    verify_and_reconcile_symlinks "true" || reconcile_rc=1
+    # #968: also refresh the #842 copy set (hooks/, settings.json), which
+    # the symlink walk above never touches.
+    refresh_copy_set "true" || reconcile_rc=1
+    exit $reconcile_rc
   fi
 
   echo ""

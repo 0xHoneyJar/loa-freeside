@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "grimoires/loa/schemas/immune-verdict.schema.json",
+  "title": "Immune Sensor Verdict Record",
+  "description": "The single shared verdict contract every immune sensor emits (NFR-7, SDD §3.1). Describes ONE single-sensor verdict record. immune-check.sh emits an AGGREGATE record ({verdict, exit, doctors[]}) that composes many of these — that aggregate is out of scope for this schema; this schema governs the per-sensor record each doctor/sensor produces.",
+  "$comment": "COMPAT (IMP-005): additive-only within a major version. New OPTIONAL fields are a minor bump; a consumer MUST ignore unknown fields — hence NO top-level additionalProperties:false. Removing/renaming a field or changing verdict/exit_code semantics is a MAJOR bump. The verdict->exit_code mapping is the FROZEN compat surface, inherited VERBATIM from tools/immune-check.sh: 0=HEALTHY/clean, 1=INSUFFICIENT (could not ground), 2=PROBLEM. Records with schema_version absent are treated as 1.0.0 baseline by the aggregator.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "sensor",
+    "target",
+    "verdict",
+    "evidence",
+    "exit_code",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+      "description": "Semver of this record's contract (e.g. \"1.0\" or \"1.0.0\"). Required on every new-sensor record; absence is treated as 1.0.0 baseline by the aggregator."
+    },
+    "sensor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The instrument name that produced this verdict (e.g. scope-checks | consumption-doctor | false-green | cluster-compliance)."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What was checked (e.g. pkg:@freeside/adapters | pr:434 | run:bridge-2026-07-03)."
+    },
+    "verdict": {
+      "type": "string",
+      "minLength": 1,
+      "$comment": "Open-ish by design (additive compat): a new sensor MAY introduce a new verdict string without a schema bump. Known vocabulary: pass|full|no-consumer (exit 0), flag|suspect (exit 2), insufficient (exit 1); the immune-check.sh aggregate uses HEALTHY|INSUFFICIENT|PROBLEM. The exit_code — NOT the verdict string — is the frozen gate signal.",
+      "description": "Sensor verdict token. See $comment for the known vocabulary and its verdict->exit_code mapping."
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Free-form but PRESENT: how to reproduce/ground the verdict. May carry a commands[] array of runnable re-check commands, plus source/detail/artifacts.",
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Concrete runnable commands that reproduce the verdict."
+        }
+      }
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [0, 1, 2],
+      "description": "FROZEN mapping (inherited verbatim from tools/immune-check.sh): 0=HEALTHY/clean, 1=INSUFFICIENT (could not ground), 2=PROBLEM. MUST NOT be redefined under a minor bump."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 date-time the record was produced."
+    }
+  }
+}

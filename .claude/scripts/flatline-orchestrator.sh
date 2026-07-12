@@ -294,6 +294,30 @@ extract_json_content() {
     echo "$normalized"
 }
 
+# Normalize skeptic prepared JSON to the {"concerns":[...]} envelope expected
+# by scoring-engine.sh. Skeptic prompts request the object form, but some
+# adapters emit a bare top-level array of concern objects. scoring-engine's
+# `$skeptic_x[0].concerns` lookup then errors with
+#   jq: Cannot index array with string "concerns"
+# because --slurpfile wraps a bare-array file as [[{...}]], making $s[0] the
+# inner array. Caller writes the prepared file then calls this in-place.
+normalize_skeptic_envelope() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+
+    local normalized
+    if normalized=$(jq -c '
+        if type == "object" then .
+        elif type == "array" then {concerns: .}
+        else {concerns: []}
+        end
+    ' "$file" 2>/dev/null) && [[ -n "$normalized" ]]; then
+        printf '%s\n' "$normalized" > "$file"
+    else
+        printf '%s\n' '{"concerns":[]}' > "$file"
+    fi
+}
+
 # Log to trajectory
 log_trajectory() {
     local event_type="$1"
@@ -574,7 +598,18 @@ aggregate_and_write_final_consensus() {
         vq=$(jq -c '.verdict_quality // empty' "$f" 2>/dev/null || true)
         if [[ -n "$vq" && "$vq" != "null" ]]; then
             local tmp
-            tmp=$(mktemp "${TEMP_DIR:-/tmp}/vq-input.XXXXXX.json")
+            # #878: guard mktemp failure (template collision, disk full, no
+            # mktemp on PATH). Without the check, downstream chmod/printf on
+            # an empty $tmp produces confusing "No such file or directory"
+            # errors that mask the real mktemp failure.
+            # bug-978 (#978): trailing-X template — BSD mktemp expands only
+            # trailing X-runs; the old .XXXXXX.json shape collided across the
+            # 3 voices and degraded the review to voices=1/3. The aggregator
+            # takes file paths; no extension needed.
+            if ! tmp=$(mktemp "${TEMP_DIR:-/tmp}/vq-input.XXXXXX"); then
+                log "WARNING: mktemp failed for vq-input ($(date)) — skipping verdict-quality envelope for $f"
+                continue
+            fi
             printf '%s' "$vq" > "$tmp"
             vq_files+=("$tmp")
             cleanup_files+=("$tmp")
@@ -607,7 +642,7 @@ aggregate_and_write_final_consensus() {
         }
         if [[ -s "$target" ]]; then
             local final_status
-            final_status=$(jq -r '.status' "$target" 2>/dev/null || echo "?")
+            final_status=$(jq -r '.status' "$target" 2>/dev/null || echo "?")  # check-no-swallowed-jq: ok (pending #1025 sweep)
             log "[vq-aggregate] wrote $target (status=$final_status, voices=${#vq_files[@]}/${#input_files[@]})"
         fi
     fi
@@ -1589,6 +1624,8 @@ run_consensus() {
 
     extract_json_content "$gpt_skeptic_file" '{"concerns":[]}' > "$gpt_skeptic_prepared"
     extract_json_content "$opus_skeptic_file" '{"concerns":[]}' > "$opus_skeptic_prepared"
+    normalize_skeptic_envelope "$gpt_skeptic_prepared"
+    normalize_skeptic_envelope "$opus_skeptic_prepared"
 
     # FR-3: Prepare tertiary scoring and skeptic files when available
     local tertiary_args=()
@@ -1617,6 +1654,7 @@ run_consensus() {
     if [[ -n "$tertiary_skeptic_file" && -s "$tertiary_skeptic_file" ]]; then
         local tertiary_skeptic_prepared="$TEMP_DIR/tertiary-skeptic-prepared.json"
         extract_json_content "$tertiary_skeptic_file" '{"concerns":[]}' > "$tertiary_skeptic_prepared"
+        normalize_skeptic_envelope "$tertiary_skeptic_prepared"
         tertiary_skeptic_args=(--skeptic-tertiary "$tertiary_skeptic_prepared")
         log "Including tertiary model skeptic concerns in consensus"
     fi
@@ -1861,7 +1899,7 @@ main() {
     doc_bytes=$(wc -c < "$doc" 2>/dev/null || echo 0)
     doc_kb=$(( (doc_bytes + 512) / 1024 ))   # round to nearest KB
     if [[ "$doc_bytes" -gt 30720 ]]; then
-        echo "WARNING: Document size ${doc_kb} KB; long prompts may trip the cheval connection-loss path on Anthropic + OpenAI. See issue #774 if Phase 1 reports failure_class=PROVIDER_DISCONNECT. The --per-call-max-tokens flag does NOT address this failure mode." >&2
+        echo "WARNING: Document size ${doc_kb} KB. Large documents are handled by the streaming transport default + chunked dispatch (KF-002 RESOLVED-STRUCTURAL); if Phase 1 still reports provider failures at this size, check the verdict_quality envelope and .run/model-invoke.jsonl rather than retrying. The --per-call-max-tokens flag does NOT change input handling." >&2
     fi
 
     # Validate orchestrator mode
@@ -2279,7 +2317,16 @@ main() {
 
             # Build arbiter prompt
             local arbiter_prompt_file
-            arbiter_prompt_file=$(mktemp)
+            # #878: guard mktemp failure. Without this, the subsequent
+            # `chmod 600 "$arbiter_prompt_file"` with an empty arg produces
+            # `chmod: : No such file or directory` and the prompt-write at
+            # L2298 silently writes to the current working directory or
+            # fails with cwd permission errors. Fail fast with a clear
+            # message instead of cascading to downstream confusion.
+            if ! arbiter_prompt_file=$(mktemp); then
+                log "ERROR: mktemp failed for arbiter prompt — skipping arbiter step for $phase"
+                continue
+            fi
             chmod 600 "$arbiter_prompt_file"
 
             local doc_excerpt=""
@@ -2332,7 +2379,7 @@ main() {
                 # Extract JSON decisions from arbiter response
                 local decisions
                 decisions=$(echo "$arbiter_result" | jq -r '.content // .' 2>/dev/null | \
-                    grep -oE '\[.*\]' | head -1 | jq '.' 2>/dev/null || echo "[]")
+                    grep -oE '\[.*\]' | head -1 | jq '.' 2>/dev/null || echo "[]")  # check-no-swallowed-jq: ok (pending #1025 sweep)
 
                 if echo "$decisions" | jq -e 'type == "array"' >/dev/null 2>&1; then
                     # Process each decision

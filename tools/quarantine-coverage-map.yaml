@@ -1,0 +1,69 @@
+# =============================================================================
+# tools/quarantine-coverage-map.yaml — the quarantine equivalence-proof ledger.
+#
+# Cycle: datastore-legibility / consumption-truth · S1-T7 (SDD §3.4, FR-1b,
+# SKP-003, IMP-007). Grounds sprint AC: "Quarantine of integration-tests/agent-ci
+# from the required-list happens ONLY after a per-package coverage-diff proves
+# uncovered_file == [] (or explicit accepted-risk) — else quarantine is blocked."
+#
+# WHAT THIS IS — the durable record behind an OBJECTIVE gate, not a subjective
+# "demonstrably covers". A whole-repo test suite (a numb always-run required
+# check) may leave the branch-protection required-list ONLY after the scoped
+# replacement (FR-1a scope-checks-sensor) is PROVEN — mechanically — to run the
+# same test files the quarantined suite would have run for the changed packages.
+# The proof is a per-package coverage-diff:
+#
+#     set(scoped test files for pkg)  ⊇  set(suite files attributable to pkg)
+#
+# Any file the old suite ran that the scoped set does NOT run is an
+# `uncovered_file`; unless it is logged as explicit `accepted_risk`, it BLOCKS
+# quarantine for that package. Enforced by tools/quarantine-equivalence-gate.sh
+# (exit 2 = quarantine BLOCKED). Rollback trigger: if a post-quarantine escape is
+# later found that the old suite WOULD have caught, the check is un-quarantined
+# and the escape recorded in `rollback_log` (this file is the durable record of
+# that decision).
+#
+# SCHEMA (flat, human- and machine-readable; parsed with `yq`):
+#
+#   suites:
+#     <suite-name>:
+#       workflow: <path to the .github/workflows file that defines the job>
+#       job:      <the job identifier in that workflow>
+#       status:   candidate | quarantined      # candidate = still on required-list
+#       files_attributable_to:                 # per-package file globs the suite covers
+#         "<pkg>":
+#           - <glob relative to repo-root>
+#       accepted_risk:                          # explicitly waived files (do NOT block)
+#         - { file: <path-or-glob>, rationale: <why the loss of coverage is accepted> }
+#       rollback_log:                           # append-only un-quarantine record
+#         - { date: <YYYY-MM-DD>, escape: <desc>, old_suite_would_have_caught: true }
+#
+# The two real quarantine candidates (from sprint.md S1-T7) are seeded below as
+# `status: candidate`. Their `files_attributable_to` globs are seeds — the
+# coverage-diff run at quarantine time finalizes them against the actual scoped
+# set produced by scope-classify.sh (S1-T1). Neither is quarantined yet.
+# =============================================================================
+suites:
+  # Whole-repo integration suite — ci.yml:232, requires a Redis service container.
+  # Currently a required always-run check; quarantine candidate for the scoped lane.
+  integration-tests:
+    workflow: .github/workflows/ci.yml
+    job: integration-tests
+    status: candidate
+    files_attributable_to:
+      "@freeside/adapters":
+        - packages/adapters/**/*.integration.test.ts
+    accepted_risk: []
+    rollback_log: []
+
+  # Agent subsystem CI — agent-ci.yml:109 runs `npx vitest run tests/integration/`
+  # inside the `agent-ci` job. Quarantine candidate for the scoped agent lane.
+  agent-ci:
+    workflow: .github/workflows/agent-ci.yml
+    job: agent-ci
+    status: candidate
+    files_attributable_to:
+      "@freeside/adapters":
+        - tests/integration/**/*.test.ts
+    accepted_risk: []
+    rollback_log: []

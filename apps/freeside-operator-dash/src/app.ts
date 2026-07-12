@@ -27,6 +27,19 @@ import { loadRegistry } from "./registry.js";
 import { probeAll } from "./probe.js";
 import { collectSojuLens } from "./soju-lens.js";
 import { renderHTML } from "./render.js";
+import {
+  getEventsTraceSnapshot,
+  getPerClassRing,
+  startEventsTraceSubscriber,
+} from "./events-trace.js";
+
+// Boot the events-trace subscriber as a module-load side-effect.
+// Best-effort: returns even when NATS_URL is absent (lifecycle state object
+// inside events-trace.ts reflects the outcome; the dash panel surfaces
+// "subscriber disabled" or "NATS connect failed" messages explicitly).
+startEventsTraceSubscriber().catch((err) => {
+  console.error("[events-trace] startEventsTraceSubscriber threw:", err);
+});
 
 const app = new Hono();
 
@@ -120,6 +133,7 @@ async function buildDashState(walletOverride?: string | null): Promise<DashState
   const cells = loadRegistry();
   const [probes, sojuLens] = await Promise.all([probeAll(cells), collectSojuLens(wallet)]);
   const identityPhases = buildIdentityPhases(probes);
+  const eventsTrace = getEventsTraceSnapshot();
 
   const warnings: string[] = [];
   if (!wallet) warnings.push("OPERATOR_WALLET not set — Soju-lens disabled");
@@ -137,6 +151,17 @@ async function buildDashState(walletOverride?: string | null): Promise<DashState
       `identity-api: only T4.E2E (arrakis-hito, P0) remains — substrate Phases 1-4 deployed. If Honey Road still shows BERA fallback, the issue is config/deploy-side (HONEYROAD_PROFILE_SOURCE env, Vercel deploy SHA, or degraded-fallback to alchemy for operator's wallet). Soju-lens above proves which.`,
     );
   }
+  if (!eventsTrace.subscriberEnabled) {
+    warnings.push(
+      "events-trace: subscriber disabled (NATS_URL env not set). Cluster events panel will show no envelopes.",
+    );
+  } else if (!eventsTrace.natsConnected && eventsTrace.lastLifecycleError) {
+    warnings.push(`events-trace: ${eventsTrace.lastLifecycleError}`);
+  } else if (eventsTrace.totalObserved > 0 && eventsTrace.totalFailures / eventsTrace.totalObserved > 0.1) {
+    warnings.push(
+      `events-trace: ${eventsTrace.totalFailures}/${eventsTrace.totalObserved} envelopes failed verification (>10%). Check publisher key material + JWKS endpoint.`,
+    );
+  }
 
   return {
     generatedAt: new Date().toISOString(),
@@ -145,6 +170,7 @@ async function buildDashState(walletOverride?: string | null): Promise<DashState
     probes,
     identityPhases,
     sojuLens,
+    eventsTrace,
     warnings,
   };
 }
@@ -186,9 +212,116 @@ app.get("/healthz", (c) => {
 });
 
 app.get("/api/state", async (c) => {
+  // BB#229 rd-3 F-001: the cached DashState includes `eventsTrace.recentEnvelopes`
+  // with full payload + rawBytesB64. The earlier rd-1 fix gated /api/events only;
+  // /api/state was a parallel leak surface. Apply the same EVENTS_TRACE_RAW_ACCESS=1
+  // + ?raw=1 gate (both must hold), default to metadata-only.
   const walletOverride = parseWalletParam(c.req.query("wallet"));
   const { state } = await getCached(walletOverride);
-  return c.json(state);
+  const rawAllowed = process.env.EVENTS_TRACE_RAW_ACCESS === "1";
+  const rawRequested = c.req.query("raw") === "1";
+  const includeRaw = rawAllowed && rawRequested;
+  if (includeRaw) {
+    return c.json(state);
+  }
+  return c.json({
+    ...state,
+    eventsTrace: {
+      ...state.eventsTrace,
+      recentEnvelopes: state.eventsTrace.recentEnvelopes.map((e) => redactTraced(e, false)),
+    },
+    eventsTraceRedacted: true,
+  });
 });
+
+/**
+ * GET /api/events?class=<event-class>&limit=<n>&raw=1
+ *
+ * Returns the events-trace ring buffer for a given event class (or the
+ * cross-class recent feed when class is omitted). Per build doc §6, this
+ * is the raw forensics surface the operator drills into after spotting
+ * something in the HTML panel.
+ *
+ *   class — optional. e.g. "nft.mint.detected.mibera-shadow". Returns
+ *           that class's per-class ring (cap 200). Omitted = recent
+ *           cross-class feed (cap 100).
+ *   limit — optional. Caps the response size; defaults to ring size.
+ *   raw   — optional. Only honored when EVENTS_TRACE_RAW_ACCESS=1 env is
+ *           set. When set + raw=1 query passed, response includes the
+ *           parsed `payload` field + the `rawBytesB64` failure-forensics
+ *           excerpt. Default response REDACTS both (BB#229 F-003 —
+ *           defense in depth on top of the deployment's existing access
+ *           boundary, since envelopes can carry user wallet addresses,
+ *           token IDs, and other signed material).
+ *
+ * The dash's overall access boundary is Tailscale / OPERATOR_TOKEN per
+ * the v0.1 caveats in this file; this endpoint inherits that. The
+ * raw-redaction default is belt-and-braces: even an operator who
+ * accidentally exposes the dash through a misconfigured proxy doesn't
+ * leak payload contents by default.
+ */
+app.get("/api/events", (c) => {
+  const eventClass = c.req.query("class");
+  const limitRaw = c.req.query("limit");
+  const limit = limitRaw && /^\d+$/.test(limitRaw) ? parseInt(limitRaw, 10) : undefined;
+
+  // BB#229 F-003: raw payloads opt-in, gated by BOTH (a) the operator
+  // setting EVENTS_TRACE_RAW_ACCESS=1 in the deployment env (deliberate
+  // opt-in) AND (b) the request carrying ?raw=1. Default is metadata-only.
+  const rawAllowed = process.env.EVENTS_TRACE_RAW_ACCESS === "1";
+  const rawRequested = c.req.query("raw") === "1";
+  const includeRaw = rawAllowed && rawRequested;
+
+  const snapshot = getEventsTraceSnapshot();
+  if (!eventClass) {
+    const envelopes = limit ? snapshot.recentEnvelopes.slice(0, limit) : snapshot.recentEnvelopes;
+    return c.json({
+      scope: "recent",
+      subscriberEnabled: snapshot.subscriberEnabled,
+      natsConnected: snapshot.natsConnected,
+      subscribedSubjects: snapshot.subscribedSubjects,
+      totalObserved: snapshot.totalObserved,
+      totalFailures: snapshot.totalFailures,
+      lastLifecycleError: snapshot.lastLifecycleError,
+      redacted: !includeRaw,
+      envelopes: envelopes.map((e) => redactTraced(e, includeRaw)),
+    });
+  }
+  const ring = getPerClassRing(eventClass);
+  const envelopes = limit ? ring.slice(-limit) : ring;
+  return c.json({
+    scope: "per-class",
+    eventClass,
+    subscriberEnabled: snapshot.subscriberEnabled,
+    natsConnected: snapshot.natsConnected,
+    count: envelopes.length,
+    redacted: !includeRaw,
+    envelopes: envelopes.map((e) => redactTraced(e, includeRaw)),
+  });
+});
+
+/**
+ * Strip `payload` + `rawBytesB64` from a TracedEnvelope when raw access
+ * is not authorized. The envelope's metadata (event_type, emitted_by,
+ * signing_key_id, prev_hash, payload_hash, signature, timestamps) stays —
+ * those carry no PII beyond what's already in the subjects + publisher
+ * identity, and they're what operators need to triage failures.
+ *
+ * BB#229 F-003: defense-in-depth redaction.
+ */
+function redactTraced(e: import("./events-trace-types.js").TracedEnvelope, includeRaw: boolean) {
+  if (includeRaw) return e;
+  const envelope = e.envelope
+    ? { ...e.envelope, payload: "[redacted — pass ?raw=1 with EVENTS_TRACE_RAW_ACCESS=1 to view]" }
+    : undefined;
+  return {
+    observedAtMs: e.observedAtMs,
+    subject: e.subject,
+    outcome: e.outcome,
+    envelope,
+    rawBytesB64: null,
+    errorExcerpt: e.errorExcerpt,
+  };
+}
 
 export default app;

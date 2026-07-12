@@ -1,0 +1,248 @@
+# Composition · survey-the-directional-field
+# ================================================================
+# The DIRECTIONAL-SYNTHESIS LOOP (V0 — manual, runnable on demand).
+#
+# The operator builds ONE product across MANY repos (a HEXAGONAL FEDERATION of
+# freeside-X cells), but Loa is one-harness-per-repo. This composition is the ACTIVE
+# sibling of estate-coherence.sh: it reads bead/build state across a product's cell-set,
+# applies the hivemind labels schema ("the anti-spiral tether — binds artifact outputs to
+# user truth so AI work doesn't drift"), maps the hexagonal belt DAG (EULER), reads the
+# product mechanics (GYGAX), judges each cell's CONVERGENCE toward the product
+# (learning_status = directionally-correct), and surfaces the field + operator-gated
+# direction proposals (RLAIHF). It writes NO application code, so it carries no gate friction.
+#
+#   GECKO     — SENSE: what each cell IS (deployed / built / schema-only; drift, stale)
+#   HIVEMIND  — CLASSIFY: the JTBD + taxonomy (workstream/product_area/learning_status)
+#   EULER     — GRAPH: the hexagonal belt DAG (cells = hexagons; wax-walls = ports); cuts, bottlenecks, the MISSING node
+#   GYGAX     — MECHANICS: the product as a system (core loop, incentive leaks, onboarding, money-moment, graduation)
+#   KRANZ     — CONVERGENCE: do the belts connect into a shippable product? per-cell next aligned move
+#   → SYNTHESIZER folds five lenses into the directional field + convergence tile + gated proposals.
+#
+# Authored 2026-06-21 (reframed directional-loop fork). EULER + GYGAX added 2026-06-21 per
+# operator: "the loop should include EULER and GYGAX." Models its shape on discovery/
+# survey-the-building-factory.yaml (linear lens-stages → synthesizer; surface-never-decide).
+#
+# BUILD ORDER (loa-finn F-10 discipline — "don't compose before you know the seams"):
+# this is V0. Run it MANUALLY 2-3 cycles over a real product to find the real seams,
+# THEN graduate to V1 = wrap in a native /loop (ScheduleWakeup-paced, kaironic — wake the
+# operator only at convergence forks; accumulate a worldline of directional reads).
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: survey-the-directional-field
+description: >
+  Cross-cell directional-synthesis survey of a product (a hexagonal federation of freeside-X
+  cells). GECKO senses what each cell IS (deployed/built/schema-only, drift, staleness),
+  HIVEMIND classifies the JTBD + taxonomy against the hivemind anti-spiral labels schema,
+  EULER maps the hexagonal belt DAG (cells as hexagons, wax-walls as ports) and finds the cut
+  vertices / bottlenecks / the MISSING node, GYGAX reads the product as a system of mechanics
+  (core loop, incentive leaks, onboarding friction, money-moment, graduation ladder), and KRANZ
+  judges whether the belts connect into a shippable product and names each cell's next aligned
+  move — then SYNTHESIZER folds all five into one directional field: a per-cell convergence map,
+  a single convergence tile (active sibling of estate-coherence.sh), and operator-gated direction
+  proposals. Surface and propose; never decide, never write code.
+
+intent: >
+  "I build one product across many cells (a hexagonal federation); Loa is one-harness-per-repo,
+   so the convergence only lives in my head, and I'm still learning to design the composition
+   with intent. Read the build state across the product's cells, apply the anti-drift taxonomy,
+   map the hexagonal belt DAG and where a port is missing, read the product's mechanics as a
+   system, judge whether it converges into something shippable, and surface the one thing nobody
+   has: a single directional field — where the product converges, where it drifts, the hexagonal
+   structure, and the next aligned move per cell. Propose bead-direction updates for me to gate —
+   do not apply them, do not write code."
+
+backend: headless-tmux
+
+depends_on:
+  constructs:
+    - gecko            # SENSE — what each cell is (deployed/built/schema-only)
+    - hivemind-os      # CLASSIFY — owns the taxonomy + daily-synthesis/detecting-drift/analyzing-gaps
+    - euler            # GRAPH — the hexagonal belt DAG; cuts, bottlenecks, missing node (installed 2026-06-20)
+    - gygax            # MECHANICS — the product as a game-system (loop, leaks, onboarding, money-moment)
+    - kranz            # CONVERGENCE — do the belts connect into a shippable product; per-cell next move
+  reference:
+    - "~/Documents/GitHub/hivemind-laboratory/.claude/schemas/labels.schema.json"  # the anti-spiral tether
+    - "packages/freeside-registry/registry.yaml"     # the cell registry + belts (consumes/publishes)
+    - "decisions/008-freeside-as-factory.md"         # cells → products; belts run raw→meaning (ADR-008 D-3)
+
+inputs:
+  - type: Intent
+    name: scope
+    description: >
+      The product + its cell-set (the hexagons to survey). Baked into args.task — e.g.
+      "community-management = sonar-api + score-api + worlds-api + identity-api + the coexistence
+      shadow-mode wedge". Default: the freeside cell-set in the registry.
+    required: false
+  - type: Artifact
+    name: product_manifest
+    description: >
+      Optional product definition (which cells compose it + the intended wax-wall seams + the
+      product spec). If absent, the registry's consumes/publishes is the convergence topology.
+      This is the "clear well-planned goal" the loop measures convergence against.
+    required: false
+
+# Linear pipeline: each lens reads the prior lens's output and enriches it. GECKO senses,
+# HIVEMIND classifies what GECKO sensed, EULER graphs the classified cells, GYGAX reads the
+# mechanics on the graph, KRANZ judges convergence on structure+mechanics, SYNTHESIZER folds
+# all five. No auto-iterate — the operator reviews the field + gates the proposals. V0 manual.
+
+chain:
+  - stage: 1
+    name: sense-state
+    construct: gecko
+    skill: sense-estate
+    persona: GECKO
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are GECKO. For each cell in the product's cell-set (from args.scope), read what it
+      ACTUALLY IS: deployed (registry "DEPLOYED at Railway" / a live /health)? built-in-repo (impl
+      present)? schema-only (a port declared but no runtime)? Read each cell's local repo + the
+      registry. Note drift (registry claim ≠ real), staleness, and which capability lives where
+      (a capability still in the monolith vs extracted to its cell). Re-verify every claim against
+      the repos; do NOT trust prior prose. Emit a per-cell state row: [cell | deployed? | built? |
+      schema-only? | drift | lives-where]. CONFLICT vs SMELL. Surface, never decide.
+
+  - stage: 2
+    name: classify-jtbd
+    construct: hivemind-os
+    skill: daily-synthesis
+    persona: HIVEMIND
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are HIVEMIND. Read GECKO's cell state. Apply the hivemind labels schema (the anti-spiral
+      tether). For the PRODUCT, name the JTBD — the job-to-be-done for the buyer/operator (functional/
+      personal/social), in their language, not the abstract. For each cell's central bet, classify
+      WORKSTREAM + PRODUCT_AREA + LEARNING_STATUS (strongly-validated / directionally-correct /
+      hypothesis-failed / smol-evidence / cant-make-a-conclusion). Flag DRIFT (a cell serving no
+      product_area), STALENESS, and GAPS (a product_area the product needs with no cell filling it).
+      NOTE: the schema's `smol-evidence` value is a legit learning_status, unrelated to any comms
+      register. Emit per-cell: [cell | workstream | product_area | jtbd-served | learning_status |
+      flags]. Surface, never decide.
+
+  - stage: 3
+    name: graph-the-hexagons
+    construct: euler
+    skill: map-the-graph
+    persona: EULER
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are EULER. Graph before claim. Build the product's cell DAG as a HEXAGONAL FEDERATION:
+      each cell is a hexagon; its WAX-WALL ports (BeaconV3 + sealed Zod schemas) are its edges; a
+      BELT is a directed port→port connection running raw→derived→integrated→presented (ADR-008 D-3,
+      closer-to-raw publishes, closer-to-meaning consumes). Read the registry consumes/publishes +
+      each cell's contract surface. Emit the edgelist (cell —[port]→ cell). Then the structural
+      verdict: is it ACYCLIC (a belt cycle = a contract bug — name it)? Which cell is the CUT VERTEX
+      (its failure fragments the product — often the credential/identity root)? Which is most
+      LOAD-BEARING (betweenness / in-degree)? Where is the MISSING NODE — a port the product needs
+      that no cell fills yet (the gap)? Null before surprise — with few nodes, say when the sample is
+      too small to call concentration "real". Route findings (a bottleneck → KRANZ). Surface, never decide.
+
+  - stage: 4
+    name: read-the-mechanics
+    construct: gygax
+    skill: analyzing-systems
+    persona: GYGAX
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are GYGAX. Read the hexagonal structure. The product is a SYSTEM with mechanics + incentives
+      — analyze it as game design. Name the CORE LOOP (who is the player — the community operator? the
+      member? — what action, what reward, what feedback). Find the INCENTIVE LEAK (a mechanic that lets
+      value escape — e.g. stale privilege: a player who exited still holds the reward/role; a gate that
+      no longer reflects eligibility). Name the frictionless ONBOARDING mechanic (try-before-commit /
+      glimpse / shadow / coexistence — install behind the incumbent, prove value before taking control).
+      Name the MONEY MOMENT (the high-stakes settle where the product's value is most legible and
+      financially proximate — a snapshot, a gated allocation, a drop). Name the GRADUATION ladder (how
+      the operator escalates trust: shadow → parallel → primary). For EACH mechanic, cite the real cell
+      capability that implements it (or flag it as unbuilt). Design with intent; surface, never decide.
+
+  - stage: 5
+    name: judge-convergence
+    construct: kranz
+    skill: auditing-cluster-cells
+    persona: KRANZ
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are KRANZ. Read the structure (EULER) + the mechanics (GYGAX) + the cell state (GECKO). For
+      EACH cell, judge CONVERGENCE toward the product: is its current work DIRECTIONALLY-CORRECT (its
+      published port feeds a belt the product needs, in the right direction) or DRIFTING (off the product
+      DAG)? Where do the belts actually connect vs where is a consumer waiting on a producer / a missing
+      port (walk upstream)? Is the product assemblable from what exists + the ONE missing node, or is it
+      blocked on more? Name, per cell, the NEXT ALIGNED MOVE (the single bead that most advances
+      convergence). Respect one-harness-per-repo — judge across cells, do not reach into them. Emit
+      per-cell: [cell | convergence verdict (converging/drifting/blocked) | belt-role | next move].
+      Surface, never decide.
+
+  - stage: 6
+    name: synthesize-field
+    construct: general-purpose
+    persona: SYNTHESIZER
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      Fold the five lenses into ONE DIRECTIONAL FIELD for the product. Produce:
+        1. The FIELD MATRIX — rows = cells; columns = state (GECKO) | jtbd+taxonomy (HIVEMIND) |
+           hexagon-role+port (EULER) | mechanic-served (GYGAX) | convergence+next-move (KRANZ). One cell each.
+        2. The HEXAGONAL MAP — the cell DAG with wax-wall ports + belt directions + the MISSING node, in
+           prose an operator can learn the design from (cells = hexagons, wax-walls = ports, belts = one-way).
+        3. The CONVERGENCE TILE — a single ≤6-line operator read: "product <name> · N cells · X converging ·
+           Y drifting · Z blocked · cut-vertex <cell> · missing-node <port> · money-moment <moment>".
+        4. DIRECTION PROPOSALS (operator-gated, NOT applied) — bead-direction updates worth making, each with
+           evidence; the operator gates. Draft them; do NOT run `br` mutations.
+        5. The FORKS — the ≤3 real convergence decisions for the operator, each with your recommendation.
+      Cite the registry / file:line / repo for every concrete claim; a path that "should" exist is a claim to
+      verify. Carry forward each lens's disagreement; do not smooth it. Surface and propose; never decide.
+
+outputs:
+  - type: Artifact
+    destination: "grimoires/loa/directional-field/latest.md"
+    description: >
+      The directional field — per-cell convergence matrix + hexagonal map + convergence tile +
+      operator-gated direction proposals + forks. V0 overwrites latest (current-state sensor); V1
+      (the /loop) accumulates a timestamped worldline and surfaces only the deltas + forks.
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+
+compose_with:
+  - gecko
+  - hivemind-os
+  - euler
+  - gygax
+  - kranz
+
+when_to_use: >
+  - The recurring directional read — across a product's cells, where is it converging, where drifting,
+    what's the hexagonal structure, what's the next aligned move per cell. Active sibling of estate-coherence.sh.
+  - Designing a product with intent (hexagonal): EULER maps the intended belt DAG + the missing node,
+    GYGAX designs the mechanics — even when most cells don't exist yet.
+  - Before a cross-cell push — is every cell pointed at the same product, or has a cell drifted?
+  - NOT for a single cell's sprint planning (use the cell's own Loa), nor for code review.
+  - V0 is MANUAL. Graduate to V1 /loop only after 2-3 manual runs prove the stage seams (loa-finn F-10).
+
+version: "0.2.0"
+authored_at: "2026-06-21"
+authored_by: steering-cycle session — directional-loop fork (EULER + GYGAX added per operator)

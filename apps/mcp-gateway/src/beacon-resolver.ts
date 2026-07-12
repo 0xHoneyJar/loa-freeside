@@ -29,7 +29,7 @@
 
 import { BEACON_CACHE } from "./beacon-cache.js";
 import type { Tenant } from "./tenants.js";
-import type { BeaconV2 } from "@0xhoneyjar/beacon-schema";
+import type { BeaconV2 } from "@freeside/beacon-schema";
 
 // ────── types ──────
 

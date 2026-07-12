@@ -56,15 +56,19 @@ actually tried, not just what someone *said* was tried.
 | ID | Status | Feature | Recurrence |
 |----|--------|---------|------------|
 | [KF-001](#kf-001-bridgebuilder-cross-model-provider-network-failures-non-openai) | RESOLVED 2026-05-10 (Node 20 Happy Eyeballs autoselection-attempt-timeout) | bridgebuilder cross-model dissent | 3 |
-| [KF-002](#kf-002-adversarial-reviewsh-empty-content-on-review-type-prompts-at-scale) | **RESOLVED-STRUCTURAL 2026-05-15** (cycle-109 Sprint 4 T4.10 closure). Layer 1 (reasoning-budget / large-input class) closed by: (a) loa_cheval.chunking package routes oversized inputs through per-file chunked dispatch with IMP-006 conflict resolution + cross-chunk pass; (b) loa_cheval.streaming.recovery with 3 IMP-014 thresholds (first_token_deadline, empty_content_window, cot_budget) aborts empty/runaway streams with typed exits; (c) MODELINV v1.3 envelope surfaces chunked_review + streaming_recovery telemetry. Layers 2+3 previously resolved cycle-103 Sprint 2 T2.2. Bug class is now structurally impossible across all 3 layers. | adversarial-review.sh review-type | 5 |
+| [KF-002](#kf-002-adversarial-reviewsh-empty-content-on-review-type-prompts-at-scale) | **RESOLVED-STRUCTURAL 2026-05-15** (cycle-109 Sprint 4 T4.10 closure). Layer 1 (reasoning-budget / large-input class) closed by: (a) ~~loa_cheval.chunking~~ **RETRACTED #937/sprint-bug-211 — chunking was never load-bearing (dead + fail-closed); deleted. Closure rests on the streaming-transport default + 200K/180K walk gate**; (b) loa_cheval.streaming.recovery with 3 IMP-014 thresholds (first_token_deadline, empty_content_window, cot_budget) aborts empty/runaway streams with typed exits; (c) MODELINV v1.3 envelope surfaces chunked_review + streaming_recovery telemetry. Layers 2+3 previously resolved cycle-103 Sprint 2 T2.2. Bug class is now structurally impossible across all 3 layers. | adversarial-review.sh review-type | 5 |
 | [KF-003](#kf-003-gpt-55-pro-empty-content-on-27k-input-reasoning-class-prompts) | RESOLVED (model swap) | flatline_protocol code review | 1 |
-| [KF-004](#kf-004-validate_finding-silent-rejection-of-dissenter-payloads) | RESOLVED 2026-05-10 (sidecar dump landed; #814 mitigation shipped) | adversarial-review.sh validation pipeline | ≥4 |
+| [KF-004](#kf-004-validate_finding-silent-rejection-of-dissenter-payloads) | RESOLVED 2026-05-10 (sidecar dump landed; #814 mitigation shipped) | adversarial-review.sh validation pipeline | ≥24 |
 | [KF-005](#kf-005-beads_rust-021-migration-blocks-task-tracking) | RESOLVED-VIA-WORKAROUND — cycle-105 (2026-05-12) shipped `tools/beads-migration-repair.sh` + `beads-health.sh --repair` + WARN-not-FAIL pre-commit + CI gate. Upstream `beads_rust#290` still OPEN. | beads_rust task tracking | many reproductions + cycle-105 closure |
 | [KF-006](#kf-006-t114-migrate-model-config-v2-schema-rejects-max_output_tokens) | RESOLVED 2026-05-10 (v2 schema modelEntry permits max_output_tokens + max_input_tokens) | T1.14 migrate-model-config v2 schema | every PR since dd54fe9c |
 | [KF-007](#kf-007-red-team-pipeline-hardcoded-single-model-evaluator-vestigial-config) | RESOLVED 2026-05-10 (multi-model evaluator) | red team pipeline hardcoded single-model evaluator | n/a — resolved in same session as discovery |
 | [KF-008](#kf-008-bridgebuilder-google-api-socketerror-on-large-request-bodies) | RESOLVED-architectural-complete — cycle-103 Sprint 1 unification (review-adapter path) + cycle-104 Sprint 3 T3.4 substrate-replay closure 2026-05-12 (4/4 trials clean at 297/302/317/539KB via cheval httpx). | bridgebuilder Google provider | 4 reproductions + 1 final non-reproduction |
 | [KF-010](#kf-010-cheval-delegate-google-adapter-300s-process-timeout-on-concurrent-bb-runs) | RESOLVED 2026-05-16 (sprint-bug-165, issue #921) | bridgebuilder google + anthropic voices / `deriveTimeoutMs` predicate scope | 6 (single batch, 2026-05-16) |
 | [KF-011](#kf-011-adversarial-reviewsh-malformed-response-on-review-type-prompts-post-kf-002-closure) | **RESOLVED 2026-05-17** (sub-mode (b): parser raw_decode extracts prose-prefixed JSON — PR #933 `d9ec8cb5`; sub-mode (c): route-around via 4-voice fallback chain — PR #934 `ccd510b0`; structural sub-mode (c) Gemini streaming-recovery tracked at issue #935). | adversarial-review.sh review-type — JSON contract layer + Gemini streaming-recovery gap | 2 (initial obs sprint-166 review + repro on parser-fix branch) |
+| [KF-012](#kf-012-sha256sum-not-portable-to-bsd-macos-silent-empty-hash-cascade-into-validation-failures) | **RESOLVED-STRUCTURAL 2026-05-20** (sprint-bug-172 / #911: `sha256_portable` helper in compat-lib.sh + 38 production call sites migrated + CI scanner `tools/check-no-raw-sha256sum.sh` + `tests/unit/compat-lib-sha256.bats` + masked-PATH integration test). Structural analog of cycle-099 sprint-1E.c.3.c curl wrapper migration. | macOS / BSD users of `/butterfreezone-gen` + 37 other framework scripts | 1 (single observation, sprint-bug-172 closure) |
+| [KF-013](#kf-013-headless-cli-env-mode-selector-vars-defeat-subscription-oauth) | **RESOLVED 2026-05-20** (sprint-bug-173 / #894: `_HEADLESS_STRIPPED_AUTH_VARS` tuple extended with `GOOGLE_GENAI_USE_VERTEXAI` + `GOOGLE_GENAI_USE_GCA`; canonical scrub list mirrors `construct-k-hole/scripts/dig-search.ts`). | cheval headless CLI adapters (gemini / codex / claude) | 1 (single observation, sprint-bug-173 closure) |
+| [KF-014](#kf-014-pre-commit-beads-hook-fails-in-linked-git-worktrees) | **RESOLVED 2026-06-10** (sprint-bug-190 / #991: hook flushes from MAIN_REPO_ROOT subshell in worktrees; PCB-T7/T8/T9 pin it; live worktree-commit verification) | pre-commit beads flush in linked worktrees | 1 |
+| [KF-015](#kf-015-red-team-code-vs-designsh-silent-clean-gate-pass-on-degraded-runs) | **RESOLVED 2026-06-11** (sprint-bug-194 / #984+#985: trap script-scoped, empty/shape validation, degraded-record contract on model failure; RTC-T1..T7 pin all three defects) | red-team code-vs-design gate (silent-clean degraded run) | 4 (4/4 sprints, one downstream cycle) + 1 local repro |
 
 ---
 
@@ -153,7 +157,7 @@ evidence (different machine, different network, different time-of-day).
 
 ## KF-002: adversarial-review.sh empty-content on review-type prompts at scale
 
-**Status**: **RESOLVED-STRUCTURAL 2026-05-15** (cycle-109 Sprint 4 T4.10 closure) — Layer 1 (reasoning-budget / large-input class) closed by three composing pieces: (a) `loa_cheval.chunking` package routes oversized inputs through per-file chunked dispatch with IMP-006 conflict resolution + cross-chunk pass; (b) `loa_cheval.streaming.recovery` with 3 IMP-014 thresholds (first_token_deadline, empty_content_window, cot_budget) aborts empty/runaway streams with typed exits; (c) MODELINV v1.3 envelope surfaces `chunked_review` + `streaming_recovery` telemetry. Layers 2+3 previously resolved cycle-103 Sprint 2 T2.2. The bug class is now structurally impossible across all 3 layers. **Prior partial mitigations preserved for history**: PARTIALLY-MITIGATED 2026-05-10 (text.format=text shipped for OpenAI; structural opus + connection-lost layers remained); LAYER-3-RESOLVED-BY-CONSTRUCTION 2026-05-11 (Sprint 4A streaming-transport default eliminated the >60s-wait-for-first-byte failure mode; gate raised from 24K/36K to 200K/180K).
+**Status**: **RESOLVED-STRUCTURAL 2026-05-15** (cycle-109 Sprint 4 T4.10 closure) — Layer 1 (reasoning-budget / large-input class) closure — **piece (a) `loa_cheval.chunking` RETRACTED #937/sprint-bug-211**: the chunking package was never load-bearing (the dispatch branch was permanently unreachable — no production caller set `effective_input_ceiling` — and fail-closed by design; the 2026-05-17 sprint-170 "scope-bug-correction" that claimed it was wired was itself a false closure). The package is deleted; oversized input always preempts (exit 7). Closure now rests on: (b) `loa_cheval.streaming.recovery` with 3 IMP-014 thresholds (first_token_deadline, empty_content_window, cot_budget) aborts empty/runaway streams with typed exits; (c) MODELINV v1.3 envelope surfaces `chunked_review` + `streaming_recovery` telemetry. Layers 2+3 previously resolved cycle-103 Sprint 2 T2.2. The bug class is now structurally impossible across all 3 layers. **Prior partial mitigations preserved for history**: PARTIALLY-MITIGATED 2026-05-10 (text.format=text shipped for OpenAI; structural opus + connection-lost layers remained); LAYER-3-RESOLVED-BY-CONSTRUCTION 2026-05-11 (Sprint 4A streaming-transport default eliminated the >60s-wait-for-first-byte failure mode; gate raised from 24K/36K to 200K/180K).
 
 ### Upstream cross-references (added 2026-05-10 during KF-002 deep-dive)
 
@@ -220,6 +224,9 @@ evidence (different machine, different network, different time-of-day).
 | 2026-05-11 | Cycle-103 PRD+SDD flatline run (`/flatline-review prd sdd` over cycle-103 PRD 14KB + SDD 32KB) — `flatline_protocol.models.primary: opus` + `.secondary: gpt-5.5-pro` + `.tertiary: gemini-3.1-pro-preview` per cycle-102 Sprint 1B T1B.4 config | **RECURRENCE-4** — Opus returned 0 items on PRD (14KB input, well under prior 40K threshold) AND 0 items on SDD; GPT returned 10 items on PRD but 0 on SDD (32KB input, matches KF-003 ≥27K threshold); only Gemini cross-scored. PRD consensus emitted as 10 DISPUTED at `confidence: single_model` (really 2-of-3 GPT+Gemini agreement); SDD emitted `degraded: true, degraded_model: "both", reason: "no_items_to_score"`. **The cycle whose thesis is exactly fixing this class just triggered the class on its own planning artifacts.** | `grimoires/loa/cycles/cycle-103-provider-unification/flatline/prd-review.json` + `sdd-review.json` (recurrence evidence); cycle-103 SDD §1 IPC contract is the structural fix |
 | 2026-05-11 | Cycle-103 sprint.md flatline run (`/flatline-review sprint` over cycle-103 sprint.md 18KB / ~5K tokens) — same 3-model config | **RECURRENCE-5 + NEW FAILURE SHAPE** — All 3 providers returned empty content (Opus AND GPT AND Gemini). 4 of 6 Phase 1 calls failed (gpt-review, gpt-skeptic, gemini-review, gemini-skeptic — all returned empty); Opus calls structurally succeeded but with empty items per scoring-engine "both input files empty" warning. Phase 1 cost was 36¢ (HTTP 200 across the board) so this is empty-content, not API error. **First documented Gemini empty-content observation in Loa traffic** — invalidates the "Gemini empty-content not yet observed" note in the upstream cross-references table. **Critically: sprint.md at 5K tokens is well below every prior empty-content threshold** (24K gpt-5.5-pro, 40K opus-4-7, no documented gemini threshold). Scale is therefore NOT the trigger — the flatline sprint-phase prompt template is. PRD-phase + SDD-phase prompts behave differently. This makes the bug class prompt-structure-dependent at a deeper level than KF-002 originally documented. | `grimoires/loa/cycles/cycle-103-provider-unification/flatline/sprint-review.json` (`degraded: true, degraded_model: "both"`); scoring-engine warning `both input files empty (no items to score)`; phase-1 cost 36¢ with 4-of-6 failed |
 | 2026-05-12 (cycle-103 Sprint 2 T2.2 live replay) | **Empirical replay against `claude-opus-4.7` via cheval streaming substrate** — 150 cells covering 5 input sizes (30K / 40K / 50K / 60K / 80K) × 5 trials × 3 thinking_budgets (none / 2K / 4K) × 2 max_tokens (4096 / 8000). Wall time 1h 17m 51s, budget consumed ~\$3 per PRD §8 estimate. Per AC-2.1 decision rule (`≥80% full_content at empirically-safe threshold across 5 trials`). | **LAYER 2 RESOLVED-STRUCTURAL** — **Zero empty_content across all 150 trials.** Per-size results: 30K/40K/50K/60K = 100% full_content (30/30 each); 80K = 90% full_content (27/30, 3 partial_content; degradation concentrated in `max_tokens=4096, thinking=none` and `max_tokens=8000, thinking=4000` configs). The bug class ("opus returns empty content at >40K input") **did NOT reproduce** on cycle-102 sprint-4A streaming substrate. The Layer 2 wall is operationally closed by the streaming-transport-default — no Loa-side structural code change required beyond what Sprint 4A already shipped. Safe streaming threshold empirically validated at 60K (100% rate); 80K acceptable with documented config-combo caveats. | `grimoires/loa/cycles/cycle-103-provider-unification/sprint-2-corpus/results-20260511T133435Z.jsonl` (150 trial records) + `results-20260511T133435Z.summary.json` (disposition); pytest exit 0 / 151/151 passed; cycle-103 Sprint 2 T2.2 closure commit. |
+| 2026-05-17 (cycle-113 sprint-170 closure) | **CYCLE-113 EMPIRICAL VERIFICATION — RESOLVED-STRUCTURAL CLOSURE CONFIRMED** | All three composing pieces of the cycle-109 RESOLVED-STRUCTURAL closure now empirically verified: (a) `loa_cheval.chunking` wired at `cheval.py:1540-1600` (sprint-170 audit-amendment); (b) `loa_cheval.streaming.recovery` integrated across all 4 streaming parsers (cycle-113 Groups B+C, sprint-168/169); (c) MODELINV envelope `streaming_recovery.config_applied` populated on every streaming invocation (cycle-113 sprint-170 T3.1+T3.3). The aspirational closure from 2026-05-15 is now empirically true. **Caveats documented in cycle-113 sprint-169 Decision Log** (NOTES.md, local): Google parser-layer first_token_deadline is best-effort for true no-byte stalls; production safety provided by cycle-102 Sprint 4A transport-layer httpx ReadTimeout. Per-model `streaming_recovery` config overrides deferred to cycle-114 as operator enhancement. | cycle-113 feature branch `feature/sprint-plan-cycle-113` (commits `0b1b6860` → `2cd18aea`); 114/114 streaming-adjacent tests; 7-case cross-provider parity (FR-B-4); 2-case AST-uniformity (R-SDD-1) |
+| 2026-05-17 (cycle-113 sprint-168 T1.3 audit-pass) | **Audit of cycle-109 Sprint 4 T4.10 RESOLVED-STRUCTURAL closure piece (a) `loa_cheval.chunking`** — bats integration test `tests/integration/chunking-callgraph-audit.bats` runs 3-step grep across `.claude/adapters/loa_cheval/` and `.claude/scripts/`: (1) imports of `loa_cheval.chunking` outside the package itself; (2) production callers outside `tests/`; (3) live invocations of `chunk_pr_for_review()` or `aggregate_findings()`. | **STRUCTURAL-CLOSURE-PIECE-A-DORMANT** — All three grep steps return ZERO matches. **CORRECTED 2026-05-17 (cycle-113 sprint-170)**: this finding was a SCOPE BUG. The original SEARCH_ROOTS only covered `.claude/adapters/loa_cheval/` + `.claude/scripts/` and MISSED `.claude/adapters/cheval.py` (one level up). `cheval.py:1540-1543` actually imports `chunk_pr_for_review` + `aggregate_findings`, and `cheval.py:1600` invokes `chunk_pr_for_review()` in the oversized-input dispatch path. Chunking IS wired in production, with an existing integration test at `.claude/adapters/tests/test_chunking_cheval_integration.py`. Piece (a) is therefore EMPIRICALLY VERIFIED, not dormant. KF-002's RESOLVED-STRUCTURAL claim is now true across all three pieces: (a) chunking verified, (b) streaming.recovery verified by cycle-113 Groups B+C, (c) MODELINV envelope verified by cycle-113 Group C. Cycle-114 [#937](https://github.com/0xHoneyJar/loa/issues/937) closes as scope-bug-corrected; chunking audit-pass amended in cycle-113 sprint-170 to widen SEARCH_ROOTS to `.claude/adapters/`. | bats test (original): cycle-113 commit `a2d530ba`; bats test (corrected): cycle-113 sprint-170 commit pending; cheval.py:1540-1600 grep evidence inline |
+| 2026-06-13 (sprint-bug-211 / #937) | **DELETED the chunking package + dead cheval.py chunk branch** after re-verifying on current main that the branch is doubly dead: gate unreachable (`effective_input_ceiling` absent from model-config; no production caller passes `--max-input-tokens`) AND fail-closed by design (`CHUNKED_DISPATCH_FAIL_CLOSED`; only invocation was `aggregate_findings([])`). The sprint-170 "empirically verified" claim above was a false closure resting on a source-grep test (`chunking-callgraph-audit.bats`) that passed while the branch never executed — the exact KF-015 false-closure mechanism. Piece (a) RETRACTED from the composition; deleting the dead branch also FIXED preflight-gate P15/P16 (oversized CLI input now correctly preempts→exit 7 instead of routing to the fail-closed branch) and moots #1016. | RESOLVED-VIA-DELETION (piece (a) was never load-bearing; closure holds on streaming+recovery+telemetry+walk-gate) | sprint-bug-211; preflight-gate 17/17; adapter pytest parity vs main (14=14, zero new); #937 + #1016 close on landing |
 
 ### 2026-05-11 reproduction note (session 10)
 
@@ -377,7 +384,7 @@ The original cycle-102 manifest of this bug — 5 silent rejections during the S
 **Feature**: `.claude/scripts/adversarial-review.sh` validation pipeline
 **Symptom**: When adversarial-review.sh receives findings from the dissenter that don't conform to the strict schema (e.g., missing required field, out-of-enum severity, malformed `anchor_type`), the validator emits `[adversarial-review] Rejected invalid finding at index N` to stderr and **drops the payload entirely** — the rejected finding's content is unrecoverable. The output JSON shows fewer findings than the dissenter actually produced; the rejected payloads never reach the consensus scorer or the operator. Headline counts are misleadingly low.
 **First observed**: 2026-05-09 mid-session (caught by operator's "i am always suspicious when there are 0" interjection during BB iter-2 of sprint-1B PR #813)
-**Recurrence count**: ≥4 across cycle-102 (sprint-1A iter-5, sprint-1B BB iter-2, sprint-1D /audit-sprint adversarial-audit returned 0 findings + 5 silent rejections, sprint-1D BB iter-1 + iter-2)
+**Recurrence count**: ≥7 across cycle-102 (sprint-1A iter-5, sprint-1B BB iter-2, sprint-1D /audit-sprint adversarial-audit returned 0 findings + 5 silent rejections, sprint-1D BB iter-1 + iter-2); 2026-06-10 wave: sprint-bug-187 audit (2 eaten MEDIUMs recovered), sprint-bug-194 audit (2 eaten HIGHs recovered); 2026-06-11 sprint-bug-196 audit (verdict reviewed/0-findings while sidecar held 1 MEDIUM + 2 HIGH codex-headless hardening findings, all rejected `missing-or-non-string-id`; recovered → issue #1008). The sidecar recovery loop works as designed, but the upstream model keeps omitting `id` — every zero-findings audit verdict MUST be sidecar-checked. 2026-06-12 bundle-F' escalation: THIRTEEN more recoveries in one bundle — sprint-199 audit ran SIX iterations where every canonical verdict said 0 findings while the sidecar carried the only real finding each round (incl. 4 HIGH gate-bypass layers). The sidecar is now the PRIMARY audit channel in practice; upstream model id/failure_mode omission is structural. Recurrence ≥20. 2026-06-13 sprint-bug-208 review iter-2: +1 (`category-not-in-enum (got: security)` — BLOCKING red-team-retention finding recovered via sidecar). Recurrence ≥21. Same-day audit run: +3 (`missing-or-non-string-id` ×3, incl. 1 HIGH — all recovered via sidecar). Recurrence ≥24. 2026-06-13 sprint-bug-213 audit (#1044): +4 — adversarial-audit canonical reported 0 findings/APPROVED while the sidecar held 4 HIGH (all `missing-or-non-string-id`: State-Zone exec-write guard gaps — trailing-options, interp-sinks, lexical-evasion, archive-member). All recovered + dispositioned; PR #1046, structural follow-up #1047. Recurrence ≥28.
 **Current workaround**: Apply suspicion lens manually whenever adversarial-review.sh reports "0 findings" or "low N findings" — re-read the substrate the headline is supposed to summarize, walk the most likely concerns the rejected findings could have raised, route them as documented limitations or backlog inputs.
 **Upstream issue**: [#814](https://github.com/0xHoneyJar/loa/issues/814)
 **Related visions / lore**: vision-024 substrate-speaks-twice (this is the third consensus-classification failure mode — single-model security true-positive in DISPUTED + demotion-by-relabel + silent-rejection); `feedback_zero_blocker_demotion_pattern.md`
@@ -387,6 +394,9 @@ The original cycle-102 manifest of this bug — 5 silent rejections during the S
 | Date | What we tried | Outcome | Evidence |
 |------|---------------|---------|----------|
 | 2026-05-09 | File upstream Issue #814 to dump rejected payloads to a sidecar JSONL | OUTSTANDING — fix not yet shipped | [#814](https://github.com/0xHoneyJar/loa/issues/814) |
+| 2026-06-13 | sprint-bug-208 review iter-2 observation: dissenter (gpt-5.5-pro) emitted a BLOCKING security finding (red-team-retention purge-skip on corrupt result JSON) with `category: security` — rejected `category-not-in-enum`, canonical verdict showed only 1 of 2 BLOCKING findings. Recovered via sidecar per the standing drill; recurrence ≥20 → ≥21. Upstream enum-coercion fix still #814-tracked. | SIDECAR-RECOVERY (drill worked as designed) | grimoires/loa/a2a/sprint-bug-208/adversarial-rejected-review.jsonl (1 entry, 2026-06-13T00:08:59Z) |
+| 2026-06-13 | sprint-bug-208 audit observation: independent adversarial audit (gpt-5.5-pro, no context file) returned canonical 0-findings with THREE rejected payloads in the sidecar (`missing-or-non-string-id` ×3): 1 HIGH (post-pr-triage.sh:305 swallow = security-gate bypass if bridge findings file is attacker-influenced, cf. #1014 vector) + 2 MEDIUM (red-team-retention purge-skip; scanner multi-line evasion = documented tripwire caveat). All recovered via the standing sidecar drill; first two converge with review iter-2 findings → consequence-ranked #1025 sweep targets. Recurrence ≥21 → ≥24. | SIDECAR-RECOVERY (drill worked; canonical-0 ≠ clean, again) | grimoires/loa/a2a/sprint-bug-208/adversarial-rejected-audit.jsonl (3 entries) |
+| 2026-06-13 | **Structural mitigation of the swallow mechanism** (sprint-bug-208 / [#1025](https://github.com/0xHoneyJar/loa/issues/1025) R11): `jq_strict` helper in compat-lib.sh (fail-loud, no default-on-error), `tools/check-no-swallowed-jq.sh` CI tripwire on gate-critical scripts, and migration of all six `jq … 2>/dev/null \|\| echo` sites in adversarial-review.sh — a finding-count extraction failure now emits `status: malformed_response`, never `finding_count=0` → `status: clean`. The sidecar remains (upstream model id/failure_mode omission is a different layer, still #814-tracked); this removes the parse-failure-as-clean-zero alias that made the sidecar the only channel. Remaining ~270 repo-wide sites + 22 marker-suppressed gate-critical sites are the #1025 follow-up sweep. | STRUCTURAL-MITIGATION-SHIPPED (one layer of the class) | sprint-bug-208 / branch fix/sprint-bug-208-swallowed-jq; tests/unit/compat-lib-jq-strict.bats + tests/integration/check-no-swallowed-jq.bats + adversarial-review.bats KF-004 section |
 
 ### Reading guide
 
@@ -484,6 +494,8 @@ markdown fallback is sufficient.
 | 2026-05-09 | Sprint 1A T1.9 added `max_output_tokens` fields without bumping v2 schema | INTRODUCED THE REGRESSION | commit `dd54fe9c` |
 | 2026-05-10 | Sprint 1D PR #826 hit the same failure on T1.14 smoke step; cross-runtime T1.13 step itself passed 59/59 | OBSERVED — pre-existing not introduced | run `25621265130` / PR #826 |
 | 2026-05-10 | Extend v2 schema `modelEntry.properties` with `max_output_tokens` + `max_input_tokens`; add 3 bats regression tests (M19.1–M19.3) | RESOLVED — production-yaml smoke-migrates exit 0 | Sprint 1F PR (this entry) — `.claude/data/schemas/model-config-v2.schema.json` + `tests/integration/migrate-model-config.bats` |
+| 2026-05-15 | cycle-110 sprint-2a added `auth_type` + `dispatch_group` per-model fields without bumping v2 OR v3 schema (silent recurrence — workflow path-filter didn't fire on the sprint-2a PR) | RECURRENCE 2 — symbolically distinct but structurally identical to 2026-05-09 | commit `073842c0` (PR #904) — same pattern: live-yaml field addition without symmetric schema admission |
+| 2026-05-20 | Extend v2 + v3 schemas `modelEntry.properties` with `auth_type` (enum aws_iam/headless/http_api) + `dispatch_group` (enum anthropic-claude/bedrock-anthropic/google-gemini/openai-gpt); add 2 bats regression tests (M19.4 + M19.5); document third occurrence | RESOLVED-PER-SYMBOL — production-yaml smoke-migrates exit 0; **structural cause persists** — see Reading guide §"Structural pattern" | sprint-bug-171 (/bug closure of #888) — `.claude/data/schemas/model-config-v2.schema.json` + `.claude/data/schemas/model-config-v3.schema.json` + `tests/integration/migrate-model-config.bats` |
 
 ### Reading guide
 
@@ -496,6 +508,39 @@ attempt to "fix" by removing the field from `model-config.yaml` (that
 would break Sprint 1A T1.9's cheval `_lookup_max_output_tokens` function).
 The right fix is upstream: extend the v2 schema. Until then, treat as
 pre-existing-main-failure for merge purposes.
+
+### Structural pattern (3 occurrences as of 2026-05-20)
+
+Each per-symbol resolution closes the immediate red but the underlying
+class — *adding fields to live `model-config.yaml` without symmetric bumps
+to `model-config-v{2,3}.schema.json`* — recurs every 1–2 cycles:
+
+| # | Symbol | Introduced | Schema gap closed |
+|---|--------|------------|-------------------|
+| 1 | `max_output_tokens` | cycle-102 sprint-1A T1.9 (commit `dd54fe9c`) | cycle-102 sprint-1F (entry 2026-05-10) |
+| 2 | `kind` | cycle-104 commit `e41b5575` | cycle-109 sprint-1 T1.8 (v3 only — v2 closed by 2026-05-10 entry above per code comment) |
+| 3 | `auth_type` + `dispatch_group` | cycle-110 sprint-2a commit `073842c0` (PR #904) | sprint-bug-171 / `/bug #888` (entry 2026-05-20) |
+
+The path-filtered `cycle099-sprint-1e-tests` workflow only triggers when a
+PR touches the migrator's path globs. Field-additions to `model-config.yaml`
+on PRs that DON'T touch those paths therefore land silently on main, and
+the smoke red surfaces only on the next PR that does touch them — turning
+every framework-author cycle into the inadvertent reporter of the prior
+cycle's schema-bump miss.
+
+Per-symbol fixes will continue until either:
+- A pre-commit / pre-push hook fires the smoke against the live yaml on
+  EVERY PR (regardless of path glob), OR
+- The schema is intentionally relaxed (e.g., per-provider extension blocks
+  with `additionalProperties: true` under explicitly-allowlisted keys), OR
+- A test pin asserts that **every** top-level key in
+  `model-config.yaml::providers.*.models.*` corresponds to a declared
+  property in v2 + v3 schemas — catching the gap at PR time on the
+  introducing PR, not the next unrelated one.
+
+Operator may re-classify this entry to `RESOLVED-STRUCTURAL` once one of
+the above lands. Until then, treat per-symbol resolutions as defense-in-depth
+not structural closure.
 
 ## KF-007: red team pipeline hardcoded single-model evaluator (config keys vestigial)
 
@@ -781,6 +826,7 @@ The three-provider correlation in a 30-second window is the strongest signal tha
 | 2026-05-17 | Sub-mode (c) ROUTE-AROUND — extend adversarial-review fallback chain to 4 voices by adding `claude-headless` as 4th-line in `flatline_protocol.{code_review,security_audit}.fallback_chain`. Config-only change; no code touched (script already supports arbitrary-length chains per cycle-102 sprint-1F design). When Gemini returns empty-content (still classified as malformed_response), chain walks one more voice and consensus quorum stays reachable. | MITIGATED — sub-mode (c) operator surface is functional (3/3-or-4/4 quorum achievable). Structural root-cause investigation tracked separately. | PR #934 (merge `ccd510b0`); issue #935 tracks root-cause investigation; effective chain: gpt-5.5-pro → gpt-5.5 → gemini-3.1-pro → claude-headless |
 | not tried | Sub-mode (c) STRUCTURAL — investigate why cycle-109 T4.10's streaming-recovery (`loa_cheval.streaming.recovery` with `first_token_deadline` / `empty_content_window` / `cot_budget` thresholds) doesn't catch Gemini empty-content. Three candidate sub-sub-modes: (i) Gemini adapter not wired to streaming-recovery, (ii) recovery firing but abort silenced, (iii) thresholds tuned for OpenAI/Anthropic empty-content shape but Gemini emits whitespace/punctuation that satisfies first_token_deadline. | TRACKED — issue #935 | proposes diagnostic-first approach mirroring sub-mode (b) resolution: ship streaming-recovery debug-trail capture, reproduce, inspect, fix |
 | 2026-05-17 | Bridgebuilder-review parser parity check — investigated whether BB's parser shares the prose-preamble bug class. | NOT NEEDED — BB uses HTML-comment markers (`<!-- bridge-findings-start --> \`\`\`json ... \`\`\` <!-- bridge-findings-end -->`) as envelope contract. Regex at `.claude/skills/bridgebuilder-review/resources/core/multi-model-pipeline.ts:442-444` only matches the explicit-marker form, so prose preamble is structurally handled by the marker contract. **BB's marker-based design is the stronger pattern** — worth considering as convergent design if future KF-011-class sub-modes emerge in adversarial-review.sh. | inspection of `.claude/skills/bridgebuilder-review/resources/core/multi-model-pipeline.ts:442-457` |
+| 2026-05-17 (cycle-113 sprint-170 T3.8/T3.9 closure) | **Sub-mode (c) STRUCTURAL — RESOLVED via cycle-113.** Cycle-113 shipped streaming-recovery integration across all 4 streaming parsers (Anthropic + OpenAI Chat + OpenAI Responses + Google) wired to the cycle-109 `loa_cheval.streaming.recovery` library. Recovery integration empirically active end-to-end via 114-test streaming-adjacent suite + 7-case cross-provider parity test (NFR-Parity-1) + 2 AST-uniformity tests (R-SDD-1). MODELINV envelope plumbs `streaming_recovery.config_applied` on every streaming invocation (FR-C-1). **Two caveats**: (1) Google true no-byte stalls do NOT trigger first_token_deadline at the PARSER layer because the deadline-shim's `check_deadline()` only fires before `next(byte_iter)` — production safety for true Google stalls comes from cycle-102 Sprint 4A transport-layer httpx ReadTimeout (ACCEPTED-DEFERRED per cycle-113 sprint-169 review iter-2; see Decision Log entry); (2) per-model `streaming_recovery` config overrides deferred to cycle-114 as operator-driven enhancement — sprint-170 ships library defaults active end-to-end. Reproduction harness re-run subsumed by integration test corpus (cycle-113 sprint-170 T3.8 closure). | cycle-113 PR (commits `0b1b6860` → `2cd18aea`); 114/114 streaming-adjacent tests; sprint-169 reviewer.md + sprint-170 reviewer.md (local); KF-011 → RESOLVED across all sub-modes |
 
 ### Reading guide
 
@@ -799,6 +845,107 @@ KF-011 is now RESOLVED for sub-mode (b) — the "prose preamble + JSON envelope"
 5. **Sub-mode (c) Gemini empty-content**: route-around SHIPPED 2026-05-17 (PR #934 / `ccd510b0`) via 4th-line `claude-headless` voice in `flatline_protocol.{code_review,security_audit}.fallback_chain`. Operator surface functional. Structural fix TRACKED at issue #935 — needs streaming-recovery debug-trail diagnostic against `loa_cheval/providers/google_streaming.py` to identify which of three sub-sub-modes applies (adapter not wired, recovery silenced, thresholds mis-tuned).
 
 6. **Convergent design observation**: bridgebuilder-review uses HTML-comment markers as its envelope contract, which is structurally robust to prose preamble by design. If a future KF-011-class sub-mode emerges in adversarial-review.sh that the `raw_decode` extraction doesn't cover, consider migrating adversarial-review.sh to the marker contract. BB's `multi-model-pipeline.ts:442-444` is the reference implementation.
+
+---
+
+## KF-012: `sha256sum` not portable to BSD/macOS — silent empty-hash cascade into validation failures
+
+**Status**: RESOLVED-STRUCTURAL 2026-05-20 (sprint-bug-172 / [#911](https://github.com/0xHoneyJar/loa/issues/911)) via `sha256_portable` helper in `compat-lib.sh`, 38 production call-site migrations, CI scanner `tools/check-no-raw-sha256sum.sh`, masked-PATH integration test.
+
+**Feature**: SHA-256 hashing across 38 framework scripts — bootstrap (`mount-loa.sh`, `preflight.sh`, `update-loa.sh`), audit chain (`audit-envelope.sh`, `validate-constraints.sh`, `flatline-manifest.sh`, `flatline-snapshot.sh`, `ground-truth-gen.sh`), butterfreezone gen+validate, spiral / learning / memory / proposal / construct utilities.
+
+**Symptom**: macOS users (Darwin 25.3.0 + Loa v1.157.0+) running `/butterfreezone-gen` see `sha256sum: command not found` interleaved with normal output — 10 occurrences per gen run. Script exits 0 but with checksums silently missing. Downstream `/butterfreezone-validate` reports `FAIL: Missing provenance tags: 10/12 sections tagged` — not because provenance was genuinely missing, but because the hashing step silently failed. Identical pattern across all 38 production call sites.
+
+**First observed**: 2026-05-20 (issue #911 filed against framework v1.157.0; observation by external macOS operator).
+
+**Recurrence count**: 1 (single observation across multi-PR sweep).
+
+**Root cause**: GNU `sha256sum` ships in coreutils on Linux; macOS ships `shasum` (Perl-based, BSD lineage) without sha256sum. 38 framework scripts called raw `sha256sum`; macOS PATH-lookup failed silently because most callers piped through `awk '{print $1}'` or `cut -d' ' -f1` which mask the empty stdin → empty hash.
+
+**Resolution path** (sprint-bug-172, 5 commits expected):
+
+1. **Failing test** (G-5 gate): `tests/unit/compat-lib-sha256.bats` with 6 cases (GNU-only / BSD-only / both / neither / byte-equality / file-argv form).
+2. **Helper** in `.claude/scripts/compat-lib.sh`: `sha256_portable` dispatches via cached `_COMPAT_SHA256_CMD` detection at source time. Fails loud (exit 127, stderr diagnostic) when neither tool available — no silent empty hash. `_COMPAT_LIB_VERSION` bumped to `1.2.0`.
+3. **Sweep**: 38 production call sites migrated. Each script sources `compat-lib.sh` (idempotent thanks to `_COMPAT_LIB_LOADED` guard), then calls `sha256_portable` with the same argv shape as the original `sha256sum`. Output format byte-identical (`<hex>  <name>` with two spaces) so downstream `awk '{print $1}'` / `cut -d' ' -f1` parsing is unchanged.
+4. **audit-envelope.sh special case**: `_audit_sha256` delegates to `sha256_portable` for the GNU/BSD branch but PRESERVES the python3 last-resort fallback for hash-chain integrity defense-in-depth.
+5. **Integration test**: `tests/integration/butterfreezone-gen-sha256-portability.bats` simulates macOS by overriding the `command` builtin to fake `sha256sum` absence; asserts byte-equality of `sha256_portable` output against canonical GNU sha256sum.
+6. **CI scanner**: `tools/check-no-raw-sha256sum.sh` (mirrors cycle-099 sprint-1E.c.3.c `check-no-raw-curl.sh`). Detects raw `sha256sum` outside the EXEMPT_FILES set, with positive control + negative control in `.github/workflows/check-no-raw-sha256sum.yml`.
+
+**Structural analog**: cycle-099 sprint-1E.c.3.c (curl wrapper migration). Same pattern: per-site portability gap → helper + sweep + CI scanner + integration test.
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+| 2026-05-20 | Discovered class via #911 (macOS operator report — Darwin 25.3.0, v1.157.0, butterfreezone repro). Triage revealed scope is 38 production scripts + 5 test sites, not the 11 the issue claimed. | TRIAGE — bug-20260520-i911-60baf5, sprint-bug-172, beads `bd-52sc` | grimoires/loa/a2a/bug-20260520-i911-60baf5/triage.md |
+| 2026-05-20 | Helper + 38-site sweep + CI scanner + integration test + 6-case unit test | RESOLVED-STRUCTURAL — single-pass migration, scanner prevents regression on subsequent PRs | sprint-bug-172 PR (this entry); `.claude/scripts/compat-lib.sh`, `tools/check-no-raw-sha256sum.sh`, `tests/unit/compat-lib-sha256.bats`, `tests/integration/butterfreezone-gen-sha256-portability.bats` |
+
+### Reading guide
+
+If you see `sha256sum: command not found` in any `.claude/scripts/` script output:
+1. Verify the script sources `compat-lib.sh`. If not, that's a regression — the CI scanner should have caught the PR that introduced it.
+2. If the script DOES source compat-lib.sh but still calls `sha256sum`, that's a different bug — the helper exists; the call site was missed by the sweep. File a follow-up under KF-012 attempts.
+3. The scanner `tools/check-no-raw-sha256sum.sh` runs on every PR via `.github/workflows/check-no-raw-sha256sum.yml`. Suppression marker `# check-no-raw-sha256sum: ok` is available for narrow exceptions (each occurrence reviewable in PR diff).
+4. Operator running on a host where NEITHER `sha256sum` NOR `shasum` is available: install GNU coreutils (`brew install coreutils` on macOS) OR Perl 5.10+ (which provides `/usr/bin/shasum` by default on macOS).
+
+### Cross-references
+
+- Structural precedent: cycle-099 sprint-1E.c.3.c (`tools/check-no-raw-curl.sh`) — same shape, applied to `curl`/`wget`.
+- Related framework-portability concerns: `compat-lib.sh` already handles `sed_inplace`, `get_canonical_path`, `version_sort`, `make_temp`, `get_file_mtime`, `find_sorted_by_time` — this entry adds `sha256_portable` to that list (helper version 1.1.0 → 1.2.0).
+
+---
+
+## KF-013: headless CLI env-mode-selector vars defeat subscription OAuth
+
+**Status**: RESOLVED 2026-05-20 (sprint-bug-173 / PR pending merge — `_HEADLESS_STRIPPED_AUTH_VARS` extended)
+**Feature**: cheval headless CLI adapters (`gemini-headless`, `codex-headless`, `claude-headless`) — env hygiene for spawned subprocess
+**Symptom**: A `kind: cli` headless adapter invocation returns `RATE_LIMITED: Rate limited by google` (or analogous 429) even though the operator's CLI works fine when invoked directly with its OAuth subscription path (`~/.gemini/settings.json`, `~/.codex/auth.json`, `~/.claude/`). Root cause: the parent shell exports an *auth-mode-selector* env var (not a credential — just a flag) that flips the CLI off OAuth onto API/Vertex/GCA mode, where it then hits API rate limits.
+**First observed**: 2026-05-20 (sprint-bug-173, issue #894). The defect class was visible since cycle-109 #879/#880 introduced `_HEADLESS_STRIPPED_AUTH_VARS` — the original tuple only scrubbed *credentials*, not *mode-selectors*. The gap was made visible by the `construct-k-hole/scripts/dig-search.ts` external pattern, which scrubs both classes.
+**Recurrence count**: 1
+**Current workaround**: `_HEADLESS_STRIPPED_AUTH_VARS` (in `.claude/adapters/loa_cheval/providers/base.py:472-489`) now scrubs both sub-classes: credentials AND auth-mode-selectors. `LOA_HEADLESS_KEEP_API_KEY=1` preserves both (operator opt-in to API mode).
+**Upstream issue**: [#894](https://github.com/0xHoneyJar/loa/issues/894); fix in sprint-bug-173 PR (pending).
+**Related visions / lore**: KF-002 (large-input class — different layer, same headless substrate); `feedback_bias_correction_protocol_validated.md` (cross-model adversarial review caught analogous defect-class gap in sprint-bug-172).
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+| 2026-05-20 | Initial fix: extended `_HEADLESS_STRIPPED_AUTH_VARS` tuple with `GOOGLE_GENAI_USE_VERTEXAI` + `GOOGLE_GENAI_USE_GCA`, mirroring `construct-k-hole/scripts/dig-search.ts`. Added paired unit tests. Failing-first proven (default-scrub FAIL pre-fix, PASS post-fix). | PARTIAL — covered 2 of 4 selectors | sprint-bug-173 PR commit-1; bd-rt9u; 101 headless tests pass. |
+| 2026-05-20 | Phase 2.5 cross-model adversarial review (`adversarial-review.sh --type review --sprint-id sprint-bug-173`, gpt-5.5-pro, 102.7s, 60.7K input / 5.8K output tokens) surfaced ADVISORY DISS-001: dig-search.ts scrub list is incomplete; gemini-cli's `getAuthTypeFromEnv()` checks additional auth-mode selectors. | CAUGHT-GAP | `grimoires/loa/a2a/sprint-bug-173/adversarial-review.json`; bias-correction protocol per `feedback_bias_correction_protocol_validated.md`. |
+| 2026-05-20 | Verified DISS-001 directly against gemini-cli main branch source (`packages/core/src/core/contentGenerator.ts::getAuthTypeFromEnv()`). Confirmed two more env-mode selectors: `GOOGLE_GEMINI_BASE_URL` (→ AuthType.GATEWAY) and `GEMINI_CLI_USE_COMPUTE_ADC` (→ AuthType.COMPUTE_ADC). Extended tuple in same sprint commit. Added paired scrub-by-default tests for both, plus `test_all_mode_selectors_preserved_under_keep_api_key_opt_in` confirming the docstring contract, plus `test_cloud_shell_preserved_legitimate_environment_signal` pinning the explicit decision to NOT scrub `CLOUD_SHELL=true` (legit Cloud Shell environment signal). | RESOLVED — verified against canonical source | sprint-bug-173 PR commit-2; 105/105 headless tests pass; zero regressions. |
+| 2026-05-20 | Symmetric audit of `codex_headless_adapter.py` + `claude_headless_adapter.py` for analogous OpenAI / Anthropic env-mode-selector vars. | NONE FOUND — no equivalents | `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` are endpoint-redirects (not mode-switches); `OPENAI_API_TYPE` is legacy-Azure-SDK (not consumed by codex CLI); claude's `--bare` is a CLI flag (already forbidden in adapter docstring per `claude_headless_adapter.py:26`), not an env var. Existing `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` scrubs remain sufficient. |
+
+### Reading guide
+
+When you observe `RATE_LIMITED` or `403`/`401` from a `kind: cli` headless
+adapter despite the operator's direct-CLI invocation working with subscription
+OAuth: check whether a NEW auth-mode-selector env var was introduced by a CLI
+update (gemini / codex / claude). The canonical scrub list is
+`_HEADLESS_STRIPPED_AUTH_VARS` in `.claude/adapters/loa_cheval/providers/base.py`.
+
+**Canonical source-of-truth for the gemini selector class** is gemini-cli's
+`packages/core/src/core/contentGenerator.ts::getAuthTypeFromEnv()` — the
+switch ladder of env-var checks IS the auth-mode-selector list. The original
+sprint-bug-173 fix mirrored `construct-k-hole/scripts/dig-search.ts` and got
+2 of 4 selectors right; the cross-model adversarial review caught the other
+two (`GOOGLE_GEMINI_BASE_URL`, `GEMINI_CLI_USE_COMPUTE_ADC`). When auditing
+a new CLI version, read the CLI's own source rather than relying on third-party
+scrub lists. Dig-search.ts is prior art, not specification.
+
+The opt-in preserves-test under `LOA_HEADLESS_KEEP_API_KEY=1` is regression-guard
+(the env returns the parent verbatim, so the assertion holds pre- AND post-fix).
+The failing-first proof comes from the default-scrub test alone.
+
+The codex + claude CLIs were audited (2026-05-20) for analogous env-mode-selectors
+and none exist as of the audit date. Future agents observing the same symptom
+class on the codex / claude path should first check CLI changelogs for newly-added
+env-mode-selector vars rather than re-running the same audit.
+
+**Meta-lesson for future provider-CLI additions**: this entry is the empirical
+evidence-base for the operator's `feedback_bias_correction_protocol_validated.md`
+— the Phase 2.5 cross-model adversarial review (`adversarial-review.sh`) caught
+a same-class gap that single-author audit missed. When landing a new headless
+adapter, do not skip the cross-model review under "the fix is trivial" pressure.
 
 ---
 
@@ -821,3 +968,125 @@ work to make the new models reliable. This file is the operational ledger
 of that work — what we've tried, what didn't fix it, what we do today
 instead. Future agents read it at session start so we don't pay the
 re-discovery cost on every cycle.
+
+---
+
+## KF-014: pre-commit beads hook fails in linked git worktrees
+
+**Status**: RESOLVED 2026-06-10 (sprint-bug-190 / #991 — `.claude/scripts/git-hooks/pre-commit-beads` now runs the flush as `(cd "$MAIN_REPO_ROOT" && br sync --flush-only)` when the resolved beads dir is the main checkout's; bats PCB-T7 (worktree CWD assertion via recording stub), PCB-T8 (main-checkout regression guard), PCB-T9 (worktree failure-path stderr passthrough); live verification: empty-commit in a fresh linked worktree succeeded without --no-verify)
+
+**Original Status**: OPEN
+**Feature**: `.git/hooks/pre-commit` beads flush (`br sync --flush-only`)
+**Symptom**: `git commit` in any `git worktree add` linked worktree fails with `Error: Beads not initialized: run 'br init' first` — the hook resolves the main checkout's `.beads/` via `--git-common-dir` but then invokes plain `br sync`, which resolves `.beads/` from CWD (the worktree, which has none). The worktree-detection branch is dead code for the actual invocation.
+**First observed**: 2026-06-10 (CLAUDE.loa.md token-refactor branch build, PR #990)
+**Recurrence count**: 1
+**Current workaround**: For commits containing no beads state, `git commit --no-verify` with the bypass disclosed in the PR body. For commits that DO touch beads state, commit from the main checkout instead of a worktree.
+**Upstream issue**: [#991](https://github.com/0xHoneyJar/loa/issues/991)
+**Related visions / lore**: `.claude/rules/stash-safety.md` recommends worktrees for pre-commit-adjacent work — the recommended pattern collides with the hook.
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+| 2026-06-10 | `git commit` in linked worktree (normal path) | DID NOT WORK — br resolves .beads from CWD | PR #990 commit `3ea85ad9` |
+| 2026-06-10 | `git commit --no-verify` (no beads state in commit) | WORKAROUND — semantically safe only because the commit carries no beads changes | PR #990 |
+
+### Reading guide
+
+If a commit fails with `Beads not initialized` inside a linked worktree: do NOT run `br init` there (it would create a second, divergent beads DB). Either commit from the main checkout or, for beads-free commits, use `--no-verify` and disclose it. Route the structural fix through #991 (hook should `cd` to the main repo root for the flush).
+
+---
+
+## KF-015: red-team-code-vs-design.sh silent-clean gate pass on degraded runs
+
+**Status**: RESOLVED 2026-06-11 (sprint-bug-194 — `.claude/scripts/red-team-code-vs-design.sh`: (1) prompt/stderr temp vars script-scoped so the EXIT trap works under `set -u`; (2) validation requires non-empty content + object-with-findings-array (bare `jq .` passed EMPTY input — the silent-clean bypass); (3) model failure (incl. exit-12 CHAIN_EXHAUSTED) writes a `{degraded:true, degradation_reason, model_exit_code, stderr_tail}` record and exits non-zero, matching the scoring-engine contract. Pinned by `tests/unit/red-team-code-vs-design.bats` RTC-T1..T7 incl. functional empty-content and exit-12 cases via the test-mode-gated adapter seam.)
+
+**Original Status**: OPEN (fix in flight: sprint-bug-194, triaged 2026-06-11 from #984 + #985)
+**Feature**: `.claude/scripts/red-team-code-vs-design.sh` — RED_TEAM_CODE gate (Deliberative Council code-vs-design layer, `red_team.code_vs_design.enabled: true`)
+**Symptom**: The gate reports success on degraded runs. Three composing defects (script untouched since 2026-05-05 / PR #723, predates cycle-104/109 degraded-run hardening): (1) EXIT trap references function-local vars under `set -u` → `line 1: prompt_file: unbound variable` on every success path (cleanup never runs, temp files leak, exit code bash-version-dependent); (2) line-484 `jq '.'` exits 0 on EMPTY input → empty model content writes a 0-byte findings file, logs blank counts (`Findings:  total,  divergences`), exits 0 — silent-clean gate pass; (3) model-invoke failure (incl. exit-12 CHAIN_EXHAUSTED, timeout) exits 1 with NO record at `--output` — failure produces no auditable artifact, unlike the SDD-phase pipeline's `{degraded: true, degradation_reason}` contract (scoring-engine.sh:736-763).
+**First observed**: 2026-06-06 (#984, Loa v1.171.6 submodule mount); 4/4 sprint failures across deadwax (hosaka-fm) cycle 1 (#985); local repro confirmed 2026-06-11 (sprint-bug-194 triage)
+**Recurrence count**: 4 (4 distinct failure modes, one per sprint, single downstream cycle) + 1 local repro
+**Current workaround**: Gate callers must NOT trust exit code alone — inspect the findings file content and treat empty/0-byte/missing as degraded → fail-open with an auditable manual-pass record (the deadwax pattern). Independent `adversarial-review.sh` cross-model dissent carries coverage while this gate is dead weight.
+**Upstream issue**: [#984](https://github.com/0xHoneyJar/loa/issues/984) + [#985](https://github.com/0xHoneyJar/loa/issues/985); fix sprint: sprint-bug-194 (`grimoires/loa/a2a/bug-20260611-i984-8b8a94/`)
+**Related visions / lore**: vision-023 Fractal Recursion ("the very gate built to detect silent degradation experienced silent degradation"); KF-002/KF-004 are the same silent-degradation class at other pipeline layers; `feedback_zero_blocker_demotion_pattern.md`
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+| 2026-06-06..09 | deadwax cycle 1 ran the gate 4/4 sprints (alias exit-12, trap crash + 0-byte file, empty output ×2) | DID NOT WORK — gate never exercised once; fail-opened each time with manual records | #985 failure table; grimoires/loa/a2a/sprint-{1..4}/red-team-code-findings.json in hosaka-fm/deadwax |
+| 2026-06-11 | sprint-bug-194 triage: minimal trap repro + jq-on-empty mechanics verification | ROOT CAUSES CONFIRMED — all three defects verified at source (script:338-341, :484, :463-516); fix is structural (trap scope + `jq -e` output assertion + degraded-record contract) | triage.md in `grimoires/loa/a2a/bug-20260611-i984-8b8a94/` |
+
+### Reading guide
+
+If a RED_TEAM_CODE gate logs `Findings:  total,  divergences` (blank counts), writes a 0-byte findings file, or stderr shows `prompt_file: unbound variable`: this is the documented defect cluster, NOT a model/provider problem — do not retry the invocation or bump budgets. Note the exit-12 sub-case is environmentally distinct: exit 12 IS `CHAIN_EXHAUSTED` (cheval.py EXIT_CODES) and `claude-opus-4-7` HAS a within-company fallback_chain (model-config.yaml:381) — the chain was walked and exhausted (e.g., submodule mount lacking auth for chain entries); fix the environment's auth, not the script's model routing. Until sprint-bug-194 lands: treat empty/0-byte/missing findings files as degraded and fail-open with an auditable record. After it lands: the script itself writes `{degraded: true, degradation_reason, model_exit_code}` and exits non-zero on every degraded run.
+
+## KF-016: compliance_profile governs only fallback, not initial routing — Bedrock-only operators silently degrade to dead Anthropic API
+
+**Status**: RESOLVED-IN-FLIGHT 2026-06-13 (PR [#1055](https://github.com/0xHoneyJar/loa/pull/1055) / issue [#1054](https://github.com/0xHoneyJar/loa/issues/1054)) — `compliance_profile: prefer_bedrock | bedrock_only` now rewrites Anthropic-family alias targets to their Bedrock equivalents at **initial** resolution, in both the Python loader (`_apply_bedrock_forward_routing` in `.claude/adapters/loa_cheval/config/loader.py`) and the bash codegen (`_maybe_apply_bedrock_forward_routing` in `gen-adapter-maps.sh`), using the inverse of the existing `fallback_to` table. A mis-nested `compliance_profile` (placed under `hounfour.*` instead of `providers.bedrock`) now emits a loud warning (`_warn_misnested_compliance_profile`) instead of being silently ignored.
+
+**Original Status**: OPEN — silent-degradation class (same family as KF-002 / KF-004 / KF-015)
+**Feature**: cheval model routing — `providers.bedrock.compliance_profile` and the generated alias→provider map consumed by flatline / adversarial-review / bridgebuilder
+**Symptom**: An operator who sets `compliance_profile: prefer_bedrock` (intending "all Anthropic traffic goes through Bedrock for compliance") still has Anthropic-family aliases (`opus`, `sonnet`) resolve to `anthropic:<model>` on the **initial** call. `compliance_profile` only ever influenced the **fallback** direction, never the first dispatch. On a Bedrock-only operator (no live `ANTHROPIC_API_KEY`), the initial `opus` call hits the dead Anthropic endpoint, returns a ~2-token stub / auth-failure-shaped empty content, and the multi-voice consensus engine scores a "3-voice" envelope where one voice is a degraded stub — a silent quorum degradation that the headline (`N findings — X consensus`) does not reveal. Mis-nesting `compliance_profile` under `hounfour.*` (an easy config footgun) made it a silent no-op with zero diagnostics.
+**First observed**: 2026-06-13 (operator running Bedrock-only profile; opus voice silently degraded in flatline consensus). Root-caused to initial-vs-fallback routing asymmetry in the loader + codegen.
+**Recurrence count**: 1 (single operator observation + reproduction; pre-emptively fixed before further recurrence)
+**Current workaround** (pre-PR-#1055): manually regenerate `generated-model-maps.sh` from an operator config with the `opus`/`sonnet` aliases hand-flipped to `bedrock:`, then `git update-index --skip-worktree generated-model-maps.sh` so the manual map survives regeneration. This is a build-artifact override, NOT a config-driven fix — it must be re-applied by hand whenever the map is regenerated, and it masks the underlying loader/codegen gap. **Do not mistake a green flatline run made under this workaround for verification of the PR-#1055 native code** — the workaround does the routing, the native code is never exercised. A true PR verification requires the manual map removed and routing driven purely by `compliance_profile`.
+**Upstream issue**: [#1054](https://github.com/0xHoneyJar/loa/issues/1054) (filed 2026-06-13); fix PR [#1055](https://github.com/0xHoneyJar/loa/pull/1055)
+**Related visions / lore**: KF-002 (empty-content silent-degradation), KF-004 (silent dissenter-payload rejection), KF-015 (silent-clean gate pass on degraded runs) — all the same "headline says clean / quorum says degraded" class; `feedback_zero_blocker_demotion_pattern.md`
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+| 2026-06-13 | Manual `generated-model-maps.sh` flip + `skip-worktree` on the launch clone (operator stopgap) | WORKAROUND-AT-LIMIT — routes opus→Bedrock but only as a build-artifact override; must be hand-reapplied on every regen; masks the loader/codegen gap; does NOT exercise config-driven routing | `~/loa-dev/loa` `generated-model-maps.sh` (skip-worktree flagged); mis-nested `compliance_profile` under `hounfour.*` |
+| 2026-06-13 | Native fix: `_apply_bedrock_forward_routing` (loader.py) + `_maybe_apply_bedrock_forward_routing` (gen-adapter-maps.sh) derive the Bedrock rewrite from `compliance_profile` via the inverted `fallback_to` table; `_warn_misnested_compliance_profile` makes mis-nesting loud | RESOLVED-IN-FLIGHT — unit + mechanism verified: 11 Python tests (`test_bedrock_forward_routing.py`) + 6 bats tests (`bedrock-forward-routing-codegen.bats`) all green; live mechanism proof showed the opus alias starting as `anthropic:` and the PR code flipping it to `bedrock:` from `compliance_profile` alone (workaround NOT in path). Full 3-voice flatline e2e listed as a pre-merge gate. | PR #1055 commit `2ae74403`; Python suite 11 passed; bats suite 6/6 passed; mechanism proofs (loader + codegen) |
+
+### Reading guide
+
+If a flatline / adversarial-review / bridgebuilder run on a **Bedrock-only** operator (no live `ANTHROPIC_API_KEY`) reports a full multi-voice consensus but one Anthropic-family voice (`opus`/`sonnet`) returned a ~2-token stub or auth-failure-shaped empty content: check whether `compliance_profile` is actually driving initial routing. Pre-PR-#1055, it was NOT — the first dispatch went to the dead Anthropic endpoint regardless of `compliance_profile`. Confirm the alias resolution with `resolve_provider_id opus` (bash) or by inspecting the loaded alias map (Python); if `opus` resolves to `anthropic:` despite `compliance_profile: prefer_bedrock`, you are hitting this bug. Also verify `compliance_profile` is nested under `providers.bedrock`, NOT `hounfour.*` — mis-nesting was a silent no-op before the warning landed. **Verification trap**: a green run produced while the manual `skip-worktree` map is installed proves the workaround, not the fix — remove the manual map and let `compliance_profile` drive routing before claiming the native code is e2e-verified. Post-PR-#1055: routing is config-driven in both the loader and the codegen, and mis-nesting is loud.
+
+## KF-017: cross-model substrate all-voice api_failure — auth/billing exhaustion (NOT the KF-002 empty-content class)
+
+**Status**: DIAGNOSED 2026-06-15 — root cause is credential/billing across the subscription + Anthropic-credit paths, not reasoning-budget empty-content. Immediate remediation proven: `headless_mode: api-only` restores a clean multi-voice APPROVED (2/2, chain ok) using the valid openai+google HTTP keys.
+**Feature**: cheval cross-model dispatch (adversarial-review / Flatline / Bridgebuilder); model-adapter.sh → chain_resolver → providers.
+**Symptom**: every cross-model voice returns `api_failure` (review) / degraded verdict (audit) — looks like KF-002 (all-voice failure) but is NOT empty-content-at-scale. Occurs even on tiny diffs (sub-gate input). Observed 2026-06-15: 6+ consecutive review/audit invocations all-voice-failed; only intermittent gemini.
+**Root cause (each leg, grounded via live per-provider probes + direct curl + MODELINV `.run/model-invoke.jsonl`)**:
+- **Anthropic HTTP**: `ANTHROPIC_API_KEY` VALID but account out of credits — `curl /v1/messages` → HTTP 400 `"Your credit balance is too low to access the Anthropic API"`. cheval wraps as `PROVIDER_UNAVAILABLE` → FALLBACK_EXHAUSTED across opus-4-7/4-6/sonnet-4-6.
+- **codex-headless (OpenAI ChatGPT subscription)**: token server-side INVALIDATED — MODELINV `INVALID_CONFIG: codex CLI not authenticated ... 401 Unauthorized: Your authentication token has been invalidated` (`~/.codex/auth.json` stale, mtime predates failures; `codex login status` reports "logged in" LOCALLY but the server rejects). Fix: `codex login`.
+- **claude-headless (Anthropic subscription)**: api_failure (same Anthropic-account issue).
+- **google-headless**: circuit-breaker was OPEN (5 failures) — reset to CLOSED 2026-06-15.
+- **WORKING**: openai HTTP (gpt-5.5) ✅, google HTTP (gemini-3.1-pro) ✅ — proven by `LOA_HEADLESS_MODE=api-only` probes (exit 0).
+**Compounding routing/resilience defect (filed as #1071)**: under the default `prefer-api` mode, a request for `openai:gpt-5.5` was dispatched through a chain LED BY `openai:codex-headless`, whose `INVALID_CONFIG` (exit 2) HARD-ABORTED the dispatch before the working HTTP `gpt-5.5` leg was tried. `chain_resolver._reorder` prefer-api returns `http + cli` (chain_resolver.py:298-301) — so either the effective mode wasn't prefer-api at runtime or a CLI `INVALID_CONFIG` is not treated as chain-walkable. A broken subscription token should NOT take down a provider whose HTTP key is valid. (Distinct from KF-002.)
+**Remediation (operator)**:
+1. IMMEDIATE (no billing/login; proven): set `hounfour.cheval.headless.mode: api-only` in .loa.config.yaml (or export `LOA_HEADLESS_MODE=api-only`). The adversarial chain (gpt-5.5-pro/gpt-5.5/gemini-3.1-pro) is all-HTTP → restored to clean multi-voice (verified: sprint-bug-222 audit re-run → clean/APPROVED 2/2). NOTE: HTTP API is metered per-token vs the flat-rate CLI subscription — a cost posture choice.
+2. Restore subscription paths (if preferred for cost): `codex login` (re-auth ChatGPT) + top up Anthropic credits (Plans & Billing; the key is valid, balance is $0). google-headless breaker already reset.
+**Recurrence count**: 1 (this session; pre-emptively documented).
+**Related**: KF-002 (empty-content — DIFFERENT mechanism, do not conflate), #1071 (the prefer-api chain-walk resilience defect), multi-model-reference.md, vision-024/025.
+
+### Reading guide
+If cross-model voices all return `api_failure` / the gates degrade: do NOT assume KF-002 (empty-content) — check `.run/model-invoke.jsonl` `message_redacted` for the actual per-leg error. The 2026-06-15 cause was billing (Anthropic $0 credits) + an invalidated codex subscription token, with openai+google HTTP keys still valid. Fastest unblock: `LOA_HEADLESS_MODE=api-only` (uses the valid HTTP keys). A `codex login status` of "logged in" is NOT authoritative — the token can be server-side-invalidated while the local auth.json looks fine.
+
+---
+
+## KF-018: gemini-headless CLI auth-tier deprecated (Gemini Code Assist for individuals retired) — Gemini voice silently drops from multi-model review
+
+**Status**: OPEN — MITIGATED-BY-WORKAROUND (upstream migration BLOCKED on Antigravity CLI availability)
+**Feature**: cheval `gemini-headless` adapter (`.claude/adapters/loa_cheval/providers/gemini_headless_adapter.py`) → Flatline / Bridgebuilder / any `google:*` multi-model consumer
+**Symptom**: every `gemini-headless` dispatch fails auth with `IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals … migrate to … antigravity.google`. cheval's circuit breaker `google/headless` trips HALF_OPEN→OPEN and the Gemini voice is silently removed from the consensus (degrades to fewer voices, no visible error to the operator).
+**First observed**: 2026-06-18 (issue #1089, live Flatline run on loa-laplas)
+**Recurrence count**: 1
+**Current workaround**: `LOA_HEADLESS_MODE=api-only` routes google through the HTTP API (valid `GOOGLE_API_KEY` against `generativelanguage.googleapis.com/v1beta`, already `providers.google.endpoint`) instead of the dead CLI; OR operators drop the tertiary Gemini voice (`flatline_protocol.models.tertiary`) / re-point it at another provider so reviews run on the remaining voices instead of silently degrading. (Sibling to the Fable-5 headless retirement — re-pin `extra.cli_model: fable → opus` via the `hounfour:` override; see bd-01o1.)
+**Upstream issue**: [#1089](https://github.com/0xHoneyJar/loa/issues/1089)
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+| 2026-06-18 | Continue using the `@google/gemini-cli` headless path | DID NOT WORK — Google retired the "Code Assist for individuals" tier the CLI auths against; `IneligibleTierError` on every dispatch | issue #1089 cheval log |
+| 2026-06-19 | Assess the issue's proposed `flatline-readiness.sh` headless-CLI probe | WORKAROUND-AT-LIMIT — the existing `health_check()` probes `gemini --version` (binary presence), which still SUCCEEDS while the auth TIER is dead (the error fires only on real inference). A presence probe does NOT catch tier-deprecation; a real-auth probe (`gemini -p ping`) would but is slow/costly and trips the breaker. Readiness CLI-tier probe DEFERRED (bd-yohy). | this entry |
+| not started | Migrate `gemini-headless` to the Antigravity CLI | BLOCKED — Google's replacement is not publicly available; cannot implement against an unreleased CLI | antigravity.google |
+| 2026-06-19 | Add a `gemini-api` terminal (alias → `google:gemini-2.5-pro`, auth_type http_api / GOOGLE_API_KEY) as a key-based alternative | **SHIPPED** — the existing `GoogleAdapter` already speaks v1beta + `GOOGLE_API_KEY` (`x-goog-api-key`), so this is a config alias, not a new adapter. Operators swap `gemini-headless` → `gemini-api` (e.g. the Flatline tertiary voice) for the key-based HTTP path. Only the Antigravity CLI migration remains BLOCKED. | bd-n56l / issue #1089 fix (2) |
+
+### Reading guide
+
+If the Gemini voice vanishes from Flatline/BB (`google/headless` circuit OPEN, `IneligibleTierError`): the gemini CLI tier is dead, not a transient outage — do NOT wait for recovery. Apply `LOA_HEADLESS_MODE=api-only` (uses the valid `GOOGLE_API_KEY` HTTP path) or drop/re-point the tertiary voice. `flatline-readiness.sh` reports providers by API-KEY presence and a `gemini --version` probe passes, so neither currently flags this — treat a silent voice-drop in consensus as the signal. The `gemini-api` alias (key-based HTTP terminal → `google:gemini-2.5-pro` via `GOOGLE_API_KEY`) now exists as the explicit swap target — set `flatline_protocol.models.tertiary: gemini-api`, or alias `gemini-headless → gemini-api`, where the CLI is unavailable. The remaining structural fix (Antigravity CLI migration of the *headless* path) is upstream-blocked.

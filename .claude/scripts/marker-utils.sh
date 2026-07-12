@@ -12,6 +12,10 @@ set -euo pipefail
 
 # MED-001 FIX: Set restrictive umask for secure temp file creation
 # This ensures mktemp creates files with 600 permissions atomically
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 umask 077
 
 # =============================================================================
@@ -138,7 +142,7 @@ compute_hash() {
       ;;
   esac
 
-  echo -n "$content" | sha256sum | cut -d' ' -f1
+  echo -n "$content" | sha256_portable | cut -d' ' -f1
 }
 
 # Verify file hash matches marker
@@ -352,8 +356,10 @@ update_hash() {
       return 1
     fi
   else
-    # Replace the hash value in the marker line
-    sed "s/\(${MARKER_PREFIX}.*hash: \)[a-f0-9]*/\1${new_hash}/" "$file" > "$temp_file"
+    # Replace the hash value in the marker line. The bootstrap form carries a
+    # literal "PLACEHOLDER" suffix glued to the hex (bug-989) — consume it so
+    # the first real stamp drops it instead of gluing the new hash in front.
+    sed "s/\(${MARKER_PREFIX}.*hash: \)[a-f0-9]*\(PLACEHOLDER\)\{0,1\}/\1${new_hash}/" "$file" > "$temp_file"
   fi
 
   mv "$temp_file" "$file"
