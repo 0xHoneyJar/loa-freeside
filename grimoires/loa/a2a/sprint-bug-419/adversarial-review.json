@@ -1,0 +1,54 @@
+{
+  "findings": [
+    {
+      "id": "DISS-001",
+      "severity": "BLOCKING",
+      "category": "spec-violation",
+      "anchor": "packages/protocol/shadow-audit/src/schemas/audit-output.ts:AuditAggregateSchema",
+      "anchor_type": "function",
+      "scope": "diff",
+      "description": "The protocol schema documents a hard privacy invariant for `role_coverage` but does not enforce it. It accepts a non-null ratio alongside a k-anonymized `unmatched_role_holders` bucket, as well as contradictory combinations such as an exact positive unmatched count with `role_coverage: 1`.",
+      "failure_mode": "Any producer other than the current `runAudit` implementation—or a future regression—can emit privacy-invalid coverage data that passes `AuditOutputSchema.parse`, allowing a suppressed unmatched count to be reconstructed from the visible role-member total and ratio. The schema therefore certifies outputs that violate its stated privacy contract.",
+      "suggested_fix": "Add a `.superRefine()` cross-field invariant: require `role_coverage === null` whenever the unmatched cohort is bucketed unless an explicit, independently represented zero case is used; reject impossible exact-count/ratio combinations that can be validated. Add negative schema tests proving privacy-invalid combinations fail parsing.",
+      "anchor_status": "valid",
+      "anchor_stability": "symbol"
+    }
+  ],
+  "metadata": {
+    "type": "review",
+    "model": "codex-headless",
+    "sprint_id": "sprint-bug-419",
+    "timestamp": "2026-07-12T22:22:43Z",
+    "tokens_input": 73647,
+    "tokens_output": 1448,
+    "cost_usd": 0,
+    "latency_ms": 42162,
+    "status": "reviewed",
+    "degraded": false,
+    "rejected_count": 0,
+    "rejected_sidecar": "grimoires/loa/a2a/sprint-bug-419/adversarial-rejected-review.jsonl",
+    "model_attempts": [
+      "codex-headless:reviewed"
+    ],
+    "final_model": "codex-headless",
+    "hallucination_filter": {
+      "applied": true,
+      "downgraded": 0
+    }
+  },
+  "verdict_quality": {
+    "consensus_outcome": "consensus",
+    "truncation_waiver_applied": false,
+    "voices_planned": 1,
+    "voices_succeeded": 1,
+    "voices_succeeded_ids": [
+      "codex-headless"
+    ],
+    "voices_dropped": [],
+    "chain_health": "ok",
+    "confidence_floor": "high",
+    "rationale": "multi-voice aggregate (1/1 succeeded); chain_health=ok",
+    "single_voice_call": true,
+    "status": "APPROVED"
+  }
+}

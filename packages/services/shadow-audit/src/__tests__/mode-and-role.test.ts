@@ -105,9 +105,10 @@ describe('resolveMode — role coverage drives uncertainty (bug 20260712-486383)
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.refusal.code).toBe('role-coverage-too-low');
-    // The refusal must NAME what we cannot see — "be honest about what we cannot see".
-    expect(r.refusal.reason).toContain('1');
+    // The refusal must NAME what we cannot see — "be honest about what we cannot see" — while still
+    // k-anonymizing the sub-k matched cohort (see the HIGH-1 block below).
     expect(r.refusal.reason).toContain('515');
+    expect(r.refusal.reason).toContain('could be resolved to a wallet');
     expect(r.refusal.retryable).toBe(false);
   });
 
@@ -198,5 +199,79 @@ describe('RoleSnapshotSchema', () => {
   it('rejects an entry with no role_ids', () => {
     const bad = snapshot({ entries: [{ discord_user_id: 'u3', role_ids: [] }] });
     expect(RoleSnapshotSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+/**
+ * HIGH-1 (security audit) — the REFUSAL must honor the same k-anonymity as the success path.
+ *
+ * The refusal `reason` is returned VERBATIM to callers. Naming exact counts leaked precisely what the
+ * aggregate suppresses: with total=6 / matched=2, `unmatched = 6 - 2 = 4` — an exact sub-k cohort the
+ * success path publishes only as `{bucketed '<5'}`. A rounded percentage is no safer: beside an exact
+ * denominator it re-derives the numerator ("rounding is not suppression"). A failure channel that
+ * discloses what the success channel hides is not a smaller leak, just a quieter one.
+ */
+describe('resolveMode — the refusal cannot leak a sub-k cohort (HIGH-1)', () => {
+  it('SUPPRESSES a sub-k matched cohort: total=6 / matched=2 must not disclose "2" or "33%"', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(2, 6),
+      nowUnixSeconds: NOW,
+      k: 5,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const reason = r.refusal.reason;
+    expect(r.refusal.code).toBe('role-coverage-too-low');
+    // The exact numerator (and therefore unmatched = 6 - 2 = 4, a sub-k cohort) must NOT be derivable.
+    expect(reason).not.toMatch(/\b2 of 6\b/);
+    expect(reason).not.toContain('33%');
+    expect(reason).toContain('fewer than 5'); // the k-anon bucket
+    expect(reason).toContain('6'); // the denominator stays exact (a role-size, >= k)
+  });
+
+  it('SUPPRESSES the size-1 matched cohort in the real THJ case (no bare "1 of 515")', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(1, 515),
+      nowUnixSeconds: NOW,
+      k: 5,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    // "exactly one person in your guild is linked" is a cohort of ONE — the thing k-anon exists for.
+    expect(r.refusal.reason).not.toMatch(/\b1 of 515\b/);
+    // \b prevents this from matching inside "50% coverage floor" — we're forbidding the TRUE ratio (0%),
+    // not the floor's own published constant.
+    expect(r.refusal.reason).not.toMatch(/\b0% coverage/);
+    expect(r.refusal.reason).toContain('fewer than 5');
+    expect(r.refusal.reason).toContain('515'); // still names what we cannot see
+    expect(r.refusal.reason).toContain('re-export'); // still actionable — it IS the sales conversation
+  });
+
+  it('does NOT over-suppress the honest case: an EXACT (>= k) matched cohort keeps its counts', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(30, 100), // 30% coverage, matched 30 >= k
+      nowUnixSeconds: NOW,
+      k: 5,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.reason).toContain('only 30 of 100');
+    expect(r.refusal.reason).toContain('30% coverage'); // safe: the numerator is already exact
+  });
+
+  it('REFUSES cohort-too-small when the role set itself is below k (the denominator would expose it)', () => {
+    const r = resolveMode({
+      isOperatedCommunity: true,
+      roleSnapshot: coverageSnapshot(1, 4), // 4 role-holders total, k=5
+      nowUnixSeconds: NOW,
+      k: 5,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.code).toBe('cohort-too-small');
+    expect(r.refusal.reason).not.toMatch(/\b1 of 4\b/);
   });
 });

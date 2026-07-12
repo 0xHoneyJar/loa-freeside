@@ -103,6 +103,9 @@ export async function runAudit(
     isOperatedCommunity: req.isOperatedCommunity,
     roleSnapshot,
     nowUnixSeconds: req.nowUnixSeconds,
+    // The SAME k the aggregate k-anonymizes with — so the refusal cannot disclose a cohort the
+    // success path suppresses (HIGH-1).
+    k,
   });
   if (!mode.ok) return { ok: false, refusal: mode.refusal };
   // mode.ok guarantees roleSnapshot is present.
