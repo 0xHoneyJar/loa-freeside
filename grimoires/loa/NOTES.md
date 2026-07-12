@@ -1,5 +1,28 @@
 # Notes
 
+## 🚨 Decision Log — cycle-053 Sprint 2 (global 416), 2026-07-12 — CRITICAL: sonar cross-chain collision
+
+- **THE BUG (found by the FIRST live call, not by 199 green unit tests).** The public teaser against the real
+  thj Honeycomb returned `reconstruction-failed: mint of already-owned tokenId 1`. Root cause: **sonar
+  collection ids are NOT unique across chains** — `Honeycomb` and `HoneyJar1..6` each exist on BOTH Ethereum
+  (1) and Berachain (80094). The Transfer GraphQL filtered on `{collection, blockNumber}` **only — no chain**
+  — so every chain's rows merged into ONE ownership replay, the same tokenId was minted once per chain, and
+  `reconstructOwnership` hit its invariant. `blockNumber._lte` is per-chain too, so the bound was meaningless
+  across a merged set.
+- **Blast radius: EVERYTHING on real data.** The same reconstruction path serves the authed audit (**G-2, the
+  spine**) and the public teaser (**G-5**) — and *every* thj collection is multi-chain ("our own community is
+  the most multichain there is"). The product could not have worked on real thj data.
+- **The fix was local.** sonar has ALWAYS served `Transfer.chainId: Int!` (schema.graphql:23) — it was simply
+  never filtered on. Threaded `chainId` through `TransferPageArgs` → the GraphQL where-clause → `ownershipAtBlock`
+  /`holderDiff` → `ownership-source.ts` (which already HAD the chain and dropped it on the floor). Commit `4e63ae01`.
+- **LESSON (the expensive one).** 199 unit tests were green the entire time — they all use **fakes**, and the
+  fakes were self-consistent. Fixture self-consistency is not correctness. The live-correctness gate the
+  DEPLOY.md runbook demanded ("the unit suite proves the algorithm with injected fakes — NOT the live values")
+  was exactly right, and only executing it found this. **Deploy-and-probe is a test, and it is the one that
+  mattered.** Regression test now pins the chain in BOTH the fetcher args and the wire GraphQL.
+- **The refusal was CORRECT behavior.** The service refused (`reconstruction-failed`, 422) rather than serving
+  a wrong holder set. "Never silently wrong" is what turned a silent data-corruption bug into a loud one.
+
 ## Decision Log — cycle-053 (shadow-audit-mvp) Sprint 1 (global 415), 2026-07-10
 
 - **RE-SCOPE.** The plan's "~35-line box" premise was stale — the shadow-audit service is ~2966 LOC,
