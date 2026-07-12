@@ -66,10 +66,26 @@ export interface AccessRiskOutput {
   stale_access_upper_bound: CohortCount;
   /** Qualify NOW but did NOT at the snapshot — on-chain churn-in (may be missing access today). */
   newly_eligible: CohortCount;
-  holder_turnover: number;
-  whale_concentration: number;
-  /** Risk band from the on-chain churn ratio (sold_lapsed / qualified@snapshot). */
+  /**
+   * sold_lapsed / qualified@snapshot — but ONLY when `sold_lapsed` is EXACT.
+   *
+   * NULL when `sold_lapsed` is k-anon-suppressed. This is a hard privacy requirement, not caution:
+   * `qualified_at_snapshot` is published EXACTLY (the denominator N is public), so ANY function of the
+   * true numerator n back-computes it. Rounding is not suppression — with N=6, round(n/N,1) maps
+   * n=1,2,3,4 → 0.2,0.3,0.5,0.7, each value uniquely revealing n and defeating the `<k` bucket entirely.
+   * When n is suppressed, no true-ratio-derived number may be emitted at all.
+   */
+  holder_turnover: number | null;
+  /** NULL when the whale source failed — a failed computation must never read as "no whale risk". */
+  whale_concentration: number | null;
+  /**
+   * Risk band. When `sold_lapsed` is exact, this is the true band. When suppressed, it is the band of the
+   * UPPER BOUND (k-1)/N — a function of k and N only (both public), so it leaks nothing about n while
+   * staying consistent with this endpoint's upper-bound contract.
+   */
   risk_band: RiskBand;
+  /** True when `risk_band` was computed from the suppressed cohort's upper bound rather than the real n. */
+  risk_band_is_upper_bound: boolean;
   cta: Cta;
   disclosure: string;
 }
@@ -140,22 +156,32 @@ export async function computeAccessRisk(
     };
   }
 
-  // 4. Whale concentration (best-effort, clamped) — mirrors runAudit.
-  let whale = 0;
+  // 4. Whale concentration. A FAILED computation must be NULL, never 0 — on a public, sales-facing payload
+  //    a coerced 0 reads as an affirmative "no whale risk", which is a silent lie.
+  let whale: number | null = null;
   try {
-    whale = await deps.whale.concentration(curBal);
+    const w = await deps.whale.concentration(curBal);
+    whale = Math.min(1, Math.max(0, w));
   } catch {
-    whale = 0;
+    whale = null;
   }
-  whale = Math.min(1, Math.max(0, whale));
 
-  // 5. Aggregate — k-anon every cohort; coarsen the ratio when the numerator is suppressed (BB-4) so it
-  //    cannot be used to back-compute the hidden count from a known denominator.
+  // 5. Aggregate — k-anon every cohort.
+  //
+  //    PRIVACY (the subtle one): `qualified_at_snapshot` is published EXACTLY, so the denominator N is
+  //    public. That means ANY function of the true numerator n back-computes it when n is suppressed.
+  //    Rounding is NOT suppression — with N=6, round(n/N,1) → 0.2/0.3/0.5/0.7 for n=1..4, each uniquely
+  //    identifying n and defeating the `<k` bucket. So when the cohort is bucketed we emit NO
+  //    true-ratio-derived number: holder_turnover is null, and risk_band is banded from the UPPER BOUND
+  //    (k-1)/N — a function of k and N only, both public, therefore leak-free.
   const soldLapsedCohort = kAnonCohort(soldLapsed.length, k);
-  let holder_turnover = holderTurnover(soldLapsed.length, qualifiedSnapshot.length);
-  if (soldLapsedCohort.kind === 'bucketed') {
-    holder_turnover = Math.round(holder_turnover * 10) / 10;
-  }
+  const suppressed = soldLapsedCohort.kind === 'bucketed';
+  const holder_turnover = suppressed
+    ? null
+    : holderTurnover(soldLapsed.length, qualifiedSnapshot.length);
+  const risk_band = suppressed
+    ? staleRiskBand(k - 1, qualifiedSnapshot.length) // worst case consistent with "<k" — leaks nothing
+    : staleRiskBand(soldLapsed.length, qualifiedSnapshot.length);
 
   const inputs_hash = computeInputsHash({
     chain: req.chain,
@@ -177,8 +203,8 @@ export async function computeAccessRisk(
       newly_eligible: kAnonCohort(newlyEligible.length, k),
       holder_turnover,
       whale_concentration: whale,
-      // The on-chain analogue of the audit's band: churn-out ratio, same low/elevated/high thresholds.
-      risk_band: staleRiskBand(soldLapsed.length, qualifiedSnapshot.length),
+      risk_band,
+      risk_band_is_upper_bound: suppressed,
       cta: req.cta,
       disclosure: DISCLOSURE,
     },
