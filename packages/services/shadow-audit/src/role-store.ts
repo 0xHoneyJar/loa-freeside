@@ -26,7 +26,22 @@ import type { RoleSource } from './audit-service.js';
 
 /** The write side of the role port: persist the latest snapshot for its community. */
 export interface RoleSink {
-  store(snap: RoleSnapshot): Promise<void>;
+  /**
+   * Persist `snap` as the latest for `snap.community`. Returns FALSE (no-op) when an equal-or-newer
+   * snapshot is already held.
+   *
+   * MONOTONICITY is the contract: the store holds the LATEST per community. An unconditional overwrite
+   * lets a delayed or replayed POST (both are valid, correctly-signed requests — at-least-once delivery
+   * makes them expected, not exotic) roll the held snapshot BACKWARDS, so the audit would then compute
+   * drift from stale role data. Compare `captured_at` and refuse to go back in time.
+   */
+  store(snap: RoleSnapshot): Promise<boolean>;
+}
+
+/** True iff `candidate` was captured strictly after `existing`. Equal timestamps are NOT newer (a replay). */
+function isNewer(candidate: RoleSnapshot, existing: RoleSnapshot | undefined): boolean {
+  if (!existing) return true;
+  return Date.parse(candidate.captured_at) > Date.parse(existing.captured_at);
 }
 
 /** A store that is BOTH the audit's read port (`RoleSource`) and the ingestion write port (`RoleSink`). */
@@ -75,15 +90,18 @@ export function makeDurableRoleStore(opts: { dir: string; community: string }): 
     async load(): Promise<RoleSnapshot | undefined> {
       return latest.get(community);
     },
-    async store(snap: RoleSnapshot): Promise<void> {
+    async store(snap: RoleSnapshot): Promise<boolean> {
       // Defensive re-validate (the route validates too) — a durable store must never persist a wrong shape.
       const valid = RoleSnapshotSchema.parse(snap);
+      // MONOTONICITY: never roll the held snapshot backwards on a replayed/out-of-order POST.
+      if (!isNewer(valid, latest.get(valid.community))) return false;
       const target = fileFor(dir, valid.community);
       const tmp = target + '.tmp';
       // Atomic write: full file to tmp, then rename — a concurrent load() never sees a torn snapshot.
       writeFileSync(tmp, JSON.stringify(valid), 'utf8');
       renameSync(tmp, target);
       latest.set(valid.community, valid);
+      return true;
     },
   };
 }
@@ -95,9 +113,11 @@ export function makeInMemoryRoleStore(loadCommunity: string): DurableRoleStore {
     async load(): Promise<RoleSnapshot | undefined> {
       return latest.get(loadCommunity);
     },
-    async store(snap: RoleSnapshot): Promise<void> {
+    async store(snap: RoleSnapshot): Promise<boolean> {
       const valid = RoleSnapshotSchema.parse(snap);
+      if (!isNewer(valid, latest.get(valid.community))) return false; // never roll backwards
       latest.set(valid.community, valid);
+      return true;
     },
   };
 }

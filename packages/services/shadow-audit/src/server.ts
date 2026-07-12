@@ -44,9 +44,12 @@ export interface AuditServerConfig {
   k?: number;
   /** per-IP rate limit for the authed routes (default 30 req / 60s). */
   rateLimit?: { limit: number; windowMs: number };
-  /** S2-T3: per-IP limit for the PUBLIC /v1/access-risk teaser (default 6 req / 60s — tighter, because it
-   *  is unauthenticated and each call does real chain work). */
+  /** S2-T3: per-IP limit for the PUBLIC /v1/access-risk teaser (default 6 req / 60s). BEST-EFFORT — keyed
+   *  on caller-supplied X-Forwarded-For; a live probe evaded it by rotating the header. */
   teaserRateLimit?: { limit: number; windowMs: number };
+  /** S2-T3 HARD BOUND: global cap on teaser chain-reconstructions (cache misses), keyed on a constant so
+   *  no header/IP rotation can raise it. Default 30 / 60s. */
+  teaserBudget?: { limit: number; windowMs: number };
   /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
    *  the role source falls back to the file at `roleSnapshotPath` (existing behavior). */
@@ -94,8 +97,13 @@ export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
 export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collectionRegistry?: CollectionRegistry): Hono {
   const now = () => Date.now();
   const rl = config.rateLimit ?? { limit: 30, windowMs: 60_000 };
-  // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP.
+  // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP. BEST-EFFORT — the client key
+  // comes from caller-supplied X-Forwarded-For (a live probe evaded it by rotating the header).
   const teaserRl = config.teaserRateLimit ?? { limit: 6, windowMs: 60_000 };
+  // The HARD bound (FAGAN 2026-07-12): a GLOBAL cap on teaser cache-MISSES — i.e. on actual chain
+  // reconstructions — keyed on a constant, so no amount of IP/header rotation raises it. 30/min bounds
+  // worst-case RPC spend on the public endpoint regardless of caller identity.
+  const teaserBudgetCfg = config.teaserBudget ?? { limit: 30, windowMs: 60_000 };
 
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
   // the ingestion sink (POST /v1/role-snapshot writes it, load() reads it — the SAME instance, so an
@@ -133,11 +141,16 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
     //   rate window + the nonce/event store), else limits + replay-dedup are per-replica.
     eventStore: new InMemoryEventStore(),
     rateLimiter: new FixedWindowRateLimiter({ limit: rl.limit, windowMs: rl.windowMs, now }),
-    // S2-T3 (IMP-006): the PUBLIC teaser gets its OWN, tighter budget — it is unauthenticated and each call
-    // costs a block-at-date resolve + two balance reconstructions. Default 6/min vs the authed 30/min.
+    // S2-T3 (IMP-006): the PUBLIC teaser gets its OWN, tighter per-IP budget — best-effort only.
     teaserRateLimiter: new FixedWindowRateLimiter({
       limit: teaserRl.limit,
       windowMs: teaserRl.windowMs,
+      now,
+    }),
+    // The bound that actually holds: identity-INDEPENDENT global cap on chain reconstructions.
+    teaserBudget: new FixedWindowRateLimiter({
+      limit: teaserBudgetCfg.limit,
+      windowMs: teaserBudgetCfg.windowMs,
       now,
     }),
     auth: failClosedAuth(),

@@ -92,11 +92,29 @@ export interface AuditRouterDeps {
   ingest?: { token: string; sink: RoleSink };
   /** S2-T3 (IMP-006): dedicated, TIGHTER limiter for the PUBLIC teaser. That route is unauthenticated and
    *  does real chain work (RPC + reconstruction), so it must not share the authed routes' budget. Falls
-   *  back to `rateLimiter` when absent. */
+   *  back to `rateLimiter` when absent.
+   *
+   *  BEST-EFFORT ONLY — do NOT rely on this as the abuse bound. It is keyed on the client identifier
+   *  derived from X-Forwarded-For, which is CALLER-SUPPLIED. A live probe (2026-07-12) sent 9 requests with
+   *  rotating XFF against the 6/min teaser and NONE were limited. Treat per-IP as a speed bump; the real
+   *  bound is `teaserBudget` + the cache below. */
   teaserRateLimiter?: RateLimiter;
+  /**
+   * S2-T3 HARD BOUND (FAGAN 2026-07-12): a GLOBAL budget on the expensive path, keyed on a CONSTANT — not
+   * on the client. Because the caller identity on a public endpoint is unforgeable-by-nobody, the only
+   * bound that actually holds is one that does not depend on identity at all. This caps total chain
+   * reconstructions per window no matter who calls, how many IPs they rotate, or what headers they forge.
+   */
+  teaserBudget?: RateLimiter;
+  /** S2-T3: TTL for memoizing the (deterministic) teaser result, so repeat queries cost ZERO chain work. */
+  teaserCacheTtlMs?: number;
 }
 
 const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
+
+/** Hard cap on an ingested role snapshot (S1-T4). ~10 MB comfortably holds a very large guild export;
+ *  beyond that a caller is abusing the endpoint, not exporting a Discord guild. */
+const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
 
 type RefusalStatus = 404 | 422 | 429 | 503;
 
@@ -229,9 +247,18 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     threshold: z.string().optional(),
   });
 
+  // Memoize the teaser. The result is DETERMINISTIC for (chain, contract, snapshot_date, threshold) within
+  // a TTL, so a repeat query must cost ZERO chain work. This — not the per-IP limiter — is what makes a
+  // flood cheap. Bounded so the map cannot grow without limit.
+  const teaserTtlMs = deps.teaserCacheTtlMs ?? 300_000; // 5 min
+  const TEASER_CACHE_MAX = 500;
+  const teaserCache = new Map<string, { at: number; body: unknown }>();
+
   app.get('/v1/access-risk', async (c) => {
-    // Anti-abuse #1 — a TIGHTER per-IP limit than the authed routes: this endpoint is open and each call
-    // does real chain work (block-at-date + two balance reconstructions).
+    // Anti-abuse #1 — per-IP speed bump. BEST-EFFORT ONLY: the key derives from X-Forwarded-For, which the
+    // CALLER supplies. A live probe (2026-07-12) rotated XFF across 9 requests against the 6/min teaser and
+    // NONE were limited. Keep it (it stops naive hammering) but never treat it as the bound. The real
+    // bounds are the cache (#4) and the identity-independent global budget (#5).
     const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
     if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
       return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
@@ -257,6 +284,22 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       return c.json({ error: 'threshold must be a positive integer' }, 400);
     }
 
+    // Anti-abuse #4 — CACHE. The teaser is deterministic for these inputs, so a repeat is free. A flood of
+    // identical queries (the cheapest attack) does exactly ONE reconstruction per TTL.
+    const cacheKey = `${q.data.chain}/${q.data.contract}/${q.data.snapshot_date}/${threshold}`;
+    const now = deps.now();
+    const hit = teaserCache.get(cacheKey);
+    if (hit && now - hit.at < teaserTtlMs) {
+      return c.json(hit.body as Record<string, unknown>);
+    }
+
+    // Anti-abuse #5 — the HARD BOUND: a GLOBAL budget on cache MISSES (the only expensive path), keyed on a
+    // constant, NOT on the caller. This is the bound that actually holds, because it does not depend on
+    // identifying a client we fundamentally cannot identify on a public endpoint.
+    if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+
     // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
     // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
     const result = await computeAccessRisk(
@@ -265,12 +308,19 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         contract: q.data.contract,
         snapshotDate: q.data.snapshot_date,
         threshold,
-        nowUnixSeconds: Math.floor(deps.now() / 1000),
+        nowUnixSeconds: Math.floor(now / 1000),
         cta: deps.cta,
       },
       { ownership: deps.ownership, whale: deps.whale, k: deps.k },
     );
     if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
+
+    if (teaserCache.size >= TEASER_CACHE_MAX) {
+      // Evict the oldest insertion (Map preserves insertion order) — bounded memory, no LRU needed.
+      const oldest = teaserCache.keys().next().value;
+      if (oldest !== undefined) teaserCache.delete(oldest);
+    }
+    teaserCache.set(cacheKey, { at: now, body: result.output });
     return c.json(result.output);
   });
 
@@ -431,10 +481,19 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       if (!timingSafeEqualStr(c.req.header('x-ingest-token') ?? '', ingest.token)) {
         return new Response(null, { status: 401 });
       }
+      // Bound the body BEFORE reading it. A valid token is not a licence to stream multi-GB into sha256 +
+      // JSON.parse; a leaked/compromised token would otherwise be a trivial memory-exhaustion vector.
+      const declaredLen = Number(c.req.header('content-length') ?? '0');
+      if (Number.isFinite(declaredLen) && declaredLen > MAX_SNAPSHOT_BYTES) {
+        return c.json({ error: 'snapshot too large' }, 413);
+      }
       // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
       // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an
       // integrity failure, not a parse error.
       const raw = await c.req.text();
+      if (Buffer.byteLength(raw, 'utf8') > MAX_SNAPSHOT_BYTES) {
+        return c.json({ error: 'snapshot too large' }, 413); // Content-Length absent or lied
+      }
       const declared = (c.req.header('x-snapshot-sha256') ?? '').toLowerCase();
       const actual = createHash('sha256').update(raw, 'utf8').digest('hex');
       if (!declared || !timingSafeEqualStr(declared, actual)) {
@@ -448,10 +507,21 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       }
       const parsed = RoleSnapshotSchema.safeParse(json);
       if (!parsed.success) return c.json({ error: 'invalid role snapshot' }, 422);
-      await ingest.sink.store(parsed.data);
+
+      // The community is caller-supplied and becomes a STORAGE KEY (one file per community). Without this
+      // gate, a token-holder could mint unbounded distinct communities and grow the store without limit.
+      // Only communities this deploy actually operates may be ingested.
+      if (!deps.isOperatedCommunity(parsed.data.community)) {
+        return c.json({ error: 'community is not operated by this deploy' }, 403);
+      }
+
+      const stored = await ingest.sink.store(parsed.data);
       // Minimal receipt — the exporter reconciles on (community, captured_at, entries), no member data echoed.
+      // `stored:false` means an equal-or-newer snapshot is already held (replay / out-of-order delivery);
+      // it is a successful no-op, NOT an error — the exporter is at-least-once and must be able to retry.
       return c.json({
         ok: true,
+        stored,
         community: parsed.data.community,
         captured_at: parsed.data.captured_at,
         entries: parsed.data.entries.length,

@@ -169,6 +169,64 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('MONOTONICITY: a replayed/older snapshot never rolls the held one backwards', async () => {
+    const store = makeInMemoryRoleStore('thj');
+    const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
+    const post = (snap: RoleSnapshot) => {
+      const raw = JSON.stringify(snap);
+      return postSnapshot(app, raw, {
+        'x-ingest-token': TOKEN,
+        'x-snapshot-sha256': sha256hex(raw),
+        'content-type': 'application/json',
+      });
+    };
+
+    const newer = snapshot({ captured_at: '2026-06-22T11:30:00.000Z' });
+    const older = snapshot({ captured_at: '2026-06-22T10:00:00.000Z' });
+
+    expect(((await (await post(newer)).json()) as { stored: boolean }).stored).toBe(true);
+
+    // A delayed / replayed older export is a VALID, correctly-signed request (at-least-once delivery makes
+    // this expected). It must be a successful no-op, not a rollback to stale role data.
+    const res = await post(older);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { stored: boolean }).stored).toBe(false);
+    expect((await store.load())?.captured_at).toBe('2026-06-22T11:30:00.000Z'); // still the newer one
+
+    // An exact replay of the CURRENT snapshot is also a no-op (equal is not newer).
+    expect(((await (await post(newer)).json()) as { stored: boolean }).stored).toBe(false);
+  });
+
+  it('refuses a community this deploy does not operate (403) — the community is a storage key', async () => {
+    const store = makeInMemoryRoleStore('thj');
+    const app = createAuditRouter(
+      makeDeps({
+        roles: store,
+        ingest: { token: TOKEN, sink: store },
+        isOperatedCommunity: (id) => id === 'thj',
+      }),
+    );
+    const raw = JSON.stringify(snapshot({ community: 'someone-elses-dao' }));
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+    });
+    // Without this gate a token-holder could mint unbounded distinct communities, each a new stored file.
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects an oversized body (413) — a valid token is not a licence to exhaust memory', async () => {
+    const store = makeInMemoryRoleStore('thj');
+    const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
+    const raw = JSON.stringify(snapshot());
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+      'content-length': String(11 * 1024 * 1024), // declares > 10 MB cap
+    });
+    expect(res.status).toBe(413);
+  });
+
   it('does NOT mount the route when ingestion is unconfigured (fail-closed → 404)', async () => {
     const app = createAuditRouter(makeDeps()); // no `ingest`
     const raw = JSON.stringify(snapshot());
