@@ -36,7 +36,7 @@ import type {
   ActionHistoryConfig,
   ChainConfig,
   ChainProviderOptions,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // ABIs

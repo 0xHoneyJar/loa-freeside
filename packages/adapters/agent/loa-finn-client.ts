@@ -24,7 +24,7 @@ import type {
   AgentInvokeResponse,
   AgentStreamEvent,
   UsageInfo,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type { LoaFinnConfig } from './config.js';
 import { CONTRACT_VERSION, validateCompatibility } from '@0xhoneyjar/loa-hounfour';
 

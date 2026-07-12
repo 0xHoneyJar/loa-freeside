@@ -46,12 +46,16 @@ readonly VALID_STATES=(
   "E2E_TESTING"
   "FIX_E2E"
   "FLATLINE_PR"
+  "BRIDGEBUILDER_REVIEW"
   "READY_FOR_HITL"
   "HALTED"
 )
 
 # Valid phase statuses
-readonly VALID_PHASE_STATUSES=("pending" "in_progress" "completed" "skipped")
+# #1076 defect 4: "failed" distinguishes a phase that genuinely failed from one
+# that was legitimately skipped — conflating the two let an enabled-but-no-op
+# Bridgebuilder phase silently reach READY_FOR_HITL.
+readonly VALID_PHASE_STATUSES=("pending" "in_progress" "completed" "skipped" "failed")
 
 # ============================================================================
 # Utility Functions
@@ -486,7 +490,9 @@ cmd_update_phase() {
   fi
 
   # Validate phase name
-  local valid_phases=("post_pr_audit" "context_clear" "e2e_testing" "flatline_pr")
+  # cycle-053 Amendment 1 added BRIDGEBUILDER_REVIEW phase; Issue #664 closes the
+  # taxonomy drift between flow states and the update-phase validator.
+  local valid_phases=("post_pr_audit" "context_clear" "e2e_testing" "flatline_pr" "bridgebuilder_review")
   local phase_valid=false
   for p in "${valid_phases[@]}"; do
     if [[ "$phase" == "$p" ]]; then

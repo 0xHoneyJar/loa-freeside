@@ -1,0 +1,57 @@
+{
+  "bundle_schema_version": "1.0.0",
+  "slug": "gecko-broken",
+  "version": "0.1.0",
+  "content_hash": "b7d7ca427ef3bf56bc665bed80f9921dc0cdd059ddc5ed1dfa2fbce80b2e3831",
+  "skill_manifest": [
+    {
+      "command": "patrol",
+      "domain": "observability"
+    },
+    {
+      "command": "observe",
+      "domain": "observability"
+    },
+    {
+      "command": "diagnose",
+      "domain": "observability"
+    },
+    {
+      "command": "report",
+      "domain": "observability"
+    },
+    {
+      "command": "sweep-bonfire",
+      "domain": "observability"
+    },
+    {
+      "command": "sense-estate",
+      "domain": "observability"
+    },
+    {
+      "command": "sensing-path-friction",
+      "domain": "observability"
+    },
+    {
+      "command": "sensing-construct-console",
+      "domain": "observability"
+    },
+    {
+      "command": "sensing-runtime-fit",
+      "domain": "observability"
+    },
+    {
+      "command": "sensing-deployment-seam",
+      "domain": "observability"
+    },
+    {
+      "command": "sensing-config-drift",
+      "domain": "observability"
+    }
+  ],
+  "domain_claims": [
+    "observability",
+    "ecosystem-intelligence"
+  ],
+  "rubric_hash": "sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370"
+}

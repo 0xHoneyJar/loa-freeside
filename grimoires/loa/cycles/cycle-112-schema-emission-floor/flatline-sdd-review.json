@@ -1,0 +1,221 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 7,
+    "disputed_count": 0,
+    "low_value_count": 0,
+    "blocker_count": 10,
+    "model_agreement_percent": 100,
+    "models": 3,
+    "tertiary_items": 0,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "High ROI and low-to-moderate implementation cost. The current generic signature undermines a core compile-time safety claim, and tying emit payloads to schema IDs is fundamental to the API's authoring surface. This should be integrated before broad migration.",
+      "gpt_score": 910,
+      "opus_score": 855,
+      "tertiary_score": 900,
+      "delta": 55,
+      "average_score": 882.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical because an escape hatch is referenced as both an open item and an implementation dependency. Leaving emitRaw underspecified invites inconsistent behavior around validation, subject safety, and allowlisting exactly where bypass risk is highest.",
+      "gpt_score": 930,
+      "opus_score": 835,
+      "tertiary_score": 850,
+      "delta": 95,
+      "average_score": 882.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "Very strong finding. A count-only gate is materially bypassable with a count-preserving swap, while a set/hash comparison is cheap and directly protects the invariant. This is a clear must-fix.",
+      "gpt_score": 940,
+      "opus_score": 880,
+      "tertiary_score": 880,
+      "delta": 60,
+      "average_score": 910,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Valuable and likely necessary for semantic completeness. If config_hash is meant to be verifiable, canonicalization must be specified. Slightly lower than the top findings because it affects a pilot field rather than the core enforcement path, but it should be integrated.",
+      "gpt_score": 830,
+      "opus_score": 845,
+      "tertiary_score": 820,
+      "delta": 15,
+      "average_score": 837.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-005",
+      "description": "Important bypass concern with moderate implementation cost depending on lint sophistication. It is slightly less critical because lint bypasses are advisory controls, but explicitly catching unwrap-to-variable-to-publish patterns materially improves coverage.",
+      "gpt_score": 790,
+      "opus_score": 765,
+      "tertiary_score": 720,
+      "delta": 25,
+      "average_score": 777.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-007",
+      "description": "Strong behavioral-contract gap. Changing publish failure from exception-like behavior to Left handling around a state-write/publish pair can create partial success semantics. This should be specified before implementation.",
+      "gpt_score": 820,
+      "opus_score": 745,
+      "tertiary_score": 800,
+      "delta": 75,
+      "average_score": 782.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-008",
+      "description": "High-value type-safety correction with very low cost. Compile-time equality assertions are only meaningful if literal types are preserved, so this should be integrated to avoid false confidence.",
+      "gpt_score": 810,
+      "opus_score": 715,
+      "tertiary_score": 950,
+      "delta": 95,
+      "average_score": 762.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "Concurrency race condition on shared `prevHashStore` during parallel emits",
+      "severity": "CRITICAL",
+      "severity_score": 850,
+      "why_matters": "The `makeEmitter` factory shares a single `prevHashStore` per cell. If a cell handles multiple operations concurrently and calls `emit()` simultaneously, both calls may read the same `prev_hash` before either advances it. This will create multiple event envelopes with identical `prev_hash` values, resulting in a fractured hash chain and failing receiver continuity checks.",
+      "location": "Section 3.1 (`makeEmitter` factory) and Section 3.2 (F-003 chain-fork)",
+      "recommendation": "Implement an async mutex, queue, or atomic `updateAndGet` operation over the `prevHashStore` within `emit()` to serialize chain advancements.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "S.decodeUnknownEither from @effect/schema applies schema transformations (coercions, date parsing, string trimming) in addition to validation. The SDD passes decoded.right — the post-transform value — to publishEnvelope for signing. If any registry schema uses S.transform pipelines, the signed payload differs from the submitted payload, and any consumer that re-derives signing bytes from the pre-transform input will fail EVT-001 signature verification.",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "NFR-Sec-1 claims 'EVT-001 stays closed' and 'validate-before-sign creates no unsigned-payload-on-bus path.' Both claims are true for pure validation schemas. They silently become false the moment a schema adds a transform (e.g. S.DateFromString, S.Trim) — a schema evolution that has no breaking-change marker and no test coverage in this SDD.",
+      "location": "§3.1 emit.ts decoded.right / §10 NFR-Sec-1 / EVT-001 / publisher.ts:139-156",
+      "recommendation": "Use S.validateEither (pure validation, no transformation) and pass the original payload to publishEnvelope. If wire-format coercion is required, make it an explicit post-sign step and document that the signed form is post-transform. Add a registry-level flag (transform: true) that the collision test verifies is reviewed.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-005",
+      "concern": "The fail-soft handling proposed for invalid `parallel.mode.enabled` payloads may silently persist state without emitting the corresponding event.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "The pilot performs `saveParallelModeConfig` before emitting. If schema validation fails and the migration logs fail-soft, system state changes while downstream observers never receive the event. This creates state/event divergence exactly where coherence is being introduced.",
+      "location": "Section 7.2 pilot migration",
+      "recommendation": "Decide and document atomicity semantics for the pilot. Either validate the event payload before committing state, fail the operation if emit fails, or create an explicit reconciliation path and test for state/event divergence.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "The non-atomicity window between NATS publish and prevHashStore update is explicitly not closed in v1 (§3.2 F-003). After publishEnvelope writes to NATS, any process crash before the store update leaves a chain fork. The SDD offers no v1 mitigation — no log-on-inconsistency path, no recovery procedure, no observable signal distinguishing a store-miss from real tampering.",
+      "severity": "CRITICAL",
+      "severity_score": 800,
+      "why_matters": "The verifying consumer (FR-12) asserts prev-hash chain continuity. Under any crash scenario — including a normal process restart — the first post-recovery emit will fail the chain assertion with the same error signature as real tampering. G-4 and G-5 (the proof goals) are undermined: the CI green for chain continuity is valid only in the zero-crash test harness, not under any realistic deployment condition.",
+      "location": "§3.2 F-003 chain-fork / publisher.ts:105-127 / FR-12 / G-4/G-5",
+      "recommendation": "At minimum, classify chain-fork errors into two observable subtypes: 'store-miss' (recovered by reading the last NATS message and resyncing the store on startup) versus 'unexpected fork' (real integrity signal). Document the store-miss recovery as a required startup step. Without this, the proof artifact (FR-12) cannot distinguish test-pass from deployment-resilient.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "The proposed `NatsTransport` boundary is not actually uncallable because `unwrap()` is part of the exported interface, and TypeScript `@internal` comments plus lint are not a hard module boundary.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "The SDD's central claim depends on raw publish being unreachable outside `packages/events`. Any consumer can still call `transport.unwrap().publish(...)` unless package exports, lint, and CI are perfectly enforced everywhere, including cross-repo consumers.",
+      "location": "Section 4.1-4.2 Type-boundary; Section 5 lint",
+      "recommendation": "Use a closure-based wrapper where the raw transport is held in module-private state and only package-internal functions can publish, or split public/internal exports so `unwrap` is not available from the public entrypoint. Treat lint as defense-in-depth, not the primary boundary.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "`emitRaw` escape hatch is not protected by the lint boundary",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "The design correctly restricts `unwrap()` and `.publish()`, but introduces `emitRaw` for computed subjects without extending the lint boundary to cover it. If `emitRaw` is broadly exported, developers can use it to bypass the static `buildSubject` invariants entirely without failing the count-delta or CI checks.",
+      "location": "Section 3.2 (OQ-5 computed subjects)",
+      "recommendation": "Add `emitRaw` to the `no-raw-nats-publish` ESLint rule, or require a separate explicit allowlist/lint-disable mechanism for its usage.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-008",
+      "concern": "`emitRaw` is introduced as an escape hatch but its API, validation behavior, subject-family matching, and lint treatment are left unresolved.",
+      "severity": "HIGH",
+      "severity_score": 710,
+      "why_matters": "Escape hatches tend to become the default under delivery pressure. Without a precise contract, `emitRaw` can undermine the claimed schema-subject coherence, especially for computed subjects and caller-constructed subjects.",
+      "location": "Section 3.2 OQ-5 computed subjects; final open items",
+      "recommendation": "Specify `emitRaw` in the SDD before implementation: accepted inputs, family-prefix assertion algorithm, error behavior, tests, and lint restrictions. Consider requiring explicit allowlist entries for `emitRaw` use.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-005",
+      "concern": "emit<P>(id: SchemaId, payload: P) is generic but unconstrained: TypeScript cannot enforce that P matches the schema registered for that SchemaId, because the SchemaId→type mapping exists only in the runtime Map. A developer calling emit(ParallelModeEnabled, wrongTypePayload) receives no compile-time error — the mismatch is a runtime Left, not a type error.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "NFR-Ergo-1 positions emit() as 'the path of least resistance' that is 'shorter to call than the raw path.' A path that provides no type-safety for the most critical argument (payload type matching the schema) trains developers to add try/catch or .getOrElse() around all emit() calls as defensive boilerplate, recreating the verbosity the facade was designed to eliminate. It also makes the 'structurally cannot emit invalid' claim weaker than advertised.",
+      "location": "§3.1 emit<P>() signature / NFR-Ergo-1 / FR-ADOPT-1 / G-1",
+      "recommendation": "Express the SchemaId→payload type mapping at the TypeScript level: a const-asserted type map keyed by SchemaId string literals mapped to their S.Schema type parameter, used to constrain P in the emit() signature as emit<K extends SchemaId>(id: K, payload: SchemaPayloadOf<K>). This surfaces mismatches as compile errors and fulfills the 'structurally cannot emit invalid' claim statically.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "resolveSchema() throws synchronously on unknown SchemaId, but emit() returns Either. The throw escapes the Either boundary: callers expecting Either.Left on all failures will receive an unhandled exception. FR-3a's 'typed failure, not throw' contract is violated at the most common misuse — a typo in the SchemaId string at a call site.",
+      "severity": "CRITICAL",
+      "severity_score": 870,
+      "why_matters": "Any cell that calls emit() with a misspelled or removed SchemaId gets an uncaught runtime throw, not a typed Left. In Effect-native callers this surfaces as a Defect (untracked). In async contexts it becomes an unhandled promise rejection. The ergonomic 'path of least resistance' will silently throw where the developer expected an Either, training them to wrap all emit() calls in try/catch instead of branching on Left — exactly undoing FR-3a.",
+      "location": "§2.2 resolveSchema() / §3.1 emit() / FR-3a",
+      "recommendation": "Return Either.left(new UnknownSchemaIdError(id)) from within emit() before calling resolveSchema, making the full return type Either<EmitReceipt, SchemaEmitError | UnknownSchemaIdError>. Never throw inside a function that returns Either.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "wrapTransport() must be exported from packages/events for cells to call it at the composition root (§4.1 explicitly instructs this). Any cell can therefore call wrapTransport(natsClient).unwrap().publish(...), bypassing both the brand constraint and the lint rule. The type-boundary enforcement depends entirely on a documented convention, not on the module API shape.",
+      "severity": "CRITICAL",
+      "severity_score": 830,
+      "why_matters": "G-1's 'physically impossible' claim rests on raw .publish being uncallable outside packages/events. If any cell can call wrapTransport(natsClient) — which they must, per §4.1 — then .unwrap().publish(...) is a two-step bypass that is documented in the SDD itself. The lint rule (§5) flags .unwrap() calls, but a developer who reads that error message will find wrapTransport as the obvious workaround.",
+      "location": "§4.1 wrapTransport export / transport.ts / FR-7 / FR-ADOPT-4 / G-1",
+      "recommendation": "Do not export wrapTransport. The composition root should receive a NatsTransport from a factory inside packages/events (e.g. createNatsTransport(connectionOptions)) that the events package constructs and injects — cells never hold the raw client. The lint rule should additionally flag any import of wrapTransport outside packages/events.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "sdd",
+  "document": "grimoires/loa/cycles/cycle-112-schema-emission-floor/sdd.md",
+  "domain": "provenance simstim phase 3 architecture",
+  "tertiary_model_used": "gemini-headless",
+  "tertiary_status": "active",
+  "execution": {
+    "mode": "interactive",
+    "mode_reason": "Default (no explicit mode specified)",
+    "run_id": null
+  },
+  "timestamp": "2026-06-01T04:17:53Z",
+  "metrics": {
+    "total_latency_ms": 299000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

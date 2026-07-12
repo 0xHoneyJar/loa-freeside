@@ -17,7 +17,7 @@ vi.mock('node:fs', async () => {
   };
 });
 
-import { parseBudgetResult } from '@arrakis/adapters/agent/budget-manager';
+import { parseBudgetResult } from '@freeside/adapters/agent/budget-manager';
 
 describe('parseBudgetResult (S10-T4)', () => {
   it('should map RESERVED status correctly', () => {

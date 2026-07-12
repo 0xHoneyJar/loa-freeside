@@ -107,8 +107,9 @@ grep_to_jsonl() {
             file="${PROJECT_ROOT}/${file}"
         fi
 
-        # Output JSONL - use --arg for strings (jq handles escaping internally)
-        jq -n \
+        # Output JSONL — use -c for compact output (one line per record,
+        # required for JSONL). --arg for strings (jq handles escaping).
+        jq -cn \
             --arg file "${file}" \
             --argjson line "${line}" \
             --arg snippet "${snippet}" \
@@ -181,7 +182,7 @@ parse_jsonl_search_results() {
     local trajectory_log="${PROJECT_ROOT}/grimoires/loa/a2a/trajectory/${LOA_AGENT_NAME:-unknown}-$(date +%Y-%m-%d).jsonl"
 
     while IFS= read -r line; do
-        ((line_num++))
+        line_num=$((line_num + 1))
 
         # Skip empty lines
         [[ -z "${line}" ]] && continue
@@ -189,7 +190,7 @@ parse_jsonl_search_results() {
         # Try to parse JSON (failure-aware)
         if ! echo "${line}" | jq empty 2>/dev/null; then
             # Malformed JSON - DROP and CONTINUE (no crash)
-            ((parse_errors++))
+            parse_errors=$((parse_errors + 1))
             dropped_lines+=("Line ${line_num}: Parse error")
             # Log to trajectory (if agent context available)
             if [[ -n "${LOA_AGENT_NAME:-}" ]]; then
@@ -232,7 +233,7 @@ count_search_results() {
     local count=0
     while IFS= read -r line; do
         [[ -z "${line}" ]] && continue
-        ((count++))
+        count=$((count + 1))
     done
 
     echo "${count}"

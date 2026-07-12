@@ -29,7 +29,7 @@ import {
   type CrossChainScoreResponse,
   type HealthCheckRequest,
   type HealthCheckResponse,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // Types

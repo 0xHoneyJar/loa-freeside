@@ -1,6 +1,17 @@
 ---
 name: bridgebuilder-review
 description: "Bridgebuilder — Autonomous PR Review"
+role: review
+effort: xhigh  # cycle-114 FR-3: multi-model deep review — deepest reasoning
+# cycle-114 FR-4: this review skill legitimately writes STATE-zone artifacts
+# (review records, vision/lore entries), so Write is retained; app-code
+# prevention is governed by zones. The harness removes implementation-only
+# mutations (notebook edits + git index/commit/push) so it cannot land code.
+disallowed-tools:
+  - NotebookEdit
+  - Bash(git add *)
+  - Bash(git commit *)
+  - Bash(git push *)
 capabilities:
   schema_version: 1
   read_files: true
@@ -61,7 +72,7 @@ Set in `.loa.config.yaml` under `bridgebuilder:` section, or via environment var
 | Setting | Env Var | Default |
 |---------|---------|---------|
 | repos | `BRIDGEBUILDER_REPOS` | Auto-detected from git remote |
-| model | `BRIDGEBUILDER_MODEL` | `claude-opus-4-6` |
+| model | `BRIDGEBUILDER_MODEL` | `claude-opus-4-7` |
 | dry_run | `BRIDGEBUILDER_DRY_RUN` | `false` |
 | max_prs | — | `10` |
 | max_files_per_pr | — | `50` |
@@ -69,6 +80,41 @@ Set in `.loa.config.yaml` under `bridgebuilder:` section, or via environment var
 | max_input_tokens | — | `8000` |
 | max_output_tokens | — | `4000` |
 | persona_path | — | `grimoires/bridgebuilder/BEAUVOIR.md` |
+
+### Invocation trust contract (#1050)
+
+Run `/bridgebuilder` from a **trusted checkout** (your default branch or a clean clone) — never
+from a working tree where untrusted PR-head content has been checked out (e.g. after a manual
+`gh pr checkout`). BB fetches PR data via `gh api` (diff-as-data) and never writes PR files to the
+working tree, so the reviewed diff is safe; but `.loa.config.yaml` (models, budgets,
+`cross_repo.allowed_owners`, `cross_repo.manual_refs`) is read from the **local checkout**, which
+must therefore be trusted. The auto-detected cross-repo allowlist defaults to the reviewed PR's own
+org (derived from PR metadata, independent of config); `allowed_owners` / `manual_refs` only widen
+that and assume a trusted config source. Investigated + closed as not-applicable in the shipped
+invocation model (no PR-head checkout) — see #1050.
+
+## Self-Review Opt-In (#796 / vision-013)
+
+When BB reviews a PR that modifies BB itself — or any other framework file under `.claude/`, `grimoires/`, `.beads/`, etc. — the Loa-aware filter normally strips those files from the review payload before the multi-model pass. This is correct for code-PR reviews (no review noise from grimoire side-effects) but inverts on self-modifying PRs (the framework files ARE the substance).
+
+To opt a single PR into self-review (framework files visible to all reviewer models), apply the label:
+
+```
+bridgebuilder:self-review
+```
+
+When detected, BB:
+
+- Skips the LOA framework exclusion for that PR's review pass — `.claude/`, `grimoires/`, `.beads/` files become reviewable
+- **Continues to honor `.reviewignore` operator-curated patterns** (BR-003 / BB-001-security): `secrets/`, `vendor/`, private-doc patterns in your repo's `.reviewignore` still exclude their matches under self-review. The label is an Allow on framework files, NOT a global Deny suppressor.
+- Surfaces a banner in the review output:
+  - With `.reviewignore` user patterns: `[Loa-aware: self-review opt-in active — framework files included; .reviewignore (N user patterns) still honored (vision-013 / #796)]`
+  - Without: `[Loa-aware: self-review opt-in active — framework files included (vision-013 / #796)]`
+- Sets `truncated.selfReviewActive: true` on the typed `TruncationResult` (downstream consumers — cache key, audit logs, future analyzers — read this field; never substring-match the banner prose, BB-797-001)
+- Leaves the global config (`loaAware`) untouched — the opt-in is per-PR, not workspace-wide
+- The Pass 1 cache key includes `selfReview` as a distinct dimension, so toggling the label on a PR with unchanged `headSha` produces a fresh review (BB-003-cache)
+
+Use this for: bridgebuilder TS adapter changes, cycle-planning PRs (PRD/SDD/sprint), construct manifest changes, anything where the framework artifacts ARE the diff. The label is a single source of truth (constant `SELF_REVIEW_LABEL` in `core/truncation.ts`); substring matches like `bridgebuilder:self-review-extra` do NOT trigger.
 
 ## Persona
 

@@ -21,7 +21,7 @@ import { Counter, Histogram, Gauge, Registry } from 'prom-client';
  * Can be merged with the main application registry:
  * ```typescript
  * import { register } from 'prom-client';
- * import { sandboxRegistry } from '@arrakis/sandbox';
+ * import { sandboxRegistry } from '@freeside/sandbox';
  * register.merge(sandboxRegistry);
  * ```
  */

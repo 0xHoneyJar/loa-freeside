@@ -1,0 +1,1 @@
+../constructs/packs/noether/commands/ceremony.md

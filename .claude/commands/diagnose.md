@@ -1,0 +1,1 @@
+../constructs/packs/gecko/commands/diagnose.md

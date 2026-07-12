@@ -18,7 +18,7 @@ import type {
   IVaultClient,
   DecryptedOAuthTokens,
   EncryptedOAuthTokens,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type { VaultMetrics } from '../metrics.js';
 import { createNoOpVaultMetrics } from '../metrics.js';
 import type { Logger } from 'pino';

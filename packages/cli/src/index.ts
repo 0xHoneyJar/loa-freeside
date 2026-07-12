@@ -6,7 +6,7 @@
  * Provides CLI commands for managing Discord server sandboxes
  * and other Arrakis developer tools.
  *
- * @module @arrakis/cli
+ * @module @freeside/cli
  */
 
 // =============================================================================

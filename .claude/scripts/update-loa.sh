@@ -19,6 +19,10 @@
 set -euo pipefail
 
 # === Colors ===
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -258,6 +262,13 @@ update_submodule() {
         step "Reconciling symlinks..."
         verify_and_reconcile_symlinks
       fi
+      # #968: refresh the #842 copy set (hooks/, settings.json) so a
+      # submodule bump propagates executor-sensitive paths without a
+      # destructive --force re-mount.
+      if type refresh_copy_set &>/dev/null; then
+        step "Refreshing copy set..."
+        refresh_copy_set "true"
+      fi
     fi
   fi
 
@@ -401,7 +412,7 @@ import_upstream_learnings() {
       --arg content "$content_text" \
       --argjson confidence 0.8 \
       --arg source "upstream-import" \
-      --arg hash "$(printf '%s' "$content_text" | sha256sum | cut -d' ' -f1)" \
+      --arg hash "$(printf '%s' "$content_text" | sha256_portable | cut -d' ' -f1)" \
       '{id: $id, timestamp: $ts, category: $cat, content: $content, confidence: $confidence, source: $source, content_hash: $hash}')
 
     # Import via append_jsonl if available, else direct append

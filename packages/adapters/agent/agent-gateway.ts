@@ -22,7 +22,7 @@ import type {
   ModelAlias,
   BudgetStatus,
   AgentHealthStatus,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type { BudgetManager } from './budget-manager.js';
 import type { AgentRateLimiter } from './agent-rate-limiter.js';
 import type { LoaFinnClient } from './loa-finn-client.js';

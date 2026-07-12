@@ -15,9 +15,9 @@ import type {
   StepContext,
   StepInput,
   StepResult,
-} from '@arrakis/core/ports';
-import type { WizardSession, WizardState } from '@arrakis/core/domain';
-import { getStepNumber } from '@arrakis/core/domain';
+} from '@freeside/core/ports';
+import type { WizardSession, WizardState } from '@freeside/core/domain';
+import { getStepNumber } from '@freeside/core/domain';
 
 // =============================================================================
 // Base Step Handler

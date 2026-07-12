@@ -45,9 +45,9 @@ export { DeployStepHandler, createDeployStepHandler } from './deploy-step.js';
 
 // Factory for creating all step handlers
 import type { Logger } from 'pino';
-import type { IWizardStepHandler } from '@arrakis/core/ports';
-import type { WizardState } from '@arrakis/core/domain';
-import { WizardState as WizardStateEnum } from '@arrakis/core/domain';
+import type { IWizardStepHandler } from '@freeside/core/ports';
+import type { WizardState } from '@freeside/core/domain';
+import { WizardState as WizardStateEnum } from '@freeside/core/domain';
 import { createInitStepHandler } from './init-step.js';
 import { createChainSelectStepHandler } from './chain-select-step.js';
 import { createAssetConfigStepHandler } from './asset-config-step.js';

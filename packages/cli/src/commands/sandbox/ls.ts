@@ -12,7 +12,7 @@
 
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import type { SandboxStatus } from '@arrakis/sandbox';
+import type { SandboxStatus } from '@freeside/sandbox';
 import {
   getSandboxManager,
   getCurrentUser,

@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MfaVerifier, createMfaVerifier } from '../mfa-verifier.js';
-import type { IVaultClient } from '@arrakis/core/ports';
+import type { IVaultClient } from '@freeside/core/ports';
 import type { Logger } from 'pino';
 
 // =============================================================================

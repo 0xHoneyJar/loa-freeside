@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
 export default defineConfig({
-  // F-1 Fix: Resolve @arrakis/adapters to TypeScript source instead of dist/
+  // F-1 Fix: Resolve @freeside/adapters to TypeScript source instead of dist/
   // This eliminates manual dist sync for test correctness. Tests always run
   // against fresh TS source; dist-verify.ts validates build artifacts separately.
   resolve: {
@@ -12,7 +12,7 @@ export default defineConfig({
         replacement: path.resolve(__dirname, '../../packages/adapters/$1'),
       },
       {
-        find: '@arrakis/adapters',
+        find: '@freeside/adapters',
         replacement: path.resolve(__dirname, '../../packages/adapters'),
       },
     ],
@@ -21,12 +21,22 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    // Ensure bare imports from aliased @arrakis/* source files resolve correctly.
+    // Ensure bare imports from aliased @freeside/* source files resolve correctly.
     // Without this, imports like 'opossum' from packages/adapters/ fail in CI
     // because node_modules only exists in themes/sietch/, not in packages/adapters/.
     server: {
       deps: {
         moduleDirectories: ['node_modules', path.resolve(__dirname, 'node_modules')],
+      },
+    },
+    // opossum is CJS with no `main`/`exports` field; Vite SSR fails on its internal
+    // `require('./lib/circuit')`. Pre-bundling through esbuild resolves at bundle time.
+    deps: {
+      optimizer: {
+        ssr: {
+          enabled: true,
+          include: ['opossum', 'aws-embedded-metrics'],
+        },
       },
     },
     coverage: {

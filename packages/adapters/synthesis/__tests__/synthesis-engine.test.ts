@@ -20,9 +20,9 @@ import type {
   DiscordRestClient,
   RedisClient,
 } from '../engine.js';
-import type { IGlobalTokenBucket, SynthesisJob } from '@arrakis/core/ports';
+import type { IGlobalTokenBucket, SynthesisJob } from '@freeside/core/ports';
 import type { SynthesisMetrics } from '../metrics.js';
-import type { CommunityManifest } from '@arrakis/core/domain';
+import type { CommunityManifest } from '@freeside/core/domain';
 
 // =============================================================================
 // Mock Implementations

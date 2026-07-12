@@ -15,6 +15,7 @@ import type {
 import type {
   IReviewPoster,
   PostReviewInput,
+  PostCommentInput,
 } from "../ports/review-poster.js";
 
 const execFileAsync = promisify(execFile);
@@ -47,6 +48,8 @@ const ALLOWED_API_ENDPOINTS: ReadonlyArray<RegExp> = [
   /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/,
   // V3-1: compare commits for incremental review
   /^\/repos\/[^/]+\/[^/]+\/compare\/[a-f0-9]{7,40}\.\.\.[a-f0-9]{7,40}$/,
+  // Multi-model: post issue comments (per-model reviews + consensus summary)
+  /^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/comments$/,
 ];
 
 /**
@@ -191,6 +194,37 @@ function parseJson<T>(raw: string, context: string): T {
   }
 }
 
+/**
+ * Split a long comment into chunks at natural boundaries (paragraph breaks).
+ * Each chunk stays under maxChars. Falls back to hard split if no boundary found.
+ */
+function splitComment(body: string, maxChars: number): string[] {
+  const chunks: string[] = [];
+  let remaining = body;
+
+  while (remaining.length > maxChars) {
+    // Try to split at a paragraph break (double newline)
+    let splitIdx = remaining.lastIndexOf("\n\n", maxChars);
+    if (splitIdx < maxChars * 0.5) {
+      // No good paragraph break — try single newline
+      splitIdx = remaining.lastIndexOf("\n", maxChars);
+    }
+    if (splitIdx < maxChars * 0.5) {
+      // Hard split at limit
+      splitIdx = maxChars;
+    }
+
+    chunks.push(remaining.slice(0, splitIdx));
+    remaining = remaining.slice(splitIdx).trimStart();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
 export class GitHubCLIAdapter implements IGitProvider, IReviewPoster {
   private readonly marker: string;
 
@@ -332,14 +366,20 @@ export class GitHubCLIAdapter implements IGitProvider, IReviewPoster {
     repo: string,
     prNumber: number,
     headSha: string,
+    markerKind: "review" | "skip" = "review",
   ): Promise<boolean> {
     const reviews = await this.getPRReviews(owner, repo, prNumber);
-    const exact = `<!-- ${this.marker}: ${headSha} -->`;
+    // bug-1004: skip notices carry a distinct `-skip` marker — the genuine
+    // matcher must never treat a skip-stamped sha as reviewed (that made
+    // bridgebuilder:self-review unreachable without API surgery).
+    const name = markerKind === "skip" ? `${this.marker}-skip` : this.marker;
+    const exact = `<!-- ${name}: ${headSha} -->`;
     return reviews.some((r) => r.body.includes(exact));
   }
 
   async postReview(input: PostReviewInput): Promise<boolean> {
-    const marker = `\n\n<!-- ${this.marker}: ${input.headSha} -->`;
+    const name = input.markerKind === "skip" ? `${this.marker}-skip` : this.marker;
+    const marker = `\n\n<!-- ${name}: ${input.headSha} -->`;
     const body = input.body + marker;
 
     const makeArgs = (event: string): string[] => [
@@ -372,5 +412,46 @@ export class GitHubCLIAdapter implements IGitProvider, IReviewPoster {
     }
 
     return true;
+  }
+
+  /**
+   * Post an issue comment (not a review). Used for multi-model per-model comments
+   * and consensus summary. Splits long comments at 65K chars with continuation headers.
+   */
+  async postComment(input: PostCommentInput): Promise<boolean> {
+    const MAX_COMMENT_CHARS = 65_000;
+    const body = input.body;
+
+    if (body.length <= MAX_COMMENT_CHARS) {
+      await this.postSingleComment(input.owner, input.repo, input.prNumber, body);
+      return true;
+    }
+
+    // Split into chunks with continuation headers
+    const chunks = splitComment(body, MAX_COMMENT_CHARS);
+    for (let i = 0; i < chunks.length; i++) {
+      const header = `**[${i + 1}/${chunks.length}]** _(continued)_\n\n`;
+      const chunkBody = i === 0 ? chunks[i] : header + chunks[i];
+      await this.postSingleComment(input.owner, input.repo, input.prNumber, chunkBody);
+    }
+
+    return true;
+  }
+
+  private async postSingleComment(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    body: string,
+  ): Promise<void> {
+    // GitHub PR comments use the issues endpoint (PRs are issues in GitHub's model)
+    await gh([
+      "api",
+      `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+      "-X",
+      "POST",
+      "--raw-field",
+      `body=${body}`,
+    ]);
   }
 }

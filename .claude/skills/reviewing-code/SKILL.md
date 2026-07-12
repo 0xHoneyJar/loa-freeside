@@ -1,7 +1,15 @@
 ---
 name: review-sprint
 description: Validate sprint implementation against acceptance criteria
+role: review
 allowed-tools: Read, Grep, Glob, WebFetch, Bash(git diff *), Bash(git log *)
+# cycle-114 FR-4: mechanically enforce C-PROC-001 (no application-code writes
+# outside /implement). This is a pure-review skill (write_files: false), so the
+# harness removes the write tools entirely while it is active.
+disallowed-tools:
+  - Write
+  - Edit
+  - NotebookEdit
 capabilities:
   schema_version: 1
   read_files: true
@@ -296,10 +304,17 @@ Review sprint implementation for completeness, quality, security. Either approve
 - DO check that proper documentation was updated if integration context requires
 - DO verify context links are preserved (Discord threads, Linear issues) if required
 - DO read ALL context docs before reviewing
+- **DO check for `## AC Verification` section in `reviewer.md`** (cycle-057, Issue #475).
+  Return CHANGES_REQUIRED automatically when:
+  - The `## AC Verification` section is missing entirely
+  - Any AC shows `✗ Not met` without a scope-split to a follow-up sprint task
+  - Any AC shows `⏸ [ACCEPTED-DEFERRED]` without a matching Decision Log entry in `grimoires/loa/NOTES.md`
+  - Evidence for a `Met` claim is vague ("implemented in src/", "done", "yes") — demand file:line + specific symbol
 
 ## Verification (E - Easy to Verify)
 **Approval criteria** (ALL must be true):
-- All sprint tasks completed + all acceptance criteria met
+- `## AC Verification` section is present and complete — every AC from `sprint.md` walked verbatim
+- All sprint tasks completed + all acceptance criteria met (status `✓ Met` or valid `⏸ [ACCEPTED-DEFERRED]`)
 - Code quality is production-ready (readable, maintainable, follows conventions)
 - Tests are comprehensive and meaningful (happy paths, errors, edge cases)
 - No security issues (no hardcoded secrets, proper input validation, auth/authz correct)
@@ -401,6 +416,22 @@ Read ALL context documents in order:
 6. Perform security audit (see `resources/REFERENCE.md` §Security)
 7. Check performance and resource management
 8. **Karpathy Principles Check** (see below)
+9. **Fast-Gate Parity Check** (see below) — confirm format-check + typecheck were run
+
+### Fast-Gate Parity — match CI (#1086)
+
+The implementer's self-check must equal CI's fast gate, not just lint + tests.
+When the project configures them, verify the implementer ran (and re-run if in
+doubt):
+
+- the **formatter in check mode** (`ruff format --check`, `prettier --check`,
+  `gofmt -l`, …), and
+- the **type checker** (`mypy`, `tsc --noEmit`, `pyright`, …).
+
+Flag an unrun or failing check as feedback with the same weight as a lint/test
+failure, e.g. "FAST-GATE: `mypy` not run — a type error in src/x.py:N would fail
+CI" or "FAST-GATE: `ruff format --check` flags 3 just-written files". Tool-agnostic
+— detect from `pyproject.toml` / `package.json` / the CI workflows.
 
 ### Karpathy Principles Verification
 
@@ -420,7 +451,7 @@ Verify implementation follows the four principles:
 
 ## Phase 2.5: Adversarial Cross-Model Review
 
-**Condition**: Only runs if `flatline_protocol.code_review.enabled: true` in `.loa.config.yaml`.
+**MANDATORY when enabled.** Runs if `flatline_protocol.code_review.enabled: true` in `.loa.config.yaml`. Skipping this phase triggers a `PreToolUse:Write` gate block at `COMPLETED` marker write time (see `.claude/hooks/safety/adversarial-review-gate.sh`). Emergency override only via `LOA_ADVERSARIAL_REVIEW_ENFORCE=false` — document in sprint notes.
 
 **Objective**: Invoke a cross-model dissenter to catch reviewer blind spots before the final decision.
 
@@ -440,6 +471,8 @@ Verify implementation follows the four principles:
    - If BLOCKING findings exist: incorporate into Phase 4 decision (forces CHANGES_REQUIRED)
    - If ADVISORY findings only: append as "Cross-Model Observations" section in feedback
 4. Clean up temp files
+
+**Failure must produce a record.** If `adversarial-review.sh` fails (timeout, API error, budget exceeded), write `grimoires/loa/a2a/{sprint_id}/adversarial-review.json` with `{"findings": [], "metadata": {"status": "failed", "reason": "..."}}` BEFORE proceeding. Do NOT silently skip — the gate hook has no way to distinguish "not attempted" from "attempted and failed", and the distinction matters for audit trail.
 
 **Parameter Derivation**:
 | Script Parameter | SKILL Derivation |
@@ -789,6 +822,27 @@ During Phase 2 (Code Review), add complexity checks:
 - Functions 40-50 lines (borderline)
 - 2-3 duplicate patterns
 - Minor naming inconsistencies
+
+### YAGNI over-engineering taxonomy (#1012-adjacent)
+
+Tag each over-engineering finding so the engineer gets a crisp delete-list
+(reuse the existing `SIMPLICITY:` feedback template):
+
+| Tag | Meaning | Example finding |
+|-----|---------|-----------------|
+| `delete` | Needn't exist (YAGNI) | `SIMPLICITY[delete]: unused config layer — remove` |
+| `stdlib` | Reinvents the standard library | `SIMPLICITY[stdlib]: hand-rolled debounce — use stdlib` |
+| `native` | Reinvents a native platform feature | `SIMPLICITY[native]: custom date widget — native input` |
+| `yagni` | Speculative flexibility/abstraction | `SIMPLICITY[yagni]: generic iface for one caller — inline` |
+| `shrink` | Correct but larger than needed | `SIMPLICITY[shrink]: 40 lines that fit in 5` |
+
+A `loa:shortcut:` marker that names a ceiling with **no upgrade trigger** is a
+`SIMPLICITY[shrink]` finding — the deferred work rots without a trigger.
+
+End an over-engineering pass with the only metric that matters:
+`net: -<N> lines possible`. If nothing should be cut, say `Lean already. Ship.`
+and stop. Never flag the one required acceptance-check behind non-trivial logic
+(the smallest runnable check) for deletion — that is the YAGNI minimum, not bloat.
 </complexity_review>
 
 <beads_workflow>

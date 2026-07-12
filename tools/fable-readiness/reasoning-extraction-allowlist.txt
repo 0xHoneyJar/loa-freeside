@@ -1,0 +1,12 @@
+# Fable-5 reasoning-extraction allowlist
+# Schema fields whose NAME matches a reasoning/CoT trigger but which are NOT model-authored
+# (filled deterministically by a shell/script), so they cannot trigger Fable's
+# reasoning_extraction refusal. Keeping them here makes the exemption auditable; a genuinely
+# model-authored reasoning field elsewhere still trips the gate.
+#
+# Format:  pathfrag | textfrag | reason
+#   pathfrag : substring matched against the finding's file:line location
+#   textfrag : substring matched against the matched text
+#   reason   : why it is safe (include verification date)
+
+bridge-triage.schema.json | reasoning | shell-authored by post-pr-triage.sh build_reasoning() (deterministic string, never a model prompt); verified 2026-06-22

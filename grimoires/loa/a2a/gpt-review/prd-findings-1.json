@@ -1,66 +1,48 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, this PRD would likely cause either accidental destruction/recreation of stateful AWS resources or a DNS cutover that breaks email/Vercel due to incorrect assumptions about imports, record parity, and wildcard/delegation mechanics.",
+  "summary": "As written, this would likely fail in production due to incorrect cost assumptions, a risky/underspecified SQLite-on-EFS design, and missing multi-tenant isolation controls that are required once external builders are onboarded.",
   "blocking_issues": [
     {
-      "location": "1. Problem Statement + 4. FR-1 + 7. Risks (R-3)",
-      "issue": "Contradiction: PRD says “system is not live, we can tear down and rebuild” while also requiring “must not recreate stateful resources (S3 Object Lock, KMS, DynamoDB)” and later suggests “Destroy old resources before applying new.”",
-      "why_blocking": "This creates a high-risk operator interpretation that teardown is acceptable. For Object Lock buckets and KMS keys, destroy/recreate is either impossible or catastrophic (data loss, broken signatures, irrecoverable key material). If the team follows the teardown guidance, the project fails its core safety requirement.",
-      "fix": "Make the safety invariant explicit and global: (a) no destroy/recreate for any stateful resources in any environment, even pre-prod; (b) remove/replace R-3 mitigation with a safe migration plan: freeze old TF applies, import into the new root, then deprecate old stacks without destroying shared/stateful components; (c) add an explicit “never run terraform destroy” rule for the legacy stacks until imports are verified."
+      "location": "NFR-1: Cost Efficiency (per-world cost table) + Goals G-2",
+      "issue": "Fargate Spot cost estimate (~$1.50/mo for 0.25 vCPU/512MB always-on) is not realistic; it is off by an order of magnitude for 24/7 services, and Spot availability/discount is not guaranteed.",
+      "why_blocking": "The project is justified primarily by runway savings. If the true marginal cost is materially higher (often closer to ~$6–$12+/mo per always-on microservice depending on region/pricing), the platform may not beat Railway or may not meet the stated <$3/mo success metric, causing the project to be judged a failure or to run out of funds anyway.",
+      "fix": "Replace the table with a region-specific, hours-based calculation using current Fargate pricing (vCPU-hr + GB-hr) and explicitly model: (1) 730 hours/month, (2) Spot discount range and interruption rate, (3) on-demand fallback percentage, (4) NAT/data processing/ALB LCU/log ingestion variability. Update G-2 to a measurable target tied to actual AWS Cost Explorer tags after migrating 3 worlds (e.g., 'incremental monthly cost for 3 worlds < $X')."
     },
     {
-      "location": "7. Risks & Dependencies (R-1 mitigation)",
-      "issue": "Incorrect/unsafe Terraform guidance: “Dry-run import with -target” is not a real safety mechanism for imports and can create partial-state/graph inconsistencies; also import is not a dry-run operation.",
-      "why_blocking": "Teams may believe they can safely ‘dry-run’ imports. In reality, `terraform import` mutates state immediately; using `-target` during planning/apply can mask dependencies and lead to later unexpected destroys/creates—exactly what this PRD is trying to prevent for stateful resources.",
-      "fix": "Replace with a concrete, safe import workflow: (1) add resources to code with lifecycle protections (`prevent_destroy = true` for KMS/S3/DDB where appropriate); (2) run `terraform plan` to ensure only creates are proposed (expected before import); (3) run `terraform import` for each resource; (4) run `terraform plan` again until it shows 0 changes for imported resources; (5) only then allow apply for non-stateful deltas. Explicitly forbid `-target` except for narrowly documented break-glass cases."
+      "location": "FR-1 + NFR-3 + Risks: 'SQLite on EFS' (WAL mode + throughput mode) and 'Desired count = 1'",
+      "issue": "SQLite on EFS is presented as low-risk with WAL as mitigation, but EFS has higher latency and different POSIX locking semantics than local disks; WAL mode does not eliminate locking contention and can behave poorly on network filesystems. The PRD also omits required mount options and SQLite settings, and it assumes single-task forever without defining what happens during deploys/rollbacks/spot interruptions.",
+      "why_blocking": "If SQLite locking or fsync latency causes request timeouts, DB corruption risk, or deploy-time write failures, worlds will be unstable and the migration will be rolled back. Because the design is explicitly stateful and single-instance, any interruption or replacement event becomes a user-visible outage unless the app is engineered for it.",
+      "fix": "Add explicit production constraints and implementation requirements: (1) confirm EFS supports POSIX locks for your access pattern and require `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=...;` plus serialized access in app code, (2) require a single writer process and no concurrent task overlap during deployments (set ECS deployment configuration to avoid running two tasks that share the same DB path), (3) define backup/restore (EFS-to-S3 or AWS Backup) and corruption detection, (4) define performance SLOs and a load test gate. If you need higher reliability, change the requirement to use a managed DB (RDS/Postgres) or at minimum move SQLite to local ephemeral + periodic snapshot/replication (but that changes persistence semantics)."
     },
     {
-      "location": "2. Goals & Success Metrics (G-1) + 9. Success Definition (1)",
-      "issue": "Success metric “0 drift / no unexpected changes” is not measurable as written and conflicts with the stated work (adding many missing resources will necessarily produce changes).",
-      "why_blocking": "This can’t be used as an acceptance gate: the plan will include expected creates/updates. Without a measurable definition of “unexpected,” the team can either block forever or accidentally apply destructive changes while rationalizing them as ‘expected.’",
-      "fix": "Define explicit acceptance criteria: e.g., (a) for imported stateful resources: plan must show 0 changes; (b) for new resources: plan may show creates only (no destroys/replaces) except an enumerated allowlist; (c) for existing ECS services/ALBs/SGs: specify whether updates are allowed and which attributes are permitted to change."
+      "location": "FR-1 Acceptance + NFR-3 Availability + FR-4 Deploy Pipeline ('Force new ECS deployment')",
+      "issue": "The PRD does not specify ECS service deployment settings for a stateful single-instance service (minimum/maximum healthy percent, deployment circuit breaker behavior, and how to prevent two tasks from mounting the same EFS DB during rolling deploy).",
+      "why_blocking": "Default ECS rolling deployments can briefly run old+new tasks concurrently. With a shared SQLite file on EFS, that can create write contention, locked DB errors, or undefined behavior depending on the app. This can cause repeated failed deployments and downtime, blocking migration.",
+      "fix": "Add explicit ECS service settings: set `deployment_minimum_healthy_percent=0` and `deployment_maximum_percent=100` (or equivalent) to enforce stop-then-start for singletons; document expected downtime during deploy (or implement blue/green with DB migration strategy). Also require `healthCheckGracePeriodSeconds` and define what 'wait for stability' means in CI."
     },
     {
-      "location": "4. FR-4 DNS Authority Migration + 5. NFR-1 + 2. G-5/G-7",
-      "issue": "“100% record parity vs Gandi” is not achievable/meaningful for a Route 53 authoritative migration because some records must change (SOA/NS at minimum), and some providers synthesize/format records differently; also apex “A record (Vercel anycast)” is likely wrong for Vercel (commonly apex A=76.76.21.21, but many setups use ALIAS/ANAME semantics; Route 53 uses Alias A/AAAA to AWS targets, not to arbitrary anycast IPs).",
-      "why_blocking": "If the team tries to enforce literal parity, they will either (a) fail the project on a false negative, or (b) force incorrect records into Route 53. Mis-modeling Vercel apex/wildcards is a common cause of production outage (web traffic breaks) during NS cutover.",
-      "fix": "Redefine parity as “functional equivalence” with an explicit diff allowlist: NS/SOA will differ; TTLs may differ; formatting differences allowed. For Vercel, specify the exact required record set per Vercel’s current guidance for this domain: apex A/AAAA values (or CNAME flattening approach), and which subdomains use CNAME. Document the exact intended records, not “anycast” generically."
+      "location": "FR-2 Subdomain Routing (ALB listener rule priority) + '10+ worlds' scaling",
+      "issue": "ALB listener rules require unique integer priorities; the PRD proposes '300+ range for worlds' but does not define how priorities are allocated to avoid collisions across environments and multiple Terraform applies.",
+      "why_blocking": "Priority collisions will cause Terraform apply failures and block provisioning new worlds (core success metric G-5/G-7). This becomes more likely as the number of worlds grows or multiple engineers add worlds concurrently.",
+      "fix": "Define deterministic priority allocation (e.g., hash(name) into a safe range with collision detection) or use a single rule with host-based routing to a shared reverse proxy, or use AWS ALB rule 'priority = null' is not supported—so you must implement a strategy. Document the strategy in the module interface."
     },
     {
-      "location": "4. FR-4 (dns/honeyjar-xyz-vercel.tf, dns/honeyjar-xyz-agents.tf) + 7. Risks (R-4)",
-      "issue": "Wildcard/delegation misunderstanding: PRD mixes “wildcard CNAME”, “_acme-challenge NS delegation”, and “*.agents.0xhoneyjar.xyz wildcard resolves CNAME active” without defining whether `agents.0xhoneyjar.xyz` is delegated to another zone or kept in the same zone. Also, a wildcard at `*.agents` does not isolate you from an apex wildcard `*` if one exists; precedence rules matter.",
-      "why_blocking": "This is a classic DNS migration failure mode: you can easily create conflicting wildcards (e.g., `*.0xhoneyjar.xyz` vs `*.agents.0xhoneyjar.xyz`) or break certificate issuance if `_acme-challenge` delegation is wrong. If the agent economy depends on 100K+ subdomains, getting this wrong is a launch-blocker.",
-      "fix": "Choose and specify one model: (A) keep everything in the apex hosted zone and create `*.agents` CNAME + explicit records for `agents` itself; or (B) delegate `agents.0xhoneyjar.xyz` to a separate hosted zone (recommended at scale) and manage that zone in Terraform too. Explicitly document wildcard precedence and required non-wildcard records (`agents.0xhoneyjar.xyz` itself, `_acme-challenge.agents...` behavior)."
+      "location": "NFR-2 Security + FR-1 EFS access point isolation ('No world can access another world's EFS access point (POSIX UIDs)')",
+      "issue": "Relying on POSIX UID/GID alone is not sufficient isolation in a multi-tenant threat model, and the PRD does not specify the EFS/IAM authorization mode (EFS IAM authorization + access point enforcement) nor task role restrictions to prevent mounting other access points.",
+      "why_blocking": "Once 'External Builder' is real, a compromised container could attempt to mount other EFS access points or read other tenants' data if IAM/EFS policies are permissive. A single incident breaks trust and can force shutdown of the platform.",
+      "fix": "Make isolation enforceable at AWS control plane: (1) require EFS access points with enforced root directory and POSIX user, (2) require EFS IAM authorization (`iam = ENABLED`) and mount via access point only, (3) scope each task role to only its own access point using resource-level permissions, (4) consider per-world security groups now (not FUTURE) if external builders are in MVP scope, or explicitly state MVP is internal-only and block external onboarding until isolation is implemented."
     },
     {
-      "location": "4. FR-4 Key decisions: “data.aws_lb for cross-references (not terraform_remote_state)” + dns/honeyjar-xyz-backend.tf",
-      "issue": "Using `data.aws_lb` to reference the ALB for `api.0xhoneyjar.xyz` is brittle/underspecified: it requires stable naming/tags and correct region/account; it also breaks if the ALB doesn’t exist yet (ordering) or if multiple ALBs match.",
-      "why_blocking": "This can block applies or, worse, point production DNS at the wrong load balancer. DNS pointing at the wrong ALB is an outage and hard to detect until cutover.",
-      "fix": "Either (a) use `terraform_remote_state` from compute to DNS (safe if read-only and state is stable) or (b) enforce deterministic lookup via tags + exact name + account/region constraints, and document the dependency ordering (compute must be applied before enabling `enable_production_api`). Add a validation that exactly one ALB matches."
+      "location": "FR-3 AI Gateway via Finn (S2S auth/JWKS) + NFR-2 Security",
+      "issue": "JWT issuance/rotation and tenant scoping are not defined: how worlds obtain JWTs, token TTL/refresh, what claims identify the world, and how Finn enforces per-world budgets/limits. Also the URL uses `http://...local` with no mention of TLS/mTLS inside the VPC.",
+      "why_blocking": "Without a concrete token lifecycle and tenant identity model, 'centralized AI billing' and 'budget enforcement' can’t be reliably implemented or audited. Mis-scoped tokens could let one world spend another world’s budget or bypass limits—directly undermining a primary problem statement.",
+      "fix": "Define: (1) token minting mechanism (static long-lived token in Secrets Manager vs short-lived tokens via STS-like exchange), (2) required JWT claims (`world_id`, `env`, `aud`, `exp`) and Finn authorization rules, (3) rotation procedure, (4) whether intra-VPC traffic must be encrypted (TLS) and how certificates are managed (ACM PCA, self-signed, or accept HTTP with explicit risk acceptance)."
     },
     {
-      "location": "5. Technical & NFRs (NFR-3 Security Model Consistency) vs earlier Problem Statement",
-      "issue": "NFR-3 mandates “no CIDR-based rules for service mesh,” but the architecture explicitly keeps Finn public for staging (external health checks) and includes external HTTPS checks for Dixie/Freeside. That requires CIDR-based ingress (0.0.0.0/0) at least on ALB security groups, and possibly on service SGs depending on networking mode.",
-      "why_blocking": "If implemented literally, you can’t have public endpoints or external health checks. If ignored, the NFR is meaningless. Either way, it risks building the wrong security posture and breaking the deploy gating (health checks fail).",
-      "fix": "Clarify scope: “service-to-service traffic uses SG-to-SG; internet ingress is only via ALB SG with CIDR 0.0.0.0/0 on 443; tasks are not directly internet-reachable.” Explicitly separate ALB SG rules from service mesh SG rules."
-    },
-    {
-      "location": "4. FR-3 E2E Wiring Tests (W-4..W-10) + 7. Risks (R-5)",
-      "issue": "ECS Exec prerequisite is incomplete: enabling ECS Exec also requires task role permissions, SSM messages permissions, cluster configuration, and network egress to SSM endpoints (or VPC endpoints). PRD only says “Enable ECS Exec in task definitions.”",
-      "why_blocking": "If ECS Exec can’t actually run, W-4..W-10 cannot be executed, making G-4 and Success Definition (3) unattainable. This blocks acceptance of the consolidation work.",
-      "fix": "Add explicit prerequisites: IAM permissions for exec, cluster exec configuration, KMS permissions if using encrypted logs, and either NAT egress or VPC endpoints for SSM/SSMMessages/EC2Messages/Logs. Include a verification step: `aws ecs execute-command` smoke test per service."
-    },
-    {
-      "location": "4. FR-1 Import list + 7. Dependencies (loa-dixie terraform state)",
-      "issue": "Import scope is incomplete/possibly wrong: PRD lists only a handful of stateful resources to import, but earlier it claims multiple backends and duplicate ECS services/ALBs/SGs. Those are not ‘stateful’ but are still critical to avoid accidental replacement (ALB, listeners, target groups, Cloud Map services/namespaces, IAM roles, log groups).",
-      "why_blocking": "If the new consolidated root creates parallel networking/service-discovery resources instead of importing/adopting existing ones, you’ll get split-brain routing (some tasks registered in one Cloud Map service, others in another), broken internal DNS names, and deploy scripts targeting the wrong services.",
-      "fix": "Add an explicit “adoption matrix” for all shared identity/routing resources: Cloud Map namespace/services, ALBs/listeners/TGs, ECS clusters/services, IAM roles, log groups, SSM parameters. For each: import vs recreate decision, and the required stable names to ensure continuity."
-    },
-    {
-      "location": "8. Manual Steps + 5. NFR-5 DMARC Fix (Immediate)",
-      "issue": "DMARC fix is required “independent of migration timeline” but the PRD also plans to recreate DNS under Route 53 with parity. If DMARC is fixed now in Gandi but not reflected in the Route 53 desired state, parity checks and/or cutover will reintroduce the broken DMARC.",
-      "why_blocking": "Email deliverability is a hard requirement (G-7). A mismatch between ‘fix now’ and ‘IaC desired state’ can cause regression at cutover.",
-      "fix": "Make DMARC value part of the Route 53 Terraform desired state immediately, and update the pre-migration parity script to treat the corrected DMARC as the source of truth (or explicitly require updating Gandi first, then copying into TF before any parity validation)."
+      "location": "FR-5 Terraform module creates 'OIDC IAM role for CI' + FR-4 'GitHub secret: AWS_DEPLOY_ROLE_ARN'",
+      "issue": "The PRD implies per-world CI roles and a GitHub secret, but with GitHub Actions OIDC you typically do not need long-lived secrets; also it does not specify the trust policy conditions (repo, branch, environment) needed to prevent role assumption from forks/other repos.",
+      "why_blocking": "A misconfigured OIDC trust policy is a common catastrophic failure mode: attackers can assume deploy roles and push arbitrary images to ECR / redeploy services. That is an existential security risk for a shared multi-tenant cluster.",
+      "fix": "Require OIDC-only (no static AWS keys) and specify trust policy constraints: `token.actions.githubusercontent.com:sub` limited to the exact repo and branch/tag, plus `aud=sts.amazonaws.com`. Document whether environments use GitHub Environments for approvals. Remove the requirement for storing role ARN as a secret if it can be derived, or keep it but clarify it is non-sensitive."
     }
   ],
   "question": "",

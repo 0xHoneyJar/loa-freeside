@@ -16,8 +16,8 @@
       "file": "agent-rate-limiter.ts",
       "line": 23,
       "description": "Uses crypto.randomUUID() without importing crypto; can throw at runtime in environments where crypto isn't global.",
-      "current_code": "```typescript\nimport { readFileSync } from 'node:fs';\nimport { join, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport type { Redis } from 'ioredis';\nimport type { Logger } from 'pino';\nimport type { AccessLevel } from '@arrakis/core/ports';\n```\n",
-      "fixed_code": "```typescript\nimport { readFileSync } from 'node:fs';\nimport { join, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport { randomUUID } from 'node:crypto';\nimport type { Redis } from 'ioredis';\nimport type { Logger } from 'pino';\nimport type { AccessLevel } from '@arrakis/core/ports';\n```\n",
+      "current_code": "```typescript\nimport { readFileSync } from 'node:fs';\nimport { join, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport type { Redis } from 'ioredis';\nimport type { Logger } from 'pino';\nimport type { AccessLevel } from '@freeside/core/ports';\n```\n",
+      "fixed_code": "```typescript\nimport { readFileSync } from 'node:fs';\nimport { join, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport { randomUUID } from 'node:crypto';\nimport type { Redis } from 'ioredis';\nimport type { Logger } from 'pino';\nimport type { AccessLevel } from '@freeside/core/ports';\n```\n",
       "explanation": "Ensures randomUUID is available across supported Node.js versions without relying on a global."
     },
     {

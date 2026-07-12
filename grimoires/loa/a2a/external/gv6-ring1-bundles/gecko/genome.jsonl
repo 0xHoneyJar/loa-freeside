@@ -1,0 +1,2 @@
+{"construct": "gecko", "genome_hash": "e1ddc8750f2c09aa61564f999a35894446f8c92f389204ceae2ca6bb5c516f88", "parent_hash": "GENESIS", "payload": {"learning": "sense-only constructs never gate operator decisions", "minted_at": "2026-07-03T00:00:00Z"}, "seq": 1}
+{"construct": "gecko", "genome_hash": "8bf112d81766a5f5a0ff18774466d7fffd61b44a109d87134105f707aeb4316e", "parent_hash": "e1ddc8750f2c09aa61564f999a35894446f8c92f389204ceae2ca6bb5c516f88", "payload": {"learning": "capability-reality drift is invisible without the ground", "minted_at": "2026-07-03T00:01:00Z"}, "seq": 2}

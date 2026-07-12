@@ -111,6 +111,19 @@ class TestEnvAllowlist:
     def test_moonshot_key_allowed(self):
         assert _check_env_allowed("MOONSHOT_API_KEY") is True
 
+    def test_google_key_allowed(self):
+        # Issue #641 (B): GOOGLE_API_KEY must be in core allowlist —
+        # the Google adapter is shipped first-class but the allowlist
+        # excluded it, breaking 3-model Flatline default config.
+        assert _check_env_allowed("GOOGLE_API_KEY") is True
+
+    def test_gemini_key_allowed(self):
+        # Issue #641 (B): GEMINI_API_KEY is the alternate name some
+        # Google CLI tooling uses; ship as core-allowed alongside
+        # GOOGLE_API_KEY so users can pick whichever name their
+        # environment supplies.
+        assert _check_env_allowed("GEMINI_API_KEY") is True
+
     def test_random_var_rejected(self):
         assert _check_env_allowed("PATH") is False
         assert _check_env_allowed("HOME") is False
@@ -404,3 +417,361 @@ class TestLazyRedaction:
         result = redact_config_value("auth", lazy)
         assert REDACTED in result
         assert "lazy" in result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cycle-095 Sprint 1 — endpoint_family validation + force-legacy-aliases
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _write_synthetic_project(
+    tmpdir: str,
+    *,
+    openai_models: dict,
+    aliases: dict | None = None,
+    legacy_snapshot: dict | None = None,
+    experimental: dict | None = None,
+) -> str:
+    """Build a tmp project root with a synthetic System-Zone defaults file.
+
+    Optionally writes the .claude/defaults/aliases-legacy.yaml snapshot used
+    by the force-legacy-aliases kill-switch.
+
+    Cycle-110 sprint-2a T2.4 ([PRD:FR-2]): backfill required `auth_type` +
+    `dispatch_group` fields on every test model entry that does not already
+    carry them. This keeps pre-cycle-110 fixtures working under the new
+    strict-validation loader without forcing every legacy test case to add
+    cycle-110 metadata. Tests that DO want to exercise missing/invalid
+    auth_type pass it explicitly.
+    """
+    import yaml as _yaml
+
+    root = Path(tmpdir)
+    (root / ".claude" / "defaults").mkdir(parents=True, exist_ok=True)
+
+    # Cycle-110 backfill: every model entry MUST have auth_type + dispatch_group
+    # post-cycle-110. Default to http_api / openai-gpt for the synthetic
+    # OpenAI fixture (the legacy default these tests already operate against).
+    for _mid, _m in openai_models.items():
+        if not isinstance(_m, dict):
+            continue
+        _m.setdefault("auth_type", "http_api")
+        _m.setdefault("dispatch_group", "openai-gpt")
+
+    config_doc: dict = {
+        "providers": {
+            "openai": {
+                "type": "openai",
+                "endpoint": "https://api.example.com/v1",
+                "auth": "test-key",
+                "models": openai_models,
+            }
+        },
+        "aliases": aliases if aliases is not None else {},
+    }
+    if experimental is not None:
+        config_doc["experimental"] = experimental
+
+    with (root / ".claude" / "defaults" / "model-config.yaml").open("w") as f:
+        _yaml.safe_dump(config_doc, f, sort_keys=False)
+
+    if legacy_snapshot is not None:
+        with (root / ".claude" / "defaults" / "aliases-legacy.yaml").open("w") as f:
+            _yaml.safe_dump({"aliases": legacy_snapshot}, f, sort_keys=False)
+
+    return str(root)
+
+
+class TestEndpointFamilyValidation:
+    """SDD §3.4 — strict validation rejects missing/unknown endpoint_family
+    on OpenAI registry entries.  Honors LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT=chat
+    backstop for operators with custom OpenAI entries.
+    """
+
+    def test_missing_field_raises(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={
+                "gpt-5.2": {"capabilities": ["chat"], "context_window": 128000}
+            },
+        )
+        with pytest.raises(ConfigError, match="missing required 'endpoint_family'"):
+            load_config(project_root=root)
+
+    def test_unknown_value_raises(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={
+                "gpt-5.2": {
+                    "capabilities": ["chat"],
+                    "context_window": 128000,
+                    "endpoint_family": "bogus",
+                }
+            },
+        )
+        with pytest.raises(ConfigError, match="invalid endpoint_family"):
+            load_config(project_root=root)
+
+    def test_chat_and_responses_both_accepted(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={
+                "gpt-5.2": {
+                    "capabilities": ["chat"],
+                    "context_window": 128000,
+                    "endpoint_family": "chat",
+                },
+                "gpt-5.5": {
+                    "capabilities": ["chat"],
+                    "context_window": 400000,
+                    "endpoint_family": "responses",
+                },
+            },
+        )
+        merged, _ = load_config(project_root=root)
+        assert merged["providers"]["openai"]["models"]["gpt-5.5"]["endpoint_family"] == "responses"
+
+    def test_legacy_default_backstop_converts_fail_to_warn(self, tmp_path, monkeypatch, caplog):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.setenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", "chat")
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={
+                "gpt-custom-no-family": {
+                    "capabilities": ["chat"],
+                    "context_window": 128000,
+                    # No endpoint_family — backstop should convert to "chat"
+                },
+            },
+        )
+        with caplog.at_level("WARNING", logger="loa_cheval.config.loader"):
+            merged, _ = load_config(project_root=root)
+
+        # No raise; entry is now defaulted to "chat".
+        assert merged["providers"]["openai"]["models"]["gpt-custom-no-family"]["endpoint_family"] == "chat"
+        # The WARN cites the affected entry by name.
+        warned = [r for r in caplog.records if "gpt-custom-no-family" in r.message]
+        assert warned, "expected per-entry WARN under LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT"
+
+    def test_legacy_default_only_chat_accepted(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.setenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", "responses")
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={
+                "gpt-x": {"capabilities": ["chat"], "context_window": 128000}
+            },
+        )
+        with pytest.raises(ConfigError, match="LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT"):
+            load_config(project_root=root)
+
+    def test_non_dict_entry_raises_with_diagnostic(self, tmp_path, monkeypatch):
+        """Adversarial review DISS-001: malformed non-dict entries must raise
+        with a precise pointer, not silently fall through to runtime."""
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+
+        # Scalar (string) where a mapping is expected.
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={"gpt-bad-shape": "openai:gpt-bad-shape"},  # scalar
+        )
+        with pytest.raises(ConfigError, match="must be a mapping"):
+            load_config(project_root=root)
+
+    def test_non_dict_list_entry_raises(self, tmp_path, monkeypatch):
+        """List shape (also wrong) raises with a similar diagnostic."""
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models={"gpt-list-shape": ["responses", "chat"]},  # list
+        )
+        with pytest.raises(ConfigError, match="must be a mapping"):
+            load_config(project_root=root)
+
+
+class TestForceLegacyAliases:
+    """SDD §1.4.5 — kill-switch replaces aliases:: with the pre-cycle-095
+    snapshot at config-load time.  Critical: routing still uses each restored
+    target's OWN endpoint_family (proven separately in test_providers).
+    """
+
+    def _baseline_models(self) -> dict:
+        return {
+            "gpt-5.2": {"capabilities": ["chat"], "context_window": 128000, "endpoint_family": "chat"},
+            "gpt-5.3-codex": {"capabilities": ["chat"], "context_window": 400000, "endpoint_family": "responses"},
+            "gpt-5.5": {"capabilities": ["chat"], "context_window": 400000, "endpoint_family": "responses"},
+        }
+
+    def test_kill_switch_via_env_var_replaces_aliases(self, tmp_path, monkeypatch, caplog):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.setenv("LOA_FORCE_LEGACY_ALIASES", "1")
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models=self._baseline_models(),
+            aliases={"reviewer": "openai:gpt-5.5", "reasoning": "openai:gpt-5.5"},  # post-cycle-095 state
+            legacy_snapshot={
+                "reviewer": "openai:gpt-5.3-codex",
+                "reasoning": "openai:gpt-5.3-codex",
+            },
+        )
+        with caplog.at_level("WARNING", logger="loa_cheval.config.loader"):
+            merged, sources = load_config(project_root=root)
+
+        # Aliases swapped back to legacy targets.
+        assert merged["aliases"]["reviewer"] == "openai:gpt-5.3-codex"
+        assert merged["aliases"]["reasoning"] == "openai:gpt-5.3-codex"
+        # Source annotation marks the kill-switch as the provenance.
+        assert sources.get("aliases.reviewer") == "force_legacy_aliases_kill_switch"
+        # WARN emitted (once per process).
+        assert any("kill-switch active" in r.message for r in caplog.records)
+
+    def test_kill_switch_via_config_flag_replaces_aliases(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models=self._baseline_models(),
+            aliases={"reviewer": "openai:gpt-5.5"},
+            legacy_snapshot={"reviewer": "openai:gpt-5.3-codex"},
+            experimental={"force_legacy_aliases": True},
+        )
+        merged, _ = load_config(project_root=root)
+        assert merged["aliases"]["reviewer"] == "openai:gpt-5.3-codex"
+
+    def test_kill_switch_inactive_preserves_post_cycle_aliases(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.delenv("LOA_FORCE_LEGACY_ALIASES", raising=False)
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models=self._baseline_models(),
+            aliases={"reviewer": "openai:gpt-5.5"},
+            legacy_snapshot={"reviewer": "openai:gpt-5.3-codex"},
+        )
+        merged, _ = load_config(project_root=root)
+        assert merged["aliases"]["reviewer"] == "openai:gpt-5.5"
+
+    def test_kill_switch_missing_snapshot_raises(self, tmp_path, monkeypatch):
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.setenv("LOA_FORCE_LEGACY_ALIASES", "1")
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+
+        # No legacy_snapshot written — file is absent.
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models=self._baseline_models(),
+            aliases={"reviewer": "openai:gpt-5.5"},
+        )
+        with pytest.raises(ConfigError, match="aliases-legacy.yaml is missing"):
+            load_config(project_root=root)
+
+    def test_kill_switch_unresolved_alias_target_raises(self, tmp_path, monkeypatch):
+        """Adversarial review DISS-002: kill-switch must validate that every
+        restored alias target resolves in the merged config. Restoring an
+        alias pointing to a removed model would worsen the outage the
+        kill-switch is meant to fix.
+        """
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.setenv("LOA_FORCE_LEGACY_ALIASES", "1")
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+
+        # Merged config has gpt-5.5 only — gpt-5.3-codex is REMOVED to simulate
+        # an operator who pruned legacy models from their custom registry.
+        models = {
+            "gpt-5.5": {"capabilities": ["chat"], "context_window": 400000, "endpoint_family": "responses"},
+        }
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models=models,
+            aliases={"reviewer": "openai:gpt-5.5"},
+            legacy_snapshot={
+                "reviewer": "openai:gpt-5.3-codex",  # not in merged providers
+            },
+        )
+        with pytest.raises(ConfigError, match="restore aliases pointing to models that no longer exist"):
+            load_config(project_root=root)
+
+    def test_kill_switch_resolves_native_runtime_alias(self, tmp_path, monkeypatch):
+        """The reserved 'claude-code:session' tag is treated as resolvable
+        even though it has no providers.<...> entry (Claude Code native
+        runtime; existed in the pre-cycle-095 alias snapshot)."""
+        from loa_cheval.config.loader import _reset_warning_state_for_tests, clear_config_cache
+
+        clear_config_cache()
+        _reset_warning_state_for_tests()
+        monkeypatch.setenv("LOA_FORCE_LEGACY_ALIASES", "1")
+        monkeypatch.delenv("LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT", raising=False)
+
+        root = _write_synthetic_project(
+            str(tmp_path),
+            openai_models=self._baseline_models(),
+            aliases={"reviewer": "openai:gpt-5.5"},
+            legacy_snapshot={
+                "reviewer": "openai:gpt-5.3-codex",  # resolves
+                "native": "claude-code:session",     # reserved, resolves
+            },
+        )
+        merged, _ = load_config(project_root=root)
+        assert merged["aliases"]["reviewer"] == "openai:gpt-5.3-codex"
+        assert merged["aliases"]["native"] == "claude-code:session"

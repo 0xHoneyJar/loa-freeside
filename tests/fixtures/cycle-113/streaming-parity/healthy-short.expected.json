@@ -1,0 +1,11 @@
+{
+  "description": "20 tokens starting with `## Findings\\n` (structured-answer marker).",
+  "expected": {
+    "reason": null,
+    "tokens_before_abort": null,
+    "triggered": false
+  },
+  "name": "healthy-short",
+  "notes": "",
+  "reasoning_class": false
+}

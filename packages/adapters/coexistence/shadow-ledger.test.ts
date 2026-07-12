@@ -21,7 +21,7 @@ import type {
   ShadowPrediction,
   IncumbentState,
   ArrakisEligibilityResult,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Test Fixtures

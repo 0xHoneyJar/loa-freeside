@@ -1,0 +1,14 @@
+{
+  "run_id": "run_01HXYZABCDEF",
+  "mode": "dogfood-full",
+  "inputs_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "aggregate": {
+    "holder_turnover": 0.25,
+    "sold_lapsed": { "kind": "exact", "value": 42 },
+    "newly_eligible": { "kind": "exact", "value": 17 },
+    "stale_access": { "kind": "bucketed", "bucket": "<5" },
+    "whale_concentration": 0.6,
+    "stale_access_risk_band": "elevated"
+  },
+  "cta": { "product": "/shadow-access", "conversation": "/talk-to-us" }
+}

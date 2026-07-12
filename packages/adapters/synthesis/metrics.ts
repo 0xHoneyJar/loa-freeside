@@ -11,7 +11,7 @@
  * @see SDD §6.3.4-6.3.5
  */
 
-import { SYNTHESIS_METRICS_PREFIX } from '@arrakis/core/ports';
+import { SYNTHESIS_METRICS_PREFIX } from '@freeside/core/ports';
 
 // =============================================================================
 // Types

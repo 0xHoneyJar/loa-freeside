@@ -23,12 +23,90 @@ chatPageRouter.use((_req: Request, res: Response, next) => {
 });
 
 /**
- * GET /chat/:tokenId — Standalone agent chat page
+ * POST /chat/session — Create Finn session with personality pipeline
+ * Proxies to Finn's internal /api/sessions endpoint via Cloud Map.
+ * Returns sessionId + personality metadata for the chat page.
  */
-chatPageRouter.get('/:tokenId', (req: Request, res: Response) => {
-  const { tokenId } = req.params;
+chatPageRouter.post('/session', async (req: Request, res: Response) => {
+  const loaFinnUrl = process.env.LOA_FINN_BASE_URL;
+  if (!loaFinnUrl || !loaFinnUrl.startsWith('http')) {
+    res.status(503).json({ error: 'Inference service not configured' });
+    return;
+  }
 
-  // Basic tokenId validation — alphanumeric, hyphens, underscores, 1-64 chars
+  // Validate token_id format: "mibera:<alphanumeric>"
+  const { token_id } = req.body as { token_id?: string };
+  if (token_id && !/^[a-z]+:[a-zA-Z0-9_-]{1,64}$/.test(token_id)) {
+    res.status(400).json({ error: 'Invalid token_id format. Expected: collection:tokenId' });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s for cold cache
+
+  try {
+    const finnRes = await fetch(`${loaFinnUrl}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token_id: token_id || undefined }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!finnRes.ok) {
+      res.status(finnRes.status).json({ error: 'Session creation failed', status: finnRes.status });
+      return;
+    }
+
+    const data = await finnRes.json() as {
+      sessionId?: string;
+      wsUrl?: string;
+      personality?: { agent_name?: string; archetype?: string; era?: string };
+    };
+
+    res.status(200).json({
+      sessionId: data.sessionId,
+      wsUrl: data.wsUrl,
+      personality: data.personality || null,
+    });
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    if (message.includes('abort')) {
+      res.status(504).json({ error: 'Session creation timed out (personality synthesis in progress — try again)' });
+    } else {
+      res.status(500).json({ error: 'Session creation failed', message });
+    }
+  }
+});
+
+/**
+ * GET /chat/:collection/:tokenId — Standalone agent chat page
+ * Collection-aware: supports /chat/mibera/6426, /chat/othercollection/123
+ * Also supports legacy /chat/:tokenId (defaults to "mibera" collection)
+ */
+chatPageRouter.get('/:collectionOrTokenId/:tokenId?', (req: Request, res: Response) => {
+  let collection: string;
+  let tokenId: string;
+
+  if (req.params.tokenId) {
+    // /chat/mibera/6426 format
+    collection = req.params.collectionOrTokenId as string;
+    tokenId = req.params.tokenId as string;
+  } else {
+    // /chat/6426 legacy format — default to mibera
+    collection = 'mibera';
+    tokenId = req.params.collectionOrTokenId as string;
+  }
+
+  // Validate collection — lowercase alpha, 1-20 chars
+  if (!/^[a-z]{1,20}$/.test(collection)) {
+    res.status(400).send('Invalid collection name');
+    return;
+  }
+
+  // Validate tokenId — alphanumeric, hyphens, underscores, 1-64 chars
   if (!tokenId || !/^[a-zA-Z0-9_-]{1,64}$/.test(tokenId)) {
     res.status(400).send('Invalid token ID');
     return;
@@ -51,12 +129,13 @@ chatPageRouter.get('/:tokenId', (req: Request, res: Response) => {
     "base-uri 'none'",
   ].join('; '));
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(getChatPage(tokenId));
+  res.send(getChatPage(collection, tokenId));
 });
 
 // ─── HTML Template ────────────────────────────────────────────────────────────
 
-function getChatPage(tokenId: string): string {
+function getChatPage(collection: string, tokenId: string): string {
+  const safeCollection = collection.replace(/[^a-z]/g, '');
   // Escape tokenId for safe embedding in HTML/JS (Sprint 321, medium-5)
   const safeTokenId = tokenId
     .replace(/&/g, '&amp;')
@@ -132,12 +211,16 @@ function getChatPage(tokenId: string): string {
   'use strict';
 
   var TOKEN_ID = '${safeTokenId}';
+  var COLLECTION = '${safeCollection}';
+  var COLLECTION_TOKEN_ID = COLLECTION + ':' + TOKEN_ID;
   var ws = null;
   var authenticated = false;
   var reconnectAttempts = 0;
   var maxReconnect = 5;
   var streaming = false;
   var streamEl = null;
+  var finnSessionId = null;
+  var agentName = null;
 
   var chatArea = document.getElementById('chat-area');
   var authBar = document.getElementById('auth-bar');
@@ -175,12 +258,42 @@ function getChatPage(tokenId: string): string {
     return el;
   }
 
+  async function createFinnSession() {
+    try {
+      addMessage('Loading personality for token ' + TOKEN_ID + '...', 'system');
+      var res = await fetch('/chat/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token_id: COLLECTION_TOKEN_ID }),
+      });
+      if (res.ok) {
+        var data = await res.json();
+        finnSessionId = data.sessionId || null;
+        if (data.personality && data.personality.agent_name) {
+          agentName = data.personality.agent_name;
+          document.getElementById('agent-name').textContent = agentName;
+          if (data.personality.archetype) {
+            document.getElementById('agent-name').textContent = agentName + ' (' + data.personality.archetype + ')';
+          }
+        }
+      }
+    } catch (e) {
+      // Fall back to direct WS — personality won't be loaded but chat still works
+    }
+  }
+
   function connect() {
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     setStatus('connecting');
 
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(TOKEN_ID);
+    // If we have a Finn session, connect to its WS URL; otherwise fall back to direct
+    var url;
+    if (finnSessionId) {
+      url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(COLLECTION_TOKEN_ID) + '&sessionId=' + encodeURIComponent(finnSessionId);
+    } else {
+      url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(COLLECTION_TOKEN_ID);
+    }
     ws = new WebSocket(url);
 
     ws.onopen = function() {
@@ -364,8 +477,8 @@ function getChatPage(tokenId: string): string {
     }
   };
 
-  // Initial connect
-  connect();
+  // Initial connect — create Finn session first for personality, then WebSocket
+  createFinnSession().then(connect);
 })();
 </script>
 </body>

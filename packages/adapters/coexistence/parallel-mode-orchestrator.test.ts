@@ -13,7 +13,7 @@ import type {
   INatsPublisher,
   IParallelModeOrchestratorMetrics,
 } from './parallel-mode-orchestrator.js';
-import type { INamespacedRoleManager, IChannelStrategyManager, TierRoleConfig } from '@arrakis/core/ports';
+import type { INamespacedRoleManager, IChannelStrategyManager, TierRoleConfig } from '@freeside/core/ports';
 import type {
   ParallelModeConfig,
   MemberEligibility,
@@ -21,11 +21,11 @@ import type {
   DiscordChannel,
   NamespacedRoleConfig,
   ChannelStrategyConfig,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   DEFAULT_NAMESPACED_ROLE_CONFIG,
   DEFAULT_CHANNEL_STRATEGY_CONFIG,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import type { Logger } from 'pino';
 
 // =============================================================================

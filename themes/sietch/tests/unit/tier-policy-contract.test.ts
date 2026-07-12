@@ -31,7 +31,7 @@ import {
   type TierOverrideProvider,
   AgentGateway,
   AgentGatewayError,
-} from '@arrakis/adapters/agent';
+} from '@freeside/adapters/agent';
 
 import fixtures from '../fixtures/tier-policy-fixtures.json';
 

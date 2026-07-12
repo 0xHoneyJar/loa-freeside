@@ -1,10 +1,25 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No bugs, security issues, or logic errors found; implementation meets the specified acceptance criteria.",
-  "issues": [],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "EFS scoping was fixed, but the OIDC trust fix introduces a duplicate `StringEquals` key that breaks the condition block and fails to enforce the intended constraints.",
+  "previous_issues_status": [
+    {
+      "original_issue": "EFS IAM authorization Resource was '*' and needed to be scoped to the specific file system ARN",
+      "status": "fixed",
+      "notes": "Resource is now the specific EFS file system ARN with the access point condition."
+    },
+    {
+      "original_issue": "OIDC trust policy not scoped to exact repo+branch",
+      "status": "not_fixed",
+      "notes": "The fix attempts to use exact `sub`, but it defines two `StringEquals` keys in the same map. In Terraform this is invalid or results in the first being overwritten, so the condition block is broken and does not reliably enforce both constraints."
+    }
+  ],
+  "new_blocking_concerns": [
+    {
+      "location": "aws_iam_role.ci_deploy assume_role_policy Condition block",
+      "description": "Duplicate `StringEquals` keys in the Condition map cause Terraform to error or overwrite the first block, breaking the trust policy conditions.",
+      "why_blocking": "Terraform does not allow duplicate keys in a map; this will either fail to apply or drop the `aud` constraint unintentionally. Either outcome is a deploy failure or a security gap.",
+      "fix": "Combine both keys into a single `StringEquals` map: `{ \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\", \"token.actions.githubusercontent.com:sub\" = \"repo:${var.repo}:ref:refs/heads/main\" }`."
+    }
+  ],
+  "iteration": 2
 }

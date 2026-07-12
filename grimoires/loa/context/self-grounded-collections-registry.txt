@@ -1,0 +1,26 @@
+# self-grounded collections registry — belt pull + on-chain ERC-165 (evidence for the SoT plan, 2026-07-03)
+# chain | contract | collection_key | standard(derived) — ZERO operator input
+80094 | 0xfc2d7ebfeb2714fce13caf234a95db129ecc43da | apdao_seat | erc721
+10 | 0x6b31859e5e32a5212f1ba4d7b377604b9d4c7a60 | lore_1_introducing_mibera | erc721
+10 | 0x9247edf18518c4dccfa7f8b2345a1e8a4738204f | lore_2_honey_online_offline | erc721
+10 | 0xb2c7f411aa425d3fce42751e576a01b1ff150385 | lore_3_bera_kali_acc | erc721
+10 | 0xa12064e3b1f6102435e77aa68569e79955070357 | lore_4_bgt_network_spirituality | erc721
+10 | 0x6ca29eed22f04c1ec6126c59922844811dcbcdfa | lore_5_initiation_ritual | erc721
+10 | 0x7988434e1469d35fa5f442e649de45d47c3df23c | lore_6_miberamaker_design | erc721
+10 | 0x96c200ec4cca0bc57444cfee888cfba78a1ddbd8 | lore_7_miberamaker_design | erc721
+80094 | 0x6666397dfe9a8c469bf65dc744cb1c733416c420 | mibera | erc721
+80094 | 0x4b08a069381efbb9f08c73d6b2e975c9be3c4684 | mibera_tarot | erc721
+80094 | 0x8d4972bd5d2df474e71da6676a365fb549853991 | miladies | erc721
+80094 | 0x86db98cf1b81e833447b12a077ac28c36b75c8e1 | miparcels | erc721
+80094 | 0x144b27b1a267ee71989664b3907030da84cc4754 | mireveal_1_1 | erc721
+80094 | 0x72db992e18a1bf38111b1936dd723e82d0d96313 | mireveal_2_2 | erc721
+80094 | 0x3a00301b713be83ec54b7b4fb0f86397d087e6d3 | mireveal_3_3 | erc721
+80094 | 0x419f25c4f9a9c730aacf58b8401b5b3e566fe886 | mireveal_4_20 | erc721
+80094 | 0x81a27117bd894942ba6737402fb9e57e942c6058 | mireveal_5_5 | erc721
+80094 | 0xaab7b4502251ae393d0590bab3e208e2d58f4813 | mireveal_6_6 | erc721
+80094 | 0xc64126ea8dc7626c16daa2a29d375c33fcaa4c7c | mireveal_7_7 | erc721
+80094 | 0x24f4047d372139de8dacbe79e2fc576291ec3ffc | mireveal_8_8 | erc721
+8453 | 0x6cfb9280767a3596ee6af887d900014a755ffc75 | puru_apiculture | erc1155
+8453 | 0x154a563ab6c037bd0f041ac91600ffa9fe2f5fa0 | puru_boarding_passes | erc1155
+8453 | 0xcd3ab1b6e95cdb40a19286d863690eb407335b21 | puru_elemental_jani | erc1155
+8453 | 0x85a72eee14dcaa1ccc5616df39acde212280dccb | puru_introducing_kizuna | erc1155

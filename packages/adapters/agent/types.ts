@@ -5,7 +5,7 @@
  * @see SDD §4.8 Factory Function
  */
 
-import type { IAgentGateway, AgentHealthStatus } from '@arrakis/core/ports';
+import type { IAgentGateway, AgentHealthStatus } from '@freeside/core/ports';
 import type { JWK } from 'jose';
 
 // --------------------------------------------------------------------------

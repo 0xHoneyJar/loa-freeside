@@ -1,0 +1,60 @@
+async function acquireBackfillLock
+async function adjustRedisBudgetLimit
+async function allocateAdvisoryLock
+async function allocateForUpdate
+async function allocateRange
+async function cacheSnapshot
+async function consumeNonce
+async function deleteSession
+async function ensureConstantTime
+async function exchangeCodeForToken
+async function expireSingleLot
+async function fetchDiscordUser
+async function fetchHourlyBuckets
+async function fetchUserGuilds
+async function getAvailableBalance
+async function getCachedSnapshot
+async function getCheckpointById
+async function getSession
+async function handleChatMessage
+async function pollNowpaymentsStatus
+async function reconcilePayment
+async function replayStateWithClient
+async function requireCommunityMatch
+async function rollupCommunity
+async function runVerificationAsync
+async function storeNonce
+async function storeSession
+async function tryInlinePayment
+async function verifyBackfillWithClient
+export async function acquireFenceToken
+export async function allocateSequence
+export async function assertCommunityScope
+export async function backfillAll
+export async function backfillCommunity
+export async function checkConservation
+export async function computeSnapshot
+export async function debitLots
+export async function fetchUserRoles
+export async function finalizePg
+export async function getCurrentFenceToken
+export async function getJwksFromDb
+export async function getLatestSnapshot
+export async function getLotBalances
+export async function getPurposeBreakdown
+export async function getTotalBalance
+export async function getUnclassifiedRate
+export async function insertPublicKey
+export async function isGovernancePending
+export async function isKeyActive
+export async function mintCreditLot
+export async function processPaymentForLedger
+export async function reconcile
+export async function refreshJwksCache
+export async function replayGovernanceHistory
+export async function replayState
+export async function requireApiKeyAsync
+export async function requireAuth
+export async function requireLocalAuth
+export async function revokeKey
+export async function runDebitRollup

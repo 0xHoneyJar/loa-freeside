@@ -13,10 +13,10 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import type { IAgentGateway, AgentRequestContext, AgentInvokeRequest } from '@arrakis/core/ports';
-import { formatErrorMessage } from '@arrakis/adapters/agent';
-import type { AgentErrorCode } from '@arrakis/adapters/agent';
-import { deriveIdempotencyKey } from '@arrakis/adapters/agent/idempotency';
+import type { IAgentGateway, AgentRequestContext, AgentInvokeRequest } from '@freeside/core/ports';
+import { formatErrorMessage } from '@freeside/adapters/agent';
+import type { AgentErrorCode } from '@freeside/adapters/agent';
+import { deriveIdempotencyKey } from '@freeside/adapters/agent/idempotency';
 
 // --------------------------------------------------------------------------
 // Constants

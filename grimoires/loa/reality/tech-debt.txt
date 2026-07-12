@@ -1,0 +1,100 @@
+2:// TODO: Fix TypeScript type errors
+424:      // TODO: Check for completed verification in identity service
+2:// TODO: Fix TypeScript type errors
+60: * TODO (Task 3.1): AuditBackedInteractionHistoryProvider wires
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+14: * - DUO_API_HOSTNAME: Duo API hostname (e.g., api-XXXXXXXX.duosecurity.com)
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
+2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
+2:// TODO: Fix interface mismatches - ICoexistenceStorage changed
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+10: * 2. Create member_profiles with temporary nyms (Member_XXXXXX)
+2:// TODO: Fix TypeScript type errors
+2:// TODO: Fix TypeScript type errors
+23:// TODO: Pull from provider APIs dynamically.
+168:   * TODO: Implement full streak tracking with daily activity table
+204:   * TODO: Implement full streak tracking with daily activity table
+277:    // TODO: Wire up full GuildJoinHandler when storage adapter is ready
+5: * Sprint 120: Cache & Subscriber Metrics (TODO)
+25:  // Sprint 120: Cache metrics (TODO)
+98:  // TODO Sprint 120: Add cache metrics
+103:  // TODO Sprint 120: Add propagation latency histogram
+331:    // TODO: Increment Prometheus counter when metrics are implemented
+188:  // TODO: Implement actual RPC call via RPCPool (S-2)
+189:  // TODO: Check against community eligibility rules
+223:  // TODO: Implement batch RPC calls
+251:  // TODO: Implement community sync
+186:  // TODO: Create community record in PostgreSQL if not exists
+187:  // TODO: Send welcome message / setup prompt
+208:  // TODO: Mark community as inactive / schedule cleanup
+227:  // TODO: Create profile if not exists
+228:  // TODO: Check eligibility rules and assign roles
+242:  // TODO: Update profile last_active / mark as inactive
+262:  // TODO: Sync role changes with profile tier
+1662: * TODO: Implement when tier_history table is added
+9:  const goodData = "XXX";
+85:  const badData = "XXX";
+115:  // const badData = 'XXX';
+130:  // const badData = 'XXX';
+159:  const goodData = ["XXX"];
+160:  const badData = "XXX";
+174:  const goodData = { string: "XXX" };
+220://   const badData = "XXX";
+292:  const badData = Promise.resolve("XXX");
+32:  includesFromIndex2.parse("XXXincludesXX");
+24:  includesFromIndex2.parse("XXXincludesXX");
+175:// TODO
+10:  const goodData = "XXX";
+86:  const badData = "XXX";
+116:  // const badData = 'XXX';
+131:  // const badData = 'XXX';
+160:  const goodData = ["XXX"];
+161:  const badData = "XXX";
+175:  const goodData = { string: "XXX" };
+221:  const badData = "XXX";
+300:  const badData = Promise.resolve("XXX");
+130:    // TODO: PerformanceNodeEntry is missing
+1650:        // TODO: this interface never existed; remove in next major
+902:    // TODO: Just Plain Wrong™ (see also nodejs/node#57392)
+1069:    // TODO: execFile exceptions can take many forms... this accurately describes none of them
+159:        start(instance: object): number; // TODO: avoid DOM dependency until WASM moved to own lib.
+169:        initialize(instance: object): void; // TODO: avoid DOM dependency until WASM moved to own lib.
+176:        readonly wasiImport: NodeJS.Dict<any>; // TODO: Narrow to DOM types
+2:// TODO: remove once this package no longer supports TS 5.1, and replace with a
+177:             * Shorthand for marking a suite as `TODO`. This is the same as calling {@link suite} with `options.todo` set to `true`.
+202:         * Shorthand for marking a test as `TODO`. This is the same as calling {@link test} with `options.todo` set to `true`.
+906:             * This function adds a `TODO` directive to the test's output. If `message` is
+912:             *   // This test is marked as `TODO`
+917:             * @param message Optional `TODO` message.
+991:             * If truthy, the test marked as `TODO`. If a string is provided, that string is displayed in
+992:             * the test results as the reason why the test is `TODO`.
+14:  // TODO: Implement .ts files loading support for Windows
+453:        // TODO: remove globals in future version
+2594:    // TODO: remove in future major
+2597:    // TODO: remove in future major
+4124:    // TODO: remove default in future major version
+4171:    // TODO: remove default in future major version
+6:// TODO: remove once this package no longer supports TS 5.5, and replace NodeJS.BuiltinIteratorReturn with BuiltinIteratorReturn.
+107:    export type CustomInspectFunction = (depth: number, options: InspectOptionsStylized) => any; // TODO: , inspect: inspect
+98:    // TODO: Add `EventEmitter` close
+31:// TODO: currently returns (aliased) `any`, waiting for strong typed `thread-stream`
+28:     * TODO - Do we want to clone it too?
+28:     * TODO - Do we want to clone it too?
+28:     * TODO - Do we want to clone it too?
+28:     * TODO - Do we want to clone it too?
+59:// TODO: some recusive type inference so it would check correct order of input/output inside rest?
+87:// TODO: refactor
+78:    // We write odd & even Yi at same time. Even: 0bXXXXX0 Odd:  0bXXXXX1
+16: * TODO: remove

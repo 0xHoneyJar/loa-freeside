@@ -1,15 +1,24 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Legacy mode schema is looser than boundary parser due to missing MAX_INPUT_LENGTH check, violating equal-or-tighter requirement.",
+  "summary": "Found critical correctness issues that can lead to invalid ECS env values and unsafe multi-instance SQLite access; fixes provided.",
   "issues": [
     {
       "severity": "major",
-      "file": "path/to/micro-usd-schema.ts",
-      "line": 71,
-      "description": "Legacy mode omits MAX_INPUT_LENGTH, so gateway can accept oversized inputs that parseBoundaryMicroUsd would reject, violating the equal-or-tighter contract and NFR-3 boundary parity.",
-      "current_code": "```typescript\n  return z.string()\n    .min(1, 'micro-USD value must not be empty')\n    .refine(\n      (val) => {\n        try {\n          BigInt(val);\n          return true;\n        } catch {\n          return false;\n        }\n      },\n      { message: 'micro-USD must be a valid integer string' },\n    )\n    .describe('Micro-USD amount (legacy mode)');\n```",
-      "fixed_code": "```typescript\n  return z.string()\n    .min(1, 'micro-USD value must not be empty')\n    .max(MAX_INPUT_LENGTH, `micro-USD input exceeds max length (${MAX_INPUT_LENGTH})`)\n    .refine(\n      (val) => {\n        try {\n          BigInt(val);\n          return true;\n        } catch {\n          return false;\n        }\n      },\n      { message: 'micro-USD must be a valid integer string' },\n    )\n    .describe('Micro-USD amount (legacy mode)');\n```",
-      "explanation": "parseBoundaryMicroUsd enforces MAX_INPUT_LENGTH as a safety check; adding the same limit ensures the gateway schema is equal-or-tighter in legacy mode and prevents oversized inputs from being accepted upstream."
+      "file": "main.tf",
+      "line": 54,
+      "description": "ECS environment variables must be strings; non-string values in local.all_env will serialize as numbers/booleans and cause task definition registration errors.",
+      "current_code": "```hcl\nenvironment = [for k, v in local.all_env : { name = k, value = v }]\n```",
+      "fixed_code": "```hcl\nenvironment = [for k, v in local.all_env : { name = k, value = tostring(v) }]\n```",
+      "explanation": "ECS expects all environment values to be strings; tostring() ensures numbers/booleans are converted, preventing task definition failures."
+    },
+    {
+      "severity": "critical",
+      "file": "main.tf",
+      "line": 93,
+      "description": "The service allows desired_count > 1, which can start multiple tasks and corrupt the SQLite DB on shared EFS, violating the single-instance safety requirement.",
+      "current_code": "```hcl\ndesired_count   = var.desired_count\n\nlifecycle {\n  ignore_changes = [desired_count]\n}\n```",
+      "fixed_code": "```hcl\ndesired_count = min(var.desired_count, 1)\n\nlifecycle {\n  ignore_changes = [desired_count]\n\n  precondition {\n    condition     = var.desired_count <= 1\n    error_message = \"desired_count must be 0 or 1 to avoid concurrent SQLite access.\"\n  }\n}\n```",
+      "explanation": "Clamping desired_count prevents accidental multi-instance deployments, and the precondition fails fast if an unsafe value is provided."
     }
   ],
   "fabrication_check": {

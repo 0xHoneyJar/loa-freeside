@@ -4,13 +4,64 @@ export declare const SECURITY_PATTERNS: SecurityPatternEntry[];
 export declare function isHighRisk(filename: string): boolean;
 export declare function getSecurityCategory(filename: string): string | undefined;
 export declare function matchesExcludePattern(filename: string, patterns: string[]): boolean;
+/**
+ * The PR label that operators apply to opt into bridgebuilder self-review —
+ * BB will admit framework files (`.claude/`, `grimoires/`, etc.) into the
+ * review payload instead of stripping them via the Loa-aware filter.
+ *
+ * The label name is intentionally a single source of truth; truncation logic,
+ * caller-side label detection in reviewer.ts/template.ts, and operator-facing
+ * docs all reference this constant.
+ */
+export declare const SELF_REVIEW_LABEL = "bridgebuilder:self-review";
+/**
+ * Derive the per-call `selfReview` flag from a PR's labels.
+ * Returns true iff the PR carries SELF_REVIEW_LABEL.
+ *
+ * Centralized so the label string lives in one place and call sites
+ * (reviewer.ts processItemTwoPass; template.ts buildPrompt + buildPromptWithMeta;
+ * main.ts multi-model entry) cannot drift from each other.
+ */
+export declare function isSelfReviewOptedIn(prLabels: readonly string[] | undefined): boolean;
+/**
+ * Build a per-call truncate config from a base config and a PR's labels.
+ *
+ * BB-004 (PR #797 iter-2): four call sites (template.ts × 2, reviewer.ts,
+ * main.ts) duplicated `{ ...config, selfReview: isSelfReviewOptedIn(pr.labels) }`.
+ * BB iter-1 caught a missed call site that silently nullified the feature for
+ * the multi-model pipeline — a duplication-as-correctness-hazard pattern. This
+ * helper is the single chokepoint, so adding new call sites OR new per-PR
+ * configuration knobs requires touching ONE function, and tests can pin the
+ * derivation here.
+ */
+export declare function deriveCallConfig<C extends Pick<BridgebuilderConfig, "selfReview">>(config: C, pr: {
+    labels: readonly string[] | undefined;
+}): C & {
+    selfReview: boolean;
+};
 /** Default Loa framework exclude patterns.
  * Use ** for recursive directory matching (BB-F4). */
 export declare const LOA_EXCLUDE_PATTERNS: string[];
 /**
- * Load .reviewignore patterns from repo root and merge with LOA_EXCLUDE_PATTERNS.
- * Returns combined patterns array. Graceful when file missing (returns LOA patterns only).
+ * Load `.reviewignore` operator-curated patterns from repo root.
+ * Returns ONLY the user patterns — does NOT merge with LOA_EXCLUDE_PATTERNS.
+ *
+ * `.reviewignore` carries operator-curated exclusions (secrets/, vendor blobs,
+ * private internal docs) that are distinct from the framework's built-in
+ * exclusion list. The self-review opt-in (#796 / vision-013) bypasses the
+ * framework patterns but MUST continue to honor `.reviewignore` — BB-001-security
+ * surfaced this as a MEDIUM finding on PR #797 iter-2.
+ *
+ * BB-797-001-security (PR #797 iter-4): fail-CLOSED on read errors. Caller
+ * (truncateFiles self-review branch) propagates the error to halt the review
+ * rather than silently admitting files that may have been excluded by an
+ * unreadable `.reviewignore`. ENOENT (no file) is "no rules" and returns [];
+ * any other error throws.
+ *
+ * @throws Error when `.reviewignore` exists but cannot be read or parsed —
+ *         caller MUST handle and decide whether to halt or fall back.
  */
+export declare function loadReviewIgnoreUserPatterns(repoRoot?: string): string[];
 export declare function loadReviewIgnore(repoRoot?: string): string[];
 /**
  * Detect if repo is Loa-mounted by reading .loa-version.json.
@@ -83,5 +134,5 @@ export declare function prioritizeFiles(files: PullRequestFile[]): PullRequestFi
  * Budget target: 90% of maxInputTokens (SKP-004).
  */
 export declare function progressiveTruncate(files: PullRequestFile[], budgetTokens: number, model: string, systemPromptLen: number, metadataLen: number): ProgressiveTruncationResult;
-export declare function truncateFiles(files: PullRequestFile[], config: Pick<BridgebuilderConfig, "excludePatterns" | "maxDiffBytes" | "maxFilesPerPr" | "loaAware" | "repoRoot">): TruncationResult;
+export declare function truncateFiles(files: PullRequestFile[], config: Pick<BridgebuilderConfig, "excludePatterns" | "maxDiffBytes" | "maxFilesPerPr" | "loaAware" | "repoRoot" | "selfReview">): TruncationResult;
 //# sourceMappingURL=truncation.d.ts.map

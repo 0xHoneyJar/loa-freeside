@@ -1,0 +1,10 @@
+{
+  "schema": "proof-of-run/1",
+  "verdict": "valid_run",
+  "ran_at": "2026-07-03T00:05:00Z",
+  "runner": "ring1-theatre-bundler",
+  "content_hash_verified": "80f611e491d62d6ad2389b9394e8d57c22adc97cc926f9fc9572578e5065f1ce",
+  "note": "SELF-BASELINE (the Echelon frozen_replay_baseline pattern, disclosed structurally via verifier_type): no governed compose-verify run was minted for this bundle; this attests only that the bundle assembled deterministically and its content_hash recomputes. Genome chains for gecko/herald are FABRICATED 2-link exemplars (neither construct ships an in-repo LEARNINGS.jsonl yet) \u2014 they exercise the verifier, they do not represent earned authority.",
+  "genome_chain_ok": true,
+  "verifier_type": "self_baseline_bundle_recompute"
+}

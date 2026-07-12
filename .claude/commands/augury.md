@@ -1,0 +1,1 @@
+../constructs/packs/gygax/commands/augury.md

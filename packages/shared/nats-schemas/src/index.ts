@@ -1,5 +1,5 @@
 /**
- * @arrakis/nats-schemas
+ * @freeside/nats-schemas
  *
  * Shared NATS wire format schemas between Rust gateway and TypeScript workers.
  * The committed JSON fixtures in fixtures/ are the neutral source of truth;

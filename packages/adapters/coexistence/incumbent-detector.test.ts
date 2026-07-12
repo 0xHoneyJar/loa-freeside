@@ -19,7 +19,7 @@ import {
   type GuildChannel,
   type GuildRole,
 } from './incumbent-detector.js';
-import { KNOWN_INCUMBENT_BOTS } from '@arrakis/core/domain';
+import { KNOWN_INCUMBENT_BOTS } from '@freeside/core/domain';
 
 // =============================================================================
 // Test Fixtures

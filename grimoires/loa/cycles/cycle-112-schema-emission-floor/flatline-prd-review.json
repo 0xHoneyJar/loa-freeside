@@ -1,0 +1,300 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 6,
+    "disputed_count": 5,
+    "low_value_count": 0,
+    "blocker_count": 13,
+    "model_agreement_percent": 61,
+    "models": 3,
+    "tertiary_items": 0,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Critical contract gap. The outbox requirement is load-bearing and currently leaves implementers unable to satisfy FR-5 when co-located transactions are unavailable. Naming the authorized fallback in the PRD is low-cost and prevents downstream architectural ambiguity.",
+      "gpt_score": 920,
+      "opus_score": 880,
+      "tertiary_score": 950,
+      "delta": 40,
+      "average_score": 900,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical caller contract issue. Emit-time schema mismatch behavior directly affects implementation, tests, and migration safety. The cost to specify thrown exception versus Result versus fatal behavior is small relative to the consistency benefit.",
+      "gpt_score": 900,
+      "opus_score": 870,
+      "tertiary_score": 920,
+      "delta": 30,
+      "average_score": 885,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "Strong reliability gap. An idempotency NFR without a scoped delivery mechanism is hard to verify, especially for an at-least-once pilot loop. This should be integrated either as a pilot FR or an explicit out-of-scope clarification.",
+      "gpt_score": 860,
+      "opus_score": 825,
+      "tertiary_score": 850,
+      "delta": 35,
+      "average_score": 842.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Valuable and likely necessary, though the best answer may be a scoped non-goal rather than a full evolution policy. Schema evolution can easily collide with registry guarantees, so the PRD should at least constrain or defer it explicitly.",
+      "gpt_score": 780,
+      "opus_score": 855,
+      "tertiary_score": 860,
+      "delta": 75,
+      "average_score": 817.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-005",
+      "description": "Important goal/dependency contradiction. If metrics depend on the coherence validator, its readiness must be part of the plan or the metrics need to be narrowed. This is low-cost to clarify and prevents review-time ambiguity.",
+      "gpt_score": 840,
+      "opus_score": 715,
+      "tertiary_score": 850,
+      "delta": 125,
+      "average_score": 777.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Valuable consistency fix. The MAY language weakens a goal metric that appears to require CI-visible binding status. This should be resolved, although report-only may be acceptable if the goal is intentionally softened.",
+      "gpt_score": 760,
+      "opus_score": 760,
+      "tertiary_score": 780,
+      "delta": 0,
+      "average_score": 760,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [
+    {
+      "id": "IMP-009",
+      "description": "Valuable scope hygiene. A high-value compile-time drift check should not remain in open-question limbo if the cycle is about preventing schema/version mismatches. Promote or explicitly defer it.",
+      "gpt_score": 730,
+      "opus_score": 0,
+      "tertiary_score": 780,
+      "delta": 730,
+      "average_score": 730,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-010",
+      "description": "Critical enough to integrate because this is shared infrastructure with correctness guarantees. A minimum test surface in the PRD would anchor acceptance criteria and reduce ad hoc implementation choices. Cost is moderate but justified.",
+      "gpt_score": 820,
+      "opus_score": 0,
+      "tertiary_score": 880,
+      "delta": 820,
+      "average_score": 820,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-011",
+      "description": "Nice-to-have unless latency is truly a gate. Quantifying the threshold would improve verifiability, but this may add benchmark work that exceeds the practical value for the cycle if performance is not a core risk.",
+      "gpt_score": 560,
+      "opus_score": 0,
+      "tertiary_score": 450,
+      "delta": 560,
+      "average_score": 560,
+      "source": "gpt_scored",
+      "would_integrate": false,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-012",
+      "description": "Small but worthwhile clarity fix. Naming sonar-api and nft.mint.detected makes the goal objectively reviewable at almost no cost, though the ambiguity is not as structurally risky as the higher-priority findings.",
+      "gpt_score": 610,
+      "opus_score": 0,
+      "tertiary_score": 500,
+      "delta": 610,
+      "average_score": 610,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-013",
+      "description": "Valuable operational addition. Cross-repo rollback guidance is cheap and useful, especially for lockfile and allowlist recovery. It is not central to functional correctness but improves ship safety.",
+      "gpt_score": 650,
+      "opus_score": 0,
+      "tertiary_score": 700,
+      "delta": 650,
+      "average_score": 650,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    }
+  ],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-005",
+      "concern": "Cross-repo schema registry sharing is unresolved. sonar-api consumes @0xhoneyjar/events via git-tarball at a pinned SHA. The registry that maps event_type → schema lives in that package. For sonar-api to register its own schemas (FR-1: 'per-cell registration SHALL be supported'), it must call a register() function at its import time — but this registration exists only in sonar-api's process. loa-freeside's process has a separate registry instance with no knowledge of sonar-api's schemas. FR-3 ('emit() validates against registry-resolved schema') and FR-2 ('build-time collision detection') both require the registry to be consistent across repos — which it structurally cannot be with process-local registration.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "The registry is described as 'the keystone' and 'the net-new piece.' If the keystone only works within a single process boundary, the cross-repo pilot is a special case that requires out-of-band schema agreement rather than the registry mechanism the PRD is building. This means the pilot proves a weaker property than stated and the registry architecture needs a cross-repo story before it can generalize.",
+      "location": "Section 5 FR-1/FR-2/FR-3/FR-10, Section 3 Background (two repos, one shared package)",
+      "recommendation": "Add an explicit cross-repo registry coherence mechanism as a deliverable. Options: (a) the registry is a static JSON/TS file committed to @0xhoneyjar/events that both repos reference (schemas are in the package, not registered at runtime); (b) a CI check that validates schema agreement between the two repos at integration time; (c) a codegen step that produces a merged registry. The SDD must choose one; the current PRD implies (b) without stating it.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Ed25519 signing key management for sonar-api is completely unaddressed. publishEnvelope signs envelopes with a key resolved from loa-freeside's key infrastructure (audit-keys-bootstrap.md runbook). sonar-api as an independently-deployed repo needs either its own key (requiring bootstrap, rotation policy, and subscriber-side trust-store update) or a shared key (single-point compromise). Neither option is specified anywhere in the PRD, and the subscriber's envelope verification path has no described mechanism to trust a sonar-originated signature.",
+      "severity": "CRITICAL",
+      "severity_score": 920,
+      "why_matters": "Without key provisioning for sonar-api, the cross-repo pilot (G-4, FR-10–FR-12) cannot be implemented. NFR-Sec-1 says the signature binding SHALL NOT be weakened, but the PRD leaves the cross-repo key trust model entirely to the SDD — a deferred decision that blocks the pilot's core security property. Discovery during implementation will force an emergency design choice under time pressure.",
+      "location": "Section 5 FR-4/FR-12, Section 6 NFR-Sec-1, Section 8 Dependencies",
+      "recommendation": "Add a required deliverable: define the per-repo key provisioning model (own keys vs. delegation) before the SDD begins. Specify how sonar-api's key is bootstrapped, how it is distributed to the signing path, and how loa-freeside's subscriber trust-store is updated to accept sonar-originated envelopes. This is a prerequisite for the pilot, not an SDD concern.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "FR-2 requires build-time collision detection for the schema registry, but OQ-1 defers the registry home decision to the SDD. Cell-local registration (the stated lean) is inherently runtime — each cell calls a register() function when its module initializes. True build-time collision detection requires either a static central map (all schemas declared in one file) or a codegen step that runs at build time across all cells. The two goals are in tension and the PRD does not acknowledge it.",
+      "severity": "CRITICAL",
+      "severity_score": 830,
+      "why_matters": "If the SDD picks cell-local registration without a build-time codegen step, FR-2 ('build-time error') becomes a lie: the collision will only be detected at test time or runtime. For a cross-repo scenario (sonar-api registers from a different repository), a build-time check is structurally impossible without a CI-level coordination step. The keystone of the entire primitive has an unresolved design contradiction.",
+      "location": "Section 5 FR-1/FR-2, Section 9 OQ-1",
+      "recommendation": "Resolve OQ-1 before the SDD starts, not inside it. The decision between static-central-map and cell-local-registration has first-order implications for FR-2, FR-3, the cross-repo story, and the API ergonomics. Surface the tradeoff explicitly: static map = true build-time detection but requires a PR to the central registry per new topic; cell-local = ergonomic but detection degrades to CI-integration-test time at best.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "FR-2 requires build-time schema collision detection (two cells registering the same topic) but FR-11 specifies this is a cross-repo pilot between loa-freeside and sonar-api. Build-time type checking in one repository cannot detect collisions introduced in another separate repository.",
+      "severity": "CRITICAL",
+      "severity_score": 880,
+      "why_matters": "The core global guarantee of 'one topic, one schema' will fail silently across repository boundaries, allowing runtime schema mismatches that the PRD explicitly aims to eliminate.",
+      "location": "FR-2, FR-11",
+      "recommendation": "Design the registry as a strictly versioned, shared artifact within @0xhoneyjar/events where ALL cross-repo topics are centrally declared, ensuring the shared package's own build step catches collisions before dependent repos consume it.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "FR-5 mandates writing to the outbox in the same DB transaction as the caller's state change. It does not account for bounded contexts that may use different databases (e.g., ScyllaDB vs Postgres), different ORMs, or services lacking relational transactions entirely.",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "Hard-coupling emit() to a specific transaction object type will make the primitive unusable for services that do not match the governance service's exact database architecture, stranding them permanently on raw NATS.",
+      "location": "FR-5, OQ-2",
+      "recommendation": "The SDD must specify an abstract UnitOfWork or TransactionContext interface for emit(), rather than passing a concrete DB transaction, and explicitly support a fallback completeness mechanism (like JetStream durable-ack) for non-transactional callers.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "NFR-Rel-1 relies on at-least-once outbox delivery and dictates that consumers SHALL be idempotent. However, there is no prerequisite functional requirement to audit or enforce idempotency on the existing pilot consumer of nft.mint.detected before migrating it.",
+      "severity": "HIGH",
+      "severity_score": 780,
+      "why_matters": "If the existing loa-freeside consumer is not already strictly idempotent on event_id, outbox retry semantics will cause duplicate processing of NFT mint events during normal network or relay blips, corrupting downstream state.",
+      "location": "NFR-Rel-1, FR-12",
+      "recommendation": "Add a functional requirement to empirically audit the pilot consumer for strict event_id idempotency and implement a persistent idempotency check (e.g., Redis/DB dedup) if absent.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-006",
+      "concern": "Schema evolution and versioning is entirely absent. FR-2 enforces 'one topic, one schema' but provides no path for schema changes. When nft.mint.detected needs a new required field, there is no versioned topic, no compatibility check (additive vs. breaking), no migration path for in-flight outbox events carrying the old schema, and no coordinated-deployment protocol for independently-deployed repos. The registry design with hard collision detection actively resists evolution.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "The mint-detected schema will change. When it does, a breaking change requires simultaneous deployment of sonar-api (publisher) and loa-freeside (consumer) — which is either operationally impossible or requires a version-topic dance (nft.mint.detected.v2) that the current registry design treats as a separate topic. Without an evolution story, the floor becomes a trap: rigidity now creates a bigger migration cost later, and the outbox retains old-schema events indefinitely.",
+      "location": "Section 5 FR-1/FR-2/FR-3, Section 6 NFR-Compat-1",
+      "recommendation": "Add a non-goal or an explicit requirement addressing schema evolution. At minimum: (a) additive-only changes are permitted without a version bump, (b) breaking changes require a new topic string (nft.mint.detected.v2), (c) the outbox schema stores the schema version alongside the payload so relay can detect version-mismatched events. Deferring this entirely leaves an operational time-bomb.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "The PRD claims state-change and event-emit atomicity while leaving the sonar-api transaction boundary unresolved, which may make the central completeness goal unachievable for the pilot seam.",
+      "severity": "CRITICAL",
+      "severity_score": 865,
+      "why_matters": "G-2, FR-5, and FR-10 depend on writing the outbox row in the same transaction as the state change. If sonar-api's mint detection path is not transactionally coupled to a database write, the pilot cannot prove the advertised completeness property and may ship with a weaker JetStream durability substitute while still claiming transaction atomicity.",
+      "location": "G-2, FR-5, FR-10, Risk: outbox txn-threading, OQ-2",
+      "recommendation": "Make sonar transaction feasibility a pre-SDD gate. Require the SDD to inspect the exact sonar emit path and classify the pilot as either transaction-coupled outbox or non-transactional durable-publish. If non-transactional, revise G-2/FR-5/FR-10 to avoid claiming same-transaction completeness for that edge.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "The allowlist enforcement mechanism has no monotonic-shrink property. G-1 claims raw NATS emission becomes 'physically impossible,' but FR-8's CI lint is gated on an allowlist that any developer can extend. There is no requirement that the allowlist can only shrink, no approval gate for additions, no count-delta check in CI, and no enforcement that distinguishes 'migrated site removed' from 'new raw emit added + allowlisted.' A developer bypasses the floor simply by adding their new raw emit to the allowlist file.",
+      "severity": "CRITICAL",
+      "severity_score": 870,
+      "why_matters": "The entire structural guarantee of the cycle — 'schema-emission drift becomes physically impossible' — rests on the CI lint. If the allowlist is freely extensible, the floor is a social norm, not a mechanical constraint. G-1's metric ('0 new raw NATS emits can land') is falsifiable only if allowlist growth is independently blocked. The PRD's language ('shrinking deny-list') is aspirational with no enforcement path.",
+      "location": "Section 2 G-1, Section 5 FR-8/FR-9, Section 7 Risks",
+      "recommendation": "FR-9 must require that the allowlist is append-restricted: additions require a separate CI gate (e.g., PR label, CODEOWNERS review on the allowlist file, or a count-delta check that fails if count increases without a corresponding migration removal). The lint should report the current count and fail if it exceeds the previous cycle's committed baseline.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "The lint-based raw publish ban is vulnerable to false negatives because it focuses on `.publish` syntax rather than transport capability and import provenance.",
+      "severity": "HIGH",
+      "severity_score": 710,
+      "why_matters": "G-1 says raw NATS emission becomes impossible, but lint can be bypassed through aliases, wrapper functions, dynamic property access, re-exported clients, JetStream variants, or helper modules outside packages/events. A false sense of enforcement would leave the original drift path open.",
+      "location": "G-1, FR-7, FR-8, OQ-3",
+      "recommendation": "Require enforcement to combine type/module boundaries with import graph checks and targeted AST rules that identify NATS/JetStream client types, not just method names. Add negative tests for aliasing, wrapper calls, dynamic access, and direct imports from nats libraries.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "The outbox design does not define idempotency, deduplication, or replay behavior tightly enough for at-least-once delivery.",
+      "severity": "HIGH",
+      "severity_score": 735,
+      "why_matters": "NFR-Rel-1 correctly avoids exactly-once claims, but at-least-once delivery means duplicated mint events are expected under relay retries, crashes, or ack uncertainty. If consumers are not explicitly idempotent on event_id, the mint announce path could double-process state or user-visible notifications.",
+      "location": "G-2, FR-5, FR-12, NFR-Rel-1, NFR-Rel-2",
+      "recommendation": "Add functional requirements for consumer deduplication storage, duplicate handling tests, relay retry semantics, and replay safety. The pilot acceptance test should simulate relay crash-after-publish-before-ack and prove only one effective announce is applied.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "The registry collision guarantee is underspecified across package boundaries and may not be enforceable at build time in a distributed two-repo setup.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "FR-2 promises that duplicate topics with different schemas become a build-time error, but cells can live in different repos and consume @0xhoneyjar/events through different install channels. Without a concrete aggregation and verification mechanism, schema divergence can pass local builds and fail only at runtime or after deployment.",
+      "location": "FR-1, FR-2, FR-10, FR-11, OQ-1",
+      "recommendation": "Define the registry compilation model before implementation: central generated manifest, package export contract, or CI aggregation across repos. Add an acceptance criterion that intentionally registers a conflicting schema and proves the conflict fails in both loa-freeside and sonar-api CI.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "sonar-api's transactional boundary for FR-5 is genuinely unknown. The PRD notes sonar is mid-port to Ponder, and OQ-2 acknowledges uncertainty about whether sonar-api's nft.mint.detected emit sits next to a DB transaction. Ponder's indexer model calls handler functions synchronously during block processing — there may be no externally-accessible DB transaction handle. If the fallback is 'JetStream durable-ack/dedup,' G-2's completeness guarantee collapses: durable-ack provides at-least-once delivery but does NOT prevent the state-change-without-event scenario (state commits, JetStream publish fails before ack).",
+      "severity": "HIGH",
+      "severity_score": 780,
+      "why_matters": "G-2 is the completeness goal of the cycle. If the pilot seam falls back to JetStream semantics, the cycle ships with its headline guarantee unproven on the only demonstrated seam. The dual-write problem the PRD is explicitly solving remains unsolved for the pilot case. Worse, future cycles may cite the pilot as proof of the pattern when it actually used the weaker fallback.",
+      "location": "Section 2 G-2, Section 5 FR-5, Section 7 Risks (row 2), Section 9 OQ-2",
+      "recommendation": "OQ-2 must be answered before sprint planning, not during SDD. Read sonar-api's Ponder handler code to determine whether a DB transaction is accessible. If it is not, scope the pilot's completeness claim honestly: either (a) change the pilot seam to one that has a co-located DB transaction, or (b) explicitly scope G-2 to the loa-freeside side only and document that sonar uses JetStream durable-ack with a lower completeness guarantee.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "prd",
+  "document": "grimoires/loa/cycles/cycle-112-schema-emission-floor/prd.md",
+  "domain": " prd schema emission coherence",
+  "tertiary_model_used": "gemini-headless",
+  "tertiary_status": "active",
+  "execution": {
+    "mode": "interactive",
+    "mode_reason": "Default (no explicit mode specified)",
+    "run_id": null
+  },
+  "timestamp": "2026-06-01T01:16:05Z",
+  "metrics": {
+    "total_latency_ms": 218000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

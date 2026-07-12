@@ -26,7 +26,7 @@ import {
   InteractionPayloadSchema,
   type InteractionPayload,
   NATS_ROUTING,
-} from '@arrakis/nats-schemas';
+} from '@freeside/nats-schemas';
 
 export type { InteractionPayload };
 

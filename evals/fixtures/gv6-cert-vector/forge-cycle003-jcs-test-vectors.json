@@ -1,0 +1,97 @@
+{
+  "schema_note": "FORGE Cycle-003 Sprint 02 (T2.1). Jointly-owned canonicalization parity vectors for jcs-subset/v0. NOT a code module and NOT a behavior change — this file DESCRIBES the existing src/receipt/canonicalize.js behavior so a porter (e.g. Echelon's Python OSINT substrate) and FORGE produce byte-identical canonical output for the same JSON value. The canonicalizer is unchanged this sprint; these vectors pin its behavior.",
+  "canonicalization": "jcs-subset/v0",
+  "reference_implementation": "src/receipt/canonicalize.js",
+  "spec": "spec/JCS_SUBSET_V0.md",
+  "ownership": "Jointly owned by FORGE (producer) and Echelon (receiver). Edits to canonical/reject expectations are a cross-org break and require both sides to re-baseline.",
+  "not_full_rfc8785": "This is the jcs-subset/v0 narrowing of RFC 8785 — it covers only the JSON value types FORGE shapes contain (object, array, string, finite number, boolean, null) and fail-closes on the rest. It is NOT a full RFC 8785 implementation and these vectors do NOT mandate a switch to one (COMPAT-5: the subset is kept).",
+  "parity_basis": {
+    "bundle_digest": "FORGE computes bundle-receipt.json::bundle_digest as sha256(canonicalize(members[])) using this jcs-subset/v0 (src/bundle/receipt.js). These vectors pin that canonicalization so the BREATH bundle_digest is reproducible byte-for-byte across runs and implementations.",
+    "cert_hash": "Echelon recomputes cert_hash over the ProposalEnvelope MINUS forge_seam.calibration_ref using this SAME jcs-subset/v0. These vectors are the shared parity basis so FORGE's bundle_digest and Echelon's cert_hash cannot diverge across the seam. The cert_hash recompute itself is Echelon-side; FORGE asserts only the canonicalization parity basis (no cert is issued or verified here)."
+  },
+  "subset_vs_rfc8785_deltas": [
+    {
+      "aspect": "numbers",
+      "behavior": "Emitted via ECMA-262 Number::toString (what V8 JSON.stringify produces). For any input BOTH specs accept, jcs-subset/v0 and RFC 8785 are byte-identical. The subset additionally REJECTS Infinity/-Infinity/NaN (RFC 8785 leaves these to the upstream input contract).",
+      "porting_note": "Python json.dumps does NOT match ES6 NumberToString on -0.0, on large integers near 10^21, and on small numbers near 10^-6. A correct port reimplements the ECMA-262 algorithm or uses a vetted dtoa library."
+    },
+    {
+      "aspect": "negative_zero",
+      "behavior": "-0 normalizes to \"0\" (JSON.stringify(-0) === \"0\").",
+      "porting_note": "Diverges from Python json.dumps(-0.0) which emits \"-0.0\"."
+    },
+    {
+      "aspect": "strings",
+      "behavior": "Emitted via ECMA-262 Quote (what V8 JSON.stringify produces). Control chars use lowercase \\uXXXX; non-ASCII (>= U+007F) is emitted as RAW UTF-8 bytes, NOT \\u-escaped.",
+      "porting_note": "Python json.dumps defaults to ensure_ascii=True (escapes non-ASCII). Port MUST use ensure_ascii=False, separators=(',', ':')."
+    },
+    {
+      "aspect": "key_sorting",
+      "behavior": "Object keys sorted by UTF-16 code unit order (Array.prototype.sort with no comparator). Same as RFC 8785 §3.2.3 for all-BMP keys.",
+      "porting_note": "UTF-8-native languages must re-encode keys to UTF-16 and sort by code unit to match for non-BMP keys."
+    },
+    {
+      "aspect": "fail_closed_type_narrowing",
+      "behavior": "undefined (top-level / array element), BigInt, Date objects, functions, and symbols THROW. RFC 8785 leaves these to the upstream input contract; jcs-subset/v0 makes the rejection an explicit safety net.",
+      "porting_note": "Porters whose value system has no such type need not handle it (the case cannot arise). undefined as an OBJECT PROPERTY VALUE is the one exception — it is silently SKIPPED, mirroring JSON.stringify."
+    }
+  ],
+  "builder_tokens": {
+    "note": "JSON cannot literally hold the values below (no Infinity/NaN/undefined/BigInt/Date/function/symbol, and JSON.parse may normalize -0). Vectors needing such a value carry a `build` token instead of an `input`; the loader (test/unit/jcs-parity.spec.js) maps the token to the JS reference value. These tokens are JS-reference-specific; a porter applies their language's equivalent.",
+    "negative_zero": "the JS number -0",
+    "object_with_undefined_value": "{ a: 1, b: undefined, c: 3 } — exercises the object-property skip",
+    "infinity": "the JS number Infinity",
+    "negative_infinity": "the JS number -Infinity",
+    "nan": "the JS number NaN",
+    "undefined": "the JS value undefined (top-level)",
+    "bigint": "BigInt(42)",
+    "date": "new Date(0)",
+    "function": "a function value () => {}",
+    "symbol": "Symbol('x')",
+    "object_with_infinity": "{ value: Infinity } — nested non-finite, must fail closed through object recursion",
+    "array_with_nan": "[NaN] — nested NaN, must fail closed through array recursion"
+  },
+  "canonical_vectors": [
+    { "name": "null_literal", "pins": "booleans_null", "input": null, "canonical": "null" },
+    { "name": "bool_true", "pins": "booleans_null", "input": true, "canonical": "true" },
+    { "name": "bool_false", "pins": "booleans_null", "input": false, "canonical": "false" },
+    { "name": "number_zero", "pins": "numbers", "input": 0, "canonical": "0" },
+    { "name": "number_negative_zero", "pins": "numbers,negative_zero", "build": "negative_zero", "canonical": "0" },
+    { "name": "number_positive_int", "pins": "numbers", "input": 42, "canonical": "42" },
+    { "name": "number_negative_int", "pins": "numbers", "input": -7, "canonical": "-7" },
+    { "name": "number_float", "pins": "numbers", "input": 3.14, "canonical": "3.14" },
+    { "name": "number_float_half", "pins": "numbers", "input": 1.5, "canonical": "1.5" },
+    { "name": "number_1e20_integer_threshold", "pins": "numbers", "input": 1e20, "canonical": "100000000000000000000" },
+    { "name": "number_1e21_scientific", "pins": "numbers", "input": 1e21, "canonical": "1e+21" },
+    { "name": "number_1e_neg6_fixed", "pins": "numbers", "input": 1e-6, "canonical": "0.000001" },
+    { "name": "number_1e_neg7_scientific", "pins": "numbers", "input": 1e-7, "canonical": "1e-7" },
+    { "name": "string_empty", "pins": "strings", "input": "", "canonical": "\"\"" },
+    { "name": "string_basic", "pins": "strings", "input": "hello", "canonical": "\"hello\"" },
+    { "name": "string_newline_escape", "pins": "strings", "input": "hello\nworld", "canonical": "\"hello\\nworld\"" },
+    { "name": "string_embedded_quotes", "pins": "strings", "input": "say \"hi\"", "canonical": "\"say \\\"hi\\\"\"" },
+    { "name": "string_unicode_euro_raw_utf8", "pins": "strings", "input": "€", "canonical": "\"€\"" },
+    { "name": "string_control_u0001_lowercase_escape", "pins": "strings", "input": "\u0001", "canonical": "\"\\u0001\"" },
+    { "name": "array_empty", "pins": "nested", "input": [], "canonical": "[]" },
+    { "name": "array_order_preserved", "pins": "nested", "input": [3, 1, 2], "canonical": "[3,1,2]" },
+    { "name": "array_mixed_types", "pins": "nested,object_key_ordering", "input": [42, "hello", null, true, false, { "b": 1, "a": 2 }], "canonical": "[42,\"hello\",null,true,false,{\"a\":2,\"b\":1}]" },
+    { "name": "array_nested", "pins": "nested", "input": [[1, 2], [3, 4]], "canonical": "[[1,2],[3,4]]" },
+    { "name": "object_empty", "pins": "object_key_ordering", "input": {}, "canonical": "{}" },
+    { "name": "object_key_ordering", "pins": "object_key_ordering", "input": { "b": 1, "a": 2 }, "canonical": "{\"a\":2,\"b\":1}" },
+    { "name": "object_nested_recursive_ordering", "pins": "object_key_ordering,nested", "input": { "z": { "b": { "d": 1, "c": 2 }, "a": 3 }, "y": 4 }, "canonical": "{\"y\":4,\"z\":{\"a\":3,\"b\":{\"c\":2,\"d\":1}}}" },
+    { "name": "object_unicode_key_ordering_utf16", "pins": "object_key_ordering,strings", "input": { "€": "Euro Sign", "\r": "Carriage Return", "alpha": "Alpha" }, "canonical": "{\"\\r\":\"Carriage Return\",\"alpha\":\"Alpha\",\"€\":\"Euro Sign\"}" },
+    { "name": "object_undefined_value_skipped", "pins": "fail_closed_type_narrowing", "build": "object_with_undefined_value", "canonical": "{\"a\":1,\"c\":3}" },
+    { "name": "forge_shaped_composite", "pins": "object_key_ordering,nested,numbers", "input": { "feed_id": "usgs_m4.5_hour", "proposals": [{ "template": "threshold_gate", "params": { "threshold": 5.0, "window_hours": 24 } }, { "template": "cascade", "params": { "trigger_threshold": 6.0, "bucket_count": 5 } }], "feed_profile": { "cadence": { "classification": "event_driven", "median_ms": 4500000 }, "distribution": { "type": "unbounded_numeric", "min": 4.5, "max": 7.1 } } }, "canonical": "{\"feed_id\":\"usgs_m4.5_hour\",\"feed_profile\":{\"cadence\":{\"classification\":\"event_driven\",\"median_ms\":4500000},\"distribution\":{\"max\":7.1,\"min\":4.5,\"type\":\"unbounded_numeric\"}},\"proposals\":[{\"params\":{\"threshold\":5,\"window_hours\":24},\"template\":\"threshold_gate\"},{\"params\":{\"bucket_count\":5,\"trigger_threshold\":6},\"template\":\"cascade\"}]}" }
+  ],
+  "reject_vectors": [
+    { "name": "reject_infinity", "pins": "fail_closed_type_narrowing", "build": "infinity", "throws": "TypeError", "reason": "Infinity is not valid JSON (RFC 8259); rejected fail-closed." },
+    { "name": "reject_negative_infinity", "pins": "fail_closed_type_narrowing", "build": "negative_infinity", "throws": "TypeError", "reason": "-Infinity is not valid JSON; rejected fail-closed." },
+    { "name": "reject_nan", "pins": "fail_closed_type_narrowing", "build": "nan", "throws": "TypeError", "reason": "NaN is not valid JSON; rejected fail-closed." },
+    { "name": "reject_undefined_toplevel", "pins": "fail_closed_type_narrowing", "build": "undefined", "throws": "TypeError", "reason": "undefined is not a JSON type (top-level / array element)." },
+    { "name": "reject_bigint", "pins": "fail_closed_type_narrowing", "build": "bigint", "throws": "TypeError", "reason": "BigInt has no standardized JSON representation." },
+    { "name": "reject_date", "pins": "fail_closed_type_narrowing", "build": "date", "throws": "TypeError", "reason": "Date objects must be converted to an ISO-8601 string before canonicalization." },
+    { "name": "reject_function", "pins": "fail_closed_type_narrowing", "build": "function", "throws": "TypeError", "reason": "Functions are not JSON values." },
+    { "name": "reject_symbol", "pins": "fail_closed_type_narrowing", "build": "symbol", "throws": "TypeError", "reason": "Symbols are not JSON values." },
+    { "name": "reject_object_with_nested_infinity", "pins": "fail_closed_type_narrowing", "build": "object_with_infinity", "throws": "TypeError", "reason": "A nested non-finite number fails closed through object recursion (the whole value is rejected, never partially emitted)." },
+    { "name": "reject_array_with_nested_nan", "pins": "fail_closed_type_narrowing", "build": "array_with_nan", "throws": "TypeError", "reason": "A nested NaN fails closed through array recursion." }
+  ]
+}

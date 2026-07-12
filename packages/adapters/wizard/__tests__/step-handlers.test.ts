@@ -19,8 +19,8 @@ import {
   createReviewStepHandler,
   createDeployStepHandler,
 } from '../steps/index.js';
-import { WizardState, type WizardSession } from '@arrakis/core/domain';
-import type { StepContext, StepInput } from '@arrakis/core/ports';
+import { WizardState, type WizardSession } from '@freeside/core/domain';
+import type { StepContext, StepInput } from '@freeside/core/ports';
 import pino from 'pino';
 
 // =============================================================================

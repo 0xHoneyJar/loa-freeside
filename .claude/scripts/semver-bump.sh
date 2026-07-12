@@ -51,10 +51,46 @@ declare -A BUMP_PRIORITY=(
 # Version Utilities
 # =============================================================================
 
-# Get current version from the latest git tag matching v*.*.*
+# Get current version from the latest git tag matching either:
+#   - vX.Y.Z          (release)
+#   - vX.Y.Z-PRE.N    (prerelease, where PRE ∈ {alpha, beta, rc})
+#
+# Both shapes are returned to the caller; bump_version() handles the kind
+# difference. Pre-1.0 projects that ship through a prerelease cadence (e.g.
+# v2.0.0-alpha.7) need this to compute "next version" correctly — without
+# the prerelease branch, the strict vX.Y.Z glob silently misses every
+# alpha/beta/rc tag and the post-merge orchestrator skips tag/CHANGELOG/
+# release entirely.
 get_version_from_tag() {
   local tag
-  tag=$(git -C "$PROJECT_ROOT" tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname 2>/dev/null | head -1)
+  # `tag -l` accepts multiple patterns; combine release + prerelease shapes,
+  # then filter by precise regex (the glob is permissive — matches strings
+  # like "v1.2.3-foo" too).
+  # bug-745 residual (sprint-bug-203): full SemVer 2.0 §9/§10 — the official
+  # grammar (pre-release: dot-separated alphanumeric/hyphen identifiers, no
+  # leading-zero numerics, none empty; build metadata after '+'). PR #785
+  # covered alpha|beta|rc.N only; pre.N/dev.N/dotted forms and +metadata
+  # were silently filtered, skipping tag/CHANGELOG/release downstream.
+  local semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+  # bug-745 (review iter-1): git's -v:refname does NOT honor SemVer
+  # prerelease precedence by default — `v1.0.0-alpha` sorts AFTER `v1.0.0`,
+  # so a prerelease could be picked ahead of its own stable release.
+  # `-c versionsort.suffix=-` tells git the '-' introduces a prerelease,
+  # restoring §11 precedence (v1.0.0-alpha < v1.0.0) under descending sort.
+  # (Build-metadata '+' tags are equal-precedence per §10; the grep keeps
+  # them eligible and version sort breaks ties deterministically.)
+  # KNOWN LIMIT (review iter-2): git version-sort is NOT a full SemVer §11
+  # comparator — it can misorder two prereleases with arbitrary hyphenated /
+  # dotted identifiers (e.g. alpha.1 vs alpha.beta). Accepted: this picker
+  # selects among the project's own monotonic release tags, and the
+  # CHANGELOG header is the authoritative current-version source
+  # (get_version_from_tag is the fallback). A full bash SemVer comparator is
+  # out of scope; release-vs-prerelease (the real-world failure) is correct.
+  tag=$(git -C "$PROJECT_ROOT" -c versionsort.suffix=- \
+    tag -l 'v[0-9]*.[0-9]*.[0-9]*' 'v[0-9]*.[0-9]*.[0-9]*-*' 'v[0-9]*.[0-9]*.[0-9]*+*' \
+    --sort=-v:refname 2>/dev/null \
+    | grep -E "$semver_re" \
+    | head -1)
   if [[ -n "$tag" ]]; then
     echo "${tag#v}"
     return 0
@@ -76,21 +112,70 @@ get_version_from_changelog() {
   return 1
 }
 
-# Bump a version string by type
+# Bump a version string by type. Handles two shapes:
+#
+#   1. Release  X.Y.Z          → bump per `bump` arg (major/minor/patch)
+#   2. Prerelease X.Y.Z-PRE.N  → increment N (PRE ∈ {alpha, beta, rc})
+#
+# Prerelease bumping is type-agnostic by design: while a project is on a
+# prerelease cadence (e.g. 2.0.0-alpha.N), conventional-commit signal
+# (feat/fix/etc.) does not warrant a major/minor/patch flip — the project
+# is still pre-1.0-of-this-major. Promotion out of prerelease (alpha → beta,
+# rc → release) is operator-driven and out of scope for this bump path.
+#
+# Validate version format (M-05) — accept either release or prerelease.
 bump_version() {
   local current="$1" bump="$2"
-  # Validate version format (M-05)
-  if ! [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "ERROR: Invalid version format: $current" >&2
-    return 1
+  # bug-745: SemVer §10 — build metadata denotes a build of a version; the
+  # NEXT version never inherits it. Strip before bumping (validated below
+  # via the identifier grammar on what remains).
+  local meta_re='^([^+]+)\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)$'
+  if [[ "$current" =~ $meta_re ]]; then
+    current="${BASH_REMATCH[1]}"
   fi
-  IFS='.' read -r major minor patch <<< "$current"
-  case "$bump" in
-    major) echo "$((major + 1)).0.0" ;;
-    minor) echo "${major}.$((minor + 1)).0" ;;
-    patch) echo "${major}.${minor}.$((patch + 1))" ;;
-    *) echo "ERROR: Unknown bump type: $bump" >&2; return 1 ;;
-  esac
+  # Full SemVer §9 pre-release grammar (PR #785 covered alpha|beta|rc.N only)
+  local pre_id='(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)'
+  local prerelease_re="^([0-9]+)\.([0-9]+)\.([0-9]+)-(${pre_id}(\.${pre_id})*)\$"
+  local release_re='^([0-9]+)\.([0-9]+)\.([0-9]+)$'
+
+  if [[ "$current" =~ $prerelease_re ]]; then
+    local major="${BASH_REMATCH[1]}"
+    local minor="${BASH_REMATCH[2]}"
+    local patch="${BASH_REMATCH[3]}"
+    local pre="${BASH_REMATCH[4]}"
+    # #785 policy preserved: any commit during a pre-release advances the
+    # pre-release counter. Trailing numeric identifier increments; a
+    # non-numeric tail gains a .1 (deterministic, precedence-increasing
+    # per §11: alpha.beta < alpha.beta.1).
+    local pre_head="${pre%.*}" pre_tail="${pre##*.}"
+    if [[ "$pre" != *.* ]]; then pre_head=""; fi
+    if [[ "$pre_tail" =~ ^(0|[1-9][0-9]*)$ ]]; then
+      if [[ -n "$pre_head" ]]; then
+        echo "${major}.${minor}.${patch}-${pre_head}.$((pre_tail + 1))"
+      else
+        echo "${major}.${minor}.${patch}-$((pre_tail + 1))"
+      fi
+    else
+      echo "${major}.${minor}.${patch}-${pre}.1"
+    fi
+    return 0
+  fi
+
+  if [[ "$current" =~ $release_re ]]; then
+    local major="${BASH_REMATCH[1]}"
+    local minor="${BASH_REMATCH[2]}"
+    local patch="${BASH_REMATCH[3]}"
+    case "$bump" in
+      major) echo "$((major + 1)).0.0" ;;
+      minor) echo "${major}.$((minor + 1)).0" ;;
+      patch) echo "${major}.${minor}.$((patch + 1))" ;;
+      *) echo "ERROR: Unknown bump type: $bump" >&2; return 1 ;;
+    esac
+    return 0
+  fi
+
+  echo "ERROR: Invalid version format: $current" >&2
+  return 1
 }
 
 # =============================================================================
@@ -246,8 +331,10 @@ main() {
   local commits_json bump
   local tmpdir="${TMPDIR:-/tmp}"
   local tmpfile_commits tmpfile_bump
-  tmpfile_commits=$(mktemp "${tmpdir}/semver-commits-XXXXXXXXXX.json")
-  tmpfile_bump=$(mktemp "${tmpdir}/semver-bump-XXXXXXXXXX.txt")
+  # bug-978 (#978): trailing-X templates (BSD expands only trailing X-runs).
+  # Both files are internal redirect targets; extensions were cosmetic.
+  tmpfile_commits=$(mktemp "${tmpdir}/semver-commits.XXXXXXXXXX")
+  tmpfile_bump=$(mktemp "${tmpdir}/semver-bump.XXXXXXXXXX")
 
   # Ensure cleanup on exit or error
   trap 'rm -f "$tmpfile_commits" "$tmpfile_bump"' EXIT

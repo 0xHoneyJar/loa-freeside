@@ -1,52 +1,38 @@
 {
-  "plan_id": "plan-20260302-cycle047-autopoietic",
-  "branch": "feature/sprint-6-hounfour-upgrade",
-  "state": "RUNNING",
-  "timestamps": {
-    "started": "2026-03-02T02:40:00Z",
-    "last_activity": "2026-03-02T15:45:00Z"
-  },
+  "plan_id": "plan-collections-sot",
+  "target": "sprint-plan",
+  "state": "JACKED_OUT",
   "sprints": {
-    "total": 5,
-    "completed": 4,
-    "current": "sprint-5",
+    "total": 3,
+    "completed": 3,
+    "current": null,
     "list": [
       {
         "id": "sprint-1",
         "status": "completed",
-        "cycles": 1
+        "cycles": 1,
+        "note": "S1-T1 identity + S1-T2 entity done; S1-T3 store next"
       },
       {
         "id": "sprint-2",
-        "status": "completed",
-        "cycles": 1
+        "status": "completed"
       },
       {
         "id": "sprint-3",
-        "status": "completed",
-        "cycles": 1
-      },
-      {
-        "id": "sprint-4",
-        "status": "completed",
-        "cycles": 1
-      },
-      {
-        "id": "sprint-5",
-        "status": "in_progress",
-        "cycles": 0
+        "status": "completed"
       }
     ]
   },
   "options": {
     "from": 1,
-    "to": 5,
-    "max_cycles": 20,
-    "timeout_hours": 8
+    "to": 3,
+    "max_cycles": 20
   },
+  "base": "merged cycle/sandwich-line (#429 spine) \u2014 building on real committed spine",
   "metrics": {
-    "total_cycles": 4,
-    "total_files_changed": 22,
-    "total_findings_fixed": 0
+    "total_cycles": 1,
+    "total_files_changed": 5,
+    "fagan_s1": "1 HIGH + 2 MEDIUM fixed",
+    "tests": "protocol 37 + shadow-mode 91 + shadow-audit 167 = 295 green, 0 tc errors"
   }
 }

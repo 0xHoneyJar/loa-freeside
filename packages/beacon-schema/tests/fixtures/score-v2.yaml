@@ -1,0 +1,38 @@
+schema_version: "2"
+
+mcp:
+  shape: data
+  paths:
+    - remote-http
+  remote:
+    transport: streamable-http
+    endpoint: ${MCP_REMOTE_ENDPOINT}
+  auth:
+    kind: api-key
+    header: X-MCP-Key
+    credentials_ref:
+      type: railway-secret
+      key: MCP_SCORE_UPSTREAM_KEY
+  capabilities:
+    - tools
+  tools:
+    - get_zone_digest
+    - describe_dimension
+    - get_wallet_spotlight
+    - get_wallet_scorecard
+    - list_factors
+    - lookup_factor
+    - get_top_movers
+    - get_narrative_shape
+    - get_dimension_factors
+    - search_score_entities
+  source_of_truth:
+    type: database
+    url: https://score-api-production.up.railway.app
+  pricing:
+    model: free
+    description: free for known callers (api-key gated)
+  publisher: 0xHoneyJar
+
+payment:
+  enabled: false

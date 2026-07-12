@@ -18,8 +18,8 @@ import type {
   IVaultClient,
   KillSwitchState,
   KillSwitchRequest,
-} from '@arrakis/core/ports';
-import { KILL_SWITCH_KEYS } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import { KILL_SWITCH_KEYS } from '@freeside/core/ports';
 import type { VaultMetrics } from './metrics.js';
 import { VaultMetricsHelper } from './metrics.js';
 

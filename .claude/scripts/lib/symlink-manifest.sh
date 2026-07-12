@@ -24,12 +24,44 @@ get_symlink_manifest() {
   local repo_root="${2:-$(pwd)}"
 
   # Phase 1: Directory symlinks (top-level .claude/ dirs that map 1:1 to submodule)
+  # Issue #755 fix: cycle-099 introduced the cheval Python adapter at
+  # .claude/adapters/cheval.py and the canonical model registry at
+  # .claude/defaults/model-config.yaml. Both are required by model-invoke +
+  # any Flatline-routed call. Without them, fresh-clone consumer repos see:
+  #   - "cheval.py not found at .claude/adapters/cheval.py"
+  #   - "Available agents: []" (cheval loader's Layer 1 System Zone defaults
+  #     can't read .claude/defaults/model-config.yaml)
+  # Both are framework-managed (System Zone) directories that map 1:1 to
+  # the submodule, same as scripts / protocols / data / schemas.
+  #
+  # #842: `.claude/hooks` is DELIBERATELY excluded from the symlink set and
+  # listed in MANIFEST_COPY_DIRS instead. Claude Code's hook executor on
+  # macOS cannot follow relative symlinks like `.claude/hooks ->
+  # ../.loa/.claude/hooks` from a subprocess context — every hook fails
+  # silently with "No such file or directory". Copying is the only fix
+  # that doesn't require changes to Claude Code itself.
   MANIFEST_DIR_SYMLINKS=(
     ".claude/scripts:../${submodule}/.claude/scripts"
     ".claude/protocols:../${submodule}/.claude/protocols"
-    ".claude/hooks:../${submodule}/.claude/hooks"
     ".claude/data:../${submodule}/.claude/data"
     ".claude/schemas:../${submodule}/.claude/schemas"
+    ".claude/adapters:../${submodule}/.claude/adapters"
+    ".claude/defaults:../${submodule}/.claude/defaults"
+  )
+
+  # #842: items COPIED into the consumer tree instead of symlinked.
+  # Required for files/dirs that Claude Code (or other subprocess-spawned
+  # executors) reads/exec'd at runtime, where relative-symlink resolution
+  # through `..` traversal fails on macOS. Tradeoff: after `git submodule
+  # update --remote`, operators must re-run `mount-submodule.sh --force`
+  # to pick up changes in these paths. The cost is small (~20 files) and
+  # explicit (mount has to run on every submodule bump anyway).
+  MANIFEST_COPY_DIRS=(
+    ".claude/hooks:${submodule}/.claude/hooks"
+  )
+
+  MANIFEST_COPY_FILES=(
+    ".claude/settings.json:${submodule}/.claude/settings.json"
   )
 
   # Phase 2: File and nested symlinks (deeper paths with 2-level relative targets)
@@ -38,7 +70,6 @@ get_symlink_manifest() {
     ".claude/loa/reference:../../${submodule}/.claude/loa/reference"
     ".claude/loa/learnings:../../${submodule}/.claude/loa/learnings"
     ".claude/loa/feedback-ontology.yaml:../../${submodule}/.claude/loa/feedback-ontology.yaml"
-    ".claude/settings.json:../${submodule}/.claude/settings.json"
     ".claude/checksums.json:../${submodule}/.claude/checksums.json"
   )
 

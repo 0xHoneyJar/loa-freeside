@@ -20,7 +20,7 @@ import type {
   CrossChainScore,
   ActionHistoryConfig,
   ChainProviderOptions,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   TokenHoldersQueryOptions,
   TokenHoldersResult,

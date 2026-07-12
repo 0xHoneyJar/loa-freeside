@@ -21,7 +21,7 @@ import type {
 } from '../vault-client.js';
 import type { VaultMetrics } from '../metrics.js';
 import { createNoOpVaultMetrics } from '../metrics.js';
-import type { VaultConfig } from '@arrakis/core/ports';
+import type { VaultConfig } from '@freeside/core/ports';
 import type { Logger } from 'pino';
 
 // =============================================================================

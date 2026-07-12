@@ -12,7 +12,7 @@
  * @see SDD §6.4.2 (S-22.9)
  */
 
-import { VAULT_METRICS_PREFIX } from '@arrakis/core/ports';
+import { VAULT_METRICS_PREFIX } from '@freeside/core/ports';
 
 // =============================================================================
 // Types

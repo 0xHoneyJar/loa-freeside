@@ -203,7 +203,16 @@ async def query_notebooklm(
         "sdd": "system architecture, technical design, implementation patterns",
         "sprint": "task breakdown, acceptance criteria, testing requirements"
     }
-    query = f"{domain} {phase_context.get(phase, phase)} best practices"
+    # Phrase as a grounded QUESTION, not a keyword phrase. NotebookLM's
+    # Gemini-backed chat answers a topic-salad ("X Y Z best practices")
+    # conversationally ("upload your sources...") instead of grounding in the
+    # notebook; a real question makes it retrieve + cite the sources.
+    query = (
+        f"Based strictly on the sources, what are the established best practices, "
+        f"key risks, and common failure modes relevant to: {domain} "
+        f"(in the context of {phase_context.get(phase, phase)})? "
+        f"Be specific and cite the sources."
+    )
 
     try:
         async with async_playwright() as p:
@@ -225,10 +234,25 @@ async def query_notebooklm(
             else:
                 url = NOTEBOOKLM_BASE_URL
 
-            await page.goto(url, timeout=timeout_ms)
+            await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
 
-            # Wait for page to load
-            await page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            # Let the SPA render. NOTE: NotebookLM is a streaming SPA that never
+            # reaches "networkidle" (continuous background requests), so waiting on
+            # that state hangs until timeout — use domcontentloaded + a short settle.
+            await asyncio.sleep(6)
+
+            # Dismiss the first-visit "Welcome to NotebookLM!" consent modal. Left
+            # open it covers the query box and the fill() below hangs (this was the
+            # original 90s timeout). Best-effort — absent on return visits.
+            for _modal_btn in ('button:has-text("Okay")', 'button:has-text("OK")', 'button:has-text("Got it")'):
+                try:
+                    _b = await page.query_selector(_modal_btn)
+                    if _b:
+                        await _b.click()
+                        await asyncio.sleep(2)
+                        break
+                except Exception:
+                    pass
 
             # Check if we're authenticated (look for user avatar or sign-in button)
             try:
@@ -297,30 +321,43 @@ async def query_notebooklm(
                     except Exception:
                         continue
 
-            # Wait for response
+            # Poll for the streamed answer to render and stabilize. NotebookLM's
+            # response DOM moved off the legacy `.response-content` selectors, so we
+            # take the longest matching message block and wait for it to settle
+            # (two consecutive identical reads) rather than wait_for_selector on a
+            # single stale class.
             response_selectors = [
-                '.response-content',
-                '.answer-content',
-                '[data-response]',
-                'div[role="article"]',
+                '.to-user-message',
+                'chat-message',
+                '.message-text-content',
+                '.chat-message-pair',
+                'labs-tailwind-doc-viewer',
+                '[class*="response"]',
             ]
-
-            response_element = None
-            for selector in response_selectors:
-                try:
-                    response_element = await page.wait_for_selector(
-                        selector,
-                        timeout=timeout_ms,
-                        state="visible"
-                    )
-                    if response_element:
-                        # Wait a bit more for content to render
-                        await asyncio.sleep(2)
+            response_text, last, stable = "", "", 0
+            deadline = start_time + (timeout_ms / 1000.0)
+            while time.time() < deadline:
+                await asyncio.sleep(4)
+                best = ""
+                for selector in response_selectors:
+                    try:
+                        els = await page.query_selector_all(selector)
+                        if els:
+                            joined = "\n".join([(await e.inner_text()) for e in els])
+                            if len(joined) > len(best):
+                                best = joined
+                    except Exception:
+                        continue
+                response_text = best or response_text
+                if len(response_text) > 200 and response_text == last:
+                    stable += 1
+                    if stable >= 2:
                         break
-                except Exception:
-                    continue
+                else:
+                    stable = 0
+                last = response_text
 
-            if not response_element:
+            if not response_text:
                 await browser.close()
                 return NotebookLMQueryResult(
                     status="timeout",
@@ -328,14 +365,12 @@ async def query_notebooklm(
                     latency_ms=int((time.time() - start_time) * 1000)
                 )
 
-            # Extract response content
-            response_text = await response_element.text_content()
-
-            # Try to extract citations
+            # Try to extract citations (numbered source chips in current UI)
             citations = []
             citation_selectors = [
                 '.citation',
                 '[data-citation]',
+                'button[class*="citation"]',
                 'a[href*="source"]',
             ]
             for cit_selector in citation_selectors:

@@ -25,13 +25,18 @@ setup() {
     mkdir -p "$TEST_TMPDIR"
 
     # Override registry directory for testing
-    export LOA_REGISTRY_DIR="$TEST_TMPDIR/registry"
-    mkdir -p "$LOA_REGISTRY_DIR/skills"
-    mkdir -p "$LOA_REGISTRY_DIR/packs"
+    export LOA_CONSTRUCTS_DIR="$TEST_TMPDIR/registry"
+    mkdir -p "$LOA_CONSTRUCTS_DIR/skills"
+    mkdir -p "$LOA_CONSTRUCTS_DIR/packs"
 
     # Override cache directory for testing
     export LOA_CACHE_DIR="$TEST_TMPDIR/cache"
     mkdir -p "$LOA_CACHE_DIR/public-keys"
+
+    # #953: ensure license fixtures exist (cycle-028 made keys ephemeral
+    # + gitignored; helper generates on first call).
+    # shellcheck source=../fixtures/ensure_license_fixtures.sh
+    source "$FIXTURES_DIR/ensure_license_fixtures.sh"
 
     # Copy public key to test cache
     cp "$FIXTURES_DIR/mock_public_key.pem" "$LOA_CACHE_DIR/public-keys/test-key-01.pem"
@@ -85,7 +90,7 @@ create_test_skill() {
     local version="$3"
     local license_file="$4"
 
-    local skill_dir="$LOA_REGISTRY_DIR/skills/$vendor/$skill_name"
+    local skill_dir="$LOA_CONSTRUCTS_DIR/skills/$vendor/$skill_name"
     mkdir -p "$skill_dir"
 
     if [[ -n "$license_file" ]] && [[ -f "$license_file" ]]; then
@@ -103,7 +108,7 @@ EOF
 
 # Helper to initialize registry meta with skills
 init_registry_meta() {
-    cat > "$LOA_REGISTRY_DIR/.registry-meta.json" << EOF
+    cat > "$LOA_CONSTRUCTS_DIR/.registry-meta.json" << EOF
 {
     "schema_version": 1,
     "installed_skills": {},
@@ -134,7 +139,7 @@ EOF
     init_registry_meta
 
     # Update registry meta with current version
-    cat > "$LOA_REGISTRY_DIR/.registry-meta.json" << EOF
+    cat > "$LOA_CONSTRUCTS_DIR/.registry-meta.json" << EOF
 {
     "schema_version": 1,
     "installed_skills": {
@@ -162,7 +167,7 @@ EOF
     create_test_skill "test-vendor" "any-skill" "1.0.0" "$FIXTURES_DIR/valid_license.json"
 
     # Create registry meta file first
-    cat > "$LOA_REGISTRY_DIR/.registry-meta.json" << 'EOF'
+    cat > "$LOA_CONSTRUCTS_DIR/.registry-meta.json" << 'EOF'
 {
     "schema_version": 1,
     "installed_skills": {
@@ -178,16 +183,16 @@ EOF
 
     # Verify timestamp is null initially
     local initial_content
-    initial_content=$(cat "$LOA_REGISTRY_DIR/.registry-meta.json")
+    initial_content=$(cat "$LOA_CONSTRUCTS_DIR/.registry-meta.json")
     [[ "$initial_content" == *'"last_update_check": null'* ]] || [[ "$initial_content" == *'"last_update_check":null'* ]]
 
     run "$LOADER" check-updates
     # Even if network fails, timestamp should be updated
 
     # Check timestamp was updated (no longer null)
-    if [[ -f "$LOA_REGISTRY_DIR/.registry-meta.json" ]]; then
+    if [[ -f "$LOA_CONSTRUCTS_DIR/.registry-meta.json" ]]; then
         local final_content
-        final_content=$(cat "$LOA_REGISTRY_DIR/.registry-meta.json")
+        final_content=$(cat "$LOA_CONSTRUCTS_DIR/.registry-meta.json")
         # Should contain a timestamp string now, not null (unless command doesn't update on failure)
         # This is a soft check - implementation may vary
         [[ "$final_content" != *'"last_update_check": null'* ]] || [[ "$status" -ne 0 ]] || true

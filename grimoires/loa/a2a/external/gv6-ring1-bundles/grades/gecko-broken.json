@@ -1,0 +1,62 @@
+{
+  "bundle": "gecko-broken",
+  "score": "6/9",
+  "passed": 6,
+  "rubric_hash": "sha256:1374c7c445d8ab756e751160bb76e67f91f2cceaf4e56ba54fee3af9693ce370",
+  "checks": [
+    {
+      "check_id": "C1",
+      "name": "manifest_parses",
+      "status": "pass",
+      "reason": "manifest.json is valid JSON"
+    },
+    {
+      "check_id": "C2",
+      "name": "registry_required_fields",
+      "status": "pass",
+      "reason": "all present"
+    },
+    {
+      "check_id": "C3",
+      "name": "model_tier_in_sot",
+      "status": "fail",
+      "reason": "model_tier 'quantum' NOT in live SoT vocabulary"
+    },
+    {
+      "check_id": "C4",
+      "name": "no_write_through_readonly_agent",
+      "status": "fail",
+      "reason": "write capability on read-only agent: ['SKILL.md (agent: Explore)', 'skills/observe/SKILL.md (agent: Explore)']"
+    },
+    {
+      "check_id": "C5",
+      "name": "capabilities_match_toolset",
+      "status": "pass",
+      "reason": "declarations consistent with toolsets"
+    },
+    {
+      "check_id": "C6",
+      "name": "canonical_primitives",
+      "status": "pass",
+      "reason": "no bd task commands, no raw recursive-grep/rg code-search"
+    },
+    {
+      "check_id": "C7",
+      "name": "grounding_file_exists",
+      "status": "pass",
+      "reason": "reality.md present"
+    },
+    {
+      "check_id": "C8",
+      "name": "genome_chain_verifies",
+      "status": "fail",
+      "reason": "bundle dialect: link 1: stored genome_hash != recompute"
+    },
+    {
+      "check_id": "C9",
+      "name": "proof_of_run",
+      "status": "pass",
+      "reason": "valid_run \u00b7 verifier_type=self_baseline_bundle_recompute \u00b7 content_hash recomputes"
+    }
+  ]
+}

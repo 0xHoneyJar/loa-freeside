@@ -1,5 +1,5 @@
 {
-  "name": "@arrakis/nats-schemas",
+  "name": "@freeside/nats-schemas",
   "version": "1.0.0",
   "description": "Shared NATS wire format schemas between Rust gateway and TypeScript workers",
   "type": "module",

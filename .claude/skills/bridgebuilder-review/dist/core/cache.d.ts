@@ -14,13 +14,25 @@ export interface CacheEntry {
     hitCount: number;
 }
 /**
- * Compute a deterministic cache key from the three dimensions that affect Pass 1 output.
- * Key = sha256(headSha + ":" + truncationLevel + ":" + sha256(convergenceSystemPrompt))
+ * Compute a deterministic cache key from the dimensions that affect Pass 1 output.
  *
- * Any change to the diff (headSha), truncation strategy (level), or prompt (hash)
- * produces a different key, invalidating the cache (AC-6).
+ * Key = sha256(headSha + ":" + truncationLevel + ":self-review=" + state + ":" + sha256(convergenceSystemPrompt))
+ *
+ * Any change to the diff (headSha), truncation strategy (level), the self-review
+ * tri-state, or the system prompt (hash) produces a different key, invalidating
+ * the cache (AC-6 + BB-003-cache).
+ *
+ * BB-003-cache (iter-2): the system-prompt hash alone does NOT change with
+ * selfReview — but the USER prompt content (truncated diffs) DOES.
+ *
+ * BB-797-002 (iter-5): the previous boolean-keyed signature collided
+ * "inactive" (label absent) and "rejected" (label present + .reviewignore
+ * unreadable + fail-closed) — both produce different prompts but shared a
+ * cache slot. Tri-state ("inactive" | "active" | "rejected") restores
+ * input-fingerprint discipline. Backward-compat: the boolean overload is
+ * preserved so existing tests keep working; new callers pass the state.
  */
-export declare function computeCacheKey(hasher: IHasher, headSha: string, truncationLevel: number, convergencePromptHash: string): Promise<string>;
+export declare function computeCacheKey(hasher: IHasher, headSha: string, truncationLevel: number, convergencePromptHash: string, selfReviewState?: "inactive" | "active" | "rejected" | boolean): Promise<string>;
 /**
  * Content-hash-based cache for Pass 1 convergence output (AC-1, AC-2, AC-3).
  *
