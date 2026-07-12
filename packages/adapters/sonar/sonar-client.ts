@@ -42,6 +42,14 @@ const DEFAULTS: Required<SonarClientConfig> = {
 export interface TransferPageArgs {
   endpoint: string;
   collection: string;
+  /**
+   * CRITICAL: the collection id is NOT unique across chains — "Honeycomb" is a collection on BOTH
+   * Ethereum (1) and Berachain (80094), as are HoneyJar1-6. Querying by collection alone merges every
+   * chain's Transfer rows into one replay, so the same tokenId is minted twice and reconstruction throws
+   * ("mint of already-owned tokenId 1" — observed live against Honeycomb 2026-07-12). blockNumber is also
+   * per-chain, so an `_lte` bound across merged chains is meaningless. ALWAYS scope by chainId.
+   */
+  chainId: number;
   lteBlock: number;
   limit: number;
   offset: number;
@@ -118,6 +126,7 @@ const TransferRowSchema = z
 export const defaultTransferPageFetcher: TransferPageFetcher = async ({
   endpoint,
   collection,
+  chainId,
   lteBlock,
   limit,
   offset,
@@ -128,9 +137,13 @@ export const defaultTransferPageFetcher: TransferPageFetcher = async ({
   // exists) rather than the absent `logIndex`; reconstructOwnership re-sorts by
   // numeric (blockNumber, logIndex, tokenId) internally, so the wire order only
   // needs to be deterministic for offset pagination.
-  const query = `query Transfers($c: String!, $lte: numeric!, $limit: Int!, $offset: Int!) {
+  // chainId is LOAD-BEARING in this where-clause, not decoration: collection ids repeat across chains
+  // (Honeycomb + HoneyJar1-6 all exist on both Ethereum and Berachain). Without `chainId: {_eq: $chain}`
+  // this merges every chain's rows into one ownership replay and reconstruction throws on the duplicate
+  // mint. `Transfer.chainId: Int!` is served by sonar (schema.graphql) — it was simply never filtered on.
+  const query = `query Transfers($c: String!, $chain: Int!, $lte: numeric!, $limit: Int!, $offset: Int!) {
   Transfer(
-    where: { collection: { _eq: $c }, blockNumber: { _lte: $lte } }
+    where: { collection: { _eq: $c }, chainId: { _eq: $chain }, blockNumber: { _lte: $lte } }
     order_by: { blockNumber: asc, id: asc }
     limit: $limit
     offset: $offset
@@ -150,7 +163,10 @@ export const defaultTransferPageFetcher: TransferPageFetcher = async ({
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ query, variables: { c: collection, lte: lteBlock, limit, offset } }),
+      body: JSON.stringify({
+        query,
+        variables: { c: collection, chain: chainId, lte: lteBlock, limit, offset },
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -194,11 +210,17 @@ export class SonarClient {
   /** Reconstruct ownership @ snapshotBlock for a collection. */
   async ownershipAtBlock(args: {
     collection: string;
+    /** REQUIRED: collection ids repeat across chains — see TransferPageArgs.chainId. */
+    chainId: number;
     snapshotBlock: number;
     standard: TokenStandard;
     headBlock: number;
   }): Promise<OwnershipAtBlock> {
-    const { events, complete } = await this.fetchAllTransfers(args.collection, args.snapshotBlock);
+    const { events, complete } = await this.fetchAllTransfers(
+      args.collection,
+      args.chainId,
+      args.snapshotBlock,
+    );
     return reconstructOwnership(events, {
       standard: args.standard,
       snapshotBlock: args.snapshotBlock,
@@ -211,6 +233,8 @@ export class SonarClient {
   /** Qualification diff between a snapshot block and a comparison (head) block. */
   async holderDiff(args: {
     collection: string;
+    /** REQUIRED: collection ids repeat across chains — see TransferPageArgs.chainId. */
+    chainId: number;
     snapshotBlock: number;
     compareBlock: number;
     standard: TokenStandard;
@@ -219,12 +243,14 @@ export class SonarClient {
   }): Promise<HolderDiff> {
     const snap = await this.ownershipAtBlock({
       collection: args.collection,
+      chainId: args.chainId,
       snapshotBlock: args.snapshotBlock,
       standard: args.standard,
       headBlock: args.headBlock,
     });
     const head = await this.ownershipAtBlock({
       collection: args.collection,
+      chainId: args.chainId,
       snapshotBlock: args.compareBlock,
       standard: args.standard,
       headBlock: args.headBlock,
@@ -234,6 +260,7 @@ export class SonarClient {
 
   private async fetchAllTransfers(
     collection: string,
+    chainId: number,
     lteBlock: number,
   ): Promise<{ events: TransferEvent[]; complete: boolean }> {
     const events: TransferEvent[] = [];
@@ -243,6 +270,7 @@ export class SonarClient {
         this.fetchPage({
           endpoint: this.cfg.endpoint,
           collection,
+          chainId,
           lteBlock,
           limit: this.cfg.pageSize,
           offset,

@@ -49,7 +49,20 @@ export function makeSonarOwnershipSource(opts: SonarOwnershipOpts): OwnershipSou
   };
 
   const balancesAtBlock = async (chain: string, ref: CollectionRef, snapshotBlock: number, headBlock: number): Promise<Balances> => {
-    const own = await opts.sonar.ownershipAtBlock({ collection: ref.collection, snapshotBlock, standard: ref.standard, headBlock });
+    // chainId is LOAD-BEARING: collection ids repeat across chains (Honeycomb + HoneyJar1-6 exist on both
+    // Ethereum and Berachain). Querying sonar by collection alone merged every chain's transfers into one
+    // replay and reconstruction threw "mint of already-owned tokenId 1" against the live Honeycomb.
+    const chainId = Number(chain);
+    if (!Number.isInteger(chainId)) {
+      throw new Error(`shadow-audit: chain "${chain}" is not a numeric chain id — refusing to query sonar unscoped`);
+    }
+    const own = await opts.sonar.ownershipAtBlock({
+      collection: ref.collection,
+      chainId,
+      snapshotBlock,
+      standard: ref.standard,
+      headBlock,
+    });
     return own.balances; // HolderBalances === Map<string, bigint> === Balances
   };
 
