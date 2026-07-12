@@ -1,0 +1,55 @@
+# S2-T2 (SDD §8, IMP-013, G-6) — org-as-code agent gate.
+#
+# Runs `railway config plan` (READ-ONLY) against .railway/railway.ts and fails the PR on:
+#   1. ANY destructive change (baseline-independent) — Railway IaC is declarative and will DELETE
+#      resources it does not declare. This guard exists because a plan against a wrongly-linked project
+#      once read "1 to add, 3 to DESTROY" (would have deleted ordering-service + its Postgres).
+#   2. Drift from the committed .railway/plan-baseline.json — an intended IaC change must refresh the
+#      baseline in the same PR, which makes it explicit and reviewable.
+#
+# This workflow NEVER applies. `railway config apply` stays human-gated (NFR-2).
+# Secrets never reach the logs: the gate prints only change kind/severity/summary (names, not values —
+# Railway redacts values as «hidden»).
+#
+# SETUP (operator, one-time): add repo secret RAILWAY_TOKEN — a Railway **project token** scoped to the
+# shadow-audit-api project + production environment (Railway → project → Settings → Tokens).
+
+name: railway-plan-gate
+
+on:
+  pull_request:
+    paths:
+      - '.railway/**'
+      - 'packages/services/shadow-audit/Dockerfile'
+  workflow_dispatch:
+
+jobs:
+  plan-gate:
+    name: railway config plan (read-only gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The Railway CLI evaluates .railway/railway.ts and needs the `railway` TypeScript SDK resolvable
+      # from the repo root. Install just the SDK — a full monorepo install is not needed for a plan.
+      - name: Install Railway TypeScript SDK
+        run: npm install --no-save railway@3.5.5
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Plan gate (READ-ONLY — never applies)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "${RAILWAY_TOKEN}" ]; then
+            echo "::warning title=railway-plan-gate skipped::RAILWAY_TOKEN is not set (fork PR, or the"\
+                 "secret was never added). The Railway drift/destructive gate did NOT run for this PR."
+            echo "Add the repo secret RAILWAY_TOKEN (project token for shadow-audit-api/production) to enable it."
+            exit 0
+          fi
+          node .railway/plan-gate.mjs
