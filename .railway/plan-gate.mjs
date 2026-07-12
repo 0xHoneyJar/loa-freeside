@@ -44,17 +44,7 @@ const BASELINE = '.railway/plan-baseline.json';
 const args = process.argv.slice(2);
 const updateBaseline = args.includes('--update-baseline');
 const planFileIdx = args.indexOf('--plan-file');
-let planFile = null;
-if (planFileIdx !== -1) {
-  // A bare `--plan-file` (value missing, or the next token is another flag) must NOT silently fall through
-  // to `railway config plan` against the LIVE project — that turns an offline check into a live API call.
-  const value = args[planFileIdx + 1];
-  if (!value || value.startsWith('-')) {
-    console.error('FAIL: --plan-file requires a path.  usage: node .railway/plan-gate.mjs --plan-file <plan.json>');
-    process.exit(1);
-  }
-  planFile = value;
-}
+const planFile = planFileIdx !== -1 ? args[planFileIdx + 1] : null;
 
 /** Destructive unless explicitly `safe` AND the kind is not a delete/destroy/remove. */
 function isDestructive(change) {

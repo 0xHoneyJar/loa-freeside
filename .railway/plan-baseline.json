@@ -1,0 +1,16 @@
+{
+  "_comment": "S2-T2 org-as-code baseline. Names/shape only — no secret values (Railway redacts them). Regenerate with `node .railway/plan-gate.mjs --update-baseline` in the same PR that changes .railway/railway.ts.",
+  "fingerprint": "b7dfe5e130aa2f16ef12a3127ec26ec2d7d8fe3cd6aafb769725f96f7c6833cf",
+  "changeCount": 9,
+  "changes": [
+    "variable.set|safe|Update variable shadow-audit-api.AUDIT_K",
+    "variable.set|safe|Update variable shadow-audit-api.COLLECTION_REGISTRY",
+    "variable.set|safe|Update variable shadow-audit-api.OPERATED_COMMUNITIES",
+    "variable.set|safe|Update variable shadow-audit-api.ROLE_SNAPSHOT_DIR",
+    "variable.set|safe|Update variable shadow-audit-api.RPC_URL_1",
+    "variable.set|safe|Update variable shadow-audit-api.RPC_URL_10",
+    "variable.set|safe|Update variable shadow-audit-api.RPC_URL_42161",
+    "variable.set|safe|Update variable shadow-audit-api.RPC_URL_80094",
+    "variable.set|safe|Update variable shadow-audit-api.RPC_URL_8453"
+  ]
+}
