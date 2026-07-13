@@ -117,7 +117,16 @@ export type AuditServiceResult =
        */
       drift: DriftReport;
     }
-  | { ok: false; refusal: Refusal };
+  | {
+      ok: false;
+      refusal: Refusal;
+      /**
+       * Present ONLY on `role-coverage-too-low`: the counts-only drift board, which needs ZERO identity
+       * data and is therefore the one honest answer for a community with no wallet map. The aggregate is
+       * refused; the drift still travels. (Every other refusal has nothing to compute a board from.)
+       */
+      drift?: DriftReport;
+    };
 
 function isoFromUnix(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString();
@@ -178,8 +187,24 @@ export async function runAudit(
     // success path suppresses (HIGH-1).
     k,
   });
-  if (!mode.ok) return { ok: false, refusal: mode.refusal };
-  // mode.ok guarantees roleSnapshot is present.
+  /**
+   * A coverage refusal must STILL CARRY THE DRIFT (found by the first live settle probe, 2026-07-13).
+   *
+   * `role-coverage-too-low` refuses the WALLET-derived cohorts, and rightly so: at 1 resolvable wallet in
+   * 515 they would be computed over a matched set the unmatched set dwarfs. But the DRIFT REPORT is
+   * counts-only — role-member counts x on-chain holder counts, ZERO identity data — and it is precisely
+   * what S5 built so that a community with NO wallet map could see its drift. Refusing before computing it
+   * would deny the report to the exact community it exists for. thj (~0% coverage) is that community.
+   *
+   * So: the refusal stands (the aggregate is not served), and the drift board travels WITH it. The reader
+   * gets the honest answer — "we cannot see your members, and here is your drift anyway".
+   *
+   * Every OTHER refusal returns immediately: without a role snapshot there are no role counts to compare,
+   * and an unreconstructable union has no holder counts. Only this one has both halves in hand.
+   */
+  const coverageRefusal = !mode.ok && mode.refusal.code === 'role-coverage-too-low';
+  if (!mode.ok && !coverageRefusal) return { ok: false, refusal: mode.refusal };
+  // Present in both branches: the coverage refusal only fires when a snapshot was LOADED.
   const snapshot = roleSnapshot as RoleSnapshot;
   const { roleWallets, unmatched } = resolveRoles(snapshot);
 
@@ -255,18 +280,6 @@ export async function runAudit(
   const unmatchedCohort = kAnonCohort(unmatched.length, k);
   const coverageRatioIsSafe = unmatchedCohort.kind === 'exact' || unmatched.length === 0;
 
-  const aggregate: AuditAggregate = {
-    holder_turnover,
-    sold_lapsed: soldLapsedCohort,
-    newly_eligible: kAnonCohort(newlyEligible.length, k),
-    stale_access: kAnonCohort(staleAccess.length, k),
-    whale_concentration: whale,
-    stale_access_risk_band: staleRiskBand(staleAccess.length, roleWallets.size),
-    unmatched_role_holders: unmatchedCohort,
-    role_coverage: coverageRatioIsSafe ? mode.roleCoverage : null,
-    coverage_uncertain: mode.uncertainReasons.includes('low-role-coverage'),
-  };
-
   // 5b. THE DRIFT REPORT (S5-T4) — the answer that needs NO wallet map.
   //
   // Every cohort above is computed over the role-holders we could RESOLVE to a wallet. For thj that set is
@@ -286,6 +299,26 @@ export async function runAudit(
     })),
     k,
   });
+
+  // THE COVERAGE REFUSAL, now carrying the drift (see the long note at the mode check). The aggregate is
+  // NOT served — its cohorts would be computed over a matched set the unmatched set dwarfs — but the
+  // counts-only board needs no wallet map, so the community still SEES its drift. That is the DoD.
+  if (!mode.ok) {
+    return { ok: false, refusal: mode.refusal, drift };
+  }
+
+  const aggregate: AuditAggregate = {
+    holder_turnover,
+    sold_lapsed: soldLapsedCohort,
+    newly_eligible: kAnonCohort(newlyEligible.length, k),
+    stale_access: kAnonCohort(staleAccess.length, k),
+    whale_concentration: whale,
+    stale_access_risk_band: staleRiskBand(staleAccess.length, roleWallets.size),
+    unmatched_role_holders: unmatchedCohort,
+    role_coverage: coverageRatioIsSafe ? mode.roleCoverage : null,
+    coverage_uncertain: mode.uncertainReasons.includes('low-role-coverage'),
+  };
+
 
   // 6. Determinism fingerprint → run_id (IMP-001/007). It covers the FULL source set + each source's
   //    snapshot block (S5-T3): a union of eth+bera and a bera-only run are DIFFERENT computations and must

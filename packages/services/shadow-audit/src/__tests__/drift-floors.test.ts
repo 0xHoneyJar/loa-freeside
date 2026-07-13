@@ -1,4 +1,7 @@
 /**
+import { runAudit, type Balances } from '../audit-service.js';
+import type { Order } from '@freeside/shadow-audit-protocol';
+import type { RoleSnapshot } from '../role-snapshot.js';
  * S5-T4 — the two provable drift floors.
  *
  * Grounded on the LIVE board (2026-07-12). thj has ~0% discord→wallet coverage, so the audit cannot name
@@ -323,5 +326,74 @@ describe('assumption violations — the floor is wrong, and the payload says whi
     expect(d.undergrant_floor!.breaks_when).toContain('several wallets');
     expect(d.undergrant_floor!.direction_if_violated).toBe('overstates');
     expect(d.undergrant_floor!.bounds).toBe('wallets');
+  });
+});
+
+/**
+ * A COVERAGE REFUSAL MUST STILL CARRY THE DRIFT — found by the first live settle probe (2026-07-13).
+ *
+ * S5 built the drift board precisely so a community with NO wallet map could see its drift. But
+ * `role-coverage-too-low` refused the whole audit BEFORE the board was computed — so thj, at ~0% wallet
+ * coverage, got a refusal and nothing else. The audit was refusing to show the one report it had built
+ * for exactly that community. The board needs no wallets; the refusal is about the wallet-derived
+ * cohorts. Those are different questions, and only one of them is unanswerable.
+ */
+describe('runAudit — the coverage refusal carries the drift board', () => {
+  it('refuses the aggregate at 1/515 coverage but STILL returns the counts-only drift', async () => {
+    const C = '0x' + 'c'.repeat(40);
+    const order: Order = {
+      community: { name: 'thj', owner_wallet: '0x' + '9'.repeat(40) },
+      source: { chain: '80094', contract_address: C },
+      gating_rule: { kind: 'nft-balance', threshold: 1 },
+      products: ['audit'],
+      mode: 'lead-magnet',
+    };
+    // The real shape: 515 role-holders, ONE resolvable wallet.
+    const snap: RoleSnapshot = {
+      source: 'discord:guild:1',
+      community: 'thj',
+      collection: { chain: '80094', contract: C },
+      captured_at: '2026-07-01T00:00:00.000Z',
+      export_method: 'export',
+      owner: '0x' + '9'.repeat(40),
+      freshness_threshold_seconds: 86_400_000,
+      entries: Array.from({ length: 515 }, (_, i) =>
+        i === 0
+          ? { discord_user_id: 'u0', wallet: '0x' + '1'.repeat(40), role_ids: ['h'] }
+          : { discord_user_id: `u${i}`, role_ids: ['h'] },
+      ),
+    };
+    const holders: Balances = new Map(
+      Array.from({ length: 1813 }, (_, i) => ['0x' + (i + 1000).toString(16).padStart(40, '0'), 1n]),
+    );
+    const r = await runAudit(
+      {
+        order,
+        snapshotDate: '2026-06-01',
+        isOperatedCommunity: true,
+        nowUnixSeconds: Math.floor(Date.UTC(2026, 6, 2) / 1000),
+        includeRecords: false,
+        cta: { product: '/p', conversation: '/c' },
+      },
+      {
+        ownership: {
+          resolveSnapshotBlock: async () => 1000,
+          balancesAt: async () => holders,
+          currentBalances: async () => holders,
+        },
+        whale: { concentration: async () => 0.4 },
+        roles: { load: async () => snap },
+        sources: () => [{ chain: '80094', contract: C }],
+      },
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.code).toBe('role-coverage-too-low');
+    // THE POINT: the community still sees its drift. Refusing this was refusing the whole cycle's payoff.
+    expect(r.drift).toBeDefined();
+    expect(r.drift!.access_basis).toBe('counts-only');
+    expect(r.drift!.role_members).toEqual({ kind: 'exact', value: 515 });
+    expect(r.drift!.per_source_holders[0]!.holders).toEqual({ kind: 'exact', value: 1813 });
   });
 });
