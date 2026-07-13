@@ -93,10 +93,37 @@ export const MethodologySchema = z
     /** ISO-8601 — when the incumbent's roles (the Discord snapshot) were sampled. The "incumbent side" of the delta. */
     role_snapshot_at: z.string().min(1),
     /** the historical block the per-member `balance_at_snapshot` evidence + `sold_lapsed` are anchored at. The
-     *  promotion/demotion DELTA does NOT settle against this block — it settles against CURRENT on-chain balances. */
+     *  promotion/demotion DELTA does NOT settle against this block — it settles against CURRENT on-chain balances.
+     *  With a multi-chain collection this is the block of the deployment the ORDER addressed; the per-source
+     *  blocks the union was actually read at are in `collection_sources` (one per declared deployment). */
     evidence_block: z.number().int().nonnegative(),
     /** the data sources the decision drew on. */
     sources: z.array(z.string().min(1)).min(1),
+
+    // ── MULTI-SOURCE UNION (S5-T3) — the union is NAMED, never assumed ────────────────────────
+    /**
+     * How the collection's deployments were combined. `any-source`: a wallet qualifies iff it meets
+     * the threshold on AT LEAST ONE declared deployment (the threshold is applied PER-SOURCE).
+     *
+     * The rejected alternative was SUMMING balances across chains — a bridged token would then be
+     * double-counted while in flight, and a wallet under threshold everywhere could be manufactured
+     * into qualification. The two only differ when `threshold > 1`; the choice is stated anyway,
+     * because an unnamed choice is one nobody can audit.
+     */
+    union_semantics: z.literal('any-source'),
+    /** EVERY declared deployment the union was reconstructed over, each with the block it was read at.
+     *  This is the set the `inputs_hash` fingerprints — a reader can re-derive the run from it. */
+    collection_sources: z
+      .array(
+        z
+          .object({
+            chain: z.string().min(1),
+            contract: z.string().min(1),
+            snapshot_block: z.number().int().nonnegative(),
+          })
+          .strict(),
+      )
+      .min(1),
   })
   .strict();
 export type Methodology = z.infer<typeof MethodologySchema>;

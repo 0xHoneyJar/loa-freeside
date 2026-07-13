@@ -72,6 +72,8 @@ export {
 } from './schemas/refusal.js';
 export { jcsCanonicalize, sha256Hex } from './jcs.js';
 export {
+  AuditSourceSchema,
+  type AuditSource,
   AuditInputsSchema,
   type AuditInputs,
   computeInputsHash,

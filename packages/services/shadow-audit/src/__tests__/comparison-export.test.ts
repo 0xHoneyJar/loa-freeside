@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { SourceResolver } from '../collection-union.js';
 import { type Order } from '@freeside/shadow-audit-protocol';
 import { runAudit, type AuditRequest, type OwnershipSource, type RoleSource, type WhaleSource } from '../audit-service.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
@@ -24,10 +25,13 @@ const ownership: OwnershipSource = {
   balancesAt: async () => new Map([...roleOk, ...newlyElig].map((w) => [w, 1n] as const)),
   currentBalances: async () => new Map([...roleOk, ...newlyElig].map((w) => [w, 1n] as const)),
 };
+// S5-T3: this suite audits a collection with ONE declared deployment (a union of one) — its intent is
+// unchanged. The multi-source cases live in audit-service.test.ts / access-risk.test.ts.
+const sources: SourceResolver = () => [{ chain: "1", contract: CONTRACT }];
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const mkRoles = (community: string): RoleSource => ({
   load: async (): Promise<RoleSnapshot> => ({
-    source: 'discord:guild:1', community, collection: { chain: 'ethereum', contract: CONTRACT },
+    source: 'discord:guild:1', community, collection: { chain: '1', contract: CONTRACT },
     captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
     owner: A('9', 9), freshness_threshold_seconds: 86_400,
     entries: [...roleStale, ...roleOk].map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
@@ -35,7 +39,7 @@ const mkRoles = (community: string): RoleSource => ({
 });
 const mkOrder = (community: string): Order => ({
   community: { name: community, owner_wallet: A('9', 9) },
-  source: { chain: 'ethereum', contract_address: CONTRACT },
+  source: { chain: '1', contract_address: CONTRACT },
   gating_rule: { kind: 'nft-balance', threshold: 1 },
   products: ['audit'], mode: 'lead-magnet',
 });
@@ -45,7 +49,7 @@ const mkReq = (community: string, includeRecords: boolean): AuditRequest => ({
 });
 
 const authedOutput = async (community = 'thj') => {
-  const r = await runAudit(mkReq(community, true), { ownership, whale, roles: mkRoles(community) });
+  const r = await runAudit(mkReq(community, true), { ownership, whale, roles: mkRoles(community), sources });
   if (!r.ok) throw new Error('audit refused');
   return r.output;
 };
@@ -62,7 +66,15 @@ describe('comparison-export — the shareable, provenance-bearing migration-delt
     const a = comparisonArtifact(output);
     expect(a.run_id).toBe(output.run_id);
     expect(a.inputs_hash).toBe(output.inputs_hash);
-    expect(a.methodology).toEqual({ rule_id: 'nft-balance:1', role_snapshot_at: '2026-06-22T11:00:00.000Z', evidence_block: 18_000_000, sources: ['sonar', 'role-snapshot'] });
+    expect(a.methodology).toEqual({
+      rule_id: 'nft-balance:1',
+      role_snapshot_at: '2026-06-22T11:00:00.000Z',
+      evidence_block: 18_000_000,
+      sources: ['sonar', 'role-snapshot'],
+      // S5-T3: the artifact also carries the union semantics + the exact deployments it was computed over.
+      union_semantics: 'any-source',
+      collection_sources: [{ chain: '1', contract: CONTRACT, snapshot_block: 18_000_000 }],
+    });
     expect(a.delta).toEqual(output.comparison!.aggregate);
     expect(a.delta.demotions).toBe(3);
     expect(a.delta.promotions).toBe(2);
@@ -91,7 +103,7 @@ describe('comparison-export — the shareable, provenance-bearing migration-delt
   });
 
   it('FAIL-CLOSED: exporting an ANON audit (no comparison) throws — no fabricated per-member delta', async () => {
-    const r = await runAudit(mkReq('thj', false), { ownership, whale, roles: mkRoles('thj') });
+    const r = await runAudit(mkReq('thj', false), { ownership, whale, roles: mkRoles('thj'), sources });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.output.comparison).toBeUndefined();

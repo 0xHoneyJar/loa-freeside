@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { SourceResolver } from '../collection-union.js';
 import { type Order } from '@freeside/shadow-audit-protocol';
 import {
   runAudit,
@@ -12,7 +13,7 @@ import { makeOwnershipProjection, makeProjectionOwnershipSource, ProjectionIncom
 
 const W = (n: string) => '0x' + n.repeat(40);
 const R1 = W('1'), R2 = W('2'), R3 = W('3'), X = W('4'), Y = W('5');
-const CHAIN = 'ethereum';
+const CHAIN = '1';
 const CONTRACT = W('a');
 const NOW = Math.floor(Date.UTC(2026, 5, 22, 12, 0, 0) / 1000);
 
@@ -100,6 +101,9 @@ const snapshot = (): RoleSnapshot => ({
   owner: W('9'), freshness_threshold_seconds: 86_400,
   entries: [{ discord_user_id: 'u1', wallet: R1, role_ids: ['h'] }, { discord_user_id: 'u2', wallet: R2, role_ids: ['h'] }, { discord_user_id: 'u3', wallet: R3, role_ids: ['h'] }],
 });
+// S5-T3: this suite audits a collection with ONE declared deployment (a union of one) — its intent is
+// unchanged. The multi-source cases live in audit-service.test.ts / access-risk.test.ts.
+const sources: SourceResolver = () => [{ chain: "1", contract: CONTRACT }];
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const roles: RoleSource = { load: async () => snapshot() };
 const req: AuditRequest = { order, snapshotDate: '2026-06-22', isOperatedCommunity: true, nowUnixSeconds: NOW, includeRecords: false, cta: { product: '/shadow-access', conversation: '/talk' } };
@@ -114,7 +118,7 @@ const rawSonarFixture: OwnershipSource = {
 
 describe('the audit READS THE SPINE — BEARS-LOAD (rung arrakis-audit-reads-member-graph)', () => {
   it('runAudit consumes the projection and computes the right cohorts from the spine', async () => {
-    const r = await runAudit(req, { ownership: makeProjectionOwnershipSource(fed()), whale, roles });
+    const r = await runAudit(req, { ownership: makeProjectionOwnershipSource(fed()), whale, roles, sources });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.output.aggregate.holder_turnover).toBe(0.5);
@@ -123,8 +127,8 @@ describe('the audit READS THE SPINE — BEARS-LOAD (rung arrakis-audit-reads-mem
   });
 
   it('reproduces the FIXTURE picture (NOT real-sonar parity — the differential test is the open proof, FAGAN HIGH-4)', async () => {
-    const fromSpine = await runAudit(req, { ownership: makeProjectionOwnershipSource(fed()), whale, roles });
-    const fromFixture = await runAudit(req, { ownership: rawSonarFixture, whale, roles });
+    const fromSpine = await runAudit(req, { ownership: makeProjectionOwnershipSource(fed()), whale, roles, sources });
+    const fromFixture = await runAudit(req, { ownership: rawSonarFixture, whale, roles, sources });
     expect(fromSpine).toEqual(fromFixture);
   });
 });

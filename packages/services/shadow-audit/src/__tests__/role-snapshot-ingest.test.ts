@@ -30,7 +30,7 @@ const CONTRACT = '0x' + 'a'.repeat(40);
 // The SECOND gated collection of the SAME community — thj gates Honeycomb + HoneyJar1-6, each behind its
 // own Discord role. This is the whole reason the store is keyed by collection (S5-T1).
 const CONTRACT_B = '0x' + 'b'.repeat(40);
-const CHAIN = 'ethereum';
+const CHAIN = '1'; // numeric chain id — the ratified collection identity (S5-T3)
 const COLL_A = { chain: CHAIN, contract: CONTRACT };
 const COLL_B = { chain: CHAIN, contract: CONTRACT_B };
 const KEY_A = collectionKey(COLL_A);
@@ -78,6 +78,8 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   return {
     ownership,
     collectionRegistry: registry,
+    sources: ({ chain, contract }) =>
+      registry({ chain, contract }) ? [{ chain, contract }] : undefined,
     whale,
     roles: { load: async () => undefined },
     eventStore: new InMemoryEventStore(),
@@ -261,7 +263,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
 
     // Before ingestion the audit has no role snapshot → it must NOT succeed with a real aggregate.
-    const url = `/v1/audit?chain=ethereum&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
+    const url = `/v1/audit?chain=${CHAIN}&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
     const before = await app.request(url);
     expect(before.status).not.toBe(200); // refusal: no snapshot yet
 

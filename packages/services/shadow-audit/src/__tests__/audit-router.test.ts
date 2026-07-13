@@ -4,6 +4,7 @@ import { InMemoryEventStore } from '../event-store.js';
 import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
+import type { SourceResolver } from '../collection-union.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
 
 const R1 = '0x' + '1'.repeat(40);
@@ -19,7 +20,7 @@ function snapshot(): RoleSnapshot {
   return {
     source: 'discord:guild:1',
     community: 'thj',
-    collection: { chain: 'ethereum', contract: CONTRACT }, // the gated collection these roles are for
+    collection: { chain: '1', contract: CONTRACT }, // the gated collection these roles are for
     captured_at: '2026-06-22T11:00:00.000Z',
     export_method: 'export',
     owner: OWNER,
@@ -39,11 +40,15 @@ const ownership: OwnershipSource = {
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const roles: RoleSource = { load: async () => snapshot() };
 
+/** The fixture collection has ONE declared deployment (chain 1) — see audit-service.test.ts for the union. */
+const sources: SourceResolver = () => [{ chain: '1', contract: CONTRACT }];
+
 function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   return {
     ownership,
     whale,
     roles,
+    sources,
     eventStore: new InMemoryEventStore(),
     rateLimiter: new FixedWindowRateLimiter({ limit: 100, windowMs: 60_000, now: () => NOW_MS }),
     auth: {
@@ -64,11 +69,11 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   };
 }
 
-const GET_URL = `/v1/audit?chain=ethereum&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
+const GET_URL = `/v1/audit?chain=1&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
 
 function namedBody() {
   return {
-    chain: 'ethereum',
+    chain: '1',
     contract: CONTRACT,
     snapshot_date: '2026-06-22',
     community: 'thj',
