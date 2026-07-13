@@ -1,0 +1,95 @@
+{
+  "$comment": [
+    "THE GATE MAP — which incumbent Discord role gates which collection, for community `thj`.",
+    "",
+    "S5-T5 / AC-8: NO ROLE→COLLECTION EDGE MAY BE INFERRED SILENTLY. This file is the reviewable,",
+    "operator-ratifiable source of truth. Every edge carries its PROVENANCE, and an edge that is not",
+    "`operator-confirmed` MUST NOT be used to serve a customer-facing audit — a wrong edge means the",
+    "audit computes drift for role X against collection Y, which is a confidently-wrong audit of exactly",
+    "the class this cycle exists to prevent (and it would be invisible: the numbers would look plausible).",
+    "",
+    "This is NOT our gate config — it is the INCUMBENT's (CollabLand). We hold no copy of their rules;",
+    "CollabLand does not export them to us. Until it is ratified, `inferred` is a HYPOTHESIS.",
+    "",
+    "Chain-agnostic by design (operator, 2026-07-12): 'Our collections lived on two chains because they",
+    "bridged. A holder on either chain should be able to get the role. We are pushing for chain",
+    "agnosticism.' The collection's SOURCES live in COLLECTION_REGISTRY; ownership is their UNION (S5-T3).",
+    "Do not add per-chain rules here — a role gates a COLLECTION, not a deployment."
+  ],
+
+  "community": "thj",
+  "guild_id": "1135545260538339420",
+
+  "provenance_levels": {
+    "operator-confirmed": "The operator explicitly confirmed this edge. Safe to serve.",
+    "inferred": "Derived by the agent from the role NAME plus corroborating member/holder counts. A HYPOTHESIS. MUST be operator-ratified before it serves a customer-facing audit."
+  },
+
+  "gates": [
+    {
+      "role_id": "1261212834235158570",
+      "role_name": "HC",
+      "collection": "Honeycomb",
+      "provenance": "operator-confirmed",
+      "confirmed_on": "2026-07-12",
+      "evidence": "Operator: 'yes, HC is the Honeycomb token gating.' Corroborated live: 515 role members; Honeycomb held by 2,280 wallets on ethereum + 1,813 on berachain."
+    },
+    {
+      "role_id": "1261213962398335047",
+      "role_name": "HJG1",
+      "collection": "HoneyJar1",
+      "provenance": "inferred",
+      "evidence": "Name pattern HJG<N> → HoneyJar<N>. Corroborated: 244 role members vs 782 (eth) + 213 (bera) holders."
+    },
+    {
+      "role_id": "1261214092937396234",
+      "role_name": "HJG2",
+      "collection": "HoneyJar2",
+      "provenance": "inferred",
+      "evidence": "Name pattern. Corroborated: 174 role members vs 9 (eth) + 544 (arb) + 189 (bera) holders."
+    },
+    {
+      "role_id": "1270086744628396135",
+      "role_name": "HJG3",
+      "collection": "HoneyJar3",
+      "provenance": "inferred",
+      "evidence": "Name pattern. Corroborated: 244 role members vs 157 (bera) + <5 (eth). NOTE: this is the ONE collection showing provable STALE access (stale_floor ≥83) — a wrong edge here would be the most costly."
+    },
+    {
+      "role_id": "1288124048534142997",
+      "role_name": "HJG4",
+      "collection": "HoneyJar4",
+      "provenance": "inferred",
+      "evidence": "Name pattern. Corroborated: 190 role members vs 499 (op) + 152 (bera) + <5 (eth) holders."
+    },
+    {
+      "role_id": "1313910424940576838",
+      "role_name": "HJG5",
+      "collection": "HoneyJar5",
+      "provenance": "inferred",
+      "evidence": "Name pattern. Corroborated: 182 role members vs 467 (base) + 193 (bera) holders."
+    },
+    {
+      "role_id": "1330583520845758534",
+      "role_name": "HJG6",
+      "collection": "HoneyJar6",
+      "provenance": "inferred",
+      "evidence": "Name pattern. Corroborated: 41 role members vs 124 (eth) + 98 (bera) holders."
+    }
+  ],
+
+  "not_gates": [
+    {
+      "role_id": "1135562076073492570",
+      "role_name": "Honeyfied",
+      "members": 34499,
+      "why_excluded": "34,499 members — a verified/self-assign role, not a token gate. Exporting it would report the entire server against a collection."
+    },
+    {
+      "role_id": "1385992266828484741",
+      "role_name": "Mibera",
+      "members": 264,
+      "why_excluded": "Mibera is not in COLLECTION_REGISTRY — the audit has no on-chain source to compare it against. Add the contract first."
+    }
+  ]
+}

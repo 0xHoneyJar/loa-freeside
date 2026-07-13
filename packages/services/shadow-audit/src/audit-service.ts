@@ -22,11 +22,13 @@ import {
   type Refusal,
   diffShadow,
   type DiscrepancyReport,
+  type DriftReport,
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
 import { collectionKey, resolveRoles, type RoleSnapshot } from './role-snapshot.js';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
+import { computeDrift, countQualifying, roleMemberCount } from './drift-floors.js';
 import {
   maxBalanceAcross,
   qualifiesAnySource,
@@ -102,6 +104,16 @@ export type AuditServiceResult =
       /** WHY it is uncertain (stale export? unseeable members?) — so the reader is told which. */
       uncertainReasons: UncertaintyReason[];
       unmatchedRoleHolders: number;
+      /**
+       * The DRIFT REPORT (S5-T4) — always computed, because it needs ZERO identity data and is therefore the
+       * only honest answer we have for a community with no wallet map (thj: ~0% coverage).
+       *
+       * Returned OUT OF BAND as well as on `output.drift`, because `output.drift` is emitted only with the
+       * AUTHED delta: freeside-dashboard strict-decodes the anon GET with `onExcessProperty: error` at any
+       * depth, so an anon-visible field would make it reject every 200. The anon HTML view renders from
+       * THIS field instead — same report, no strict decoder to break.
+       */
+      drift: DriftReport;
     }
   | { ok: false; refusal: Refusal };
 
@@ -246,6 +258,26 @@ export async function runAudit(
     coverage_uncertain: mode.uncertainReasons.includes('low-role-coverage'),
   };
 
+  // 5b. THE DRIFT REPORT (S5-T4) — the answer that needs NO wallet map.
+  //
+  // Every cohort above is computed over the role-holders we could RESOLVE to a wallet. For thj that set is
+  // ~0% of the role. This report is computed over COUNTS — role members vs on-chain holders — so it needs no
+  // identity data at all, and the assumption-free side-by-side it leads with IS the drift the community needs
+  // to see. Holder counts are per-source and CURRENT (drift against today's chain state — the same basis
+  // `staleAccess` uses).
+  //
+  // Every count in it is k-anonymized, and when the role set is sub-k the FLOORS are suppressed (null) while
+  // the audit still serves. Suppressing a field is not the same as refusing an answer: refusal is for a
+  // MEANINGLESS answer (`role-coverage-too-low`), suppression is for an unsafe-to-publish derived field.
+  const drift = computeDrift({
+    roleMembers: roleMemberCount(snapshot),
+    perSource: perSource.map((p) => ({
+      chain: p.source.chain,
+      holders: countQualifying(policy, p.current),
+    })),
+    k,
+  });
+
   // 6. Determinism fingerprint → run_id (IMP-001/007). It covers the FULL source set + each source's
   //    snapshot block (S5-T3): a union of eth+bera and a bera-only run are DIFFERENT computations and must
   //    not collide on one run_id. ⚠ This CHANGES every inputs_hash/run_id, including single-source ones —
@@ -321,12 +353,18 @@ export async function runAudit(
     })),
   };
 
+  // `drift` travels with the AUTHED delta, NOT the anon aggregate — the same constraint that keeps
+  // `methodology` out of it: freeside-dashboard strict-decodes GET /v1/audit with `onExcessProperty: error`
+  // AT ANY DEPTH, so ANY new anon-visible field (top-level or inside `aggregate`) makes it reject every 200
+  // and render empty. That exact break already happened once (see audit-router.ts's GET handler). The anon
+  // HUMAN surface renders the report from the out-of-band `drift` below, where nothing strict-decodes it.
+  // Surfacing it in the anon JSON is a coordinated change with the dashboard, not a unilateral one.
   const output = AuditOutputSchema.parse({
     run_id,
     mode: 'dogfood-full',
     inputs_hash,
     aggregate,
-    ...(records ? { records, methodology } : {}),
+    ...(records ? { records, methodology, drift } : {}),
     ...(comparison ? { comparison } : {}),
     cta: req.cta,
   });
@@ -337,5 +375,6 @@ export async function runAudit(
     uncertain: mode.uncertain,
     uncertainReasons: mode.uncertainReasons,
     unmatchedRoleHolders: unmatched.length,
+    drift,
   };
 }

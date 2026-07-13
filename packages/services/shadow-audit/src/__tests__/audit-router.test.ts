@@ -211,6 +211,31 @@ describe('GET /v1/audit/view (thin dashboard HTML)', () => {
     expect(html).toContain('/shadow-access'); // product CTA
     expect(html).toContain('/talk'); // conversation CTA
   });
+
+  it('LEADS with the assumption-free side-by-side, and labels each floor with its violation direction (S5-T4)', async () => {
+    const res = await createAuditRouter(makeDeps()).request(`/v1/audit/view${GET_URL.slice(GET_URL.indexOf('?'))}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // THE HEADLINE — two measured facts, no derivation. This is the DoD's "sees its real drift, NEXT TO its
+    // incumbent roles", and it is the ONLY part of this page that is true at 0% identity coverage.
+    expect(html).toContain('Your role, next to the chain');
+    expect(html).toContain('members</strong> hold the role');
+    expect(html).toContain('Both numbers are measured. No identity data, no assumptions.');
+    // The side-by-side must come BEFORE the wallet-matched cohorts — the floors are never the headline.
+    expect(html.indexOf('Your role, next to the chain')).toBeLessThan(
+      html.indexOf('Members we could match to a wallet'),
+    );
+
+    // …and every floor carries its assumption + the direction it errs when that assumption breaks, and says
+    // it bounds WALLETS. A floor rendered as a bare number about PEOPLE is the failure mode.
+    expect(html).toContain('wallets</strong>');
+    expect(html).toContain('Holds only if no two role members hold the role through the same wallet');
+    expect(html).toContain('Holds only if each role member holds the collection through at most one wallet');
+    expect(html).toContain('<strong>overstates</strong>');
+    // whitespace-insensitive: the CLAIM is load-bearing, the template's line-wrapping is not.
+    expect(html.replace(/\s+/g, ' ')).toContain('It bounds WALLETS, not people: one person with ten wallets is ten holders.');
+  });
 });
 
 describe('GET /v1/collections/:chain/:contract — capability read (FR-2)', () => {
