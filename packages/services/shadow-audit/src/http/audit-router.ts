@@ -469,7 +469,14 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (!built.ok) return c.html('<p>invalid order params</p>', 400);
     const result = await audit(deps, built.order, q.data.snapshot_date, false);
     if (!result.ok) {
-      return c.html(renderRefusalHtml(result.refusal), refusalStatus(result.refusal));
+      // A COVERAGE refusal still carries the drift board (the counts-only report needs no wallet map).
+      // Rendering the refusal alone would deny the report to the exact community it was built for: thj is
+      // at ~0% wallet coverage, and the side-by-side is the ONLY honest thing we can show it. So the page
+      // says both — "we cannot see your members" AND "here is your drift anyway".
+      return c.html(
+        renderRefusalHtml(result.refusal, result.drift),
+        refusalStatus(result.refusal),
+      );
     }
     await recordRun(deps, result.output);
     // The drift report comes from the SERVICE RESULT, not `result.output` — it is emitted on the wire only
@@ -558,10 +565,21 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   return app;
 }
 
-function renderRefusalHtml(refusal: Refusal): string {
+/**
+ * A refusal page — which, for a COVERAGE refusal, still shows the drift.
+ *
+ * The wallet-derived cohorts are refused (at 1 resolvable wallet in 515 they would be computed over a
+ * matched set the unmatched set dwarfs). But the drift board is COUNTS-ONLY — role members vs on-chain
+ * holders, zero identity data — and it is exactly what S5 built so a community with no wallet map could
+ * still see its drift. Showing only the refusal would deny the report to the community it exists for.
+ *
+ * So the page is honest on both counts: here is what we cannot see, and here is your drift anyway.
+ */
+function renderRefusalHtml(refusal: Refusal, drift?: DriftReport): string {
   return `<!doctype html><html><body>
-  <h1>We can't run this audit</h1>
+  <h1>We can't run the full audit</h1>
   <p>${escapeHtml(refusal.reason)}</p>
+  ${drift ? `<hr><h2>But here is your drift — measured, with no identity data at all</h2>${renderDriftHtml(drift)}` : ''}
   </body></html>`;
 }
 
