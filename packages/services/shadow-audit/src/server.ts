@@ -129,6 +129,10 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
     const store = makeDurableRoleStore({
       dir: config.roleSnapshotDir ?? './data/role-snapshots',
       community,
+      // The SAME resolver the audit reads by — so a snapshot is FILED under the canonical collection key,
+      // not under the deployment the exporter happened to name. Without this the ingest returns
+      // {stored:true} and no audit can ever find the snapshot.
+      sources: collections?.sources ?? (() => undefined),
     });
     roles = store;
     ingest = { token: config.ingestToken, sink: store };

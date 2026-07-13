@@ -17,6 +17,7 @@ import { InMemoryEventStore } from '../event-store.js';
 import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import { makeInMemoryRoleStore, makeDurableRoleStore, type RoleSink } from '../role-store.js';
+import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
 import { collectionKey, type RoleSnapshot } from '../role-snapshot.js';
 import type { CollectionRegistry } from '../ownership-source.js';
@@ -44,6 +45,12 @@ const registry: CollectionRegistry = ({ chain, contract }) =>
   [KEY_A, KEY_B].includes(`${chain}/${contract}`.toLowerCase())
     ? { collection: 'c', standard: 'erc721' }
     : undefined;
+
+/** Each gated collection stands alone here (one deployment each) — enough to exercise the key. */
+const testSources: SourceResolver = ({ chain, contract }) => {
+  const k = `${chain}/${contract}`.toLowerCase();
+  return [KEY_A, KEY_B].includes(k) ? [{ chain, contract }] : undefined;
+};
 
 function snapshot(over: Partial<RoleSnapshot> = {}): RoleSnapshot {
   return {
@@ -112,7 +119,7 @@ async function postSnapshot(
 
 describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   it('accepts a valid snapshot with correct token + sha256, returns a minimal receipt', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify(snapshot());
     const res = await postSnapshot(app, raw, {
@@ -128,7 +135,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects a MISSING service token with 401', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify(snapshot());
     const res = await postSnapshot(app, raw, { 'x-snapshot-sha256': sha256hex(raw) });
@@ -137,7 +144,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects a WRONG service token with 401', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify(snapshot());
     const res = await postSnapshot(app, raw, {
@@ -148,7 +155,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects a sha256 MISMATCH with 422 (tampered/truncated body)', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify(snapshot());
     const res = await postSnapshot(app, raw, {
@@ -160,7 +167,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects a MISSING sha256 header with 422', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify(snapshot());
     const res = await postSnapshot(app, raw, { 'x-ingest-token': TOKEN });
@@ -168,7 +175,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects an INVALID snapshot shape with 422 (never persists a wrong shape)', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify({ community: 'thj', entries: [] }); // missing required fields
     const res = await postSnapshot(app, raw, {
@@ -180,7 +187,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects INVALID json with 400', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));
     const raw = '{not json';
     const res = await postSnapshot(app, raw, {
@@ -191,7 +198,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('MONOTONICITY: a replayed/older snapshot never rolls the held one backwards', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
     const post = (snap: RoleSnapshot) => {
       const raw = JSON.stringify(snap);
@@ -219,7 +226,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('refuses a community this deploy does not operate (403) — the community is a storage key', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(
       makeDeps({
         roles: store,
@@ -237,7 +244,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('rejects an oversized body (413) — a valid token is not a licence to exhaust memory', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
     const raw = JSON.stringify(snapshot());
     const res = await postSnapshot(app, raw, {
@@ -259,7 +266,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('feeds the audit: an ingested snapshot drives the /v1/audit aggregate (the seam end-to-end)', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
 
     // Before ingestion the audit has no role snapshot → it must NOT succeed with a real aggregate.
@@ -283,7 +290,7 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
   });
 
   it('refuses a collection this deploy does not audit (422) — the collection is a storage key too', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
     const unknown = { chain: CHAIN, contract: '0x' + 'c'.repeat(40) };
     const raw = JSON.stringify(snapshot({ collection: unknown }));
@@ -313,7 +320,7 @@ describe('multi-collection role store (S5-T1)', () => {
   };
 
   it('two collections of ONE community coexist — ingesting B does not overwrite A', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
 
     const a = snapshot({ collection: COLL_A, entries: [{ discord_user_id: 'u1', wallet: R1, role_ids: ['honeycomb'] }] });
@@ -327,7 +334,7 @@ describe('multi-collection role store (S5-T1)', () => {
   });
 
   it('MONOTONICITY is per-collection: a replay of A cannot roll back B, and B cannot block A', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
 
     const b2 = snapshot({ collection: COLL_B, captured_at: '2026-06-22T11:45:00.000Z' });
@@ -348,7 +355,7 @@ describe('multi-collection role store (S5-T1)', () => {
   });
 
   it('the audit reads ITS collection: A ingested, B audited → refusal, never A’s role-holders', async () => {
-    const store = makeInMemoryRoleStore('thj');
+    const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
     expect((await postTo(app, snapshot({ collection: COLL_A }))).status).toBe(200);
 
@@ -364,18 +371,18 @@ describe('multi-collection role store (S5-T1)', () => {
 describe('durable role store (S1-T4 — survives restart)', () => {
   it('a snapshot ingested into one store is recovered by a fresh store on the same dir', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'role-store-'));
-    const first = makeDurableRoleStore({ dir, community: 'thj' });
+    const first = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
     await first.store(snapshot());
     expect(await first.load(KEY_A)).toMatchObject({ community: 'thj' });
 
     // Simulate a replica restart: a NEW store over the same dir must recover the last snapshot.
-    const rebooted = makeDurableRoleStore({ dir, community: 'thj' });
+    const rebooted = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
     expect(await rebooted.load(KEY_A)).toMatchObject({ community: 'thj', entries: expect.any(Array) });
   });
 
   it('holds LATEST per (community, collection) — a second ingest of the SAME collection overwrites', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'role-store-'));
-    const store = makeDurableRoleStore({ dir, community: 'thj' });
+    const store = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
     await store.store(snapshot({ captured_at: '2026-06-22T11:00:00.000Z' }));
     await store.store(snapshot({ captured_at: '2026-06-22T11:30:00.000Z' }));
     const loaded = await store.load(KEY_A);
@@ -384,20 +391,69 @@ describe('durable role store (S1-T4 — survives restart)', () => {
 
   it('S5-T1: sibling collections get their OWN files and both survive a restart', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'role-store-'));
-    const store = makeDurableRoleStore({ dir, community: 'thj' });
+    const store = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
     await store.store(snapshot({ collection: COLL_A, entries: [{ discord_user_id: 'u1', wallet: R1, role_ids: ['honeycomb'] }] }));
     await store.store(snapshot({ collection: COLL_B, entries: [{ discord_user_id: 'u2', wallet: R2, role_ids: ['hj1'] }] }));
 
     // The filename is a hash of the (community, collection) key — one file per collection, no collision.
-    const rebooted = makeDurableRoleStore({ dir, community: 'thj' });
+    const rebooted = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
     expect((await rebooted.load(KEY_A))?.entries[0]?.wallet).toBe(R1);
     expect((await rebooted.load(KEY_B))?.entries[0]?.wallet).toBe(R2);
   });
 
   it('load() serves only the CONFIGURED community', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'role-store-'));
-    const store: RoleSink & RoleSource = makeDurableRoleStore({ dir, community: 'thj' });
+    const store: RoleSink & RoleSource = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
     await store.store(snapshot({ community: 'other-dao' }));
     expect(await store.load(KEY_A)).toBeUndefined(); // stored 'other-dao', but this deploy audits 'thj'
+  });
+});
+
+/**
+ * THE STORE ROUND-TRIP — the coverage hole that let a live bug through (2026-07-13).
+ *
+ * Sprint-5's review fixed the canonical-collection key on the READ path, and every unit test still passed
+ * — because they all stub `RoleSource.load` directly and NEVER exercise the store. The WRITE path was
+ * still filing snapshots under the DEPLOYMENT key. The first live probe after deploy did this:
+ *
+ *     POST /v1/role-snapshot  -> 200 {"stored":true}      (filed under "80094/0x886d…")
+ *     GET  /v1/audit          -> 422 "no role snapshot"   (looked up "1/0xcb04…,80094/0x886d…")
+ *
+ * Stored successfully and invisible forever. Fakes pass; live finds it. This test closes the seam by
+ * going through the REAL store, both ways.
+ */
+describe('store round-trip: any deployment of a collection addresses it', () => {
+  const ETH = '0x' + 'e'.repeat(40);
+  const BERA = '0x' + 'b'.repeat(40);
+  /** ONE collection, TWO deployments — a bridged collection, which is the whole point of S5-T3. */
+  const bridged: SourceResolver = ({ chain, contract }) => {
+    const k = `${chain}/${contract}`.toLowerCase();
+    return [`1/${ETH}`, `80094/${BERA}`].includes(k)
+      ? [
+          { chain: '1', contract: ETH },
+          { chain: '80094', contract: BERA },
+        ]
+      : undefined;
+  };
+
+  it('a snapshot POSTed naming deployment A is found when the audit addresses deployment B', async () => {
+    const store = makeInMemoryRoleStore('thj', bridged);
+    // The exporter names the BERACHAIN deployment — as it naturally would.
+    await store.store(snapshot({ collection: { chain: '80094', contract: BERA } }));
+
+    // The audit is addressed via ETHEREUM. It looks the snapshot up by the CANONICAL key of the source
+    // set — which both deployments resolve to. Before the fix this returned undefined and the audit
+    // refused a community whose data was sitting right there.
+    const canonical = canonicalCollectionKey(bridged({ chain: '1', contract: ETH })!);
+    expect(await store.load(canonical)).toBeDefined();
+
+    // ...and addressing it via berachain resolves to the very same key.
+    expect(canonicalCollectionKey(bridged({ chain: '80094', contract: BERA })!)).toBe(canonical);
+  });
+
+  it('REFUSES to file a snapshot for an undeclared deployment (never under a key no audit can read)', async () => {
+    const store = makeInMemoryRoleStore('thj', bridged);
+    const rogue = snapshot({ collection: { chain: '1', contract: '0x' + 'f'.repeat(40) } });
+    await expect(store.store(rogue)).rejects.toThrow(/not a declared collection source/);
   });
 });
