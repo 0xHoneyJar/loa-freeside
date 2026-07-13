@@ -9,7 +9,14 @@ const rec = (o: { band: AccessDecisionRecord['band']; holds_role: boolean; quali
   qualifies: o.qualifies,
   band: o.band,
   evidence: { balance_at_snapshot: 1 },
-  provenance: { rule_id: 'tier-1', snapshot_block: 887577, computed_at: '2026-06-28T00:00:00.000Z', sources: ['sonar'] },
+  provenance: {
+    rule_id: 'tier-1',
+    snapshot_block: 887577,
+    // The deployment the balance was READ FROM — under the union it is not necessarily the addressed one.
+    evidence_source: { chain: '1', contract: `0x${'a'.repeat(40)}` },
+    computed_at: '2026-06-28T00:00:00.000Z',
+    sources: ['sonar'],
+  },
 });
 const addr = (n: string) => `0x${n.repeat(40)}`;
 

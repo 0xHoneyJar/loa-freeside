@@ -82,6 +82,27 @@ export function qualifiesAnySource(
   return balances.some((b) => policy.qualifies(b.get(wallet) ?? 0n));
 }
 
+/**
+ * The CANONICAL identity of a collection — derived from its FULL source set, so EVERY deployment of a
+ * collection resolves to the SAME key (review BLOCKING-1).
+ *
+ * `<chain>/<contract>` is a DEPLOYMENT key, not a COLLECTION key. S5-T1 keyed role snapshots on it;
+ * S5-T3 then made a collection a SET of deployments. The two contradicted: a snapshot POSTed naming the
+ * BERACHAIN Honeycomb contract could not be loaded by an audit addressed via the ETHEREUM Honeycomb
+ * contract, because the keys differed. It would have presented as "the snapshot mysteriously isn't
+ * there" — the audit refusing a community whose data sat right there under a sibling key.
+ *
+ * Deriving the key from the sorted source SET makes it addressing-independent BY CONSTRUCTION: any
+ * deployment resolves (through the registry) to the same set, hence the same string. No registry name
+ * is introduced, so there is nothing new to keep in sync.
+ */
+export function canonicalCollectionKey(sources: readonly CollectionSource[]): string {
+  return sources
+    .map((s) => `${s.chain}/${s.contract}`.toLowerCase())
+    .sort()
+    .join(',');
+}
+
 /** Every wallet seen on ANY deployment, deduplicated — the union's address space. */
 export function walletsAcross(balances: readonly Balances[]): string[] {
   const all = new Set<string>();

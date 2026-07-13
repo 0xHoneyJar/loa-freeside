@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { ChainSchema } from './common.js';
 import {
   BandSchema,
   BlockNumberSchema,
@@ -31,7 +32,24 @@ export type Evidence = z.infer<typeof EvidenceSchema>;
 export const ProvenanceSchema = z
   .object({
     rule_id: z.string().min(1),
+    /** The block of {@link evidence_source} — NOT of the deployment the caller addressed. */
     snapshot_block: BlockNumberSchema,
+    /**
+     * The deployment `evidence.balance_at_snapshot` was actually READ FROM (S5 review BLOCKING-2).
+     *
+     * Under the multi-source union a wallet's balance comes from whichever declared deployment it holds
+     * the MOST on — which is NOT necessarily the one the caller addressed. Citing the addressed block
+     * made the evidence UNVERIFIABLE: a buyer re-deriving it would query the wrong chain at the wrong
+     * block and find a number that does not match. This service settles by RECOMPUTE — never trust the
+     * stored number — so the evidence must name the source and block it can be recomputed against.
+     * Together, `evidence_source` + `snapshot_block` re-derive `balance_at_snapshot` exactly.
+     */
+    evidence_source: z
+      .object({
+        chain: ChainSchema,
+        contract: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'contract must be a 0x-prefixed address'),
+      })
+      .strict(),
     /** ISO-8601 UTC instant the record was computed. */
     computed_at: z.string().datetime(),
     sources: z.array(SourceSchema).min(1),

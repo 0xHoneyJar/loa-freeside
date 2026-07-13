@@ -30,6 +30,7 @@ import { collectionKey, resolveRoles, type RoleSnapshot } from './role-snapshot.
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
 import { computeDrift, countQualifying, roleMemberCount } from './drift-floors.js';
 import {
+  canonicalCollectionKey,
   maxBalanceAcross,
   qualifiesAnySource,
   reconstructUnion,
@@ -134,38 +135,12 @@ export async function runAudit(
 ): Promise<AuditServiceResult> {
   const k = deps.k ?? DEFAULT_K;
 
-  // 1. Mode — dogfood-full or refuse (external / no snapshot).
-  // The role snapshot is fetched for THIS audit's collection (S5-T1). A community gates several
-  // collections; the Honeycomb audit must read the Honeycomb gate's role-holders, never a sibling's.
-  const collectionId = collectionKey({
-    chain: req.order.source.chain,
-    contract: req.order.source.contract_address,
-  });
-  const loaded = await deps.roles.load(collectionId);
-  // Belt and braces: a source that ignores the key (and hands back some OTHER collection's snapshot)
-  // must not produce an audit. Treat it as "no snapshot for this collection" → the existing refusal
-  // path. A refusal is recoverable; a wrong stale-access set presented as fact is not.
-  const roleSnapshot =
-    loaded && collectionKey(loaded.collection) === collectionId ? loaded : undefined;
-  const mode = resolveMode({
-    isOperatedCommunity: req.isOperatedCommunity,
-    roleSnapshot,
-    nowUnixSeconds: req.nowUnixSeconds,
-    // The SAME k the aggregate k-anonymizes with — so the refusal cannot disclose a cohort the
-    // success path suppresses (HIGH-1).
-    k,
-  });
-  if (!mode.ok) return { ok: false, refusal: mode.refusal };
-  // mode.ok guarantees roleSnapshot is present.
-  const snapshot = roleSnapshot as RoleSnapshot;
-  const { roleWallets, unmatched } = resolveRoles(snapshot);
-
-  const threshold = BigInt(req.order.gating_rule.threshold);
-
-  // 2. THE UNION (S5-T3). The order names ONE deployment; it merely ADDRESSES the collection. Reconstruct
-  //    EVERY declared deployment — Honeycomb lives on ethereum AND berachain, and auditing one of them
-  //    brands the other chain's holders as stale. An undeclared contract is REFUSED, never audited as if it
-  //    stood alone (that assumption IS the bug).
+  // 1. Resolve the COLLECTION first (review BLOCKING-1). The order names ONE deployment; it merely
+  //    ADDRESSES the collection. The role snapshot must be keyed on the COLLECTION, not on the addressed
+  //    deployment — otherwise a snapshot POSTed naming the berachain contract cannot be found by an audit
+  //    addressed via the ethereum contract, and the audit refuses a community whose data is sitting right
+  //    there under a sibling key. An undeclared contract is REFUSED, never audited as if it stood alone
+  //    (that assumption IS the single-source bug).
   const addressed = {
     chain: req.order.source.chain,
     contract: req.order.source.contract_address,
@@ -181,7 +156,37 @@ export async function runAudit(
       },
     };
   }
+  const collectionId = canonicalCollectionKey(sources);
 
+  // 2. Mode — dogfood-full or refuse (external / no snapshot). A community gates SEVERAL collections;
+  //    the Honeycomb audit must read the Honeycomb gate's role-holders, never a sibling's.
+  const loaded = await deps.roles.load(collectionId);
+  // Belt and braces: a source that ignores the key (and hands back some OTHER collection's snapshot)
+  // must not produce an audit. The loaded snapshot names a DEPLOYMENT, so canonicalize it through the
+  // SAME registry before comparing — comparing deployment keys is exactly the bug this fixes.
+  const loadedSources = loaded ? deps.sources(loaded.collection) : undefined;
+  const roleSnapshot =
+    loaded && loadedSources && canonicalCollectionKey(loadedSources) === collectionId
+      ? loaded
+      : undefined;
+  const mode = resolveMode({
+    isOperatedCommunity: req.isOperatedCommunity,
+    roleSnapshot,
+    nowUnixSeconds: req.nowUnixSeconds,
+    // The SAME k the aggregate k-anonymizes with — so the refusal cannot disclose a cohort the
+    // success path suppresses (HIGH-1).
+    k,
+  });
+  if (!mode.ok) return { ok: false, refusal: mode.refusal };
+  // mode.ok guarantees roleSnapshot is present.
+  const snapshot = roleSnapshot as RoleSnapshot;
+  const { roleWallets, unmatched } = resolveRoles(snapshot);
+
+  const threshold = BigInt(req.order.gating_rule.threshold);
+
+  // 3. THE UNION (S5-T3) — `sources` was resolved above. Reconstruct EVERY declared deployment:
+  //    Honeycomb lives on ethereum AND berachain, and auditing one of them brands the other chain's
+  //    holders as stale.
   // Ownership reconstruction (any failure → typed refusal, never silently wrong). FAIL-CLOSED across the
   // union: if ANY declared source is unreachable we refuse the whole audit. A partial union is worse than no
   // audit — a holder present only on the missing chain reads as not-qualifying, which OVERSTATES stale access
@@ -295,36 +300,54 @@ export async function runAudit(
   // 7. The methodology settle-context (always present) + per-member records (authed only). rule_id is hoisted
   //    so the rule a buyer audits the delta against is the SAME rule the records were decided under.
   const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
-  // The block of the deployment the ORDER addressed — the anchor for the per-member evidence. The union's
-  // OTHER blocks travel in `methodology.collection_sources`, so nothing is hidden: a reader can check a
-  // wallet's evidence against the chain it actually holds on.
-  const addressedRun =
-    perSource.find(
-      (p) =>
-        p.source.chain === addressed.chain &&
-        p.source.contract.toLowerCase() === addressed.contract.toLowerCase(),
-    ) ?? perSource[0]!;
-  const snapshotBlock = addressedRun.snapshot_block;
+  /**
+   * The deployment a wallet's evidence was actually READ FROM — the one it holds the MOST on, which is
+   * the one that decided its qualification under `any-source` (review BLOCKING-2).
+   *
+   * This used to be the block of the CALLER-ADDRESSED deployment, which made the evidence
+   * UNVERIFIABLE: the balance came from wherever the wallet held most, but the block cited a different
+   * chain. A buyer re-deriving it would query the wrong chain at the wrong block and find a number that
+   * does not match. This service's contract is settle-by-recompute — never trust the stored number — so
+   * the evidence MUST name the source and block it can be recomputed against.
+   */
+  const evidenceRunFor = (wallet: string) => {
+    let best = perSource[0]!;
+    let bestBal = -1n;
+    for (const p of perSource) {
+      const bal = p.snapshot.get(wallet) ?? 0n;
+      if (bal > bestBal) {
+        bestBal = bal;
+        best = p;
+      }
+    }
+    return best;
+  };
   let records: AccessDecisionRecord[] | undefined;
   if (req.includeRecords) {
     const computed_at = isoFromUnix(req.nowUnixSeconds);
-    const mk = (wallet: string, holds_role: boolean): AccessDecisionRecord => ({
-      wallet,
-      community: req.order.community.name,
-      holds_role,
-      qualifies: qualifies(curBals, wallet),
-      band: classifyBand(holds_role, qualifies(curBals, wallet)),
-      // The balance on the deployment where the wallet holds the MOST — the one that decided its
-      // qualification under `any-source`. NOT a cross-chain sum: evidence must be checkable against one
-      // chain at one block, and a summed number is a holding the wallet has nowhere.
-      evidence: { balance_at_snapshot: clampToSafe(maxBalanceAcross(snapBals, wallet)) },
-      provenance: {
-        rule_id,
-        snapshot_block: snapshotBlock,
-        computed_at,
-        sources: ['sonar', 'role-snapshot'],
-      },
-    });
+    const mk = (wallet: string, holds_role: boolean): AccessDecisionRecord => {
+      const run = evidenceRunFor(wallet);
+      return {
+        wallet,
+        community: req.order.community.name,
+        holds_role,
+        qualifies: qualifies(curBals, wallet),
+        band: classifyBand(holds_role, qualifies(curBals, wallet)),
+        // The balance on the deployment where the wallet holds the MOST — the one that decided its
+        // qualification under `any-source`. NOT a cross-chain sum: evidence must be checkable against one
+        // chain at one block, and a summed number is a holding the wallet has nowhere.
+        evidence: { balance_at_snapshot: clampToSafe(maxBalanceAcross(snapBals, wallet)) },
+        provenance: {
+          rule_id,
+          // The block OF THE SOURCE the balance was read from — so `evidence_source` + `snapshot_block`
+          // together re-derive `balance_at_snapshot` exactly.
+          snapshot_block: run.snapshot_block,
+          evidence_source: { chain: run.source.chain, contract: run.source.contract },
+          computed_at,
+          sources: ['sonar', 'role-snapshot'],
+        },
+      };
+    };
     records = [
       ...[...roleWallets].map((w) => mk(w, true)),
       ...newlyEligible.map((w) => mk(w, false)),
@@ -338,10 +361,20 @@ export async function runAudit(
   // The methodology travels with the AUTHED delta only — NOT in the anon aggregate response, which must stay
   // byte-stable for freeside-dashboard's strict GET decode (onExcessProperty: error). It states the delta's TRUE
   // basis: the incumbent's roles @ snapshot.captured_at × CURRENT on-chain qualification (NOT evidence_block).
+  // The ADDRESSED deployment's block — the anchor for the historical `sold_lapsed` metric, which is
+  // computed over the addressed source. It is NOT the per-member evidence anchor: each record now names
+  // its own `evidence_source` + block (review BLOCKING-2), because a wallet's balance comes from
+  // whichever deployment it holds most on.
+  const addressedRun =
+    perSource.find(
+      (p) =>
+        p.source.chain === addressed.chain &&
+        p.source.contract.toLowerCase() === addressed.contract.toLowerCase(),
+    ) ?? perSource[0]!;
   const methodology = {
     rule_id,
     role_snapshot_at: snapshot.captured_at,
-    evidence_block: snapshotBlock,
+    evidence_block: addressedRun.snapshot_block,
     sources: ['sonar', 'role-snapshot'],
     // S5-T3: the union is NAMED, never left for the reader to assume — and the exact deployments +
     // blocks it was computed over travel with it, so the run can be re-derived.

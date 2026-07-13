@@ -27,7 +27,7 @@ function snapshot(over: Partial<RoleSnapshot> = {}): RoleSnapshot {
   return {
     source: 'discord:guild:123',
     community: 'the-honey-jar',
-    collection: { chain: 'ethereum', contract: '0x' + 'a'.repeat(40) },
+    collection: { chain: '1', contract: '0x' + 'a'.repeat(40) },
     captured_at: '2026-06-22T11:00:00.000Z', // 1h before NOW
     export_method: 'discord-bot-export',
     owner: '0x' + '1'.repeat(40),

@@ -13,6 +13,13 @@
     "rule_id": "nft-balance:1",
     "snapshot_block": 19000000,
     "computed_at": "2026-06-22T00:00:00.000Z",
-    "sources": ["sonar", "role-snapshot"]
+    "sources": [
+      "sonar",
+      "role-snapshot"
+    ],
+    "evidence_source": {
+      "chain": "1",
+      "contract": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
   }
 }
