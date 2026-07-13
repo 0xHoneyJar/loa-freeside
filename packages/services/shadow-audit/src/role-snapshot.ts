@@ -15,6 +15,7 @@
  */
 
 import { z } from 'zod';
+import { ChainSchema } from '@freeside/shadow-audit-protocol';
 
 export const RoleSnapshotEntrySchema = z
   .object({
@@ -34,8 +35,14 @@ export type RoleSnapshotEntry = z.infer<typeof RoleSnapshotEntrySchema>;
  */
 export const SnapshotCollectionSchema = z
   .object({
-    /** Chain slug or numeric chain id, as the Order names it (protocol ChainSchema: `^[a-z0-9-]+$`). */
-    chain: z.string().min(1),
+    /**
+     * The NUMERIC EVM chain id, exactly as `ChainSchema` requires (review BLOCKING-3).
+     *
+     * This accepted any non-empty string while `ChainSchema` was tightened to `^[0-9]+$`, so a snapshot
+     * naming `"ethereum"` was stored under a key the registry can NEVER match (`"1"`). It would ingest
+     * happily and then be invisible to every audit — a silent hole, not a loud failure.
+     */
+    chain: ChainSchema,
     contract: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
   })
   .strict();

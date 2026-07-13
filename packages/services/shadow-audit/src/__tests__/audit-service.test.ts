@@ -10,7 +10,7 @@ import {
   type WhaleSource,
 } from '../audit-service.js';
 import type { SourceResolver } from '../collection-union.js';
-import type { RoleSnapshot } from '../role-snapshot.js';
+import { RoleSnapshotSchema, type RoleSnapshot } from '../role-snapshot.js';
 
 const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40); // role-holder who sold → stale
@@ -511,5 +511,90 @@ describe('runAudit — role coverage (bug 20260712-486383)', () => {
     expect(r.output.aggregate.coverage_uncertain).toBe(false);
     expect(r.output.aggregate.role_coverage).toBe(1);
     expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'bucketed', bucket: '<5' });
+  });
+});
+
+/**
+ * REVIEW BLOCKING-1/2/3 (cross-model dissenter, 2026-07-12).
+ *
+ * S5-T1 keyed role snapshots on a single DEPLOYMENT {chain, contract}; S5-T3 then made a collection a
+ * SET of deployments. The two contradicted, and nothing in the sprint caught it — every test happened
+ * to POST and audit through the SAME deployment.
+ */
+describe('a collection is addressed by ANY of its deployments (review BLOCKING-1)', () => {
+  const ETH = '0x' + 'e'.repeat(40);
+  const BERA = '0x' + 'b'.repeat(40);
+  const W = '0x' + '7'.repeat(40);
+
+  const bothSources: SourceResolver = () => [
+    { chain: '1', contract: ETH },
+    { chain: '80094', contract: BERA },
+  ];
+  const bal = (...w: string[]): Balances => new Map(w.map((x) => [x, 1n]));
+  const own: OwnershipSource = {
+    resolveSnapshotBlock: async ({ chain }) => (chain === '1' ? 19_000_000 : 4_200_000),
+    balancesAt: async () => bal(W),
+    currentBalances: async () => bal(W),
+  };
+
+  /** The snapshot names the BERACHAIN deployment — as an exporter naturally would. */
+  const snapshotNamingBera = (): RoleSnapshot => ({
+    ...snapshot(),
+    collection: { chain: '80094', contract: BERA },
+    entries: [{ discord_user_id: 'u1', wallet: W, role_ids: ['h'] }],
+  });
+
+  it('finds a snapshot POSTed against deployment B when the audit is addressed via deployment A', async () => {
+    // Store keyed on whatever the CANONICAL key is — the store is opaque, so mimic the real read path:
+    // the RoleSource is asked for the collection key the audit computed.
+    const roles: RoleSource = { load: async () => snapshotNamingBera() };
+    const ethOrder: Order = { ...order, source: { chain: '1', contract_address: ETH } };
+
+    const r = await runAudit(req({ order: ethOrder }), {
+      ownership: own,
+      whale,
+      roles,
+      sources: bothSources,
+      k: 1,
+    });
+
+    // Before the fix this REFUSED (external-mode / "no role snapshot"): the snapshot's deployment key
+    // ("80094/0xbbb…") never equalled the addressed deployment key ("1/0xeee…"), so a community whose
+    // data was sitting right there was told it had none.
+    expect(r.ok).toBe(true);
+  });
+
+  it('records evidence against the source the balance was READ FROM, not the addressed one (BLOCKING-2)', async () => {
+    const roles: RoleSource = { load: async () => snapshotNamingBera() };
+    const ethOrder: Order = { ...order, source: { chain: '1', contract_address: ETH } };
+    // W holds ONLY on berachain (block 4_200_000) while the caller addressed ethereum (19_000_000).
+    const beraOnlyOwn: OwnershipSource = {
+      resolveSnapshotBlock: async ({ chain }) => (chain === '1' ? 19_000_000 : 4_200_000),
+      balancesAt: async ({ chain }) => (chain === '80094' ? bal(W) : new Map()),
+      currentBalances: async ({ chain }) => (chain === '80094' ? bal(W) : new Map()),
+    };
+
+    const r = await runAudit(req({ order: ethOrder, includeRecords: true }), {
+      ownership: beraOnlyOwn,
+      whale,
+      roles,
+      sources: bothSources,
+      k: 1,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok || !r.output.records) throw new Error('expected records');
+    const rec = r.output.records.find((x) => x.wallet === W);
+    // The evidence must be RE-DERIVABLE: the cited source+block must be the one the balance came from.
+    // Citing the addressed chain (1 @ 19,000,000) would send a buyer to a chain where W holds nothing.
+    expect(rec?.provenance.evidence_source).toEqual({ chain: '80094', contract: BERA });
+    expect(rec?.provenance.snapshot_block).toBe(4_200_000);
+    expect(rec?.evidence.balance_at_snapshot).toBe(1);
+  });
+
+  it('REJECTS a slug-chain snapshot rather than storing it under an unmatchable key (BLOCKING-3)', () => {
+    const bad = { ...snapshot(), collection: { chain: 'ethereum', contract: ETH } };
+    // "ethereum" can never match the registry's "1" — it would ingest happily and then be invisible to
+    // every audit. A silent hole, not a loud failure.
+    expect(RoleSnapshotSchema.safeParse(bad).success).toBe(false);
   });
 });
