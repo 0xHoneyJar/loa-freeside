@@ -40,6 +40,7 @@ import {
   type RiskBand,
 } from '@freeside/shadow-audit-protocol';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
+import { redactEndpoints } from './rpc-pool.js';
 import type { OwnershipSource, WhaleSource } from './audit-service.js';
 import {
   qualifiesAnySource,
@@ -170,7 +171,10 @@ export async function computeAccessRisk(
       ok: false,
       refusal: {
         code: 'reconstruction-failed',
-        reason: `ownership reconstruction failed: ${(e as Error).message}`,
+        // The message is SCRUBBED of any URL before it reaches the caller: this refusal is returned
+        // verbatim (and access-risk is the ANONYMOUS teaser), and RPC endpoint URLs carry provider API
+        // keys in the path (arrakis-qf5kc).
+        reason: `ownership reconstruction failed: ${redactEndpoints((e as Error).message)}`,
         retryable: true,
       },
     };
