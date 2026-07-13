@@ -10,7 +10,10 @@
  *   OPERATED_COMMUNITIES   comma-separated community names this deploy audits (dogfood-full)
  *   CTA_PRODUCT, CTA_CONVERSATION   the product + conversation door URLs
  *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155" } }
- *   RPC_URL_<chain>        a JSON-RPC endpoint per chain (e.g. RPC_URL_80094) for block-at-date resolution
+ *   RPC_URL_<chain>        JSON-RPC endpoint(s) per chain for block-at-date resolution. ONE url, or a
+ *                          COMMA-SEPARATED failover pool tried in order with retry+backoff (S5-T2 — the
+ *                          free endpoints each fail in their own way; there is no paid key). e.g.
+ *                          RPC_URL_1="https://ethereum-rpc.publicnode.com,https://eth.drpc.org"
  * Optional:
  *   SHADOW_AUDIT_API_KEY   the X-API-Key the dashboard sends (when unset the aggregate is open)
  *   BELT_GATEWAY_URL       sonar GraphQL endpoint (defaults to belt-gateway-production)
@@ -28,6 +31,7 @@ import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-sour
 import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
+import { parseRpcUrls } from '../src/rpc-pool.js';
 
 process.on('unhandledRejection', (reason) => {
   // F9: log AND exit non-zero — a swallowed rejection can leave the process wedged (event loop alive, no
@@ -73,11 +77,12 @@ function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; 
   return { registry: registryFromMap(map), chains };
 }
 
-/** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). */
+/** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). A comma-separated value is a
+ *  FAILOVER POOL — the free endpoints each fail in their own way and no paid key is available (S5-T2). */
 function resolverFor(chain: string): BlockTimeResolver {
   const url = process.env[`RPC_URL_${chain}`];
   if (!url) {
-    throw new Error(`RPC_URL_${chain} is required (JSON-RPC endpoint for chain ${chain}, for block-at-date resolution)`);
+    throw new Error(`RPC_URL_${chain} is required (JSON-RPC endpoint(s) for chain ${chain}, for block-at-date resolution)`);
   }
   return makeRpcBlockTimeResolver({ url });
 }
@@ -109,10 +114,20 @@ if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
   );
 }
 // BOOT-validate an RPC URL for every registry chain — never boot /healthz-green with a chain that fails
-// every real audit at request time (FAGAN MEDIUM-3).
-const missingRpc = [...chains].filter((c) => !process.env[`RPC_URL_${c}`]);
-if (missingRpc.length > 0) {
-  throw new Error(`missing JSON-RPC endpoint(s) for registry chain(s): ${missingRpc.map((c) => `RPC_URL_${c}`).join(', ')}`);
+// every real audit at request time (FAGAN MEDIUM-3). S5-T2: the value may be a comma-separated failover
+// pool, so validate that each chain resolves to >= 1 well-formed endpoint (a typo'd URL fails HERE, not at
+// the first audit).
+const badRpc: string[] = [];
+for (const c of chains) {
+  const raw = process.env[`RPC_URL_${c}`] ?? '';
+  try {
+    if (parseRpcUrls(raw).length === 0) badRpc.push(`RPC_URL_${c} (unset or empty)`);
+  } catch (e) {
+    badRpc.push(`RPC_URL_${c} (${(e as Error).message})`);
+  }
+}
+if (badRpc.length > 0) {
+  throw new Error(`missing/invalid JSON-RPC endpoint(s) for registry chain(s): ${badRpc.join(', ')}`);
 }
 
 const sonar = new SonarClient(

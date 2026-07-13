@@ -27,7 +27,8 @@ const ownership: OwnershipSource = {
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const mkRoles = (community: string): RoleSource => ({
   load: async (): Promise<RoleSnapshot> => ({
-    source: 'discord:guild:1', community, captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+    source: 'discord:guild:1', community, collection: { chain: 'ethereum', contract: CONTRACT },
+    captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
     owner: A('9', 9), freshness_threshold_seconds: 86_400,
     entries: [...roleStale, ...roleOk].map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
   }),

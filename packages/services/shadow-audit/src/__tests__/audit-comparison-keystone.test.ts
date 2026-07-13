@@ -38,7 +38,8 @@ const makeOwnership = (extraHolders: string[] = []): OwnershipSource => {
 };
 
 const snapshot = (): RoleSnapshot => ({
-  source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+  source: 'discord:guild:1', community: 'thj', collection: { chain: 'ethereum', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
   owner: A('9', 9), freshness_threshold_seconds: 86_400,
   entries: [...roleStale, ...roleOk].map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
 });
@@ -99,7 +100,8 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     };
     const rolesSold: RoleSource = {
       load: async () => ({
-        source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+        source: 'discord:guild:1', community: 'thj', collection: { chain: 'ethereum', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
         owner: A('9', 9), freshness_threshold_seconds: 86_400,
         entries: [{ discord_user_id: 'u1', wallet: sold, role_ids: ['h'] }, { discord_user_id: 'u2', wallet: kept, role_ids: ['h'] }],
       }),
@@ -124,7 +126,8 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     };
     const rolesSmall: RoleSource = {
       load: async () => ({
-        source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+        source: 'discord:guild:1', community: 'thj', collection: { chain: 'ethereum', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
         owner: A('9', 9), freshness_threshold_seconds: 86_400,
         entries: twoStale.map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
       }),

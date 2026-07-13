@@ -25,7 +25,7 @@ import {
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
-import { resolveRoles, type RoleSnapshot } from './role-snapshot.js';
+import { collectionKey, resolveRoles, type RoleSnapshot } from './role-snapshot.js';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
 
 /** Holder balances @ a block: lowercased address → total units held. */
@@ -46,7 +46,14 @@ export interface WhaleSource {
 
 /** Role-snapshot port. */
 export interface RoleSource {
-  load(): Promise<RoleSnapshot | undefined>;
+  /**
+   * The LATEST snapshot for `collection` (a `collectionKey()` string), or undefined when none is held.
+   *
+   * KEYED BY COLLECTION, not by community (S5-T1): a community gates several collections, each behind its
+   * own Discord role. A source that ignores this argument and serves "the community's snapshot" would let
+   * collection A's audit compute stale-access against collection B's role-holders.
+   */
+  load(collection: string): Promise<RoleSnapshot | undefined>;
 }
 
 export interface AuditRequest {
@@ -98,7 +105,18 @@ export async function runAudit(
   const k = deps.k ?? DEFAULT_K;
 
   // 1. Mode — dogfood-full or refuse (external / no snapshot).
-  const roleSnapshot = await deps.roles.load();
+  // The role snapshot is fetched for THIS audit's collection (S5-T1). A community gates several
+  // collections; the Honeycomb audit must read the Honeycomb gate's role-holders, never a sibling's.
+  const collectionId = collectionKey({
+    chain: req.order.source.chain,
+    contract: req.order.source.contract_address,
+  });
+  const loaded = await deps.roles.load(collectionId);
+  // Belt and braces: a source that ignores the key (and hands back some OTHER collection's snapshot)
+  // must not produce an audit. Treat it as "no snapshot for this collection" → the existing refusal
+  // path. A refusal is recoverable; a wrong stale-access set presented as fact is not.
+  const roleSnapshot =
+    loaded && collectionKey(loaded.collection) === collectionId ? loaded : undefined;
   const mode = resolveMode({
     isOperatedCommunity: req.isOperatedCommunity,
     roleSnapshot,

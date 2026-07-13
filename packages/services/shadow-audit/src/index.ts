@@ -15,10 +15,13 @@ export {
 export {
   RoleSnapshotSchema,
   RoleSnapshotEntrySchema,
+  SnapshotCollectionSchema,
+  collectionKey,
   isSnapshotFresh,
   resolveRoles,
   type RoleSnapshot,
   type RoleSnapshotEntry,
+  type SnapshotCollection,
   type RoleResolution,
 } from './role-snapshot.js';
 export {

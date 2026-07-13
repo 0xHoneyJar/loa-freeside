@@ -11,7 +11,19 @@ code change**, only its env pointed here.
 | `OPERATED_COMMUNITIES` | ✅ | comma-separated community names this deploy audits (dogfood-full eligible) |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | ✅ | the product + conversation door URLs surfaced in the audit |
 | `COLLECTION_REGISTRY` | ✅ | JSON: `{ "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"\|"erc1155" } }`. Maps each `(chainId, contract-address)` a caller passes → the belt-gateway **collection id**. Zod-validated at boot. The 8 collection ids + their chains are live-grounded below; **the contract addresses are operator-supplied** (see the gate). |
-| `RPC_URL_<chain>` | ✅ (per registry chain) | a JSON-RPC endpoint per chain in the registry (e.g. `RPC_URL_80094`) for block-at-date resolution. Boot fails if any registry chain lacks one. |
+| `RPC_URL_<chain>` | ✅ (per registry chain) | JSON-RPC endpoint(s) per chain in the registry (e.g. `RPC_URL_80094`) for block-at-date resolution. **One url, or a comma-separated FAILOVER POOL** tried in order with retry+backoff — the free keyless endpoints each fail in their own way and there is no paid key (S5-T2). Boot fails if any registry chain lacks one, or if any entry is not a well-formed http(s) URL. |
+
+**Verified free/keyless endpoints** (probed under the resolver's real load — genesis + 30-call burst). Pool at least two per chain:
+
+| chain | endpoint | notes |
+|---|---|---|
+| 1 (ethereum) | `https://ethereum-rpc.publicnode.com` | ✅ `cloudflare-eth.com` passes from a laptop but is **REJECTED from Railway egress**; `rpc.ankr.com/eth` now needs a key; `eth.drpc.org` 408s on the genesis block only |
+| 8453 (base) | `https://mainnet.base.org` | ✅ `base.drpc.org` was 0/20 |
+| 10 (optimism) | `https://mainnet.optimism.io` | ✅ `optimism-rpc.publicnode.com` returns `null` for older (pruned) blocks — the pool fails over on a null block |
+| 42161 (arbitrum) | `https://arbitrum.drpc.org` | ✅ |
+| 80094 (berachain) | `https://berachain.drpc.org` | ✅ |
+
+Example: `RPC_URL_1="https://ethereum-rpc.publicnode.com,https://eth.drpc.org"`
 | `SHADOW_AUDIT_API_KEY` | ✅ **MANDATORY** (§12.3) | the `X-API-Key` the dashboard sends. Service **refuses startup** when absent. Generate: `openssl rand -hex 32`. Set the same value in the dashboard's `SHADOW_AUDIT_API_KEY`. For local dev only: set `SHADOW_AUDIT_ALLOW_ANON=dev-only` (never in production). |
 | `BELT_GATEWAY_URL` | optional | sonar GraphQL endpoint (defaults to belt-gateway-production) |
 | `ROLE_SNAPSHOT_PATH` | optional | path to the Discord role-export JSON (absent → audits refuse external-mode) |

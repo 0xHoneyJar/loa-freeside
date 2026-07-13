@@ -32,8 +32,10 @@ describe('makeRpcBlockTimeResolver — block-at-or-before via binary search', ()
     expect(await r.blockAtOrBefore(1_000_000 + 12 * 500 + 5)).toBe(500);
     // target before genesis ts → -1 (NO block ≤ target; the caller must refuse, not serve block 0). FAGAN HIGH-1
     expect(await r.blockAtOrBefore(0)).toBe(-1);
-    // target exactly at genesis ts → block 0
-    expect(await r.blockAtOrBefore(1_000_000)).toBe(0);
+    // target exactly at genesis ts → STILL -1 (S5-T2): the search is over [1, head], so block 0 is never
+    // probed (drpc 408s on genesis and only on genesis) and never returned. Refusing is the right answer —
+    // genesis holds no reconstructable ownership. Full coverage in block-time-resolver.test.ts.
+    expect(await r.blockAtOrBefore(1_000_000)).toBe(-1);
     // target after head → head
     expect(await r.blockAtOrBefore(10_000_000)).toBe(1000);
   });

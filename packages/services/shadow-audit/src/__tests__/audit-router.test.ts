@@ -19,6 +19,7 @@ function snapshot(): RoleSnapshot {
   return {
     source: 'discord:guild:1',
     community: 'thj',
+    collection: { chain: 'ethereum', contract: CONTRACT }, // the gated collection these roles are for
     captured_at: '2026-06-22T11:00:00.000Z',
     export_method: 'export',
     owner: OWNER,

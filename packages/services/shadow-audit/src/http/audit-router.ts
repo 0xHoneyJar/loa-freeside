@@ -508,21 +508,35 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       const parsed = RoleSnapshotSchema.safeParse(json);
       if (!parsed.success) return c.json({ error: 'invalid role snapshot' }, 422);
 
-      // The community is caller-supplied and becomes a STORAGE KEY (one file per community). Without this
-      // gate, a token-holder could mint unbounded distinct communities and grow the store without limit.
-      // Only communities this deploy actually operates may be ingested.
+      // The community is caller-supplied and becomes a STORAGE KEY (one file per community+collection).
+      // Without this gate, a token-holder could mint unbounded distinct communities and grow the store
+      // without limit. Only communities this deploy actually operates may be ingested.
       if (!deps.isOperatedCommunity(parsed.data.community)) {
         return c.json({ error: 'community is not operated by this deploy' }, 403);
       }
 
+      // S5-T1: the COLLECTION is the other half of the storage key, and is equally caller-supplied. Gate it
+      // on the same registry the audit reads from, for two reasons: (1) it bounds the key space exactly as
+      // the community gate does; (2) a typo'd contract would otherwise file the snapshot under a key NO
+      // audit ever reads — every audit for the real collection would then refuse "no snapshot" with no clue
+      // why. Reject at ingest, loudly, instead. No registry ⇒ this deploy cannot know which collections it
+      // audits ⇒ it must not accept snapshots for them (same fail-closed posture as /v1/access-risk).
+      if (!deps.collectionRegistry) return c.json({ error: 'registry unavailable' }, 503);
+      const { chain, contract } = parsed.data.collection;
+      if (!deps.collectionRegistry({ chain, contract })) {
+        return c.json({ error: 'collection is not in the audited collection registry', chain, contract }, 422);
+      }
+
       const stored = await ingest.sink.store(parsed.data);
-      // Minimal receipt — the exporter reconciles on (community, captured_at, entries), no member data echoed.
-      // `stored:false` means an equal-or-newer snapshot is already held (replay / out-of-order delivery);
-      // it is a successful no-op, NOT an error — the exporter is at-least-once and must be able to retry.
+      // Minimal receipt — the exporter reconciles on (community, collection, captured_at, entries), no member
+      // data echoed. `stored:false` means an equal-or-newer snapshot is already held FOR THIS COLLECTION
+      // (replay / out-of-order delivery); it is a successful no-op, NOT an error — the exporter is
+      // at-least-once and must be able to retry.
       return c.json({
         ok: true,
         stored,
         community: parsed.data.community,
+        collection: parsed.data.collection,
         captured_at: parsed.data.captured_at,
         entries: parsed.data.entries.length,
       });
