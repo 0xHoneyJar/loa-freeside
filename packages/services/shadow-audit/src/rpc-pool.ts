@@ -64,6 +64,23 @@ export function parseRpcUrls(raw: string): string[] {
   return urls;
 }
 
+/**
+ * Strip any URL from a message before it can reach a caller (SECURITY, arrakis-qf5kc).
+ *
+ * Defense in depth for the pool's own redaction: the pool no longer names endpoints, but a message can
+ * still arrive carrying one from BELOW it — `fetch`/undici failures routinely embed the request URL, and
+ * so do some providers' error bodies. Ownership-reconstruction refusals echo `e.message` verbatim to the
+ * caller (including the ANONYMOUS teaser), so the scrub belongs at that boundary too: one leak is enough,
+ * and the failure path is where both of this service's previous disclosures were found.
+ *
+ * Redacts the whole URL, not just the query: every paid RPC provider puts its API key in the PATH
+ * (`alchemy.com/v2/<KEY>`, `infura.io/v3/<KEY>`), and quicknode also puts a token in the subdomain — so a
+ * host-only or query-only scrub would still leak the credential.
+ */
+export function redactEndpoints(message: string): string {
+  return message.replace(/\bhttps?:\/\/\S+/gi, '<endpoint>');
+}
+
 export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {
   const urls = [...opts.urls];
   if (urls.length === 0) throw new Error('makeRpcPool: at least one JSON-RPC endpoint is required');
@@ -93,7 +110,21 @@ export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {
           preferred = idx;
           return result;
         } catch (e) {
-          failures.push(`${url}: ${(e as Error).message}`);
+          // NEVER put the endpoint URL in this message (SECURITY, arrakis-qf5kc).
+          //
+          // This error propagates: ownership reconstruction catches it and builds a typed refusal whose
+          // reason echoes `e.message` — and that refusal is returned VERBATIM to the caller, including on
+          // the ANONYMOUS public teaser (`/v1/access-risk`). So anything in here is published to an
+          // unauthenticated stranger, and an attacker can FORCE it by hammering until the free tiers throttle.
+          //
+          // RPC_URL_<chain> is operator-controlled, and EVERY paid provider carries its API key IN THE URL
+          // (alchemy.com/v2/<KEY>, infura.io/v3/<KEY>, quicknode's <token> — key in the path, and for
+          // quicknode in the subdomain too). Naming the endpoint here would therefore be a booby trap: it
+          // leaks nothing while the endpoints are keyless, and becomes credential disclosure the moment
+          // someone adds a paid key — the most natural next config change.
+          //
+          // The ordinal is enough to debug a pool ("endpoint 2 of 3 failed") and identifies nothing.
+          failures.push(`endpoint ${idx + 1} of ${urls.length}: ${(e as Error).message}`);
           if (attempt < attemptsPerUrl - 1) await sleep(backoffMs * 2 ** attempt);
         }
       }
