@@ -21,6 +21,13 @@
  * COLLECTION_REGISTRY before this is ever called (unknown contract → `unindexed-contract`). Combined with
  * k-anon suppression + a per-IP rate limit, an attacker cannot walk the chain/contract space or difference
  * small cohorts out of the aggregate.
+ *
+ * S5-T3 — BRIDGING IS NOT SELLING. This teaser was single-source, and on one chain of a bridged collection
+ * a holder who BRIDGED OUT looks exactly like a holder who SOLD: they qualified at the snapshot and no
+ * longer do *on that chain*. They were counted in `sold_lapsed`, i.e. in the public, sales-facing
+ * `stale_access_upper_bound` — inflating the very number we lead with. The teaser now reconstructs the same
+ * UNION the authed audit does (`any-source`, fail-closed on any unreachable source), so a wallet that moved
+ * its token to a sibling deployment still qualifies and is NOT counted as churned out.
  */
 
 import {
@@ -33,7 +40,16 @@ import {
   type RiskBand,
 } from '@freeside/shadow-audit-protocol';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
-import type { Balances, OwnershipSource, WhaleSource } from './audit-service.js';
+import { redactEndpoints } from './rpc-pool.js';
+import type { OwnershipSource, WhaleSource } from './audit-service.js';
+import {
+  qualifiesAnySource,
+  reconstructUnion,
+  sumAcross,
+  UNION_SEMANTICS,
+  walletsAcross,
+  type SourceResolver,
+} from './collection-union.js';
 
 export interface AccessRiskRequest {
   chain: string;
@@ -49,6 +65,9 @@ export interface AccessRiskRequest {
 export interface AccessRiskDeps {
   ownership: OwnershipSource;
   whale: WhaleSource;
+  /** S5-T3 — the ADDRESSED deployment → the collection's FULL source set. Required for the same reason
+   *  the audit requires it: a single-source teaser reports BRIDGING as SELLING (see the header). */
+  sources: SourceResolver;
   k?: number;
 }
 
@@ -57,6 +76,25 @@ export interface AccessRiskOutput {
   inputs_hash: string;
   /** Names the epistemic basis so this can never be read as the real stale-access set. */
   access_basis: 'on-chain-only';
+  /**
+   * How the collection's deployments were combined (S5-T3). `any-source`: a wallet qualifies iff it
+   * meets the threshold on AT LEAST ONE declared deployment. Stated, not assumed — a reader cannot
+   * otherwise tell whether a cross-chain holder was counted once, twice, or not at all.
+   */
+  union_semantics: typeof UNION_SEMANTICS;
+  /**
+   * EVERY deployment reconstructed — the CHAIN and the block it was read at. A missing one is
+   * impossible: an unreachable source refuses the whole request rather than serving a partial union.
+   *
+   * Chains + blocks, deliberately NOT contract addresses. This payload is public and unauthenticated,
+   * and it holds a hard invariant enforced by test: NO 40-hex address appears anywhere in it. That is
+   * the cheap, blanket guard against ever leaking a member wallet through a field nobody re-examined.
+   * A contract address is not member data — but keeping the invariant blanket-shaped is worth more than
+   * restating a contract the caller supplied and can read back from `GET /v1/collections/:chain/:contract`.
+   * The authed audit's `methodology.collection_sources` carries the full contracts.
+   */
+  collection_sources: Array<{ chain: string; snapshot_block: number }>;
+  /** The block of the deployment the CALLER addressed. The full set is `collection_sources`. */
   snapshot_block: number;
   /** Wallets meeting the gate at the snapshot date (the denominator). */
   qualified_at_snapshot: CohortCount;
@@ -97,47 +135,67 @@ export type AccessRiskResult =
 const DISCLOSURE =
   'On-chain only. This is the set of wallets that qualified at your snapshot date and no longer do — ' +
   'the CEILING on stale access attributable to sales, not the actual stale-access set. The real number ' +
-  'requires your role snapshot (who actually holds the role today).';
+  'requires your role snapshot (who actually holds the role today). Computed across EVERY chain your ' +
+  'collection is deployed on: a wallet that qualifies on any one of them still qualifies, so moving a ' +
+  'token between chains is not counted as selling it.';
 
 export async function computeAccessRisk(
   req: AccessRiskRequest,
   deps: AccessRiskDeps,
 ): Promise<AccessRiskResult> {
   const k = deps.k ?? DEFAULT_K;
-  const collection = { chain: req.chain, contract: req.contract };
+  const addressed = { chain: req.chain, contract: req.contract };
 
-  // 1. Ownership reconstruction — any failure is a typed refusal, never a silently-wrong teaser.
-  let snapshotBlock: number;
-  let snapBal: Balances;
-  let curBal: Balances;
+  // 1. THE UNION (S5-T3) — the caller names ONE deployment; it ADDRESSES the collection. An undeclared
+  //    contract is refused (the route gates on the same registry, so this is belt-and-braces).
+  const sources = deps.sources(addressed);
+  if (!sources || sources.length === 0) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'unindexed-contract',
+        reason: 'contract is not in the audited collection registry',
+        retryable: false,
+      },
+    };
+  }
+
+  // Ownership reconstruction — any failure is a typed refusal, never a silently-wrong teaser. FAIL-CLOSED
+  // across the union: one unreachable source and we refuse, because a partial union counts every holder on
+  // the missing chain as churned out — inflating the public number in the alarming direction.
+  let perSource: Awaited<ReturnType<typeof reconstructUnion>>;
   try {
-    snapshotBlock = await deps.ownership.resolveSnapshotBlock({
-      ...collection,
-      snapshotDate: req.snapshotDate,
-    });
-    [snapBal, curBal] = await Promise.all([
-      deps.ownership.balancesAt({ ...collection, snapshotBlock }),
-      deps.ownership.currentBalances(collection),
-    ]);
+    perSource = await reconstructUnion(deps.ownership, sources, req.snapshotDate);
   } catch (e) {
     return {
       ok: false,
       refusal: {
         code: 'reconstruction-failed',
-        reason: `ownership reconstruction failed: ${(e as Error).message}`,
+        // The message is SCRUBBED of any URL before it reaches the caller: this refusal is returned
+        // verbatim (and access-risk is the ANONYMOUS teaser), and RPC endpoint URLs carry provider API
+        // keys in the path (arrakis-qf5kc).
+        reason: `ownership reconstruction failed: ${redactEndpoints((e as Error).message)}`,
         retryable: true,
       },
     };
   }
+  const snapBals = perSource.map((p) => p.snapshot);
+  const curBals = perSource.map((p) => p.current);
 
-  // 2. Cohorts — the SAME gate policy the authed audit uses, so teaser and audit can never disagree.
+  // 2. Cohorts — the SAME gate policy AND the same union semantics the authed audit uses, so teaser and
+  //    audit can never disagree.
   const policy = tokenGatingPolicy(BigInt(req.threshold));
-  const qualifies = (m: Balances, w: string): boolean => policy.qualifies(m.get(w) ?? 0n);
+  const qualifies = (maps: readonly Map<string, bigint>[], w: string): boolean =>
+    qualifiesAnySource(policy, maps, w);
 
-  const qualifiedSnapshot = [...snapBal.keys()].filter((w) => qualifies(snapBal, w));
-  const soldLapsed = qualifiedSnapshot.filter((w) => !qualifies(curBal, w));
+  const qualifiedSnapshot = walletsAcross(snapBals).filter((w) => qualifies(snapBals, w));
+  // A wallet that BRIDGED — gone from the chain it was on, present on a sibling — still qualifies here, so
+  // it is NOT in sold_lapsed. Under the old single-source teaser it was, and bridging read as selling.
+  const soldLapsed = qualifiedSnapshot.filter((w) => !qualifies(curBals, w));
   // On-chain churn-IN (no roles): qualifies now, did NOT at the snapshot.
-  const newlyEligible = [...curBal.keys()].filter((w) => qualifies(curBal, w) && !qualifies(snapBal, w));
+  const newlyEligible = walletsAcross(curBals).filter(
+    (w) => qualifies(curBals, w) && !qualifies(snapBals, w),
+  );
 
   // 3. Meaningful-or-refuse (S1-T1 AC: the teaser NEVER returns empty/always-true).
   //    A denominator below k means every cohort would be k-anon-suppressed and holder_turnover would be
@@ -158,9 +216,12 @@ export async function computeAccessRisk(
 
   // 4. Whale concentration. A FAILED computation must be NULL, never 0 — on a public, sales-facing payload
   //    a coerced 0 reads as an affirmative "no whale risk", which is a silent lie.
+  //    Measured over the SUMMED cross-chain supply (see sumAcross): concentration is a share-of-supply
+  //    metric, so summing is right here — and it keeps the number independent of WHICH deployment the
+  //    caller addressed, which the shared inputs_hash requires.
   let whale: number | null = null;
   try {
-    const w = await deps.whale.concentration(curBal);
+    const w = await deps.whale.concentration(sumAcross(curBals));
     whale = Math.min(1, Math.max(0, w));
   } catch {
     whale = null;
@@ -183,12 +244,27 @@ export async function computeAccessRisk(
     ? staleRiskBand(k - 1, qualifiedSnapshot.length) // worst case consistent with "<k" — leaks nothing
     : staleRiskBand(soldLapsed.length, qualifiedSnapshot.length);
 
+  // Fingerprints the WHOLE union (every source + its block), so two different unions cannot collide on one
+  // run_id. ⚠ Changes every previously-issued inputs_hash — a disclosed break (see computeInputsHash).
   const inputs_hash = computeInputsHash({
-    chain: req.chain,
-    contract: req.contract,
-    snapshot_block: snapshotBlock,
+    sources: perSource.map((p) => ({
+      chain: p.source.chain,
+      contract: p.source.contract,
+      snapshot_block: p.snapshot_block,
+    })),
     rule: { kind: 'nft-balance', threshold: req.threshold },
   });
+  // The PUBLIC view of the union: chains + blocks, no addresses (see AccessRiskOutput.collection_sources).
+  const collection_sources = perSource.map((p) => ({
+    chain: p.source.chain,
+    snapshot_block: p.snapshot_block,
+  }));
+  const addressedRun =
+    perSource.find(
+      (p) =>
+        p.source.chain === addressed.chain &&
+        p.source.contract.toLowerCase() === addressed.contract.toLowerCase(),
+    ) ?? perSource[0]!;
 
   return {
     ok: true,
@@ -196,7 +272,9 @@ export async function computeAccessRisk(
       run_id: `risk_${sha256Hex(`${inputs_hash}:${req.nowUnixSeconds}`).slice(0, 24)}`,
       inputs_hash,
       access_basis: 'on-chain-only',
-      snapshot_block: snapshotBlock,
+      union_semantics: UNION_SEMANTICS,
+      collection_sources,
+      snapshot_block: addressedRun.snapshot_block,
       qualified_at_snapshot: kAnonCohort(qualifiedSnapshot.length, k),
       sold_lapsed: soldLapsedCohort,
       stale_access_upper_bound: soldLapsedCohort,

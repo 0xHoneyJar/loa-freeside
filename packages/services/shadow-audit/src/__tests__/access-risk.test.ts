@@ -17,6 +17,7 @@ import { InMemoryEventStore } from '../event-store.js';
 import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import type { Balances, OwnershipSource, WhaleSource } from '../audit-service.js';
+import type { SourceResolver } from '../collection-union.js';
 
 const W = (n: number) => '0x' + String(n).repeat(40).slice(0, 40);
 const CONTRACT = '0x' + 'a'.repeat(40);
@@ -36,12 +37,16 @@ const whale: WhaleSource = { concentration: async () => 0.25 };
 
 const registry = (q: { chain: string; contract: string }) =>
   q.contract === CONTRACT ? { collection: 'Honeycomb', standard: 'erc721' as const } : undefined;
+/** The default fixture collection has ONE declared deployment (chain 80094). */
+const sources: SourceResolver = (q) =>
+  q.contract === CONTRACT ? [{ chain: '80094', contract: CONTRACT }] : undefined;
 
 function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   return {
     ownership,
     whale,
     collectionRegistry: registry as AuditRouterDeps['collectionRegistry'],
+    sources,
     // NO role snapshot — the teaser must work without any Discord access at all.
     roles: { load: async () => undefined },
     eventStore: new InMemoryEventStore(),
@@ -224,6 +229,108 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
   });
 });
 
+/**
+ * S5-T3 — BRIDGING IS NOT SELLING (the live, public, sales-facing bug).
+ *
+ * On ONE chain of a bridged collection, a holder who bridged OUT is indistinguishable from a holder who
+ * SOLD: they qualified at the snapshot and no longer do *on that chain*. They landed in `sold_lapsed` —
+ * i.e. in `stale_access_upper_bound`, the number this teaser leads with — inflating it with bridge traffic.
+ * The teaser now reconstructs the same UNION as the authed audit, so a token moved to a sibling deployment
+ * still qualifies. These tests fail against the single-source teaser.
+ */
+describe('GET /v1/access-risk — the union (S5-T3)', () => {
+  const BERA = CONTRACT; // the collection on berachain (what the caller addresses)
+  const ETH = '0x' + 'd'.repeat(40); // the SAME collection on ethereum
+  /** 6 wallets qualified at the snapshot on berachain (the exact, public denominator). */
+  const beraSnap: Balances = new Map([1, 2, 3, 4, 5, 6].map((i) => [W(i), 1n]));
+  /** By NOW, W5 and W6 have left berachain: W5 BRIDGED to ethereum, W6 genuinely SOLD. */
+  const beraCur: Balances = new Map([1, 2, 3, 4].map((i) => [W(i), 1n]));
+  const ethSnap: Balances = new Map(); // nothing on ethereum at the snapshot
+  const ethCur: Balances = new Map([[W(5), 1n]]); // W5's token, after bridging
+
+  const bridgedOwnership: OwnershipSource = {
+    resolveSnapshotBlock: async ({ chain }) => (chain === '1' ? 19_000_000 : 1000),
+    balancesAt: async ({ chain }) => (chain === '1' ? ethSnap : beraSnap),
+    currentBalances: async ({ chain }) => (chain === '1' ? ethCur : beraCur),
+  };
+  const bothSources: SourceResolver = () => [
+    { chain: '1', contract: ETH },
+    { chain: '80094', contract: BERA },
+  ];
+  const beraOnly: SourceResolver = () => [{ chain: '80094', contract: BERA }];
+
+  const bridgedRegistry = (q: { chain: string; contract: string }) =>
+    q.contract === BERA || q.contract === ETH
+      ? { collection: 'Honeycomb', standard: 'erc721' as const }
+      : undefined;
+
+  const teaser = async (src: SourceResolver) => {
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: bridgedOwnership,
+        sources: src,
+        collectionRegistry: bridgedRegistry as AuditRouterDeps['collectionRegistry'],
+        k: 1, // exact cohorts, so the DIFFERENCE is legible rather than hidden in a k-anon bucket
+      }),
+    );
+    const res = await app.request(url());
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+
+  it('a BRIDGED wallet is NOT counted as sold_lapsed (the union sees its token on the sibling chain)', async () => {
+    const { status, body } = await teaser(bothSources);
+    expect(status).toBe(200);
+    // Only W6 genuinely sold. W5 bridged — it still holds the collection, on ethereum.
+    expect(body.sold_lapsed).toEqual({ kind: 'exact', value: 1 });
+    expect(body.stale_access_upper_bound).toEqual({ kind: 'exact', value: 1 });
+  });
+
+  it('DIFFERENTIAL: the single-source teaser reports the bridger as churned out; the union does not', async () => {
+    const single = await teaser(beraOnly);
+    const union = await teaser(bothSources);
+    // The delta (2 → 1) IS the bridge-traffic false-positive set: the public number was inflated by it.
+    expect(single.body.sold_lapsed).toEqual({ kind: 'exact', value: 2 });
+    expect(union.body.sold_lapsed).toEqual({ kind: 'exact', value: 1 });
+    expect(union.body.holder_turnover).toBeLessThan(single.body.holder_turnover);
+    // Different computations ⇒ different fingerprints (never one run_id for two answers).
+    expect(union.body.inputs_hash).not.toBe(single.body.inputs_hash);
+  });
+
+  it('NAMES the union + every source it read, without weakening the no-address invariant', async () => {
+    const { body } = await teaser(bothSources);
+    expect(body.union_semantics).toBe('any-source');
+    // Chains + blocks: enough to see WHICH deployments were combined and re-derive them, with no
+    // 40-hex address on the public payload (the blanket member-data guard stays blanket-shaped).
+    expect(body.collection_sources).toEqual([
+      { chain: '1', snapshot_block: 19_000_000 },
+      { chain: '80094', snapshot_block: 1000 },
+    ]);
+    expect(body.disclosure).toContain('chain');
+    expect(JSON.stringify(body)).not.toMatch(/0x[0-9a-fA-F]{40}/);
+    // Neither is it cohort data: block heights and chain ids cannot back-compute a suppressed count.
+  });
+
+  it('FAIL-CLOSED: one unreachable source refuses the teaser (a partial union OVERSTATES stale access)', async () => {
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: {
+          ...bridgedOwnership,
+          currentBalances: async (args) => {
+            if (args.chain === '1') throw new Error('ethereum rpc down');
+            return beraCur;
+          },
+        },
+        sources: bothSources,
+        collectionRegistry: bridgedRegistry as AuditRouterDeps['collectionRegistry'],
+      }),
+    );
+    const res = await app.request(url());
+    // Serving bera-only here would have published the bridger as churned out — on the PUBLIC surface.
+    expect(res.status).toBe(422);
+    expect((await res.json() as { error: { code: string } }).error.code).toBe('reconstruction-failed');
+  });
+});
+
 describe('/v1/access-risk is PUBLIC while /v1/audit stays key-gated (server exemption)', () => {
   it('serves the teaser with NO X-API-Key, but 401s /v1/audit without one', async () => {
     const app = buildAuditApp(
@@ -234,7 +341,7 @@ describe('/v1/access-risk is PUBLIC while /v1/audit stays key-gated (server exem
         cta: { product: '/p', conversation: '/c' },
         k: 5,
       },
-      registry as never,
+      { registry: registry as never, sources },
     );
 
     // The lead magnet is reachable with no credentials at all.

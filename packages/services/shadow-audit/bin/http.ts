@@ -10,7 +10,14 @@
  *   OPERATED_COMMUNITIES   comma-separated community names this deploy audits (dogfood-full)
  *   CTA_PRODUCT, CTA_CONVERSATION   the product + conversation door URLs
  *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155" } }
- *   RPC_URL_<chain>        a JSON-RPC endpoint per chain (e.g. RPC_URL_80094) for block-at-date resolution
+ *                          Entries sharing a `collection` id are ONE collection deployed on several chains
+ *                          (S5-T3): an audit addressed at any of them reconstructs the UNION of all of them,
+ *                          and refuses outright if any one is unreachable. Chains are NUMERIC ids ("1",
+ *                          "80094") — the same id the sonar query is scoped by.
+ *   RPC_URL_<chain>        JSON-RPC endpoint(s) per chain for block-at-date resolution. ONE url, or a
+ *                          COMMA-SEPARATED failover pool tried in order with retry+backoff (S5-T2 — the
+ *                          free endpoints each fail in their own way; there is no paid key). e.g.
+ *                          RPC_URL_1="https://ethereum-rpc.publicnode.com,https://eth.drpc.org"
  * Optional:
  *   SHADOW_AUDIT_API_KEY   the X-API-Key the dashboard sends (when unset the aggregate is open)
  *   BELT_GATEWAY_URL       sonar GraphQL endpoint (defaults to belt-gateway-production)
@@ -24,10 +31,11 @@ import { serve } from '@hono/node-server';
 import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
 import { buildAuditApp, configFromEnv, validateApiKeyEnv } from '../src/server.js';
-import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-source.js';
+import { makeSonarOwnershipSource, type CollectionRef } from '../src/ownership-source.js';
 import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
+import { parseRpcUrls } from '../src/rpc-pool.js';
 
 process.on('unhandledRejection', (reason) => {
   // F9: log AND exit non-zero — a swallowed rejection can leave the process wedged (event loop alive, no
@@ -53,7 +61,7 @@ const RegistrySchema = z.record(
   z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
 );
 
-function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; chains: Set<string> } {
+function loadRegistryFromEnv(): { map: Record<string, CollectionRef>; chains: Set<string> } {
   const raw = process.env.COLLECTION_REGISTRY;
   if (!raw) {
     throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard })');
@@ -70,14 +78,18 @@ function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; 
     const chain = key.split('/')[0];
     if (chain) chains.add(chain);
   }
-  return { registry: registryFromMap(map), chains };
+  // Entries sharing a `collection` id ARE one collection on several chains (S5-T3) — the index groups them
+  // into the source set the audit reconstructs as a union. Two rows with the SAME chain+contract but
+  // different collection ids would be a config defect; the map key makes that unrepresentable.
+  return { map, chains };
 }
 
-/** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). */
+/** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). A comma-separated value is a
+ *  FAILOVER POOL — the free endpoints each fail in their own way and no paid key is available (S5-T2). */
 function resolverFor(chain: string): BlockTimeResolver {
   const url = process.env[`RPC_URL_${chain}`];
   if (!url) {
-    throw new Error(`RPC_URL_${chain} is required (JSON-RPC endpoint for chain ${chain}, for block-at-date resolution)`);
+    throw new Error(`RPC_URL_${chain} is required (JSON-RPC endpoint(s) for chain ${chain}, for block-at-date resolution)`);
   }
   return makeRpcBlockTimeResolver({ url });
 }
@@ -101,7 +113,7 @@ const collapse = loadRegistry({
     return loadRegistryFromEnv();
   },
 });
-const { registry, chains } = collapse;
+const { registry, sources, chains } = collapse;
 if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
   console.error(
     `[shadow-audit-api] settle gate: serving ${collapse.included.length} ratified collection(s); ` +
@@ -109,10 +121,20 @@ if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
   );
 }
 // BOOT-validate an RPC URL for every registry chain — never boot /healthz-green with a chain that fails
-// every real audit at request time (FAGAN MEDIUM-3).
-const missingRpc = [...chains].filter((c) => !process.env[`RPC_URL_${c}`]);
-if (missingRpc.length > 0) {
-  throw new Error(`missing JSON-RPC endpoint(s) for registry chain(s): ${missingRpc.map((c) => `RPC_URL_${c}`).join(', ')}`);
+// every real audit at request time (FAGAN MEDIUM-3). S5-T2: the value may be a comma-separated failover
+// pool, so validate that each chain resolves to >= 1 well-formed endpoint (a typo'd URL fails HERE, not at
+// the first audit).
+const badRpc: string[] = [];
+for (const c of chains) {
+  const raw = process.env[`RPC_URL_${c}`] ?? '';
+  try {
+    if (parseRpcUrls(raw).length === 0) badRpc.push(`RPC_URL_${c} (unset or empty)`);
+  } catch (e) {
+    badRpc.push(`RPC_URL_${c} (${(e as Error).message})`);
+  }
+}
+if (badRpc.length > 0) {
+  throw new Error(`missing/invalid JSON-RPC endpoint(s) for registry chain(s): ${badRpc.join(', ')}`);
 }
 
 const sonar = new SonarClient(
@@ -120,7 +142,7 @@ const sonar = new SonarClient(
   defaultTransferPageFetcher,
 );
 const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
-const app = buildAuditApp(ownership, configFromEnv(), registry);
+const app = buildAuditApp(ownership, configFromEnv(), { registry, sources });
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
 serve({ fetch: app.fetch, port }, (info) => {

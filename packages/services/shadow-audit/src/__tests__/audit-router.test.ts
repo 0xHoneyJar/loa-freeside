@@ -4,6 +4,7 @@ import { InMemoryEventStore } from '../event-store.js';
 import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
+import type { SourceResolver } from '../collection-union.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
 
 const R1 = '0x' + '1'.repeat(40);
@@ -19,6 +20,7 @@ function snapshot(): RoleSnapshot {
   return {
     source: 'discord:guild:1',
     community: 'thj',
+    collection: { chain: '1', contract: CONTRACT }, // the gated collection these roles are for
     captured_at: '2026-06-22T11:00:00.000Z',
     export_method: 'export',
     owner: OWNER,
@@ -38,11 +40,15 @@ const ownership: OwnershipSource = {
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const roles: RoleSource = { load: async () => snapshot() };
 
+/** The fixture collection has ONE declared deployment (chain 1) — see audit-service.test.ts for the union. */
+const sources: SourceResolver = () => [{ chain: '1', contract: CONTRACT }];
+
 function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   return {
     ownership,
     whale,
     roles,
+    sources,
     eventStore: new InMemoryEventStore(),
     rateLimiter: new FixedWindowRateLimiter({ limit: 100, windowMs: 60_000, now: () => NOW_MS }),
     auth: {
@@ -63,11 +69,11 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   };
 }
 
-const GET_URL = `/v1/audit?chain=ethereum&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
+const GET_URL = `/v1/audit?chain=1&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
 
 function namedBody() {
   return {
-    chain: 'ethereum',
+    chain: '1',
     contract: CONTRACT,
     snapshot_date: '2026-06-22',
     community: 'thj',
@@ -204,6 +210,31 @@ describe('GET /v1/audit/view (thin dashboard HTML)', () => {
     expect(html).toContain('Does this match what you expected?');
     expect(html).toContain('/shadow-access'); // product CTA
     expect(html).toContain('/talk'); // conversation CTA
+  });
+
+  it('LEADS with the assumption-free side-by-side, and labels each floor with its violation direction (S5-T4)', async () => {
+    const res = await createAuditRouter(makeDeps()).request(`/v1/audit/view${GET_URL.slice(GET_URL.indexOf('?'))}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // THE HEADLINE — two measured facts, no derivation. This is the DoD's "sees its real drift, NEXT TO its
+    // incumbent roles", and it is the ONLY part of this page that is true at 0% identity coverage.
+    expect(html).toContain('Your role, next to the chain');
+    expect(html).toContain('members</strong> hold the role');
+    expect(html).toContain('Both numbers are measured. No identity data, no assumptions.');
+    // The side-by-side must come BEFORE the wallet-matched cohorts — the floors are never the headline.
+    expect(html.indexOf('Your role, next to the chain')).toBeLessThan(
+      html.indexOf('Members we could match to a wallet'),
+    );
+
+    // …and every floor carries its assumption + the direction it errs when that assumption breaks, and says
+    // it bounds WALLETS. A floor rendered as a bare number about PEOPLE is the failure mode.
+    expect(html).toContain('wallets</strong>');
+    expect(html).toContain('Holds only if no two role members hold the role through the same wallet');
+    expect(html).toContain('Holds only if each role member holds the collection through at most one wallet');
+    expect(html).toContain('<strong>overstates</strong>');
+    // whitespace-insensitive: the CLAIM is load-bearing, the template's line-wrapping is not.
+    expect(html.replace(/\s+/g, ' ')).toContain('It bounds WALLETS, not people: one person with ten wallets is ten holders.');
   });
 });
 

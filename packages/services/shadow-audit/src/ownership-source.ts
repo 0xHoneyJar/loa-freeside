@@ -16,6 +16,7 @@
 import type { SonarClient, BlockTimeResolver, TokenStandard } from '@freeside/adapters/sonar';
 import { snapshotDateToBlock } from '@freeside/adapters/sonar';
 import type { Balances, OwnershipSource } from './audit-service.js';
+import type { CollectionSource, SourceResolver } from './collection-union.js';
 
 /** A collection an audit can reconstruct: the belt-gateway collection id + its token standard. */
 export interface CollectionRef {
@@ -25,6 +26,17 @@ export interface CollectionRef {
 
 /** Resolve a chain+contract to its belt-gateway collection, or undefined for an unknown one. */
 export type CollectionRegistry = (args: { chain: string; contract: string }) => CollectionRef | undefined;
+
+/**
+ * The two reads an audit needs of the registry (S5-T3):
+ *   · `registry` — this deployment's collection id + token standard (what the sonar query needs).
+ *   · `sources`  — the collection's FULL set of deployments (what the UNION needs).
+ * Built together from ONE map so they can never disagree about what a collection is.
+ */
+export interface CollectionIndex {
+  readonly registry: CollectionRegistry;
+  readonly sources: SourceResolver;
+}
 
 export interface SonarOwnershipOpts {
   /** the sonar reconstruction core (only `ownershipAtBlock` is used). */
@@ -95,12 +107,41 @@ export function makeSonarOwnershipSource(opts: SonarOwnershipOpts): OwnershipSou
 }
 
 /**
- * Build a `CollectionRegistry` from a plain map keyed `"<chain>/<contract>"` (contract lowercased). The
- * map itself is DEPLOY config — `bin/http.ts` parses it from `COLLECTION_REGISTRY` (JSON). Kept here so
- * the lookup (case-normalization) is one tested function, not re-implemented at the composition root.
+ * Build the `CollectionIndex` from a plain map keyed `"<chain>/<contract>"` (contract lowercased). The map
+ * itself is DEPLOY config — `bin/http.ts` parses it from `COLLECTION_REGISTRY` (JSON). Kept here so the
+ * lookup (case-normalization) is one tested function, not re-implemented at the composition root.
+ *
+ * The SOURCE SET is derived by grouping entries on their `collection` id (S5-T3): two rows sharing a
+ * collection id ARE the same collection on two chains — that is exactly what Honeycomb-on-eth and
+ * Honeycomb-on-bera are. So any one of them resolves to all of them, and an audit addressed at either
+ * reconstructs both. The grouping is INTENTIONALLY implicit in the id rather than a second "sources" field
+ * a deploy could forget to keep in sync with the rows.
  */
-export function registryFromMap(map: Record<string, CollectionRef>): CollectionRegistry {
+export function buildCollectionIndex(map: Record<string, CollectionRef>): CollectionIndex {
   const norm = new Map<string, CollectionRef>();
-  for (const [k, v] of Object.entries(map)) norm.set(k.toLowerCase(), v);
-  return ({ chain, contract }) => norm.get(`${chain}/${contract}`.toLowerCase());
+  const byCollection = new Map<string, CollectionSource[]>();
+  for (const [k, v] of Object.entries(map)) {
+    const key = k.toLowerCase();
+    norm.set(key, v);
+    const [chain, contract] = key.split('/');
+    if (!chain || !contract) continue;
+    const group = byCollection.get(v.collection) ?? [];
+    group.push({ chain, contract });
+    byCollection.set(v.collection, group);
+  }
+  // Canonical order, so the source set (hence the inputs_hash) never depends on map iteration order.
+  for (const group of byCollection.values()) {
+    group.sort((a, b) => (a.chain === b.chain ? a.contract.localeCompare(b.contract) : a.chain.localeCompare(b.chain)));
+  }
+  const registry: CollectionRegistry = ({ chain, contract }) => norm.get(`${chain}/${contract}`.toLowerCase());
+  const sources: SourceResolver = (args) => {
+    const ref = registry(args);
+    return ref ? byCollection.get(ref.collection) : undefined;
+  };
+  return { registry, sources };
+}
+
+/** Back-compat shorthand for the lookup half of the index. */
+export function registryFromMap(map: Record<string, CollectionRef>): CollectionRegistry {
+  return buildCollectionIndex(map).registry;
 }

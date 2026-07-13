@@ -12,17 +12,29 @@ import { buildAuditApp, configFromEnv, validateApiKeyEnv, type AuditServerConfig
 import { makeBalanceWhaleSource } from '../whale-source.js';
 import { makeFileRoleSource } from '../role-source.js';
 import type { OwnershipSource, Balances } from '../audit-service.js';
+import { buildCollectionIndex } from '../ownership-source.js';
 
 const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40);
 const Y = '0x' + '5'.repeat(40);
 const CTA = { product: 'https://product', conversation: 'https://talk' };
+// The collection every fixture here is gated on — the same one `query()` audits (S5-T1: a role source
+// serves a snapshot only for the collection asked for).
+const CHAIN = '80094';
+const CONTRACT = '0x' + 'a'.repeat(40);
+const COLLECTION_KEY = `${CHAIN}/${CONTRACT}`;
 
 /** A fake OwnershipSource — the injection seam that keeps the suite hermetic. */
 const fakeOwnership = (snap: Balances, cur: Balances): OwnershipSource => ({
   resolveSnapshotBlock: async () => 1000,
   balancesAt: async () => snap,
   currentBalances: async () => cur,
+});
+
+/** S5-T3: the app needs the collection INDEX — the membership lookup AND the deployment set the audit
+ *  unions. Without it the app is fail-closed (see the `no registry` test below). */
+const collections = buildCollectionIndex({
+  [COLLECTION_KEY]: { collection: 'honeycomb', standard: 'erc721' },
 });
 
 /** Write a valid RoleSnapshot to a temp file and return its path + a cleanup fn. */
@@ -34,6 +46,7 @@ function tempRoleSnapshot(community: string, roleWallet: string): { path: string
     JSON.stringify({
       source: 'discord',
       community,
+      collection: { chain: CHAIN, contract: CONTRACT },
       captured_at: new Date(Date.now() - 60_000).toISOString(),
       export_method: 'test-fixture',
       owner: 'op',
@@ -46,8 +59,8 @@ function tempRoleSnapshot(community: string, roleWallet: string): { path: string
 
 function query(community: string): string {
   return new URLSearchParams({
-    chain: '80094',
-    contract: '0x' + 'a'.repeat(40),
+    chain: CHAIN,
+    contract: CONTRACT,
     snapshot_date: '2026-06-01',
     community,
     owner_wallet: '0x' + 'b'.repeat(40),
@@ -72,27 +85,36 @@ describe('makeBalanceWhaleSource — top-holder concentration over the distribut
 
 describe('makeFileRoleSource — validated file loader', () => {
   it('returns undefined when no path is configured', async () => {
-    expect(await makeFileRoleSource(undefined).load()).toBeUndefined();
+    expect(await makeFileRoleSource(undefined).load(COLLECTION_KEY)).toBeUndefined();
   });
   it('loads + validates a real snapshot', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {
-      const snap = await makeFileRoleSource(path).load();
+      const snap = await makeFileRoleSource(path).load(COLLECTION_KEY);
       expect(snap?.community).toBe('thj');
       expect(snap?.entries[0]?.wallet).toBe(R1);
     } finally {
       cleanup();
     }
   });
+  it('serves the file only for ITS collection (S5-T1 — never another gate’s role-holders)', async () => {
+    const { path, cleanup } = tempRoleSnapshot('thj', R1);
+    try {
+      const other = `${CHAIN}/0x${'b'.repeat(40)}`;
+      expect(await makeFileRoleSource(path).load(other)).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
   it('THROWS on a missing file (fail loud, never silent-undefined)', async () => {
-    await expect(makeFileRoleSource('/no/such/roles.json').load()).rejects.toThrow();
+    await expect(makeFileRoleSource('/no/such/roles.json').load(COLLECTION_KEY)).rejects.toThrow();
   });
   it('THROWS on an invalid snapshot shape', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'audit-bad-'));
     const path = join(dir, 'roles.json');
     writeFileSync(path, JSON.stringify({ not: 'a snapshot' }));
     try {
-      await expect(makeFileRoleSource(path).load()).rejects.toThrow();
+      await expect(makeFileRoleSource(path).load(COLLECTION_KEY)).rejects.toThrow();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -113,7 +135,7 @@ describe('buildAuditApp — the deployment composition root', () => {
   it('GET /v1/audit serves the k-anon aggregate for an operated community', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {
-      const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path }));
+      const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path }), collections);
       const res = await app.request(`/v1/audit?${query('thj')}`);
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -132,21 +154,36 @@ describe('buildAuditApp — the deployment composition root', () => {
     }
   });
 
+  it('FAIL-CLOSED (S5-T3): with NO collection index, every audit refuses — never a single-source guess', async () => {
+    // An app that cannot enumerate a collection's deployments cannot know whether it is auditing one chain
+    // of several. Guessing "it stands alone" is precisely the bug that branded every ethereum Honeycomb
+    // holder stale. So a mis-wired composition root refuses loudly instead of serving a plausible number.
+    const { path, cleanup } = tempRoleSnapshot('thj', R1);
+    try {
+      const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path })); // no index
+      const res = await app.request(`/v1/audit?${query('thj')}`);
+      expect(res.status).toBe(404);
+      expect((await res.json() as { error: { code: string } }).error.code).toBe('unindexed-contract');
+    } finally {
+      cleanup();
+    }
+  });
+
   it('refuses an un-operated community (external-mode), never a wrong audit', async () => {
-    const app = buildAuditApp(ownership, baseConfig());
+    const app = buildAuditApp(ownership, baseConfig(), collections);
     const res = await app.request(`/v1/audit?${query('not-ours')}`);
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
   it('/healthz is open (no key required)', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
     const res = await app.request('/healthz');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });
 
   it('X-API-Key gate: a missing/wrong key → 401', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
     expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
     expect(
       (await app.request(`/v1/audit?${query('thj')}`, { headers: { 'x-api-key': 'wrong' } })).status,
@@ -154,7 +191,7 @@ describe('buildAuditApp — the deployment composition root', () => {
   });
 
   it('the authed POST named-output is fail-closed (V2 not wired) → 401', async () => {
-    const app = buildAuditApp(ownership, baseConfig());
+    const app = buildAuditApp(ownership, baseConfig(), collections);
     const res = await app.request('/v1/audit', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -205,7 +242,7 @@ describe('capability read security boundary (FR-2 / PRD §Security boundary)', (
     ({ '1/0xabc': { collection: 'azuki', standard: 'erc721' as const } })[`${chain}/${contract}`.toLowerCase()];
 
   it('GET /v1/collections is OPEN even when an X-API-Key is configured', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), registry);
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), buildCollectionIndex({ '1/0xabc': { collection: 'azuki', standard: 'erc721' } }));
     // no key header → still 200 (capability read carries no member data)
     const res = await app.request('/v1/collections/1/0xABC');
     expect(res.status).toBe(200);
@@ -248,7 +285,7 @@ describe('buildAuditApp — §12.3 correct key returns 200', () => {
   it('200 on correct X-API-Key (§12.3)', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {
-      const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key', roleSnapshotPath: path }));
+      const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key', roleSnapshotPath: path }), collections);
       const res = await app.request(`/v1/audit?${query('thj')}`, {
         headers: { 'x-api-key': 'correct-key' },
       });
@@ -259,12 +296,12 @@ describe('buildAuditApp — §12.3 correct key returns 200', () => {
   });
 
   it('401 on missing key (§12.3)', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }), collections);
     expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
   });
 
   it('401 on wrong key (§12.3)', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }), collections);
     expect(
       (await app.request(`/v1/audit?${query('thj')}`, { headers: { 'x-api-key': 'wrong-key' } })).status,
     ).toBe(401);

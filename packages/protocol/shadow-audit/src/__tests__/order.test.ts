@@ -25,10 +25,21 @@ describe('OrderSchema', () => {
     expect(OrderSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects a non-lowercase chain slug', () => {
+  // S5-T3: chain is the NUMERIC chain id — the registry key and the sonar query scope. A slug was
+  // schema-VALID but unreconstructable (`ownership-source.ts` refused it), so a valid Order could not be
+  // fulfilled. The boundary now rejects what the runtime cannot serve.
+  it('rejects a chain SLUG — the chain id is numeric', () => {
     const bad = order();
-    bad.source.chain = 'Ethereum';
+    bad.source.chain = 'ethereum';
     expect(OrderSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('accepts every numeric chain id in the live registry', () => {
+    for (const chain of ['1', '10', '8453', '42161', '80094']) {
+      const ok = order();
+      ok.source.chain = chain;
+      expect(OrderSchema.safeParse(ok).success).toBe(true);
+    }
   });
 
   it('rejects gating beyond the sealed nft-balance rule', () => {

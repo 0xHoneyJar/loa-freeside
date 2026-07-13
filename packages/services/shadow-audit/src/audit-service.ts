@@ -22,11 +22,24 @@ import {
   type Refusal,
   diffShadow,
   type DiscrepancyReport,
+  type DriftReport,
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
-import { resolveRoles, type RoleSnapshot } from './role-snapshot.js';
+import { collectionKey, resolveRoles, type RoleSnapshot } from './role-snapshot.js';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
+import { redactEndpoints } from './rpc-pool.js';
+import { computeDrift, countQualifying, roleMemberCount } from './drift-floors.js';
+import {
+  canonicalCollectionKey,
+  maxBalanceAcross,
+  qualifiesAnySource,
+  reconstructUnion,
+  sumAcross,
+  UNION_SEMANTICS,
+  walletsAcross,
+  type SourceResolver,
+} from './collection-union.js';
 
 /** Holder balances @ a block: lowercased address → total units held. */
 export type Balances = Map<string, bigint>;
@@ -46,7 +59,14 @@ export interface WhaleSource {
 
 /** Role-snapshot port. */
 export interface RoleSource {
-  load(): Promise<RoleSnapshot | undefined>;
+  /**
+   * The LATEST snapshot for `collection` (a `collectionKey()` string), or undefined when none is held.
+   *
+   * KEYED BY COLLECTION, not by community (S5-T1): a community gates several collections, each behind its
+   * own Discord role. A source that ignores this argument and serves "the community's snapshot" would let
+   * collection A's audit compute stale-access against collection B's role-holders.
+   */
+  load(collection: string): Promise<RoleSnapshot | undefined>;
 }
 
 export interface AuditRequest {
@@ -65,6 +85,15 @@ export interface AuditDeps {
   ownership: OwnershipSource;
   whale: WhaleSource;
   roles: RoleSource;
+  /**
+   * S5-T3 — resolves the ADDRESSED deployment to the collection's FULL source set (the union).
+   *
+   * REQUIRED, deliberately: an optional resolver with a "just audit the one contract" default would
+   * silently reinstate the single-source bug for any composition root that forgot to wire it — and
+   * that bug's failure mode is branding every holder on the other chain as stale. No resolver ⇒ no
+   * audit (`unindexed-contract`).
+   */
+  sources: SourceResolver;
   /** k-anonymity threshold (default 5). */
   k?: number;
 }
@@ -77,6 +106,16 @@ export type AuditServiceResult =
       /** WHY it is uncertain (stale export? unseeable members?) — so the reader is told which. */
       uncertainReasons: UncertaintyReason[];
       unmatchedRoleHolders: number;
+      /**
+       * The DRIFT REPORT (S5-T4) — always computed, because it needs ZERO identity data and is therefore the
+       * only honest answer we have for a community with no wallet map (thj: ~0% coverage).
+       *
+       * Returned OUT OF BAND as well as on `output.drift`, because `output.drift` is emitted only with the
+       * AUTHED delta: freeside-dashboard strict-decodes the anon GET with `onExcessProperty: error` at any
+       * depth, so an anon-visible field would make it reject every 200. The anon HTML view renders from
+       * THIS field instead — same report, no strict decoder to break.
+       */
+      drift: DriftReport;
     }
   | { ok: false; refusal: Refusal };
 
@@ -97,8 +136,40 @@ export async function runAudit(
 ): Promise<AuditServiceResult> {
   const k = deps.k ?? DEFAULT_K;
 
-  // 1. Mode — dogfood-full or refuse (external / no snapshot).
-  const roleSnapshot = await deps.roles.load();
+  // 1. Resolve the COLLECTION first (review BLOCKING-1). The order names ONE deployment; it merely
+  //    ADDRESSES the collection. The role snapshot must be keyed on the COLLECTION, not on the addressed
+  //    deployment — otherwise a snapshot POSTed naming the berachain contract cannot be found by an audit
+  //    addressed via the ethereum contract, and the audit refuses a community whose data is sitting right
+  //    there under a sibling key. An undeclared contract is REFUSED, never audited as if it stood alone
+  //    (that assumption IS the single-source bug).
+  const addressed = {
+    chain: req.order.source.chain,
+    contract: req.order.source.contract_address,
+  };
+  const sources = deps.sources(addressed);
+  if (!sources || sources.length === 0) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'unindexed-contract',
+        reason: `${addressed.chain}/${addressed.contract} is not a declared collection source — refusing rather than auditing it as a standalone collection`,
+        retryable: false,
+      },
+    };
+  }
+  const collectionId = canonicalCollectionKey(sources);
+
+  // 2. Mode — dogfood-full or refuse (external / no snapshot). A community gates SEVERAL collections;
+  //    the Honeycomb audit must read the Honeycomb gate's role-holders, never a sibling's.
+  const loaded = await deps.roles.load(collectionId);
+  // Belt and braces: a source that ignores the key (and hands back some OTHER collection's snapshot)
+  // must not produce an audit. The loaded snapshot names a DEPLOYMENT, so canonicalize it through the
+  // SAME registry before comparing — comparing deployment keys is exactly the bug this fixes.
+  const loadedSources = loaded ? deps.sources(loaded.collection) : undefined;
+  const roleSnapshot =
+    loaded && loadedSources && canonicalCollectionKey(loadedSources) === collectionId
+      ? loaded
+      : undefined;
   const mode = resolveMode({
     isOperatedCommunity: req.isOperatedCommunity,
     roleSnapshot,
@@ -114,49 +185,57 @@ export async function runAudit(
 
   const threshold = BigInt(req.order.gating_rule.threshold);
 
-  // 2. Ownership reconstruction (any failure → typed refusal, never silently wrong).
-  let snapshotBlock: number;
-  let snapBal: Balances;
-  let curBal: Balances;
-  const collection = {
-    chain: req.order.source.chain,
-    contract: req.order.source.contract_address,
-  };
+  // 3. THE UNION (S5-T3) — `sources` was resolved above. Reconstruct EVERY declared deployment:
+  //    Honeycomb lives on ethereum AND berachain, and auditing one of them brands the other chain's
+  //    holders as stale.
+  // Ownership reconstruction (any failure → typed refusal, never silently wrong). FAIL-CLOSED across the
+  // union: if ANY declared source is unreachable we refuse the whole audit. A partial union is worse than no
+  // audit — a holder present only on the missing chain reads as not-qualifying, which OVERSTATES stale access
+  // in exactly the direction that revokes somebody's access.
+  let perSource: Awaited<ReturnType<typeof reconstructUnion>>;
   try {
-    snapshotBlock = await deps.ownership.resolveSnapshotBlock({ ...collection, snapshotDate: req.snapshotDate });
-    [snapBal, curBal] = await Promise.all([
-      deps.ownership.balancesAt({ ...collection, snapshotBlock }),
-      deps.ownership.currentBalances(collection),
-    ]);
+    perSource = await reconstructUnion(deps.ownership, sources, req.snapshotDate);
   } catch (e) {
     return {
       ok: false,
       refusal: {
         code: 'reconstruction-failed',
-        reason: `ownership reconstruction failed: ${(e as Error).message}`,
+        // The message is SCRUBBED of any URL before it reaches the caller: this refusal is returned
+        // verbatim (and access-risk is the ANONYMOUS teaser), and RPC endpoint URLs carry provider API
+        // keys in the path (arrakis-qf5kc).
+        reason: `ownership reconstruction failed: ${redactEndpoints((e as Error).message)}`,
         retryable: true,
       },
     };
   }
+  const snapBals = perSource.map((p) => p.snapshot);
+  const curBals = perSource.map((p) => p.current);
 
   // The should-be access is decided by a pluggable AccessDecisionPort — the engine no longer hard-codes the
   // policy. tokenGatingPolicy is the deployed default (balance >= threshold), byte-identical to before; a
   // badge or score policy is a drop-in swap (the unification: arrakis-access-control-plane-v1).
   const policy = tokenGatingPolicy(threshold);
-  const qualifies = (m: Balances, w: string): boolean => policy.qualifies(m.get(w) ?? 0n);
+  // `any-source` (UNION_SEMANTICS): qualified iff the threshold is met on AT LEAST ONE deployment. The
+  // threshold is applied PER-SOURCE — never to a cross-chain sum, which would double-count a bridging token.
+  const qualifies = (maps: readonly Balances[], w: string): boolean => qualifiesAnySource(policy, maps, w);
 
-  // 3. Cohorts.
-  const qualifiedSnapshot = [...snapBal.keys()].filter((w) => qualifies(snapBal, w));
-  const soldLapsed = qualifiedSnapshot.filter((w) => !qualifies(curBal, w));
-  const staleAccess = [...roleWallets].filter((w) => !qualifies(curBal, w)); // role, not currently qualified
-  const newlyEligible = [...curBal.keys()].filter(
-    (w) => qualifies(curBal, w) && !roleWallets.has(w),
+  // 3. Cohorts — every one of them now computed over the union.
+  const qualifiedSnapshot = walletsAcross(snapBals).filter((w) => qualifies(snapBals, w));
+  const soldLapsed = qualifiedSnapshot.filter((w) => !qualifies(curBals, w));
+  const staleAccess = [...roleWallets].filter((w) => !qualifies(curBals, w)); // role, not currently qualified anywhere
+  const newlyEligible = walletsAcross(curBals).filter(
+    (w) => qualifies(curBals, w) && !roleWallets.has(w),
   );
 
-  // 4. Whale concentration (best-effort; clamped to [0,1]).
+  // 4. Whale concentration (best-effort; clamped to [0,1]) — over the SUMMED cross-chain supply.
+  //    Summing is correct HERE and wrong for qualification: concentration is a share-of-supply metric, and a
+  //    token exists on exactly one chain at a time, so a per-wallet cross-chain sum counts each live token
+  //    once. Qualification stays `any-source` (see UNION_SEMANTICS). Summing here is also what makes the
+  //    number DETERMINISTIC: computing it on "the deployment the caller happened to address" would give two
+  //    different outputs for one `inputs_hash` (which fingerprints the whole source set, not the addressing).
   let whale = 0;
   try {
-    whale = await deps.whale.concentration(curBal);
+    whale = await deps.whale.concentration(sumAcross(curBals));
   } catch {
     whale = 0;
   }
@@ -188,11 +267,36 @@ export async function runAudit(
     coverage_uncertain: mode.uncertainReasons.includes('low-role-coverage'),
   };
 
-  // 6. Determinism fingerprint → run_id (IMP-001/007).
+  // 5b. THE DRIFT REPORT (S5-T4) — the answer that needs NO wallet map.
+  //
+  // Every cohort above is computed over the role-holders we could RESOLVE to a wallet. For thj that set is
+  // ~0% of the role. This report is computed over COUNTS — role members vs on-chain holders — so it needs no
+  // identity data at all, and the assumption-free side-by-side it leads with IS the drift the community needs
+  // to see. Holder counts are per-source and CURRENT (drift against today's chain state — the same basis
+  // `staleAccess` uses).
+  //
+  // Every count in it is k-anonymized, and when the role set is sub-k the FLOORS are suppressed (null) while
+  // the audit still serves. Suppressing a field is not the same as refusing an answer: refusal is for a
+  // MEANINGLESS answer (`role-coverage-too-low`), suppression is for an unsafe-to-publish derived field.
+  const drift = computeDrift({
+    roleMembers: roleMemberCount(snapshot),
+    perSource: perSource.map((p) => ({
+      chain: p.source.chain,
+      holders: countQualifying(policy, p.current),
+    })),
+    k,
+  });
+
+  // 6. Determinism fingerprint → run_id (IMP-001/007). It covers the FULL source set + each source's
+  //    snapshot block (S5-T3): a union of eth+bera and a bera-only run are DIFFERENT computations and must
+  //    not collide on one run_id. ⚠ This CHANGES every inputs_hash/run_id, including single-source ones —
+  //    a disclosed break (see computeInputsHash's header).
   const inputs_hash = computeInputsHash({
-    chain: req.order.source.chain,
-    contract: req.order.source.contract_address,
-    snapshot_block: snapshotBlock,
+    sources: perSource.map((p) => ({
+      chain: p.source.chain,
+      contract: p.source.contract,
+      snapshot_block: p.snapshot_block,
+    })),
     rule: req.order.gating_rule,
   });
   const run_id = `run_${sha256Hex(`${inputs_hash}:${req.nowUnixSeconds}`).slice(0, 24)}`;
@@ -200,23 +304,54 @@ export async function runAudit(
   // 7. The methodology settle-context (always present) + per-member records (authed only). rule_id is hoisted
   //    so the rule a buyer audits the delta against is the SAME rule the records were decided under.
   const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
+  /**
+   * The deployment a wallet's evidence was actually READ FROM — the one it holds the MOST on, which is
+   * the one that decided its qualification under `any-source` (review BLOCKING-2).
+   *
+   * This used to be the block of the CALLER-ADDRESSED deployment, which made the evidence
+   * UNVERIFIABLE: the balance came from wherever the wallet held most, but the block cited a different
+   * chain. A buyer re-deriving it would query the wrong chain at the wrong block and find a number that
+   * does not match. This service's contract is settle-by-recompute — never trust the stored number — so
+   * the evidence MUST name the source and block it can be recomputed against.
+   */
+  const evidenceRunFor = (wallet: string) => {
+    let best = perSource[0]!;
+    let bestBal = -1n;
+    for (const p of perSource) {
+      const bal = p.snapshot.get(wallet) ?? 0n;
+      if (bal > bestBal) {
+        bestBal = bal;
+        best = p;
+      }
+    }
+    return best;
+  };
   let records: AccessDecisionRecord[] | undefined;
   if (req.includeRecords) {
     const computed_at = isoFromUnix(req.nowUnixSeconds);
-    const mk = (wallet: string, holds_role: boolean): AccessDecisionRecord => ({
-      wallet,
-      community: req.order.community.name,
-      holds_role,
-      qualifies: qualifies(curBal, wallet),
-      band: classifyBand(holds_role, qualifies(curBal, wallet)),
-      evidence: { balance_at_snapshot: clampToSafe(snapBal.get(wallet) ?? 0n) },
-      provenance: {
-        rule_id,
-        snapshot_block: snapshotBlock,
-        computed_at,
-        sources: ['sonar', 'role-snapshot'],
-      },
-    });
+    const mk = (wallet: string, holds_role: boolean): AccessDecisionRecord => {
+      const run = evidenceRunFor(wallet);
+      return {
+        wallet,
+        community: req.order.community.name,
+        holds_role,
+        qualifies: qualifies(curBals, wallet),
+        band: classifyBand(holds_role, qualifies(curBals, wallet)),
+        // The balance on the deployment where the wallet holds the MOST — the one that decided its
+        // qualification under `any-source`. NOT a cross-chain sum: evidence must be checkable against one
+        // chain at one block, and a summed number is a holding the wallet has nowhere.
+        evidence: { balance_at_snapshot: clampToSafe(maxBalanceAcross(snapBals, wallet)) },
+        provenance: {
+          rule_id,
+          // The block OF THE SOURCE the balance was read from — so `evidence_source` + `snapshot_block`
+          // together re-derive `balance_at_snapshot` exactly.
+          snapshot_block: run.snapshot_block,
+          evidence_source: { chain: run.source.chain, contract: run.source.contract },
+          computed_at,
+          sources: ['sonar', 'role-snapshot'],
+        },
+      };
+    };
     records = [
       ...[...roleWallets].map((w) => mk(w, true)),
       ...newlyEligible.map((w) => mk(w, false)),
@@ -230,19 +365,43 @@ export async function runAudit(
   // The methodology travels with the AUTHED delta only — NOT in the anon aggregate response, which must stay
   // byte-stable for freeside-dashboard's strict GET decode (onExcessProperty: error). It states the delta's TRUE
   // basis: the incumbent's roles @ snapshot.captured_at × CURRENT on-chain qualification (NOT evidence_block).
+  // The ADDRESSED deployment's block — the anchor for the historical `sold_lapsed` metric, which is
+  // computed over the addressed source. It is NOT the per-member evidence anchor: each record now names
+  // its own `evidence_source` + block (review BLOCKING-2), because a wallet's balance comes from
+  // whichever deployment it holds most on.
+  const addressedRun =
+    perSource.find(
+      (p) =>
+        p.source.chain === addressed.chain &&
+        p.source.contract.toLowerCase() === addressed.contract.toLowerCase(),
+    ) ?? perSource[0]!;
   const methodology = {
     rule_id,
     role_snapshot_at: snapshot.captured_at,
-    evidence_block: snapshotBlock,
+    evidence_block: addressedRun.snapshot_block,
     sources: ['sonar', 'role-snapshot'],
+    // S5-T3: the union is NAMED, never left for the reader to assume — and the exact deployments +
+    // blocks it was computed over travel with it, so the run can be re-derived.
+    union_semantics: UNION_SEMANTICS,
+    collection_sources: perSource.map((p) => ({
+      chain: p.source.chain,
+      contract: p.source.contract,
+      snapshot_block: p.snapshot_block,
+    })),
   };
 
+  // `drift` travels with the AUTHED delta, NOT the anon aggregate — the same constraint that keeps
+  // `methodology` out of it: freeside-dashboard strict-decodes GET /v1/audit with `onExcessProperty: error`
+  // AT ANY DEPTH, so ANY new anon-visible field (top-level or inside `aggregate`) makes it reject every 200
+  // and render empty. That exact break already happened once (see audit-router.ts's GET handler). The anon
+  // HUMAN surface renders the report from the out-of-band `drift` below, where nothing strict-decodes it.
+  // Surfacing it in the anon JSON is a coordinated change with the dashboard, not a unilateral one.
   const output = AuditOutputSchema.parse({
     run_id,
     mode: 'dogfood-full',
     inputs_hash,
     aggregate,
-    ...(records ? { records, methodology } : {}),
+    ...(records ? { records, methodology, drift } : {}),
     ...(comparison ? { comparison } : {}),
     cta: req.cta,
   });
@@ -253,5 +412,6 @@ export async function runAudit(
     uncertain: mode.uncertain,
     uncertainReasons: mode.uncertainReasons,
     unmatchedRoleHolders: unmatched.length,
+    drift,
   };
 }

@@ -31,6 +31,7 @@ import {
   REFUSAL_HTTP_STATUS,
   type CohortCount,
   type Cta,
+  type DriftReport,
   type Order,
   type Refusal,
 } from '@freeside/shadow-audit-protocol';
@@ -42,6 +43,7 @@ import {
   type WhaleSource,
 } from '../audit-service.js';
 import type { CollectionRegistry } from '../ownership-source.js';
+import type { SourceResolver } from '../collection-union.js';
 import {
   verifyAssociation,
   SignedAuthMessageSchema,
@@ -66,6 +68,10 @@ export interface AuditRouterDeps {
   ownership: OwnershipSource;
   /** Membership lookup for the OPEN capability read (GET /v1/collections/:chain/:contract). */
   collectionRegistry?: CollectionRegistry;
+  /** S5-T3 — the addressed deployment → the collection's FULL source set. REQUIRED: without it no audit
+   *  can know whether the collection it was handed is one chain of several, and a single-chain audit of a
+   *  bridged collection brands the other chain's holders as stale access. */
+  sources: SourceResolver;
   whale: WhaleSource;
   roles: RoleSource;
   eventStore: EventStore;
@@ -188,7 +194,7 @@ async function audit(
       includeRecords,
       cta: deps.cta,
     },
-    { ownership: deps.ownership, whale: deps.whale, roles: deps.roles, k: deps.k },
+    { ownership: deps.ownership, whale: deps.whale, roles: deps.roles, sources: deps.sources, k: deps.k },
   );
 }
 
@@ -311,7 +317,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         nowUnixSeconds: Math.floor(now / 1000),
         cta: deps.cta,
       },
-      { ownership: deps.ownership, whale: deps.whale, k: deps.k },
+      { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
     );
     if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
 
@@ -466,7 +472,13 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       return c.html(renderRefusalHtml(result.refusal), refusalStatus(result.refusal));
     }
     await recordRun(deps, result.output);
-    return c.html(renderAuditHtml(result.output, result.uncertain, result.uncertainReasons));
+    // The drift report comes from the SERVICE RESULT, not `result.output` — it is emitted on the wire only
+    // with the authed delta (the anon JSON must stay byte-stable for freeside-dashboard's strict decode).
+    // HTML has no strict decoder, so the anon HUMAN surface can show it: this IS "the community sees its
+    // real drift, next to its incumbent roles" (DoD #4).
+    return c.html(
+      renderAuditHtml(result.output, result.uncertain, result.uncertainReasons, result.drift),
+    );
   });
 
   // ---- POST /v1/role-snapshot — exporter ingestion (S1-T4, IMP-009) -------
@@ -508,21 +520,35 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       const parsed = RoleSnapshotSchema.safeParse(json);
       if (!parsed.success) return c.json({ error: 'invalid role snapshot' }, 422);
 
-      // The community is caller-supplied and becomes a STORAGE KEY (one file per community). Without this
-      // gate, a token-holder could mint unbounded distinct communities and grow the store without limit.
-      // Only communities this deploy actually operates may be ingested.
+      // The community is caller-supplied and becomes a STORAGE KEY (one file per community+collection).
+      // Without this gate, a token-holder could mint unbounded distinct communities and grow the store
+      // without limit. Only communities this deploy actually operates may be ingested.
       if (!deps.isOperatedCommunity(parsed.data.community)) {
         return c.json({ error: 'community is not operated by this deploy' }, 403);
       }
 
+      // S5-T1: the COLLECTION is the other half of the storage key, and is equally caller-supplied. Gate it
+      // on the same registry the audit reads from, for two reasons: (1) it bounds the key space exactly as
+      // the community gate does; (2) a typo'd contract would otherwise file the snapshot under a key NO
+      // audit ever reads — every audit for the real collection would then refuse "no snapshot" with no clue
+      // why. Reject at ingest, loudly, instead. No registry ⇒ this deploy cannot know which collections it
+      // audits ⇒ it must not accept snapshots for them (same fail-closed posture as /v1/access-risk).
+      if (!deps.collectionRegistry) return c.json({ error: 'registry unavailable' }, 503);
+      const { chain, contract } = parsed.data.collection;
+      if (!deps.collectionRegistry({ chain, contract })) {
+        return c.json({ error: 'collection is not in the audited collection registry', chain, contract }, 422);
+      }
+
       const stored = await ingest.sink.store(parsed.data);
-      // Minimal receipt — the exporter reconciles on (community, captured_at, entries), no member data echoed.
-      // `stored:false` means an equal-or-newer snapshot is already held (replay / out-of-order delivery);
-      // it is a successful no-op, NOT an error — the exporter is at-least-once and must be able to retry.
+      // Minimal receipt — the exporter reconciles on (community, collection, captured_at, entries), no member
+      // data echoed. `stored:false` means an equal-or-newer snapshot is already held FOR THIS COLLECTION
+      // (replay / out-of-order delivery); it is a successful no-op, NOT an error — the exporter is
+      // at-least-once and must be able to retry.
       return c.json({
         ok: true,
         stored,
         community: parsed.data.community,
+        collection: parsed.data.collection,
         captured_at: parsed.data.captured_at,
         entries: parsed.data.entries.length,
       });
@@ -539,10 +565,58 @@ function renderRefusalHtml(refusal: Refusal): string {
   </body></html>`;
 }
 
+/**
+ * The DRIFT BOARD (S5-T4). The assumption-free SIDE-BY-SIDE leads — role members next to per-chain holder
+ * counts, two measured facts with no derivation. The floors follow as clearly-labelled DERIVED claims, each
+ * printing its assumption and the direction it errs when that assumption breaks. A floor is a bound over
+ * WALLETS; rendering it as a count of PEOPLE is the confidently-wrong shape this whole service exists to
+ * prevent, so the wording says "wallets" every time it says a number.
+ */
+function renderDriftHtml(d: DriftReport): string {
+  const board = d.per_source_holders
+    .map((s) => `${escapeHtml(cohortText(s.holders))} on ${escapeHtml(s.chain)}`)
+    .join(' &middot; ');
+  const floor = (
+    label: string,
+    f: { value: number; assumption: string; breaks_when: string; direction_if_violated: string },
+  ): string =>
+    `<li>${escapeHtml(label)}: <strong>&ge;${f.value} wallets</strong>
+       <br><small>Holds only if ${escapeHtml(f.assumption)}. If not — ${escapeHtml(f.breaks_when)} — this
+       number <strong>${escapeHtml(f.direction_if_violated)}</strong>. It bounds WALLETS, not people: one
+       person with ten wallets is ten holders.</small></li>`;
+  const boundNote = d.floors_from_public_bound
+    ? '<p><small>One or more chains hold fewer than ' +
+      `${d.k_anonymity} qualifying wallets; its count is withheld, so the floors below are derived from the ` +
+      'widest total consistent with what is shown (they understate rather than reveal it).</small></p>'
+    : '';
+  // The floors are SUPPRESSED (null) when the role set is sub-k — both are functions of the role count, so
+  // either one would hand back the very cohort the bucket hides. The side-by-side above survives; say plainly
+  // why the derived half is missing rather than rendering a silent blank.
+  const derived =
+    d.stale_floor && d.undergrant_floor
+      ? `<h3>What that bounds</h3>
+  <ul>
+    ${floor('Members whose access may be stale (at least)', d.stale_floor)}
+    ${floor('Qualifying wallets with no role (at least)', d.undergrant_floor)}
+  </ul>
+  ${boundNote}
+  <p><small>${escapeHtml(d.disclosure)}</small></p>`
+      : `<p><small>Your role has fewer than ${d.k_anonymity} members, so we withhold the derived floors:
+     each one is computed from the member count, and publishing either would hand that count straight back.
+     The two measured numbers above are unaffected.</small></p>`;
+  return `
+  <h2>Your role, next to the chain</h2>
+  <p><strong>${escapeHtml(cohortText(d.role_members))} members</strong> hold the role &mdash; the collection is
+     held by <strong>${board}</strong>.</p>
+  <p><small>Both numbers are measured. No identity data, no assumptions. The gap between them is the drift.</small></p>
+  ${derived}`;
+}
+
 function renderAuditHtml(
   output: { run_id: string; aggregate: AuditAggregateLike; cta: Cta },
   uncertain: boolean,
   uncertainReasons: readonly string[] = [],
+  drift?: DriftReport,
 ): string {
   const a = output.aggregate;
   const turnoverPct = (a.holder_turnover * 100).toFixed(0);
@@ -563,9 +637,13 @@ function renderAuditHtml(
   const genericBanner = uncertain && !stale && !a.coverage_uncertain
     ? '<p><em>Heads up: treat these numbers as directional.</em></p>'
     : '';
+  // The drift board LEADS: it is the one part of this page that needs no wallet map, so it is the only part
+  // that is true for a community at 0% identity coverage — and it is the DoD's "sees its real drift".
   return `<!doctype html><html><head><meta charset="utf-8"><title>Shadow Access Audit</title></head><body>
   <h1>Shadow Access Audit</h1>
   ${staleBanner}${coverageBanner}${genericBanner}
+  ${drift ? renderDriftHtml(drift) : ''}
+  <h2>Members we could match to a wallet</h2>
   <ul>
     <li>Stale access (role, no longer qualifies): <strong>${escapeHtml(cohortText(a.stale_access))}</strong></li>
     <li>Sold / lapsed: <strong>${escapeHtml(cohortText(a.sold_lapsed))}</strong></li>

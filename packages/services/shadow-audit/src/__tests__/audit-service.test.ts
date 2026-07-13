@@ -4,11 +4,13 @@ import {
   runAudit,
   type AuditDeps,
   type AuditRequest,
+  type Balances,
   type OwnershipSource,
   type RoleSource,
   type WhaleSource,
 } from '../audit-service.js';
-import type { RoleSnapshot } from '../role-snapshot.js';
+import type { SourceResolver } from '../collection-union.js';
+import { RoleSnapshotSchema, type RoleSnapshot } from '../role-snapshot.js';
 
 const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40); // role-holder who sold → stale
@@ -19,16 +21,24 @@ const NOW = Math.floor(Date.UTC(2026, 5, 22, 12, 0, 0) / 1000);
 
 const order: Order = {
   community: { name: 'thj', owner_wallet: '0x' + '9'.repeat(40) },
-  source: { chain: 'ethereum', contract_address: '0x' + 'a'.repeat(40) },
+  // Chain ids are NUMERIC (S5-T3) — the registry key + the sonar query scope.
+  source: { chain: '1', contract_address: '0x' + 'a'.repeat(40) },
   gating_rule: { kind: 'nft-balance', threshold: 1 },
   products: ['audit'],
   mode: 'lead-magnet',
 };
 
+/** The default collection has ONE declared deployment — the pre-S5 shape, still supported. */
+const oneSource: SourceResolver = () => [
+  { chain: order.source.chain, contract: order.source.contract_address },
+];
+
 function snapshot(): RoleSnapshot {
   return {
     source: 'discord:guild:1',
     community: 'thj',
+    // The gate this export is for — MUST be the collection the order names, else the audit refuses (S5-T1).
+    collection: { chain: order.source.chain, contract: order.source.contract_address },
     captured_at: '2026-06-22T11:00:00.000Z',
     export_method: 'export',
     owner: '0x' + '9'.repeat(40),
@@ -73,7 +83,7 @@ function req(over: Partial<AuditRequest> = {}): AuditRequest {
   };
 }
 function deps(over: Partial<AuditDeps> = {}): AuditDeps {
-  return { ownership, whale, roles: roles(), ...over };
+  return { ownership, whale, roles: roles(), sources: oneSource, ...over };
 }
 
 describe('runAudit — refusals', () => {
@@ -203,6 +213,214 @@ describe('runAudit — hardening fixes', () => {
 });
 
 /**
+ * S5-T3 — THE UNION. The bug this suite exists to kill, grounded on live data (2026-07-12):
+ *
+ *   Honeycomb: 2,280 holders on ethereum · 1,813 on berachain — ONE collection, TWO deployments.
+ *
+ * `runAudit` reconstructed ONLY the deployment the order named. Addressed via berachain it saw 44% of the
+ * holders, and every ethereum holder with a Discord role — holding the collection, right now — came back as
+ * STALE ACCESS: "has the role, no longer qualifies". Revoking on that number would have cut off thousands
+ * of real holders. Every one of these tests FAILS against the single-source engine.
+ */
+describe('runAudit — multi-source collections (S5-T3)', () => {
+  const ETH = '0x' + 'a'.repeat(40); // the collection on ethereum (chain 1)
+  const BERA = '0x' + 'b'.repeat(40); // the SAME collection on berachain (chain 80094)
+  // SIX role-holders whose tokens are ALL on ethereum — enough to clear k, so the false cohort the
+  // single-source engine produces is an EXACT number rather than a k-anon bucket. (The real Honeycomb
+  // number is 2,280; six is the smallest fixture that shows the same shape.)
+  const ETH_HOLDERS = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'].map((s) => '0x' + s.repeat(20));
+  const ETH_ONLY = ETH_HOLDERS[0]!;
+  const BERA_ONLY = '0x' + 'c'.repeat(40); // role-holder whose tokens are ALL on berachain
+
+  /** The audit is ADDRESSED via berachain — the request shape is unchanged (chain+contract). */
+  const beraOrder: Order = {
+    ...order,
+    source: { chain: '80094', contract_address: BERA },
+  };
+
+  /** Both deployments declared: either one addresses the collection, and both are reconstructed. */
+  const bothSources: SourceResolver = () => [
+    { chain: '1', contract: ETH },
+    { chain: '80094', contract: BERA },
+  ];
+  /** The pre-S5 view: the collection is ONLY the addressed chain. */
+  const beraOnly: SourceResolver = () => [{ chain: '80094', contract: BERA }];
+
+  const bal = (...wallets: string[]): Balances => new Map(wallets.map((w) => [w, 1n]));
+
+  /** Chain-aware ownership: the ETH holders exist only on chain 1, BERA_ONLY only on 80094. */
+  const chainAware: OwnershipSource = {
+    resolveSnapshotBlock: async ({ chain }) => (chain === '1' ? 19_000_000 : 4_200_000),
+    balancesAt: async ({ chain }) => (chain === '1' ? bal(...ETH_HOLDERS) : bal(BERA_ONLY)),
+    currentBalances: async ({ chain }) => (chain === '1' ? bal(...ETH_HOLDERS) : bal(BERA_ONLY)),
+  };
+
+  const bridgedRoles: RoleSource = {
+    load: async () => ({
+      ...snapshot(),
+      collection: { chain: beraOrder.source.chain, contract: BERA },
+      entries: [
+        ...ETH_HOLDERS.map((w, i) => ({ discord_user_id: `e${i}`, wallet: w, role_ids: ['h'] })),
+        { discord_user_id: 'b1', wallet: BERA_ONLY, role_ids: ['h'] },
+      ],
+    }),
+  };
+
+  const bridgedReq = req({ order: beraOrder, includeRecords: true });
+
+  it('a wallet holding ONLY on ethereum qualifies for an audit addressed via the berachain contract', async () => {
+    const r = await runAudit(bridgedReq, {
+      ownership: chainAware,
+      whale,
+      roles: bridgedRoles,
+      sources: bothSources,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // The whole point: NOBODY is stale. Every role-holder holds the collection — on one chain or the
+    // other. Under the single-source engine all six ethereum holders came back STALE.
+    expect(r.output.records!.filter((rec) => rec.band === 'stale')).toEqual([]);
+    const bands = new Map(r.output.records!.map((rec) => [rec.wallet, rec.band]));
+    expect(bands.get(ETH_ONLY)).toBe('ok');
+    expect(bands.get(BERA_ONLY)).toBe('ok');
+    // Evidence is the balance on the chain the wallet actually holds on — checkable against ONE chain.
+    const ethRec = r.output.records!.find((rec) => rec.wallet === ETH_ONLY);
+    expect(ethRec?.evidence.balance_at_snapshot).toBe(1);
+  });
+
+  it('UNION ≠ single-chain: the same fixture brands all six ethereum holders stale when a source is dropped', async () => {
+    const single = await runAudit(bridgedReq, {
+      ownership: chainAware,
+      whale,
+      roles: bridgedRoles,
+      sources: beraOnly, // the pre-S5 view of the collection
+    });
+    const union = await runAudit(bridgedReq, {
+      ownership: chainAware,
+      whale,
+      roles: bridgedRoles,
+      sources: bothSources,
+    });
+    expect(single.ok && union.ok).toBe(true);
+    if (!single.ok || !union.ok) return;
+    // The delta IS the bug: six FALSE stale-access under single-source, zero under the union.
+    expect(single.output.aggregate.stale_access).toEqual({ kind: 'exact', value: 6 });
+    expect(single.output.records!.filter((rec) => rec.band === 'stale')).toHaveLength(6);
+    expect(union.output.records!.filter((rec) => rec.band === 'stale')).toEqual([]);
+    // And the two runs must not be confusable — different source sets, different fingerprints.
+    expect(single.output.inputs_hash).not.toBe(union.output.inputs_hash);
+  });
+
+  it('inputs_hash separates two source-sets a single-source hash would have COLLIDED', async () => {
+    // Both runs are addressed at berachain and read bera at the SAME block. The old hash covered only
+    // {chain, contract, snapshot_block} of the addressed source — byte-identical for both. They are
+    // different computations over different collections and must never share a run_id.
+    const single = await runAudit(bridgedReq, { ownership: chainAware, whale, roles: bridgedRoles, sources: beraOnly });
+    const union = await runAudit(bridgedReq, { ownership: chainAware, whale, roles: bridgedRoles, sources: bothSources });
+    if (!single.ok || !union.ok) throw new Error('expected both to succeed');
+    expect(single.output.inputs_hash).not.toBe(union.output.inputs_hash);
+  });
+
+  it('is addressing-INVARIANT: the same collection audited via either chain yields the same fingerprint', async () => {
+    const viaBera = await runAudit(req({ order: beraOrder }), {
+      ownership: chainAware, whale, roles: bridgedRoles, sources: bothSources,
+    });
+    const viaEth = await runAudit(
+      req({ order: { ...order, source: { chain: '1', contract_address: ETH } } }),
+      {
+        ownership: chainAware,
+        whale,
+        // the snapshot is keyed by collection; address via eth and the eth-keyed snapshot is the one loaded
+        roles: { load: async () => ({ ...snapshot(), collection: { chain: '1', contract: ETH },
+          entries: [
+            { discord_user_id: 'u1', wallet: ETH_ONLY, role_ids: ['h'] },
+            { discord_user_id: 'u2', wallet: BERA_ONLY, role_ids: ['h'] },
+          ] }) },
+        sources: bothSources,
+      },
+    );
+    if (!viaBera.ok || !viaEth.ok) throw new Error('expected both to succeed');
+    // One collection, one computation — the fingerprint covers the SOURCE SET, not the door used.
+    expect(viaBera.output.inputs_hash).toBe(viaEth.output.inputs_hash);
+  });
+
+  it('FAIL-CLOSED: ANY unreachable source refuses the whole audit — never a partial union', async () => {
+    const ethDown: OwnershipSource = {
+      ...chainAware,
+      balancesAt: async (args) => {
+        if (args.chain === '1') throw new Error('rpc 408 on ethereum');
+        return chainAware.balancesAt(args);
+      },
+    };
+    const r = await runAudit(bridgedReq, {
+      ownership: ethDown,
+      whale,
+      roles: bridgedRoles,
+      sources: bothSources,
+    });
+    // A partial union would have served an audit branding every ethereum holder stale. Refuse instead.
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.code).toBe('reconstruction-failed');
+    expect(r.refusal.retryable).toBe(true);
+  });
+
+  it('REFUSES an undeclared contract rather than auditing it as a standalone collection', async () => {
+    const r = await runAudit(bridgedReq, {
+      ownership: chainAware,
+      whale,
+      roles: bridgedRoles,
+      sources: () => undefined, // not in the registry
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal.code).toBe('unindexed-contract');
+  });
+
+  it('NAMES the union semantics + every source it read, in the output', async () => {
+    const r = await runAudit(bridgedReq, {
+      ownership: chainAware, whale, roles: bridgedRoles, sources: bothSources,
+    });
+    if (!r.ok) throw new Error('expected an audit');
+    // The reader is TOLD how the chains were combined — never left to assume.
+    expect(r.output.methodology?.union_semantics).toBe('any-source');
+    expect(r.output.methodology?.collection_sources).toEqual([
+      { chain: '1', contract: ETH, snapshot_block: 19_000_000 },
+      { chain: '80094', contract: BERA, snapshot_block: 4_200_000 },
+    ]);
+    expect(AuditOutputSchema.safeParse(r.output).success).toBe(true);
+  });
+
+  it('applies the threshold PER-SOURCE (any-source), never to a cross-chain sum', async () => {
+    // 2 tokens on eth + 2 on bera = 4 summed, but only 2 on any ONE chain. Threshold 3 must REFUSE
+    // qualification: summing would manufacture access out of holdings that exist on no single chain.
+    const split: OwnershipSource = {
+      resolveSnapshotBlock: async () => 100,
+      balancesAt: async () => new Map([[ETH_ONLY, 2n]]),
+      currentBalances: async () => new Map([[ETH_ONLY, 2n]]),
+    };
+    const r = await runAudit(
+      req({
+        order: { ...beraOrder, gating_rule: { kind: 'nft-balance', threshold: 3 } },
+        includeRecords: true,
+      }),
+      {
+        ownership: split,
+        whale,
+        roles: { load: async () => ({ ...snapshot(), collection: { chain: '80094', contract: BERA },
+          entries: [{ discord_user_id: 'u1', wallet: ETH_ONLY, role_ids: ['h'] }] }) },
+        sources: bothSources,
+        k: 1,
+      },
+    );
+    if (!r.ok) throw new Error('expected an audit');
+    const rec = r.output.records!.find((x) => x.wallet === ETH_ONLY);
+    expect(rec?.qualifies).toBe(false); // 2 < 3 on every source; 2+2 is not a holding
+    expect(rec?.band).toBe('stale');
+  });
+});
+
+/**
  * Bug 20260712-486383 — the confidently-wrong audit.
  *
  * LIVE (2026-07-12): the THJ exporter produced a FRESH, contract-valid snapshot of 515 role-holders
@@ -293,5 +511,90 @@ describe('runAudit — role coverage (bug 20260712-486383)', () => {
     expect(r.output.aggregate.coverage_uncertain).toBe(false);
     expect(r.output.aggregate.role_coverage).toBe(1);
     expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'bucketed', bucket: '<5' });
+  });
+});
+
+/**
+ * REVIEW BLOCKING-1/2/3 (cross-model dissenter, 2026-07-12).
+ *
+ * S5-T1 keyed role snapshots on a single DEPLOYMENT {chain, contract}; S5-T3 then made a collection a
+ * SET of deployments. The two contradicted, and nothing in the sprint caught it — every test happened
+ * to POST and audit through the SAME deployment.
+ */
+describe('a collection is addressed by ANY of its deployments (review BLOCKING-1)', () => {
+  const ETH = '0x' + 'e'.repeat(40);
+  const BERA = '0x' + 'b'.repeat(40);
+  const W = '0x' + '7'.repeat(40);
+
+  const bothSources: SourceResolver = () => [
+    { chain: '1', contract: ETH },
+    { chain: '80094', contract: BERA },
+  ];
+  const bal = (...w: string[]): Balances => new Map(w.map((x) => [x, 1n]));
+  const own: OwnershipSource = {
+    resolveSnapshotBlock: async ({ chain }) => (chain === '1' ? 19_000_000 : 4_200_000),
+    balancesAt: async () => bal(W),
+    currentBalances: async () => bal(W),
+  };
+
+  /** The snapshot names the BERACHAIN deployment — as an exporter naturally would. */
+  const snapshotNamingBera = (): RoleSnapshot => ({
+    ...snapshot(),
+    collection: { chain: '80094', contract: BERA },
+    entries: [{ discord_user_id: 'u1', wallet: W, role_ids: ['h'] }],
+  });
+
+  it('finds a snapshot POSTed against deployment B when the audit is addressed via deployment A', async () => {
+    // Store keyed on whatever the CANONICAL key is — the store is opaque, so mimic the real read path:
+    // the RoleSource is asked for the collection key the audit computed.
+    const roles: RoleSource = { load: async () => snapshotNamingBera() };
+    const ethOrder: Order = { ...order, source: { chain: '1', contract_address: ETH } };
+
+    const r = await runAudit(req({ order: ethOrder }), {
+      ownership: own,
+      whale,
+      roles,
+      sources: bothSources,
+      k: 1,
+    });
+
+    // Before the fix this REFUSED (external-mode / "no role snapshot"): the snapshot's deployment key
+    // ("80094/0xbbb…") never equalled the addressed deployment key ("1/0xeee…"), so a community whose
+    // data was sitting right there was told it had none.
+    expect(r.ok).toBe(true);
+  });
+
+  it('records evidence against the source the balance was READ FROM, not the addressed one (BLOCKING-2)', async () => {
+    const roles: RoleSource = { load: async () => snapshotNamingBera() };
+    const ethOrder: Order = { ...order, source: { chain: '1', contract_address: ETH } };
+    // W holds ONLY on berachain (block 4_200_000) while the caller addressed ethereum (19_000_000).
+    const beraOnlyOwn: OwnershipSource = {
+      resolveSnapshotBlock: async ({ chain }) => (chain === '1' ? 19_000_000 : 4_200_000),
+      balancesAt: async ({ chain }) => (chain === '80094' ? bal(W) : new Map()),
+      currentBalances: async ({ chain }) => (chain === '80094' ? bal(W) : new Map()),
+    };
+
+    const r = await runAudit(req({ order: ethOrder, includeRecords: true }), {
+      ownership: beraOnlyOwn,
+      whale,
+      roles,
+      sources: bothSources,
+      k: 1,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok || !r.output.records) throw new Error('expected records');
+    const rec = r.output.records.find((x) => x.wallet === W);
+    // The evidence must be RE-DERIVABLE: the cited source+block must be the one the balance came from.
+    // Citing the addressed chain (1 @ 19,000,000) would send a buyer to a chain where W holds nothing.
+    expect(rec?.provenance.evidence_source).toEqual({ chain: '80094', contract: BERA });
+    expect(rec?.provenance.snapshot_block).toBe(4_200_000);
+    expect(rec?.evidence.balance_at_snapshot).toBe(1);
+  });
+
+  it('REJECTS a slug-chain snapshot rather than storing it under an unmatchable key (BLOCKING-3)', () => {
+    const bad = { ...snapshot(), collection: { chain: 'ethereum', contract: ETH } };
+    // "ethereum" can never match the registry's "1" — it would ingest happily and then be invisible to
+    // every audit. A silent hole, not a loud failure.
+    expect(RoleSnapshotSchema.safeParse(bad).success).toBe(false);
   });
 });

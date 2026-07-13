@@ -1,8 +1,16 @@
 /**
  * FR-1 / SDD §3.1 — the Order we fulfill.
  *
- * v1 is sealed to a single on-chain source + the single supported gating rule
- * (single-contract NFT balance threshold) + the lead-magnet audit product.
+ * v1 is sealed to the single supported gating rule (NFT balance threshold) + the lead-magnet
+ * audit product.
+ *
+ * S5-T3 — `source` is the ADDRESSING deployment, NOT the whole collection. It used to be sealed
+ * to "a single on-chain source", and that seal became a correctness bug the moment the collections
+ * bridged: Honeycomb is 2,280 holders on ethereum AND 1,813 on berachain, so a berachain-addressed
+ * audit saw 44% of the holders and branded every ethereum holder STALE. Any ONE declared deployment
+ * now ADDRESSES the collection, and the registry resolves it to the full source set the audit
+ * reconstructs as a UNION. The request shape is unchanged on purpose — the live dashboard client and
+ * the public teaser keep working, and only the resolution changes.
  */
 
 import { z } from 'zod';
@@ -32,6 +40,8 @@ export const OrderSchema = z
         owner_wallet: EthAddressSchema,
       })
       .strict(),
+    /** ANY ONE declared deployment of the collection — it ADDRESSES the collection (S5-T3); the
+     *  audit reconstructs the UNION of every deployment the registry declares for it. */
     source: z
       .object({
         chain: ChainSchema,
