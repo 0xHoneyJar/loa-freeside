@@ -2,9 +2,16 @@
  * S1-T4 (IMP-009 / IMP-002) — durable RoleSnapshot store: the WRITE side of the audit's role port.
  *
  * The exporter (freeside-characters) POSTs a Discord role export to `POST /v1/role-snapshot`; this HOLDS
- * the latest snapshot per `community` so the audit's read path (`RoleSource.load`) serves it. Until this
- * seam existed the snapshot could only arrive as a pre-placed file (`makeFileRoleSource`) — there was no
- * way for the exporter to feed one in. This closes that S1↔S3 gap.
+ * the latest snapshot per (community, collection) so the audit's read path (`RoleSource.load`) serves it.
+ * Until this seam existed the snapshot could only arrive as a pre-placed file (`makeFileRoleSource`) —
+ * there was no way for the exporter to feed one in. This closes that S1↔S3 gap.
+ *
+ * S5-T1 — the key is (community, COLLECTION), not community alone. thj gates SEVEN collections
+ * (Honeycomb + HoneyJar1-6) behind SEVEN Discord roles, and the exporter exports one gated role-set at a
+ * time. Keyed by community only, POSTing the HoneyJar1 export would OVERWRITE the Honeycomb one, and the
+ * Honeycomb audit would then silently compute stale-access against HoneyJar1's role-holders. Monotonicity
+ * is per-key for the same reason: a replayed POST for collection A must not roll back collection B, and a
+ * newer snapshot for A must not be refused because B's is newer.
  *
  * "DURABLE" = write-through to disk, so an ingested snapshot survives a replica restart: the audit must
  * never boot amnesiac and refuse every dogfood audit because its last snapshot lived only in RAM.
@@ -15,25 +22,25 @@
  *   posture as the event store's in-memory shortcut. It satisfies the AC ("DURABLE state; holds latest
  *   per community") without bolting a DB onto a dependency-free service. Upgrade trigger: multi-replica
  *   ingestion (each replica would hold its own file) — then back this with the shared store keyed
- *   (community). Tracked deviation-with-rationale in the sprint report.
+ *   (community, collection). Tracked deviation-with-rationale in the sprint report.
  */
 
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { RoleSnapshotSchema, type RoleSnapshot } from './role-snapshot.js';
+import { RoleSnapshotSchema, collectionKey, type RoleSnapshot } from './role-snapshot.js';
 import type { RoleSource } from './audit-service.js';
 
-/** The write side of the role port: persist the latest snapshot for its community. */
+/** The write side of the role port: persist the latest snapshot for its (community, collection). */
 export interface RoleSink {
   /**
-   * Persist `snap` as the latest for `snap.community`. Returns FALSE (no-op) when an equal-or-newer
-   * snapshot is already held.
+   * Persist `snap` as the latest for (`snap.community`, `snap.collection`). Returns FALSE (no-op) when an
+   * equal-or-newer snapshot is already held FOR THAT SAME PAIR.
    *
-   * MONOTONICITY is the contract: the store holds the LATEST per community. An unconditional overwrite
-   * lets a delayed or replayed POST (both are valid, correctly-signed requests — at-least-once delivery
-   * makes them expected, not exotic) roll the held snapshot BACKWARDS, so the audit would then compute
-   * drift from stale role data. Compare `captured_at` and refuse to go back in time.
+   * MONOTONICITY is the contract: the store holds the LATEST per (community, collection). An unconditional
+   * overwrite lets a delayed or replayed POST (both are valid, correctly-signed requests — at-least-once
+   * delivery makes them expected, not exotic) roll the held snapshot BACKWARDS, so the audit would then
+   * compute drift from stale role data. Compare `captured_at` WITHIN the key and refuse to go back in time.
    */
   store(snap: RoleSnapshot): Promise<boolean>;
 }
@@ -42,6 +49,17 @@ export interface RoleSink {
 function isNewer(candidate: RoleSnapshot, existing: RoleSnapshot | undefined): boolean {
   if (!existing) return true;
   return Date.parse(candidate.captured_at) > Date.parse(existing.captured_at);
+}
+
+/** The store key: (community, collection) as ONE unambiguous string. JSON-encoded so a community name
+ *  containing the separator cannot collide with a different (community, collection) pair. */
+function keyFor(community: string, collection: string): string {
+  return JSON.stringify([community, collection.toLowerCase()]);
+}
+
+/** The key a snapshot files itself under — derived from the snapshot's OWN fields, never from the caller. */
+function keyOf(snap: RoleSnapshot): string {
+  return keyFor(snap.community, collectionKey(snap.collection));
 }
 
 /** A store that is BOTH the audit's read port (`RoleSource`) and the ingestion write port (`RoleSink`). */
@@ -59,48 +77,55 @@ export function timingSafeEqualStr(presented: string, expected: string): boolean
   return contentMatch && p.length === e.length;
 }
 
-/** Per-community filename — sha256 of the community so an arbitrary community name can never traverse the
- *  data dir (the community is `z.string().min(1)`; a raw name could carry `/` or `..`). The community is
- *  recorded INSIDE the JSON, so the on-boot scan rebuilds the map from file contents, not the filename. */
-function fileFor(dir: string, community: string): string {
-  return join(dir, createHash('sha256').update(community).digest('hex').slice(0, 32) + '.json');
+/** Per-(community, collection) filename — sha256 of the store key, so an arbitrary community or contract
+ *  string can never traverse the data dir (both are caller-supplied; a raw name could carry `/` or `..`).
+ *  Both fields are recorded INSIDE the JSON, so the on-boot scan rebuilds the map from file contents, not
+ *  from the filename. */
+function fileFor(dir: string, key: string): string {
+  return join(dir, createHash('sha256').update(key).digest('hex').slice(0, 32) + '.json');
 }
 
 /**
- * In-memory latest-per-community + write-through to `dir`, seeded from disk on construction (durable).
- * `load()` serves the configured `community` (the operated community this deploy audits).
+ * In-memory latest-per-(community, collection) + write-through to `dir`, seeded from disk on construction
+ * (durable). `load(collection)` serves the configured `community`'s snapshot FOR THAT COLLECTION (the
+ * operated community this deploy audits; the collection is the one the audit is running against).
  */
 export function makeDurableRoleStore(opts: { dir: string; community: string }): DurableRoleStore {
   const { dir, community } = opts;
   mkdirSync(dir, { recursive: true });
   const latest = new Map<string, RoleSnapshot>();
 
-  // Seed from disk — a restart must recover the last-ingested snapshot, not start empty.
+  // Seed from disk — a restart must recover the last-ingested snapshots, not start empty.
   for (const name of safeReaddir(dir)) {
     if (!name.endsWith('.json')) continue;
     try {
       const snap = RoleSnapshotSchema.parse(JSON.parse(readFileSync(join(dir, name), 'utf8')));
-      latest.set(snap.community, snap);
+      latest.set(keyOf(snap), snap);
     } catch {
       // A corrupt/foreign file must not crash boot; skip it (the next ingestion overwrites cleanly).
+      // NOTE (S5-T1): a snapshot written BEFORE `collection` existed on the wire lands here — it no longer
+      // parses, so it is dropped rather than served under a guessed collection. Re-POST it (one exporter
+      // command); the store is a cache of the exporter's output, never a source of truth.
     }
   }
 
   return {
-    async load(): Promise<RoleSnapshot | undefined> {
-      return latest.get(community);
+    async load(collection: string): Promise<RoleSnapshot | undefined> {
+      return latest.get(keyFor(community, collection));
     },
     async store(snap: RoleSnapshot): Promise<boolean> {
       // Defensive re-validate (the route validates too) — a durable store must never persist a wrong shape.
       const valid = RoleSnapshotSchema.parse(snap);
-      // MONOTONICITY: never roll the held snapshot backwards on a replayed/out-of-order POST.
-      if (!isNewer(valid, latest.get(valid.community))) return false;
-      const target = fileFor(dir, valid.community);
+      const key = keyOf(valid);
+      // MONOTONICITY, WITHIN THE KEY: never roll THIS collection's held snapshot backwards on a replayed or
+      // out-of-order POST — and never let a sibling collection's newer snapshot block this one.
+      if (!isNewer(valid, latest.get(key))) return false;
+      const target = fileFor(dir, key);
       const tmp = target + '.tmp';
       // Atomic write: full file to tmp, then rename — a concurrent load() never sees a torn snapshot.
       writeFileSync(tmp, JSON.stringify(valid), 'utf8');
       renameSync(tmp, target);
-      latest.set(valid.community, valid);
+      latest.set(key, valid);
       return true;
     },
   };
@@ -110,13 +135,14 @@ export function makeDurableRoleStore(opts: { dir: string; community: string }): 
 export function makeInMemoryRoleStore(loadCommunity: string): DurableRoleStore {
   const latest = new Map<string, RoleSnapshot>();
   return {
-    async load(): Promise<RoleSnapshot | undefined> {
-      return latest.get(loadCommunity);
+    async load(collection: string): Promise<RoleSnapshot | undefined> {
+      return latest.get(keyFor(loadCommunity, collection));
     },
     async store(snap: RoleSnapshot): Promise<boolean> {
       const valid = RoleSnapshotSchema.parse(snap);
-      if (!isNewer(valid, latest.get(valid.community))) return false; // never roll backwards
-      latest.set(valid.community, valid);
+      const key = keyOf(valid);
+      if (!isNewer(valid, latest.get(key))) return false; // never roll THIS collection backwards
+      latest.set(key, valid);
       return true;
     },
   };

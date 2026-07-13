@@ -56,7 +56,8 @@ describe('ownershipActivityToChange — the signed event → OwnershipChange map
 // --- the fixture the subscriber-fed projection reproduces (a fixture, NOT the real adapter — FAGAN HIGH-4) ---
 const order: Order = { community: { name: 'thj', owner_wallet: W('9') }, source: { chain: 'ethereum', contract_address: CONTRACT }, gating_rule: { kind: 'nft-balance', threshold: 1 }, products: ['audit'], mode: 'lead-magnet' };
 const snapshot = (): RoleSnapshot => ({
-  source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+  source: 'discord:guild:1', community: 'thj', collection: { chain: 'ethereum', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
   owner: W('9'), freshness_threshold_seconds: 86_400,
   entries: [{ discord_user_id: 'u1', wallet: R1, role_ids: ['h'] }, { discord_user_id: 'u2', wallet: R2, role_ids: ['h'] }, { discord_user_id: 'u3', wallet: R3, role_ids: ['h'] }],
 });

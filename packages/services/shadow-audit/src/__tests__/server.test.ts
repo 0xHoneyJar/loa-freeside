@@ -17,6 +17,11 @@ const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40);
 const Y = '0x' + '5'.repeat(40);
 const CTA = { product: 'https://product', conversation: 'https://talk' };
+// The collection every fixture here is gated on — the same one `query()` audits (S5-T1: a role source
+// serves a snapshot only for the collection asked for).
+const CHAIN = '80094';
+const CONTRACT = '0x' + 'a'.repeat(40);
+const COLLECTION_KEY = `${CHAIN}/${CONTRACT}`;
 
 /** A fake OwnershipSource — the injection seam that keeps the suite hermetic. */
 const fakeOwnership = (snap: Balances, cur: Balances): OwnershipSource => ({
@@ -34,6 +39,7 @@ function tempRoleSnapshot(community: string, roleWallet: string): { path: string
     JSON.stringify({
       source: 'discord',
       community,
+      collection: { chain: CHAIN, contract: CONTRACT },
       captured_at: new Date(Date.now() - 60_000).toISOString(),
       export_method: 'test-fixture',
       owner: 'op',
@@ -46,8 +52,8 @@ function tempRoleSnapshot(community: string, roleWallet: string): { path: string
 
 function query(community: string): string {
   return new URLSearchParams({
-    chain: '80094',
-    contract: '0x' + 'a'.repeat(40),
+    chain: CHAIN,
+    contract: CONTRACT,
     snapshot_date: '2026-06-01',
     community,
     owner_wallet: '0x' + 'b'.repeat(40),
@@ -72,27 +78,36 @@ describe('makeBalanceWhaleSource — top-holder concentration over the distribut
 
 describe('makeFileRoleSource — validated file loader', () => {
   it('returns undefined when no path is configured', async () => {
-    expect(await makeFileRoleSource(undefined).load()).toBeUndefined();
+    expect(await makeFileRoleSource(undefined).load(COLLECTION_KEY)).toBeUndefined();
   });
   it('loads + validates a real snapshot', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {
-      const snap = await makeFileRoleSource(path).load();
+      const snap = await makeFileRoleSource(path).load(COLLECTION_KEY);
       expect(snap?.community).toBe('thj');
       expect(snap?.entries[0]?.wallet).toBe(R1);
     } finally {
       cleanup();
     }
   });
+  it('serves the file only for ITS collection (S5-T1 — never another gate’s role-holders)', async () => {
+    const { path, cleanup } = tempRoleSnapshot('thj', R1);
+    try {
+      const other = `${CHAIN}/0x${'b'.repeat(40)}`;
+      expect(await makeFileRoleSource(path).load(other)).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
   it('THROWS on a missing file (fail loud, never silent-undefined)', async () => {
-    await expect(makeFileRoleSource('/no/such/roles.json').load()).rejects.toThrow();
+    await expect(makeFileRoleSource('/no/such/roles.json').load(COLLECTION_KEY)).rejects.toThrow();
   });
   it('THROWS on an invalid snapshot shape', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'audit-bad-'));
     const path = join(dir, 'roles.json');
     writeFileSync(path, JSON.stringify({ not: 'a snapshot' }));
     try {
-      await expect(makeFileRoleSource(path).load()).rejects.toThrow();
+      await expect(makeFileRoleSource(path).load(COLLECTION_KEY)).rejects.toThrow();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

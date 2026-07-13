@@ -29,6 +29,8 @@ function snapshot(): RoleSnapshot {
   return {
     source: 'discord:guild:1',
     community: 'thj',
+    // The gate this export is for — MUST be the collection the order names, else the audit refuses (S5-T1).
+    collection: { chain: order.source.chain, contract: order.source.contract_address },
     captured_at: '2026-06-22T11:00:00.000Z',
     export_method: 'export',
     owner: '0x' + '9'.repeat(40),

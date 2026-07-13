@@ -9,7 +9,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { RoleSnapshotSchema, RoleSnapshotEntrySchema, type RoleSnapshot } from '../role-snapshot.js';
+import {
+  RoleSnapshotSchema,
+  RoleSnapshotEntrySchema,
+  collectionKey,
+  type RoleSnapshot,
+} from '../role-snapshot.js';
 
 const golden = JSON.parse(
   readFileSync(new URL('./fixtures/role-snapshot.golden.json', import.meta.url), 'utf8'),
@@ -24,8 +29,22 @@ describe('/v1/role-snapshot cross-repo contract (S1-T6)', () => {
 
   it('pins the EXACT top-level wire keys — an add/remove breaks the exporter contract', () => {
     expect(Object.keys(golden as object).sort()).toEqual(
-      ['captured_at', 'community', 'entries', 'export_method', 'freshness_threshold_seconds', 'owner', 'source'].sort(),
+      ['captured_at', 'collection', 'community', 'entries', 'export_method', 'freshness_threshold_seconds', 'owner', 'source'].sort(),
     );
+  });
+
+  it('pins the COLLECTION the snapshot is for (S5-T1) — required, (chain, contract), strict', () => {
+    // A community gates several collections; a snapshot that does not name ITS collection cannot be keyed,
+    // and an unkeyed snapshot silently overwrites a sibling gate's role-holders.
+    const parsed = RoleSnapshotSchema.parse(golden);
+    expect(Object.keys(parsed.collection).sort()).toEqual(['chain', 'contract']);
+    expect(collectionKey(parsed.collection)).toBe('80094/0x886d2176d899796cd1affa07eff07b9b2b80f1be');
+
+    const { collection: _omitted, ...withoutCollection } = golden as Record<string, unknown>;
+    expect(() => RoleSnapshotSchema.parse(withoutCollection)).toThrow(); // REQUIRED
+    expect(() =>
+      RoleSnapshotSchema.parse({ ...(golden as object), collection: { chain: '1', contract: 'not-an-address' } }),
+    ).toThrow();
   });
 
   it('pins entry shape: wallet is OPTIONAL (an unmatched role-holder is FLAGGED, never dropped)', () => {

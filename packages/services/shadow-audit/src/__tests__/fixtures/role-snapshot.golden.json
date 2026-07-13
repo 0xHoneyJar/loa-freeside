@@ -1,6 +1,10 @@
 {
   "source": "discord:guild:824482353155080202",
   "community": "thj",
+  "collection": {
+    "chain": "80094",
+    "contract": "0x886d2176d899796cd1affa07eff07b9b2b80f1be"
+  },
   "captured_at": "2026-07-10T00:00:00.000Z",
   "export_method": "freeside-characters:member-graph-exporter@1",
   "owner": "0x886d2176d899796cd1affa07eff07b9b2b80f1be",
