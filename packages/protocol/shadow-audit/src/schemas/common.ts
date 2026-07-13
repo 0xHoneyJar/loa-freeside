@@ -18,11 +18,22 @@ export const EthAddressSchema = z
   .regex(/^0x[0-9a-fA-F]{40}$/, 'must be a 0x-prefixed 20-byte hex address');
 export type EthAddress = z.infer<typeof EthAddressSchema>;
 
-/** Chain identifier as a lowercase slug (e.g. "ethereum", "berachain"). */
+/**
+ * Chain identifier — the NUMERIC EVM chain id as a decimal string ("1", "80094").
+ *
+ * S5-T3: this used to be documented as a lowercase SLUG ("ethereum") while the runtime
+ * (`ownership-source.ts`) refused any non-numeric chain — so a schema-VALID Order was
+ * unreconstructable, and the failure surfaced deep in the adapter instead of at the boundary.
+ * The chain id is now load-bearing in three places that must agree exactly: the collection
+ * registry key (`<chain>/<contract>`), the chain-scoped sonar query, and this Order. A slug
+ * would need a slug→id table, and a table is a place for the two sides to disagree silently.
+ * So the type is tightened to what the system actually requires. Slug requests were ALREADY
+ * failing (as `reconstruction-failed`); they now fail at the schema, which is the honest place.
+ */
 export const ChainSchema = z
   .string()
   .min(1)
-  .regex(/^[a-z0-9-]+$/, 'chain must be a lowercase slug');
+  .regex(/^[0-9]+$/, 'chain must be a numeric EVM chain id (decimal string), e.g. "1" or "80094"');
 export type Chain = z.infer<typeof ChainSchema>;
 
 /** A block height — non-negative integer. */

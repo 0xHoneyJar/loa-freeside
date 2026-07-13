@@ -12,6 +12,7 @@ import { buildAuditApp, configFromEnv, validateApiKeyEnv, type AuditServerConfig
 import { makeBalanceWhaleSource } from '../whale-source.js';
 import { makeFileRoleSource } from '../role-source.js';
 import type { OwnershipSource, Balances } from '../audit-service.js';
+import { buildCollectionIndex } from '../ownership-source.js';
 
 const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40);
@@ -28,6 +29,12 @@ const fakeOwnership = (snap: Balances, cur: Balances): OwnershipSource => ({
   resolveSnapshotBlock: async () => 1000,
   balancesAt: async () => snap,
   currentBalances: async () => cur,
+});
+
+/** S5-T3: the app needs the collection INDEX — the membership lookup AND the deployment set the audit
+ *  unions. Without it the app is fail-closed (see the `no registry` test below). */
+const collections = buildCollectionIndex({
+  [COLLECTION_KEY]: { collection: 'honeycomb', standard: 'erc721' },
 });
 
 /** Write a valid RoleSnapshot to a temp file and return its path + a cleanup fn. */
@@ -128,7 +135,7 @@ describe('buildAuditApp — the deployment composition root', () => {
   it('GET /v1/audit serves the k-anon aggregate for an operated community', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {
-      const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path }));
+      const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path }), collections);
       const res = await app.request(`/v1/audit?${query('thj')}`);
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -147,21 +154,36 @@ describe('buildAuditApp — the deployment composition root', () => {
     }
   });
 
+  it('FAIL-CLOSED (S5-T3): with NO collection index, every audit refuses — never a single-source guess', async () => {
+    // An app that cannot enumerate a collection's deployments cannot know whether it is auditing one chain
+    // of several. Guessing "it stands alone" is precisely the bug that branded every ethereum Honeycomb
+    // holder stale. So a mis-wired composition root refuses loudly instead of serving a plausible number.
+    const { path, cleanup } = tempRoleSnapshot('thj', R1);
+    try {
+      const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path })); // no index
+      const res = await app.request(`/v1/audit?${query('thj')}`);
+      expect(res.status).toBe(404);
+      expect((await res.json() as { error: { code: string } }).error.code).toBe('unindexed-contract');
+    } finally {
+      cleanup();
+    }
+  });
+
   it('refuses an un-operated community (external-mode), never a wrong audit', async () => {
-    const app = buildAuditApp(ownership, baseConfig());
+    const app = buildAuditApp(ownership, baseConfig(), collections);
     const res = await app.request(`/v1/audit?${query('not-ours')}`);
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
   it('/healthz is open (no key required)', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
     const res = await app.request('/healthz');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });
 
   it('X-API-Key gate: a missing/wrong key → 401', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
     expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
     expect(
       (await app.request(`/v1/audit?${query('thj')}`, { headers: { 'x-api-key': 'wrong' } })).status,
@@ -169,7 +191,7 @@ describe('buildAuditApp — the deployment composition root', () => {
   });
 
   it('the authed POST named-output is fail-closed (V2 not wired) → 401', async () => {
-    const app = buildAuditApp(ownership, baseConfig());
+    const app = buildAuditApp(ownership, baseConfig(), collections);
     const res = await app.request('/v1/audit', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -220,7 +242,7 @@ describe('capability read security boundary (FR-2 / PRD §Security boundary)', (
     ({ '1/0xabc': { collection: 'azuki', standard: 'erc721' as const } })[`${chain}/${contract}`.toLowerCase()];
 
   it('GET /v1/collections is OPEN even when an X-API-Key is configured', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), registry);
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), buildCollectionIndex({ '1/0xabc': { collection: 'azuki', standard: 'erc721' } }));
     // no key header → still 200 (capability read carries no member data)
     const res = await app.request('/v1/collections/1/0xABC');
     expect(res.status).toBe(200);
@@ -263,7 +285,7 @@ describe('buildAuditApp — §12.3 correct key returns 200', () => {
   it('200 on correct X-API-Key (§12.3)', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {
-      const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key', roleSnapshotPath: path }));
+      const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key', roleSnapshotPath: path }), collections);
       const res = await app.request(`/v1/audit?${query('thj')}`, {
         headers: { 'x-api-key': 'correct-key' },
       });
@@ -274,12 +296,12 @@ describe('buildAuditApp — §12.3 correct key returns 200', () => {
   });
 
   it('401 on missing key (§12.3)', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }), collections);
     expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
   });
 
   it('401 on wrong key (§12.3)', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }));
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'correct-key' }), collections);
     expect(
       (await app.request(`/v1/audit?${query('thj')}`, { headers: { 'x-api-key': 'wrong-key' } })).status,
     ).toBe(401);

@@ -23,7 +23,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
-import type { CollectionRegistry } from './ownership-source.js';
+import type { CollectionIndex } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
 import { makeDurableRoleStore } from './role-store.js';
 import { makeBalanceWhaleSource } from './whale-source.js';
@@ -93,8 +93,15 @@ export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
   );
 }
 
-/** Build the audit Hono app from an injected `OwnershipSource` + the local adapters. */
-export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collectionRegistry?: CollectionRegistry): Hono {
+/**
+ * Build the audit Hono app from an injected `OwnershipSource` + the local adapters.
+ *
+ * `collections` (S5-T3) carries BOTH registry reads: the membership lookup and the collection's full source
+ * set. Without it the app is FAIL-CLOSED — every audit refuses `unindexed-contract`, because an app that
+ * cannot enumerate a collection's deployments cannot know whether it is auditing one chain of several, and
+ * a single-chain audit of a bridged collection brands the other chain's holders as stale access.
+ */
+export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collections?: CollectionIndex): Hono {
   const now = () => Date.now();
   const rl = config.rateLimit ?? { limit: 30, windowMs: 60_000 };
   // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP. BEST-EFFORT — the client key
@@ -131,7 +138,8 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
 
   const deps: AuditRouterDeps = {
     ownership,
-    collectionRegistry,
+    collectionRegistry: collections?.registry,
+    sources: collections?.sources ?? (() => undefined),
     whale: makeBalanceWhaleSource(),
     roles,
     ingest,

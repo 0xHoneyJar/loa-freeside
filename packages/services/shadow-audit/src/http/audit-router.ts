@@ -42,6 +42,7 @@ import {
   type WhaleSource,
 } from '../audit-service.js';
 import type { CollectionRegistry } from '../ownership-source.js';
+import type { SourceResolver } from '../collection-union.js';
 import {
   verifyAssociation,
   SignedAuthMessageSchema,
@@ -66,6 +67,10 @@ export interface AuditRouterDeps {
   ownership: OwnershipSource;
   /** Membership lookup for the OPEN capability read (GET /v1/collections/:chain/:contract). */
   collectionRegistry?: CollectionRegistry;
+  /** S5-T3 — the addressed deployment → the collection's FULL source set. REQUIRED: without it no audit
+   *  can know whether the collection it was handed is one chain of several, and a single-chain audit of a
+   *  bridged collection brands the other chain's holders as stale access. */
+  sources: SourceResolver;
   whale: WhaleSource;
   roles: RoleSource;
   eventStore: EventStore;
@@ -188,7 +193,7 @@ async function audit(
       includeRecords,
       cta: deps.cta,
     },
-    { ownership: deps.ownership, whale: deps.whale, roles: deps.roles, k: deps.k },
+    { ownership: deps.ownership, whale: deps.whale, roles: deps.roles, sources: deps.sources, k: deps.k },
   );
 }
 
@@ -311,7 +316,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         nowUnixSeconds: Math.floor(now / 1000),
         cta: deps.cta,
       },
-      { ownership: deps.ownership, whale: deps.whale, k: deps.k },
+      { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
     );
     if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
 

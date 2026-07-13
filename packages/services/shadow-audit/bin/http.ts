@@ -10,6 +10,10 @@
  *   OPERATED_COMMUNITIES   comma-separated community names this deploy audits (dogfood-full)
  *   CTA_PRODUCT, CTA_CONVERSATION   the product + conversation door URLs
  *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155" } }
+ *                          Entries sharing a `collection` id are ONE collection deployed on several chains
+ *                          (S5-T3): an audit addressed at any of them reconstructs the UNION of all of them,
+ *                          and refuses outright if any one is unreachable. Chains are NUMERIC ids ("1",
+ *                          "80094") — the same id the sonar query is scoped by.
  *   RPC_URL_<chain>        JSON-RPC endpoint(s) per chain for block-at-date resolution. ONE url, or a
  *                          COMMA-SEPARATED failover pool tried in order with retry+backoff (S5-T2 — the
  *                          free endpoints each fail in their own way; there is no paid key). e.g.
@@ -27,7 +31,7 @@ import { serve } from '@hono/node-server';
 import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
 import { buildAuditApp, configFromEnv, validateApiKeyEnv } from '../src/server.js';
-import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-source.js';
+import { makeSonarOwnershipSource, type CollectionRef } from '../src/ownership-source.js';
 import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
@@ -57,7 +61,7 @@ const RegistrySchema = z.record(
   z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
 );
 
-function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; chains: Set<string> } {
+function loadRegistryFromEnv(): { map: Record<string, CollectionRef>; chains: Set<string> } {
   const raw = process.env.COLLECTION_REGISTRY;
   if (!raw) {
     throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard })');
@@ -74,7 +78,10 @@ function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; 
     const chain = key.split('/')[0];
     if (chain) chains.add(chain);
   }
-  return { registry: registryFromMap(map), chains };
+  // Entries sharing a `collection` id ARE one collection on several chains (S5-T3) — the index groups them
+  // into the source set the audit reconstructs as a union. Two rows with the SAME chain+contract but
+  // different collection ids would be a config defect; the map key makes that unrepresentable.
+  return { map, chains };
 }
 
 /** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). A comma-separated value is a
@@ -106,7 +113,7 @@ const collapse = loadRegistry({
     return loadRegistryFromEnv();
   },
 });
-const { registry, chains } = collapse;
+const { registry, sources, chains } = collapse;
 if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
   console.error(
     `[shadow-audit-api] settle gate: serving ${collapse.included.length} ratified collection(s); ` +
@@ -135,7 +142,7 @@ const sonar = new SonarClient(
   defaultTransferPageFetcher,
 );
 const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
-const app = buildAuditApp(ownership, configFromEnv(), registry);
+const app = buildAuditApp(ownership, configFromEnv(), { registry, sources });
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
 serve({ fetch: app.fetch, port }, (info) => {
