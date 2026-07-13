@@ -28,7 +28,8 @@
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { RoleSnapshotSchema, collectionKey, type RoleSnapshot } from './role-snapshot.js';
+import { RoleSnapshotSchema, type RoleSnapshot } from './role-snapshot.js';
+import { canonicalCollectionKey, type SourceResolver } from './collection-union.js';
 import type { RoleSource } from './audit-service.js';
 
 /** The write side of the role port: persist the latest snapshot for its (community, collection). */
@@ -57,9 +58,29 @@ function keyFor(community: string, collection: string): string {
   return JSON.stringify([community, collection.toLowerCase()]);
 }
 
-/** The key a snapshot files itself under — derived from the snapshot's OWN fields, never from the caller. */
-function keyOf(snap: RoleSnapshot): string {
-  return keyFor(snap.community, collectionKey(snap.collection));
+/**
+ * The key a snapshot files itself under — derived from the snapshot's OWN fields, never from the caller.
+ *
+ * The snapshot names ONE DEPLOYMENT (`{chain, contract}`) — as an exporter naturally would. It must be
+ * filed under the CANONICAL COLLECTION key, because the audit looks it up by that: a collection is the
+ * SET of its deployments, and any one of them merely ADDRESSES it. Filing by the deployment key means a
+ * snapshot POSTed naming the berachain contract is invisible to an audit addressed via the ethereum
+ * contract — it stores `200 {stored:true}` and then no audit can ever find it.
+ *
+ * That is not hypothetical: it is exactly what the first live probe after the sprint-5 deploy did. The
+ * read path had been canonicalized and the WRITE path had not, and every unit test missed it because they
+ * stub `RoleSource.load` directly and never exercise the store. Fakes pass; live finds it.
+ */
+function keyOf(snap: RoleSnapshot, sources: SourceResolver): string {
+  const set = sources(snap.collection);
+  // Unresolvable ⇒ the ingestion route already rejected it (422, registry-gated). Falling back to the
+  // deployment key here would silently recreate the very bug this function exists to prevent, so refuse.
+  if (!set || set.length === 0) {
+    throw new Error(
+      `role-store: ${snap.collection.chain}/${snap.collection.contract} is not a declared collection source — refusing to file a snapshot under a key no audit can read`,
+    );
+  }
+  return keyFor(snap.community, canonicalCollectionKey(set));
 }
 
 /** A store that is BOTH the audit's read port (`RoleSource`) and the ingestion write port (`RoleSink`). */
@@ -90,8 +111,14 @@ function fileFor(dir: string, key: string): string {
  * (durable). `load(collection)` serves the configured `community`'s snapshot FOR THAT COLLECTION (the
  * operated community this deploy audits; the collection is the one the audit is running against).
  */
-export function makeDurableRoleStore(opts: { dir: string; community: string }): DurableRoleStore {
-  const { dir, community } = opts;
+export function makeDurableRoleStore(opts: {
+  dir: string;
+  community: string;
+  /** Resolves a deployment -> the collection's FULL source set, so snapshots are filed under the CANONICAL
+   *  collection key the audit reads by (not the deployment key the exporter happened to name). */
+  sources: SourceResolver;
+}): DurableRoleStore {
+  const { dir, community, sources } = opts;
   mkdirSync(dir, { recursive: true });
   const latest = new Map<string, RoleSnapshot>();
 
@@ -100,7 +127,7 @@ export function makeDurableRoleStore(opts: { dir: string; community: string }): 
     if (!name.endsWith('.json')) continue;
     try {
       const snap = RoleSnapshotSchema.parse(JSON.parse(readFileSync(join(dir, name), 'utf8')));
-      latest.set(keyOf(snap), snap);
+      latest.set(keyOf(snap, sources), snap);
     } catch {
       // A corrupt/foreign file must not crash boot; skip it (the next ingestion overwrites cleanly).
       // NOTE (S5-T1): a snapshot written BEFORE `collection` existed on the wire lands here — it no longer
@@ -116,7 +143,7 @@ export function makeDurableRoleStore(opts: { dir: string; community: string }): 
     async store(snap: RoleSnapshot): Promise<boolean> {
       // Defensive re-validate (the route validates too) — a durable store must never persist a wrong shape.
       const valid = RoleSnapshotSchema.parse(snap);
-      const key = keyOf(valid);
+      const key = keyOf(valid, sources);
       // MONOTONICITY, WITHIN THE KEY: never roll THIS collection's held snapshot backwards on a replayed or
       // out-of-order POST — and never let a sibling collection's newer snapshot block this one.
       if (!isNewer(valid, latest.get(key))) return false;
@@ -132,7 +159,7 @@ export function makeDurableRoleStore(opts: { dir: string; community: string }): 
 }
 
 /** In-memory-only store (no disk) — for tests and single-process contexts that don't need restart durability. */
-export function makeInMemoryRoleStore(loadCommunity: string): DurableRoleStore {
+export function makeInMemoryRoleStore(loadCommunity: string, sources: SourceResolver): DurableRoleStore {
   const latest = new Map<string, RoleSnapshot>();
   return {
     async load(collection: string): Promise<RoleSnapshot | undefined> {
@@ -140,7 +167,7 @@ export function makeInMemoryRoleStore(loadCommunity: string): DurableRoleStore {
     },
     async store(snap: RoleSnapshot): Promise<boolean> {
       const valid = RoleSnapshotSchema.parse(snap);
-      const key = keyOf(valid);
+      const key = keyOf(valid, sources);
       if (!isNewer(valid, latest.get(key))) return false; // never roll THIS collection backwards
       latest.set(key, valid);
       return true;
