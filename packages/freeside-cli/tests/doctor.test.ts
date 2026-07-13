@@ -525,17 +525,56 @@ test("doctor() · BeaconV2 module → beacon_legacy_v2 warn, NOT error (G-4)", a
 
 // ─── built CLI smoke (G-6 exit code) ────────────────────────────────────────
 
-test("CLI · doctor --registry <bad> → exit 1 (sealed_schema_hash_drift)", () => {
+test("CLI · --help exits 0, prints usage, and has no module-load SyntaxError", () => {
+  if (!existsSync(CLI)) throw new Error(`CLI not built at ${CLI} — run \`pnpm build\` first`);
+  const output = execFileSync("node", [CLI, "--help"], {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.match(output, /Usage:/);
+  assert.match(output, /freeside-cli doctor/);
+  assert.doesNotMatch(output, /SyntaxError: The requested module/);
+});
+
+test("CLI · list exits 0 and prints registered modules", () => {
+  if (!existsSync(CLI)) throw new Error(`CLI not built at ${CLI} — run \`pnpm build\` first`);
+  const output = execFileSync("node", [CLI, "list"], {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.match(output, /Registered freeside-\* modules/);
+  assert.match(output, /score-api/);
+});
+
+test("CLI · doctor --registry <bad> → semantic sealed_schema_hash_drift failure", () => {
   if (!existsSync(CLI)) throw new Error(`CLI not built at ${CLI} — run \`pnpm build\` first`);
   let exitCode = 0;
+  let stdout = "";
+  let stderr = "";
   try {
-    execFileSync("node", [CLI, "doctor", "--registry", join(FIXTURES, "registry-fixture.yaml")], {
+    stdout = execFileSync("node", [CLI, "doctor", "--registry", join(FIXTURES, "registry-fixture.yaml")], {
+      encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
-    exitCode = (e as { status?: number }).status ?? -1;
+    const err = e as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string };
+    exitCode = err.status ?? -1;
+    stdout = String(err.stdout ?? "");
+    stderr = String(err.stderr ?? "");
   }
   assert.equal(exitCode, 1, "expected exit 1 when a module has an error finding");
+  assert.doesNotMatch(stdout + "\n" + stderr, /SyntaxError: The requested module/);
+  const report = JSON.parse(stdout) as {
+    modules_checked?: number;
+    summary?: { error?: number };
+    findings?: Array<{ slug?: string; check?: string; severity?: string }>;
+  };
+  assert.equal(report.modules_checked, 2);
+  assert.ok((report.summary?.error ?? 0) > 0, "doctor should report semantic error findings");
+  assert.ok(
+    report.findings?.some((f) => f.slug === "bad-api" && f.check === "sealed_schema_hash_drift" && f.severity === "error"),
+    "doctor output should identify the expected sealed_schema_hash_drift error",
+  );
 });
 
 // ─── --cells-dir per-cell resolution + FL-B0 git-freshness (sprint-400 step 3) ──

@@ -16,8 +16,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -b && chmod +x dist/bin/freeside-cli.js",
-    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build-local-deps.mjs && tsc -b && chmod +x dist/bin/freeside-cli.js",
+    "typecheck": "node scripts/build-local-deps.mjs && tsc --noEmit",
     "clean": "rm -rf dist",
     "test": "tsx --test tests/*.test.ts"
   },
