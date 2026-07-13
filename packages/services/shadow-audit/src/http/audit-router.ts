@@ -319,7 +319,19 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       },
       { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
     );
-    if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
+    if (!result.ok) {
+      // A COVERAGE refusal carries the DRIFT BOARD. The wallet-derived aggregate is refused, but the
+      // counts-only board needs no wallet map — and it is the only honest answer for a community at ~0%
+      // identity coverage (thj). Omitting it here would mean every JSON consumer (the dashboard) shows an
+      // empty state for exactly the community this was built for. The HTML view already renders it; the
+      // JSON must too, or the drift is visible only to whoever curls the server.
+      return c.json(
+        'drift' in result && result.drift
+          ? { error: result.refusal, drift: result.drift }
+          : { error: result.refusal },
+        refusalStatus(result.refusal),
+      );
+    }
 
     if (teaserCache.size >= TEASER_CACHE_MAX) {
       // Evict the oldest insertion (Map preserves insertion order) — bounded memory, no LRU needed.
@@ -343,7 +355,19 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (!built.ok) return c.json({ error: 'invalid order params' }, 400);
 
     const result = await audit(deps, built.order, q.data.snapshot_date, false);
-    if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
+    if (!result.ok) {
+      // A COVERAGE refusal carries the DRIFT BOARD. The wallet-derived aggregate is refused, but the
+      // counts-only board needs no wallet map — and it is the only honest answer for a community at ~0%
+      // identity coverage (thj). Omitting it here would mean every JSON consumer (the dashboard) shows an
+      // empty state for exactly the community this was built for. The HTML view already renders it; the
+      // JSON must too, or the drift is visible only to whoever curls the server.
+      return c.json(
+        'drift' in result && result.drift
+          ? { error: result.refusal, drift: result.drift }
+          : { error: result.refusal },
+        refusalStatus(result.refusal),
+      );
+    }
     await recordRun(deps, result.output);
     // Return the PROTOCOL `AuditOutput` verbatim (anonymous ⇒ no `records`). freeside-dashboard's client
     // strict-decodes this against the protocol's AuditOutputSchema (`onExcessProperty: error`), so the
@@ -404,7 +428,19 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
 
     const result = await audit(deps, built.order, parsed.data.snapshot_date, true);
-    if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
+    if (!result.ok) {
+      // A COVERAGE refusal carries the DRIFT BOARD. The wallet-derived aggregate is refused, but the
+      // counts-only board needs no wallet map — and it is the only honest answer for a community at ~0%
+      // identity coverage (thj). Omitting it here would mean every JSON consumer (the dashboard) shows an
+      // empty state for exactly the community this was built for. The HTML view already renders it; the
+      // JSON must too, or the drift is visible only to whoever curls the server.
+      return c.json(
+        'drift' in result && result.drift
+          ? { error: result.refusal, drift: result.drift }
+          : { error: result.refusal },
+        refusalStatus(result.refusal),
+      );
+    }
     await recordRun(deps, result.output);
     return c.json(result.output);
   });
