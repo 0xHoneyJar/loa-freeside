@@ -36,6 +36,11 @@ import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
 import { parseRpcUrls } from '../src/rpc-pool.js';
+import {
+  connectPostgresRoleSnapshotRepository,
+  makeRepositoryRoleStore,
+  type PostgresRoleSnapshotConnection,
+} from '../src/role-store-postgres.js';
 
 process.on('unhandledRejection', (reason) => {
   // F9: log AND exit non-zero — a swallowed rejection can leave the process wedged (event loop alive, no
@@ -142,7 +147,28 @@ const sonar = new SonarClient(
   defaultTransferPageFetcher,
 );
 const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
-const app = buildAuditApp(ownership, configFromEnv(), { registry, sources });
+const config = configFromEnv();
+let postgresConnection: PostgresRoleSnapshotConnection | undefined;
+let roleStore;
+if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
+  const community = config.operatedCommunities[0];
+  if (!community || !config.databaseUrl) {
+    throw new Error('Postgres role-store configuration is incomplete');
+  }
+  postgresConnection = connectPostgresRoleSnapshotRepository(config.databaseUrl);
+  await postgresConnection.repository.initialize();
+  roleStore = makeRepositoryRoleStore({ repository: postgresConnection.repository, community, sources });
+}
+const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore });
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    if (!postgresConnection) {
+      process.exit(0);
+    }
+    void postgresConnection.close().finally(() => process.exit(0));
+  });
+}
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
 serve({ fetch: app.fetch, port }, (info) => {

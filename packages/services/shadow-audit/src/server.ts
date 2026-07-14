@@ -25,7 +25,7 @@ import type { Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 import type { CollectionIndex } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
-import { makeDurableRoleStore } from './role-store.js';
+import { makeDurableRoleStore, type DurableRoleStore } from './role-store.js';
 import { makeBalanceWhaleSource } from './whale-source.js';
 import { InMemoryEventStore } from './event-store.js';
 import { InMemoryNonceStore } from './association-verifier.js';
@@ -56,6 +56,15 @@ export interface AuditServerConfig {
   ingestToken?: string;
   /** S1-T4: directory the durable role store writes ingested snapshots to (default `./data/role-snapshots`). */
   roleSnapshotDir?: string;
+  /** arrakis-7mtwa: explicit persistence backend. Production Railway uses postgres; file is local fallback. */
+  roleSnapshotStore?: 'file' | 'postgres';
+  /** Required when roleSnapshotStore=postgres. Kept out of logs and response surfaces. */
+  databaseUrl?: string;
+}
+
+export interface AuditAppRuntime {
+  /** Pre-initialized shared store. Required when roleSnapshotStore=postgres. */
+  roleStore?: DurableRoleStore;
 }
 
 /** Fail-closed auth for the un-wired V2 POST path: `recover` returns a wallet that can never match a real
@@ -101,7 +110,12 @@ export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
  * cannot enumerate a collection's deployments cannot know whether it is auditing one chain of several, and
  * a single-chain audit of a bridged collection brands the other chain's holders as stale access.
  */
-export function buildAuditApp(ownership: OwnershipSource, config: AuditServerConfig, collections?: CollectionIndex): Hono {
+export function buildAuditApp(
+  ownership: OwnershipSource,
+  config: AuditServerConfig,
+  collections?: CollectionIndex,
+  runtime: AuditAppRuntime = {},
+): Hono {
   const now = () => Date.now();
   const rl = config.rateLimit ?? { limit: 30, windowMs: 60_000 };
   // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP. BEST-EFFORT — the client key
@@ -126,14 +140,24 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
         'ROLE_SNAPSHOT_INGEST_TOKEN is set but OPERATED_COMMUNITIES is empty — ingestion needs a community to serve.',
       );
     }
-    const store = makeDurableRoleStore({
-      dir: config.roleSnapshotDir ?? './data/role-snapshots',
-      community,
-      // The SAME resolver the audit reads by — so a snapshot is FILED under the canonical collection key,
-      // not under the deployment the exporter happened to name. Without this the ingest returns
-      // {stored:true} and no audit can ever find the snapshot.
-      sources: collections?.sources ?? (() => undefined),
-    });
+    if (config.operatedCommunities.length !== 1) {
+      throw new Error(
+        'Role-snapshot ingestion currently requires exactly one OPERATED_COMMUNITIES entry per deployment',
+      );
+    }
+    if (config.roleSnapshotStore === 'postgres' && !runtime.roleStore) {
+      throw new Error('ROLE_SNAPSHOT_STORE=postgres requires an initialized Postgres role store');
+    }
+    const store =
+      runtime.roleStore ??
+      makeDurableRoleStore({
+        dir: config.roleSnapshotDir ?? './data/role-snapshots',
+        community,
+        // The SAME resolver the audit reads by — so a snapshot is FILED under the canonical collection key,
+        // not under the deployment the exporter happened to name. Without this the ingest returns
+        // {stored:true} and no audit can ever find the snapshot.
+        sources: collections?.sources ?? (() => undefined),
+      });
     roles = store;
     ingest = { token: config.ingestToken, sink: store };
   } else {
@@ -241,6 +265,16 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
       throw new Error(`AUDIT_K must be a positive integer (got "${env.AUDIT_K}") — k < 1 disables k-anonymity`);
     }
   }
+  const roleSnapshotStore = env.ROLE_SNAPSHOT_STORE || 'file';
+  if (roleSnapshotStore !== 'file' && roleSnapshotStore !== 'postgres') {
+    throw new Error(`ROLE_SNAPSHOT_STORE must be "file" or "postgres" (got "${roleSnapshotStore}")`);
+  }
+  if (roleSnapshotStore === 'postgres' && !env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required when ROLE_SNAPSHOT_STORE=postgres');
+  }
+  if (roleSnapshotStore === 'postgres' && !env.ROLE_SNAPSHOT_INGEST_TOKEN) {
+    throw new Error('ROLE_SNAPSHOT_INGEST_TOKEN is required when ROLE_SNAPSHOT_STORE=postgres');
+  }
   return {
     apiKey: env.SHADOW_AUDIT_API_KEY || undefined,
     operatedCommunities: operated,
@@ -248,6 +282,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
     roleSnapshotPath: env.ROLE_SNAPSHOT_PATH || undefined,
     ingestToken: env.ROLE_SNAPSHOT_INGEST_TOKEN || undefined,
     roleSnapshotDir: env.ROLE_SNAPSHOT_DIR || undefined,
+    roleSnapshotStore,
+    databaseUrl: env.DATABASE_URL || undefined,
     k,
   };
 }

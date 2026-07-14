@@ -79,6 +79,14 @@ export {
 } from './rate-limiter.js';
 export { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 export {
+  makeRepositoryRoleStore,
+  PostgresRoleSnapshotRepository,
+  connectPostgresRoleSnapshotRepository,
+  type RoleSnapshotRecord,
+  type RoleSnapshotRepository,
+  type PostgresRoleSnapshotConnection,
+} from './role-store-postgres.js';
+export {
   comparisonArtifact,
   exportComparisonJson,
   exportComparisonCsv,

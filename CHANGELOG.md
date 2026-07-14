@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Shadow Audit durable role snapshots (`arrakis-7mtwa`)
+
+- Added a Postgres-backed latest-role-snapshot store with atomic newer-only updates, schema-validated reads,
+  and isolation by community plus canonical collection.
+- Added fail-closed `ROLE_SNAPSHOT_STORE` / `DATABASE_URL` startup configuration and Railway-managed Postgres
+  desired state so snapshot ingestion survives application redeploys.
+
 #### The Spice Must Flow: Production Readiness & Protocol Unification (PR #60)
 
 Cross-language wire format safety and Rust gateway hardening.
