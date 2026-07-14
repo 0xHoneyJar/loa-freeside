@@ -78,6 +78,7 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
   }
 
   async storeIfNewer(record: RoleSnapshotRecord): Promise<boolean> {
+    const snapshot = RoleSnapshotSchema.parse(record.snapshot);
     const rows = await this.sql<{ stored: number }[]>`
       INSERT INTO shadow_audit_role_snapshots (
         community, collection_key, captured_at, snapshot, updated_at
@@ -85,7 +86,7 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
         ${record.community},
         ${record.collectionKey},
         ${record.capturedAt}::timestamptz,
-        ${JSON.stringify(record.snapshot)}::jsonb,
+        ${this.sql.json(snapshot as postgres.JSONValue)}::jsonb,
         NOW()
       )
       ON CONFLICT (community, collection_key) DO UPDATE

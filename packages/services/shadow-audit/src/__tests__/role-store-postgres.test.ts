@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   makeRepositoryRoleStore,
+  PostgresRoleSnapshotRepository,
   type RoleSnapshotRecord,
   type RoleSnapshotRepository,
 } from '../role-store-postgres.js';
+import type { Sql } from 'postgres';
 import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
 
@@ -128,5 +130,30 @@ describe('repository-backed role store (arrakis-7mtwa)', () => {
     const store = makeRepositoryRoleStore({ repository, community: 'thj', sources });
 
     await expect(store.load(HONEYCOMB_KEY)).rejects.toThrow();
+  });
+});
+
+describe('Postgres role-snapshot encoding', () => {
+  it('uses the driver JSON encoder with the object, not a pre-stringified JSON scalar', async () => {
+    let encoded: unknown;
+    const tag = Object.assign(
+      (_strings: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve([{ stored: 1 }]),
+      {
+        json(value: unknown) {
+          encoded = value;
+          return value;
+        },
+      },
+    ) as unknown as Sql;
+    const repository = new PostgresRoleSnapshotRepository(tag);
+    const valid = snapshot();
+
+    expect(await repository.storeIfNewer({
+      community: valid.community,
+      collectionKey: HONEYCOMB_KEY,
+      capturedAt: valid.captured_at,
+      snapshot: valid,
+    })).toBe(true);
+    expect(encoded).toEqual(valid);
   });
 });
