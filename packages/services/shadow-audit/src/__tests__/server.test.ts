@@ -223,6 +223,43 @@ describe('configFromEnv — fail loud on missing required config', () => {
     expect(configFromEnv({ ...base, AUDIT_K: '5' } as NodeJS.ProcessEnv).k).toBe(5);
   });
 
+  it('requires a database URL for the postgres snapshot store', () => {
+    const base = {
+      OPERATED_COMMUNITIES: 'thj',
+      CTA_PRODUCT: 'p',
+      CTA_CONVERSATION: 'c',
+      ROLE_SNAPSHOT_STORE: 'postgres',
+      ROLE_SNAPSHOT_INGEST_TOKEN: 'ingest-secret',
+    };
+    expect(() => configFromEnv(base as NodeJS.ProcessEnv)).toThrow(/DATABASE_URL/);
+    expect(
+      configFromEnv({ ...base, DATABASE_URL: 'postgres://db/shadow' } as NodeJS.ProcessEnv),
+    ).toMatchObject({ roleSnapshotStore: 'postgres', databaseUrl: 'postgres://db/shadow' });
+  });
+
+  it('requires ingestion to be enabled when the postgres snapshot store is selected', () => {
+    expect(() =>
+      configFromEnv({
+        OPERATED_COMMUNITIES: 'thj',
+        CTA_PRODUCT: 'p',
+        CTA_CONVERSATION: 'c',
+        ROLE_SNAPSHOT_STORE: 'postgres',
+        DATABASE_URL: 'postgres://db/shadow',
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/ROLE_SNAPSHOT_INGEST_TOKEN/);
+  });
+
+  it('rejects an unknown snapshot-store backend', () => {
+    expect(() =>
+      configFromEnv({
+        OPERATED_COMMUNITIES: 'thj',
+        CTA_PRODUCT: 'p',
+        CTA_CONVERSATION: 'c',
+        ROLE_SNAPSHOT_STORE: 'redis',
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/ROLE_SNAPSHOT_STORE/);
+  });
+
   it('builds a valid config from a complete env', () => {
     const cfg = configFromEnv({
       OPERATED_COMMUNITIES: 'thj, other',
@@ -233,6 +270,30 @@ describe('configFromEnv — fail loud on missing required config', () => {
     expect(cfg.operatedCommunities).toEqual(['thj', 'other']);
     expect(cfg.cta).toEqual({ product: 'https://p', conversation: 'https://c' });
     expect(cfg.apiKey).toBe('k');
+  });
+});
+
+describe('buildAuditApp — postgres role-store composition', () => {
+  const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[R1, 1n]]));
+
+  it('fails startup when postgres is selected but no initialized store is injected', () => {
+    expect(() =>
+      buildAuditApp(
+        ownership,
+        baseConfig({ ingestToken: 'ingest-secret', roleSnapshotStore: 'postgres' }),
+        collections,
+      ),
+    ).toThrow(/initialized Postgres role store/);
+  });
+
+  it('fails startup rather than serving one community from another community\'s role store', () => {
+    expect(() =>
+      buildAuditApp(
+        ownership,
+        baseConfig({ operatedCommunities: ['thj', 'other'], ingestToken: 'ingest-secret' }),
+        collections,
+      ),
+    ).toThrow(/exactly one OPERATED_COMMUNITIES/);
   });
 });
 

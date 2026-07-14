@@ -20,6 +20,9 @@ importers:
       hono:
         specifier: ^4.7.0
         version: 4.12.26
+      postgres:
+        specifier: ^3.4.0
+        version: 3.4.9
       tsx:
         specifier: ^4.19.0
         version: 4.23.0

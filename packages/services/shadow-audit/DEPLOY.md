@@ -8,7 +8,7 @@ code change**, only its env pointed here.
 
 | Var | Required | What |
 |-----|----------|------|
-| `OPERATED_COMMUNITIES` | ✅ | comma-separated community names this deploy audits (dogfood-full eligible) |
+| `OPERATED_COMMUNITIES` | ✅ | comma-separated community names this deploy audits (dogfood-full eligible). A deployment with role-snapshot ingestion currently requires exactly one entry, so each community cannot accidentally read another community's store. |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | ✅ | the product + conversation door URLs surfaced in the audit |
 | `COLLECTION_REGISTRY` | ✅ | JSON: `{ "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"\|"erc1155" } }`. Maps each `(chainId, contract-address)` a caller passes → the belt-gateway **collection id**. Zod-validated at boot. The 8 collection ids + their chains are live-grounded below; **the contract addresses are operator-supplied** (see the gate). |
 | `RPC_URL_<chain>` | ✅ (per registry chain) | JSON-RPC endpoint(s) per chain in the registry (e.g. `RPC_URL_80094`) for block-at-date resolution. **One url, or a comma-separated FAILOVER POOL** tried in order with retry+backoff — the free keyless endpoints each fail in their own way and there is no paid key (S5-T2). Boot fails if any registry chain lacks one, or if any entry is not a well-formed http(s) URL. |
@@ -27,11 +27,19 @@ Example: `RPC_URL_1="https://ethereum-rpc.publicnode.com,https://eth.drpc.org"`
 | `SHADOW_AUDIT_API_KEY` | ✅ **MANDATORY** (§12.3) | the `X-API-Key` the dashboard sends. Service **refuses startup** when absent. Generate: `openssl rand -hex 32`. Set the same value in the dashboard's `SHADOW_AUDIT_API_KEY`. For local dev only: set `SHADOW_AUDIT_ALLOW_ANON=dev-only` (never in production). |
 | `BELT_GATEWAY_URL` | optional | sonar GraphQL endpoint (defaults to belt-gateway-production) |
 | `ROLE_SNAPSHOT_PATH` | optional | path to the Discord role-export JSON (absent → audits refuse external-mode) |
+| `ROLE_SNAPSHOT_INGEST_TOKEN` | required for ingestion | service token accepted by `POST /v1/role-snapshot` |
+| `ROLE_SNAPSHOT_STORE` | required for durable ingestion | `postgres` in Railway; `file` is the local-development fallback |
+| `DATABASE_URL` | required when snapshot store is `postgres` | private Postgres connection URL; injected from the Railway database resource |
+| `ROLE_SNAPSHOT_DIR` | optional for `file` only | local snapshot directory (default `./data/role-snapshots`); container-local files do not survive a Railway deploy replacement |
 | `CONFIRMATIONS` | optional | reorg finality depth (default 12; one source for both sonar + the "current" block) |
 | `AUDIT_K` | optional | k-anonymity threshold (default 5; **must be a positive integer** — `AUDIT_K=0` is rejected, it would disable k-anon) |
 | `PORT` | optional | bind port (Railway sets it; default 3040) |
 
 The server **fails loud at boot** on any missing/invalid required value — it never serves a half-wired audit.
+When ingestion uses Postgres, startup creates the latest-snapshot table before binding HTTP. The table keeps
+one validated snapshot per `(community, canonical collection)` and replaces it only with a strictly newer
+capture. Snapshot rows contain member identifiers, wallets, and role IDs; keep the database private, do not
+expose `DATABASE_URL`, and treat database exports/backups as sensitive operator data.
 
 ### Live-grounded auditable set (belt-gateway `CollectionStat`, queried 2026-06-29)
 

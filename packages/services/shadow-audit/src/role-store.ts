@@ -71,7 +71,7 @@ function keyFor(community: string, collection: string): string {
  * read path had been canonicalized and the WRITE path had not, and every unit test missed it because they
  * stub `RoleSource.load` directly and never exercise the store. Fakes pass; live finds it.
  */
-function keyOf(snap: RoleSnapshot, sources: SourceResolver): string {
+export function canonicalRoleCollectionKey(snap: RoleSnapshot, sources: SourceResolver): string {
   const set = sources(snap.collection);
   // Unresolvable ⇒ the ingestion route already rejected it (422, registry-gated). Falling back to the
   // deployment key here would silently recreate the very bug this function exists to prevent, so refuse.
@@ -80,7 +80,11 @@ function keyOf(snap: RoleSnapshot, sources: SourceResolver): string {
       `role-store: ${snap.collection.chain}/${snap.collection.contract} is not a declared collection source — refusing to file a snapshot under a key no audit can read`,
     );
   }
-  return keyFor(snap.community, canonicalCollectionKey(set));
+  return canonicalCollectionKey(set);
+}
+
+function keyOf(snap: RoleSnapshot, sources: SourceResolver): string {
+  return keyFor(snap.community, canonicalRoleCollectionKey(snap, sources));
 }
 
 /** A store that is BOTH the audit's read port (`RoleSource`) and the ingestion write port (`RoleSink`). */

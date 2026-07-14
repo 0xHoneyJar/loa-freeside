@@ -25,7 +25,7 @@
  * Secrets (SHADOW_AUDIT_API_KEY, ROLE_SNAPSHOT_INGEST_TOKEN, CTA_*) use preserve() — set once in the
  * Railway dashboard/secret store, never written into source. `railway config plan` shows them as «hidden».
  */
-import { defineRailway, project, service, github, preserve } from "railway/iac";
+import { defineRailway, project, service, github, postgres, preserve } from "railway/iac";
 
 // Greenlit COLLECTION_REGISTRY — 17 verified erc721 collections across chains 1/10/8453/42161/80094
 // (grimoires/loa/context/2026-07-10-shadow-audit-collection-registry.grounded.md). Keys are
@@ -51,6 +51,7 @@ const COLLECTION_REGISTRY = {
 };
 
 export default defineRailway(() => {
+  const database = postgres("shadow-audit-postgres");
   const audit = service("shadow-audit-api", {
     // Build context = repo root (no rootDirectory) — the Dockerfile needs core+adapters+protocol siblings.
     // TEMPORARY branch: the current shadow-audit (incl. §12.3 hardening + S1-T4 ingestion) lives on
@@ -66,20 +67,24 @@ export default defineRailway(() => {
     healthcheck: "/healthz",
     healthcheckTimeout: 30,
     env: {
-      // Public config — literals.
-      OPERATED_COMMUNITIES: "thj",
-      COLLECTION_REGISTRY: JSON.stringify(COLLECTION_REGISTRY),
-      RPC_URL_1: "https://eth.drpc.org",
-      RPC_URL_10: "https://optimism-rpc.publicnode.com",
-      RPC_URL_8453: "https://base.drpc.org",
-      RPC_URL_42161: "https://arbitrum.drpc.org",
-      RPC_URL_80094: "https://berachain.drpc.org",
-      AUDIT_K: "5",
-      // S1-T4: where the durable role store write-throughs land. NOTE: Railway redeploys are fresh
-      // containers — for the ingested snapshot to survive a REDEPLOY (not just a restart) this path needs
-      // a Railway VOLUME mounted here. Follow-up (connects to the role-store.ts loa:shortcut); until then
-      // the exporter re-POSTs after a deploy. Kept as a plain path for the first cut.
-      ROLE_SNAPSHOT_DIR: "/data/role-snapshots",
+      // arrakis-7mtwa is a persistence-only apply. Preserve the live public configuration so creating the
+      // database cannot also redeploy a registry/RPC/community change. Reconcile those literals separately
+      // after grounding their current live values; they are not part of this bug's mutation boundary.
+      OPERATED_COMMUNITIES: preserve(),
+      COLLECTION_REGISTRY: preserve(),
+      RPC_URL_1: preserve(),
+      RPC_URL_10: preserve(),
+      RPC_URL_8453: preserve(),
+      RPC_URL_42161: preserve(),
+      RPC_URL_80094: preserve(),
+      AUDIT_K: preserve(),
+      // arrakis-7mtwa: the container filesystem is ephemeral. Role snapshots live in the project-managed
+      // Postgres resource so a deploy replacement cannot silently erase the latest export.
+      ROLE_SNAPSHOT_STORE: "postgres",
+      DATABASE_URL: database.env.DATABASE_URL,
+      // Retain the old dashboard value during migration. The postgres backend ignores it, but preserving it
+      // keeps this bounded change non-destructive and leaves an operator-controlled rollback path.
+      ROLE_SNAPSHOT_DIR: preserve(),
       // Secrets — set once in Railway, never in source. preserve() keeps the dashboard value.
       SHADOW_AUDIT_API_KEY: preserve(),
       ROLE_SNAPSHOT_INGEST_TOKEN: preserve(),
@@ -88,5 +93,5 @@ export default defineRailway(() => {
     },
   });
 
-  return project("shadow-audit-api", { resources: [audit] });
+  return project("shadow-audit-api", { resources: [database, audit] });
 });
