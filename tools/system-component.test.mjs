@@ -73,3 +73,14 @@ test("the generated system receipt preserves responsibility and handoff", () => 
   assert.match(receipt, /FM-AUDIT-COMPOSITION/);
   assert.match(receipt, /do not implement it silently/i);
 });
+
+test("the reusable validator install cannot be captured by a consumer workspace", () => {
+  const workflow = fs.readFileSync(
+    path.join(ROOT, ".github/workflows/reusable-flow-moment-governance.yml"),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /pnpm install --frozen-lockfile --ignore-scripts --ignore-workspace/,
+  );
+});

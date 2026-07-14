@@ -43,7 +43,7 @@ node tools/system-component.mjs validate product/system-components
 node tools/system-component.mjs render product/system-components/loa-freeside.system.json
 ```
 
-Result: 15 tests passed; 1 real flow record and 1 canonical system-component manifest passed; both receipts rendered; targeted lint passed; both workflow YAML files parsed.
+Result: 16 tests passed; 1 real flow record and 1 canonical system-component manifest passed; both receipts rendered; targeted lint passed; both workflow YAML files parsed. The reusable install is isolated from a caller's pnpm workspace.
 
 ## Known limitations
 

@@ -37,7 +37,7 @@ jobs:
           node-version: "22"
       - name: Install governance validator dependencies
         working-directory: .flow-governance
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts --ignore-workspace
       - name: Validate system component intent
         run: node .flow-governance/tools/system-component.mjs validate product/system-components
       - name: Validate repo-local user-flow moments
