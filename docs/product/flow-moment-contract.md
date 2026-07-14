@@ -60,3 +60,30 @@ Product telemetry, website feedback, tickets, Discord, interviews, partner obser
 - a thin workflow caller pinned to an immutable `loa-freeside` governance commit.
 
 This makes drift reviewable without vendoring the contract into every API or product repository.
+
+## Construct expertise on the operator surface
+
+Constructs join the continuity surface through a region-owned territory, not through free-text tags on every system component. The three planes stay mechanically separate:
+
+| Plane | Source | What it may claim |
+|---|---|---|
+| Orientation | `constructs info <slug> --json --rung local` → `orientation` | Prose that helps an operator frame the problem. Always `authoritative: false`. |
+| Mechanics | The same info payload → `mechanics`, plus `constructs capabilities --json` | Declared skills, commands, runtime requirements, verb mutation class, determinism, and provenance. It grants no authority. |
+| Authority | `grimoires/territory.yaml` projected through `constructs atlas --json`, then the graduated-trust ledger | The region's ceiling intersected with earned evidence. Unknown earned state collapses to `observe`. |
+
+Mechanical gates read the atlas's structured `ratification_status`; the neighboring `ratification` sentence is operator orientation and is never parsed as state.
+
+`loa-freeside` ratifies the first bounded territory at `grimoires/territory.yaml`. The joined operator receipt derives from the existing system component, the live Constructs producer, and that region-owned declaration:
+
+```bash
+# Deterministic fixture seam used by CI
+node tools/construct-operator.mjs render \
+  --snapshot tools/fixtures/construct-operator.snapshot.json
+
+# Live operator-local projection (producer path may also be set as CONSTRUCTS_CLI)
+CONSTRUCTS_DIR="$HOME/.loa/constructs/packs" \
+node tools/construct-operator.mjs render \
+  --constructs-cli /path/to/loa-constructs/packages/constructs-cli/bin/constructs.mjs
+```
+
+Live mode invokes only `capabilities`, `atlas`, and `info --rung local`. Mutation verbs are displayed in a separate set but are never executed. Until the territory is committed on the region's default branch and the producer can prove stationing, the overall receipt stays `partial` rather than presenting a working-tree declaration as ratified expertise.
