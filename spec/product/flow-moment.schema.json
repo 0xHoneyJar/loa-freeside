@@ -220,7 +220,7 @@
     "reference": {
       "type": "string",
       "minLength": 3,
-      "pattern": "^[a-z][a-z0-9+.-]*:\\S+$"
+      "pattern": "^(?![\\s\\S]*\\s)[a-z][a-z0-9+.-]*:\\S+$"
     },
     "signal": {
       "type": "object",

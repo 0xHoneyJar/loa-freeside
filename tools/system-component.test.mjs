@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { renderSystemComponent, validateSystemComponent } from "./system-component.mjs";
 
@@ -46,6 +48,29 @@ test("flow ids and canonical references cannot disagree", () => {
   assert.match(result.errors.join("\n"), /canonical_ref/);
 });
 
+test("every canonical flow reference resolves exactly once", async (t) => {
+  const missing = clone(EXAMPLE);
+  missing.flow_moments[0].flow_moment_id = "FM-NOT-THERE";
+  missing.flow_moments[0].canonical_ref = "flow:FM-NOT-THERE";
+  const absent = validate(missing);
+  assert.equal(absent.valid, false);
+  assert.match(absent.errors.join("\n"), /exactly one.*found 0/);
+
+  const repo = await mkdtemp(path.join(tmpdir(), "flow-resolution-"));
+  t.after(() => rm(repo, { recursive: true, force: true }));
+  await mkdir(path.join(repo, "product", "flow-moments"), { recursive: true });
+  await writeFile(path.join(repo, "README.md"), "# Fixture\n");
+  const flow = JSON.stringify({ flow_moment_id: "FM-AUDIT-COMPOSITION" });
+  await writeFile(path.join(repo, "product", "flow-moments", "one.flow.json"), flow);
+  await writeFile(path.join(repo, "product", "flow-moments", "two.flow.json"), flow);
+  const duplicate = clone(EXAMPLE);
+  duplicate.trust.contract_refs = ["file:README.md"];
+  duplicate.trust.evidence_refs = [];
+  const result = validateSystemComponent(duplicate, { repoRoot: repo });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("\n"), /exactly one.*found 2/);
+});
+
 test("declared local contracts must exist inside the consumer repository", () => {
   const document = clone(EXAMPLE);
   document.trust.contract_refs = ["file:does-not-exist.openapi.yaml"];
@@ -65,6 +90,14 @@ test("missing contract status cannot carry a flattering contract reference", () 
   const result = validate(document);
   assert.equal(result.valid, false);
   assert.match(result.errors.join("\n"), /more than 0 items|maxItems/);
+});
+
+test("typed references reject trailing whitespace and newlines", () => {
+  const document = clone(EXAMPLE);
+  document.trust.contract_refs = ["file:README.md\n"];
+  const result = validate(document);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("\n"), /pattern/);
 });
 
 test("the generated system receipt preserves responsibility and handoff", () => {

@@ -25,6 +25,23 @@ function byName(a, b) {
   return a.name.localeCompare(b.name);
 }
 
+function duplicateValues(values) {
+  const seen = new Set();
+  return [...new Set(values.filter((value) => {
+    if (seen.has(value)) return true;
+    seen.add(value);
+    return false;
+  }))];
+}
+
+function escapeMarkdownText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replace(/([\\`*_[\]{}()#+\-.!|])/g, "\\$1");
+}
+
 function normalizeExecutionContract(capabilities) {
   requireObject(capabilities, "constructs capabilities");
   if (!Array.isArray(capabilities.verbs)) {
@@ -117,11 +134,16 @@ function normalizeConstructInfo(slug, payload) {
           slug: skill.slug,
           path: skill.path ?? null,
           metadata_status: skill.metadata_status ?? "unknown",
+          entry: skill.entry ?? null,
           capabilities: skill.capabilities ?? null,
         })).toSorted((a, b) => a.slug.localeCompare(b.slug))
         : [],
       commands: Array.isArray(mechanics.commands)
-        ? mechanics.commands.map((command) => ({ name: command.name, path: command.path ?? null })).toSorted(byName)
+        ? mechanics.commands.map((command) => ({
+          name: command.name,
+          path: command.path ?? null,
+          path_status: command.path_status ?? "unknown",
+        })).toSorted(byName)
         : [],
     },
     provenance: payload.provenance ?? null,
@@ -188,12 +210,40 @@ export function buildConstructOperatorSurface({ component, snapshot, regionId })
   const region = (atlas.regions ?? []).find((candidate) => candidate.region === selectedRegion);
   if (!region) throw new Error(`construct atlas has no region named ${selectedRegion}`);
 
-  const outcomes = new Map((region.outcomes ?? []).map((outcome) => [outcome.id, outcome.description]));
-  const constructs = (region.loadout ?? []).map((stationing) => {
+  if (!Array.isArray(region.outcomes)) throw new Error(`construct atlas ${selectedRegion}: outcomes must be an array`);
+  if (!Array.isArray(region.loadout)) throw new Error(`construct atlas ${selectedRegion}: loadout must be an array`);
+  const duplicateOutcomeIds = duplicateValues(region.outcomes.map((outcome) => outcome?.id));
+  if (duplicateOutcomeIds.length > 0) {
+    throw new Error(`construct atlas ${selectedRegion}: duplicate outcome ids: ${duplicateOutcomeIds.join(", ")}`);
+  }
+  const duplicateConstructs = duplicateValues(region.loadout.map((stationing) => stationing?.construct));
+  if (duplicateConstructs.length > 0) {
+    throw new Error(`construct atlas ${selectedRegion}: duplicate construct stationings: ${duplicateConstructs.join(", ")}`);
+  }
+  const outcomes = new Map(region.outcomes.map((outcome) => {
+    requireObject(outcome, `construct atlas ${selectedRegion}.outcome`);
+    if (typeof outcome.id !== "string" || typeof outcome.description !== "string") {
+      throw new Error(`construct atlas ${selectedRegion}: every outcome requires string id and description`);
+    }
+    return [outcome.id, outcome.description];
+  }));
+  const constructs = region.loadout.map((stationing) => {
+    requireObject(stationing, `construct atlas ${selectedRegion}.stationing`);
+    if (typeof stationing.construct !== "string" || !Array.isArray(stationing.outcomes)) {
+      throw new Error(`construct atlas ${selectedRegion}: every stationing requires construct and outcomes`);
+    }
+    const repeated = duplicateValues(stationing.outcomes);
+    if (repeated.length > 0) {
+      throw new Error(`constructs atlas ${stationing.construct}: duplicate outcome ids: ${repeated.join(", ")}`);
+    }
+    const unknown = stationing.outcomes.filter((id) => !outcomes.has(id));
+    if (unknown.length > 0) {
+      throw new Error(`constructs atlas ${stationing.construct}: unknown outcome ids: ${unknown.join(", ")}`);
+    }
     const info = normalizeConstructInfo(stationing.construct, snapshot.info?.[stationing.construct]);
     info.answers_for = [...stationing.outcomes].toSorted().map((id) => ({
       id,
-      description: outcomes.get(id) ?? null,
+      description: outcomes.get(id),
     }));
     info.authority = normalizeAuthority(stationing);
     info.installed = stationing.installed === true;
@@ -253,7 +303,7 @@ export function renderConstructOperatorSurface(surface) {
     const mechanics = construct.mechanics.available
       ? (construct.mechanics.skills.length > 0 ? construct.mechanics.skills.map(skillLine).join("\n") : "- No skills declared")
       : `- Unavailable: ${construct.mechanics.reason}`;
-    return `### ${construct.slug}\n\n**Orientation — prose, no authority**\n\n${orientation}\n\n**Mechanical declaration — callable surface, no authority**\n\n${mechanics}\n\n**Authority — territory + earned evidence**\n\nCeiling: **${construct.authority.ceiling}** · Earned: **${construct.authority.earned}** · Effective: **${construct.authority.effective}**\n\nAnswers for: ${construct.answers_for.map((outcome) => outcome.id).join(", ")}`;
+    return `### ${construct.slug}\n\n**Orientation — prose, no authority**\n\n${escapeMarkdownText(orientation)}\n\n**Mechanical declaration — callable surface, no authority**\n\n${mechanics}\n\n**Authority — territory + earned evidence**\n\nCeiling: **${construct.authority.ceiling}** · Earned: **${construct.authority.earned}** · Effective: **${construct.authority.effective}**\n\nAnswers for: ${construct.answers_for.map((outcome) => outcome.id).join(", ")}`;
   }).join("\n\n");
   const reads = surface.execution_contract.read_verbs.map((verb) => `\`${verb.name}\``).join(", ");
   const mutations = surface.execution_contract.mutation_verbs.map((verb) => `\`${verb.name}\``).join(", ");

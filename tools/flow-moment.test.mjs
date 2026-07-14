@@ -73,6 +73,14 @@ test("references carry a typed provenance scheme", () => {
   assert.match(result.errors.join("\n"), /pattern/);
 });
 
+test("typed references reject trailing newlines rather than prefix-matching", () => {
+  const document = clone(EXAMPLE);
+  document.decision_refs = ["github:0xHoneyJar/loa-freeside#468\n"];
+  const result = validate(document);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("\n"), /pattern/);
+});
+
 test("Gold proves reusable maturity and enforces the production floor", () => {
   const document = clone(EXAMPLE);
   document.components = [{

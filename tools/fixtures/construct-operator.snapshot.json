@@ -141,6 +141,7 @@
               "slug": "designing-systems",
               "path": "skills/designing-systems",
               "metadata_status": "declared",
+              "entry": "SKILL.md",
               "capabilities": {
                 "model_tier": "opus",
                 "danger_level": "safe",
@@ -156,7 +157,7 @@
               }
             }
           ],
-          "commands": [{ "name": "systems", "path": "commands/systems.md" }]
+          "commands": [{ "name": "systems", "path": "commands/systems.md", "path_status": "declared" }]
         }
       },
       "provenance": {
@@ -192,6 +193,7 @@
               "slug": "discovering-endpoints",
               "path": "skills/discovering-endpoints",
               "metadata_status": "declared",
+              "entry": "SKILL.md",
               "capabilities": {
                 "model_tier": "sonnet",
                 "danger_level": "moderate",

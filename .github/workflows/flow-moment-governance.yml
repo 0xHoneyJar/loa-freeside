@@ -19,6 +19,9 @@ on:
       - "spec/product/flow-moment-plan.md"
       - "spec/product/flow-moment-implementation-report.md"
       - "product/system-components/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/flow-moment-governance.yml"
       - ".github/workflows/reusable-flow-moment-governance.yml"
   workflow_dispatch:

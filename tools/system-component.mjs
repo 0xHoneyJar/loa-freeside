@@ -43,6 +43,33 @@ function allReferences(document) {
   ];
 }
 
+function collectFlowMomentRecords(repoRoot) {
+  const recordsRoot = path.join(repoRoot, "product", "flow-moments");
+  const records = [];
+  const errors = [];
+  if (!fs.existsSync(recordsRoot)) return { records, errors };
+
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const child = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(child);
+      } else if (entry.isFile() && entry.name.endsWith(".flow.json")) {
+        try {
+          const flow = readJson(child);
+          if (typeof flow.flow_moment_id === "string") {
+            records.push({ id: flow.flow_moment_id, file: child });
+          }
+        } catch (error) {
+          errors.push(`flow record ${path.relative(repoRoot, child)}: invalid JSON: ${error.message}`);
+        }
+      }
+    }
+  };
+  visit(recordsRoot);
+  return { records, errors };
+}
+
 function semanticErrors(document, repoRoot) {
   const errors = [];
   const flowIds = document.flow_moments.map((moment) => moment.flow_moment_id);
@@ -54,6 +81,19 @@ function semanticErrors(document, repoRoot) {
   for (const moment of document.flow_moments) {
     if (moment.canonical_ref !== `flow:${moment.flow_moment_id}`) {
       errors.push(`flow_moment ${moment.flow_moment_id}: canonical_ref must be flow:${moment.flow_moment_id}`);
+    }
+  }
+
+  const flowRecords = collectFlowMomentRecords(repoRoot);
+  errors.push(...flowRecords.errors);
+  const flowCounts = new Map();
+  for (const record of flowRecords.records) {
+    flowCounts.set(record.id, (flowCounts.get(record.id) ?? 0) + 1);
+  }
+  for (const moment of document.flow_moments) {
+    const count = flowCounts.get(moment.flow_moment_id) ?? 0;
+    if (count !== 1) {
+      errors.push(`flow_moment ${moment.flow_moment_id}: canonical_ref must resolve to exactly one .flow.json record; found ${count}`);
     }
   }
 
