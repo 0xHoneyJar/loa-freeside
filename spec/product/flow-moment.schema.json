@@ -1,0 +1,413 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freeside.dev/schemas/product/flow-moment.schema.json",
+  "title": "Freeside User-Flow Moment",
+  "description": "Executable join between Hivemind user truth, a falsifiable product hypothesis, exposure, evidence, exemplars, decisions, and component maturity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "flow_moment_id",
+    "title",
+    "record_state",
+    "hivemind",
+    "actor",
+    "entry_state",
+    "desired_progress",
+    "dream_outcome",
+    "hypothesis",
+    "experience",
+    "evidence_contract",
+    "exposure",
+    "boundaries",
+    "exemplars",
+    "components",
+    "decision_refs"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": "1.0" },
+    "flow_moment_id": {
+      "type": "string",
+      "pattern": "^FM-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "title": { "$ref": "#/$defs/nonEmptyString" },
+    "record_state": {
+      "type": "string",
+      "enum": ["draft", "active", "retired"]
+    },
+    "hivemind": {
+      "allOf": [
+        { "$ref": "https://loa.dev/hivemind/labels.schema.json" },
+        {
+          "required": [
+            "schema_version",
+            "artifact_type",
+            "workstream",
+            "priority",
+            "product_area",
+            "jtbd",
+            "learning_status",
+            "source"
+          ]
+        }
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "context"],
+      "properties": {
+        "role": { "$ref": "#/$defs/nonEmptyString" },
+        "context": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "entry_state": { "$ref": "#/$defs/nonEmptyString" },
+    "desired_progress": { "$ref": "#/$defs/nonEmptyString" },
+    "dream_outcome": { "$ref": "#/$defs/nonEmptyString" },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "falsifiable_by"],
+      "properties": {
+        "statement": { "$ref": "#/$defs/nonEmptyString" },
+        "falsifiable_by": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "experience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promise", "recommendation_boundary", "actions", "surfaces"],
+      "properties": {
+        "promise": { "$ref": "#/$defs/nonEmptyString" },
+        "recommendation_boundary": { "$ref": "#/$defs/nonEmptyString" },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/reference" }
+        }
+      }
+    },
+    "evidence_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signals", "observations", "learning_refs", "privacy"],
+      "properties": {
+        "signals": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/signal" }
+        },
+        "observations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/observation" }
+        },
+        "learning_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/reference" }
+        },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["customer_text_handling", "provenance_required"],
+          "properties": {
+            "customer_text_handling": {
+              "type": "string",
+              "enum": [
+                "no-raw-private-text-in-repo",
+                "consented-redacted-quotation",
+                "aggregate-only"
+              ]
+            },
+            "provenance_required": { "const": true }
+          }
+        }
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "state",
+        "audience",
+        "owner",
+        "review_trigger",
+        "success_criteria",
+        "failure_criteria",
+        "decision_refs"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["release", "research", "permission"]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["dark", "internal", "partner", "default-on", "retiring", "retired"]
+        },
+        "flag_ref": { "$ref": "#/$defs/reference" },
+        "audience": { "$ref": "#/$defs/nonEmptyString" },
+        "owner": { "$ref": "#/$defs/nonEmptyString" },
+        "review_trigger": { "$ref": "#/$defs/nonEmptyString" },
+        "success_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "failure_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "decision_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/reference" }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["does", "does_not"],
+      "properties": {
+        "does": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "does_not": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "exemplars": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/exemplar" }
+    },
+    "components": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/component" }
+    },
+    "decision_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/reference" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "reference": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^[a-z][a-z0-9+.-]*:\\S+$"
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "question", "success_indicator", "failure_indicator", "source_types"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["behavioral", "qualitative", "operational"]
+        },
+        "question": { "$ref": "#/$defs/nonEmptyString" },
+        "success_indicator": { "$ref": "#/$defs/nonEmptyString" },
+        "failure_indicator": { "$ref": "#/$defs/nonEmptyString" },
+        "source_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/evidenceSourceType" }
+        }
+      }
+    },
+    "evidenceSourceType": {
+      "type": "string",
+      "enum": [
+        "product-telemetry",
+        "website-feedback",
+        "customer-ticket",
+        "discord-support-or-feedback",
+        "user-interview",
+        "dm-to-team-member",
+        "partner-observation"
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "captured_at", "signal_ids", "summary", "source_type", "ref"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^OBS-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+        },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "signal_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "summary": { "$ref": "#/$defs/nonEmptyString" },
+        "source_type": { "$ref": "#/$defs/evidenceSourceType" },
+        "ref": { "$ref": "#/$defs/reference" }
+      }
+    },
+    "exemplar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "workflow_moment", "ref", "adopt", "reject"],
+      "properties": {
+        "product": { "$ref": "#/$defs/nonEmptyString" },
+        "workflow_moment": { "$ref": "#/$defs/nonEmptyString" },
+        "ref": { "$ref": "#/$defs/reference" },
+        "adopt": { "$ref": "#/$defs/nonEmptyString" },
+        "reject": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "maturity"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/reference" },
+        "maturity": {
+          "type": "string",
+          "enum": ["uncaptured", "silver", "gold", "retired"]
+        },
+        "intent": { "$ref": "#/$defs/nonEmptyString" },
+        "feel": { "$ref": "#/$defs/nonEmptyString" },
+        "inspiration": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/reference" }
+        },
+        "rejected": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "graduation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "taste_owner",
+            "production_since",
+            "no_regressions",
+            "active_use",
+            "evidence_refs"
+          ],
+          "properties": {
+            "taste_owner": { "$ref": "#/$defs/nonEmptyString" },
+            "production_since": { "type": "string", "format": "date" },
+            "no_regressions": { "const": true },
+            "active_use": { "const": true },
+            "evidence_refs": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/reference" }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "maturity": { "enum": ["silver", "gold"] }
+            },
+            "required": ["maturity"]
+          },
+          "then": {
+            "required": ["intent", "feel", "inspiration", "rejected"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "maturity": { "const": "gold" }
+            },
+            "required": ["maturity"]
+          },
+          "then": {
+            "required": ["graduation"]
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "exposure": {
+            "properties": {
+              "state": {
+                "enum": ["internal", "partner", "default-on", "retiring", "retired"]
+              }
+            },
+            "required": ["state"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exposure": { "required": ["flag_ref"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "exposure": {
+            "properties": {
+              "kind": { "const": "research" },
+              "state": { "const": "default-on" }
+            },
+            "required": ["kind", "state"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exposure": {
+            "properties": {
+              "decision_refs": { "minItems": 1 }
+            }
+          },
+          "evidence_contract": {
+            "properties": {
+              "learning_refs": { "minItems": 1 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

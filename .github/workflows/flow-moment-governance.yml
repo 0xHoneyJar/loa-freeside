@@ -1,0 +1,47 @@
+name: Flow Moment Governance
+
+on:
+  pull_request:
+    paths:
+      - "product/flow-moments/**"
+      - "spec/product/flow-moment.schema.json"
+      - "spec/product/system-component.schema.json"
+      - "tools/flow-moment.mjs"
+      - "tools/flow-moment.test.mjs"
+      - "tools/system-component.mjs"
+      - "tools/system-component.test.mjs"
+      - "tools/hivemind/hivemind-labels.v1.0.json"
+      - "docs/product/flow-moment-contract.md"
+      - "spec/product/flow-moment-plan.md"
+      - "spec/product/flow-moment-implementation-report.md"
+      - "product/system-components/**"
+      - ".github/workflows/flow-moment-governance.yml"
+      - ".github/workflows/reusable-flow-moment-governance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  continuity-contract:
+    name: Validate user-flow moments
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install validator dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Prove promotion gates fail closed
+        run: node --test tools/flow-moment.test.mjs tools/system-component.test.mjs
+      - name: Validate every flow-moment record
+        run: node tools/flow-moment.mjs validate product/flow-moments
+      - name: Validate every system-component manifest
+        run: node tools/system-component.mjs validate product/system-components
+      - name: Prove the continuity receipt renders from source
+        run: node tools/flow-moment.mjs render product/flow-moments/audit-community-composition.flow.json > /tmp/audit-flow-receipt.md
+      - name: Prove the system receipt renders from source
+        run: node tools/system-component.mjs render product/system-components/loa-freeside.system.json > /tmp/loa-freeside-system-receipt.md

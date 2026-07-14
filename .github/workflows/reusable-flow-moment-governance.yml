@@ -1,0 +1,45 @@
+name: Reusable Flow Moment Governance
+
+on:
+  workflow_call:
+    inputs:
+      governance-ref:
+        description: Immutable loa-freeside commit containing the schema and validators
+        required: true
+        type: string
+      validate-flow-moments:
+        description: Validate repo-local product/flow-moments records in addition to the system manifest
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  continuity-contract:
+    name: Validate product and system intent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+      - name: Checkout pinned governance contract
+        uses: actions/checkout@v4
+        with:
+          repository: 0xHoneyJar/loa-freeside
+          ref: ${{ inputs.governance-ref }}
+          path: .flow-governance
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: .flow-governance/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install governance validator dependencies
+        working-directory: .flow-governance
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate system component intent
+        run: node .flow-governance/tools/system-component.mjs validate product/system-components
+      - name: Validate repo-local user-flow moments
+        if: ${{ inputs.validate-flow-moments }}
+        run: node .flow-governance/tools/flow-moment.mjs validate product/flow-moments
