@@ -64,7 +64,14 @@ jobs:
           git fetch --no-tags origin "${{ github.base_ref }}"
           # The PR may legitimately CHANGE .railway/railway.ts (that is what we are reviewing), but the
           # script that runs WITH the token must be the one already on the base branch.
-          git show "origin/${{ github.base_ref }}:.railway/plan-gate.mjs" > /tmp/plan-gate.mjs
+          if git cat-file -e "origin/${{ github.base_ref }}:.railway/plan-gate.mjs" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:.railway/plan-gate.mjs" > /tmp/plan-gate.mjs
+          else
+            # Bootstrap only: the first PR that introduces this gate has no trusted base copy yet.
+            # The plan step falls back to the checked-out PR script. Same-repo authors already have
+            # repository write access; fork PRs receive no Railway secret.
+            echo "::notice title=railway-plan-gate bootstrap::No base-ref gate exists yet; using the PR gate."
+          fi
           git show "origin/${{ github.base_ref }}:.railway/plan-baseline.json" > /tmp/plan-baseline.json || true
 
       - name: Plan gate (READ-ONLY — never applies)
