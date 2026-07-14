@@ -50,7 +50,7 @@ Result: 15 tests passed; 1 real flow record and 1 canonical system-component man
 - The Audit moment remains `dark`; this slice does not invent or wire a dashboard feature flag.
 - External `github:`, `bead:`, and URL references are type-checked but not fetched over the network in CI.
 - CI blocks invalid records and promotion claims when flow-governance files change. It does not yet require every product-code PR to declare a flow moment.
-- Consumer repositories call the reusable workflow by immutable commit SHA. Their first CI runs also verify that the organization permits reusable-workflow access to `0xHoneyJar/loa-freeside`.
+- Consumer repositories call the reusable workflow and validator checkout by immutable commit SHA so contract changes cannot arrive implicitly.
 - Component `github:0xHoneyJar/freeside-dashboard#111` remains honestly `uncaptured`; this slice does not claim Silver or Gold adoption in the dashboard.
 - The older standalone Hivemind shell validator is unchanged; the flow validator uses full JSON Schema validation for the nested Hivemind object.
 
