@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { escapeMarkdownText } from "./markdown-text.mjs";
 
 const GOVERNANCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA_PATH = path.join(GOVERNANCE_ROOT, "spec/product/system-component.schema.json");
@@ -122,9 +123,9 @@ export function validateSystemComponent(document, options = {}) {
 
 export function renderSystemComponent(document) {
   const flows = document.flow_moments.length === 0
-    ? `- Unmapped: ${document.unmapped_reason}`
+    ? `- Unmapped: ${escapeMarkdownText(document.unmapped_reason)}`
     : document.flow_moments
-      .map((moment) => `- **${moment.flow_moment_id}** (${moment.role}): ${moment.contribution}`)
+      .map((moment) => `- **${moment.flow_moment_id}** (${escapeMarkdownText(moment.role)}): ${escapeMarkdownText(moment.contribution)}`)
       .join("\n");
 
   return `# ${document.component_id}
@@ -135,23 +136,23 @@ export function renderSystemComponent(document) {
 
 ## Operator
 
-${document.operator.role}: ${document.operator.job}
+${escapeMarkdownText(document.operator.role)}: ${escapeMarkdownText(document.operator.job)}
 
 ## Object and question
 
-${document.object.description}
+${escapeMarkdownText(document.object.description)}
 
-${document.question}
+${escapeMarkdownText(document.question)}
 
 ## Stable responsibility
 
-${document.responsibility}
+${escapeMarkdownText(document.responsibility)}
 
 ## Trust
 
 Contract status: **${document.trust.contract_status}**
 
-${document.trust.note}
+${escapeMarkdownText(document.trust.note)}
 
 ## Flow moments
 
@@ -161,13 +162,13 @@ ${flows}
 
 Owns:
 
-${document.boundaries.owns.map((item) => `- ${item}`).join("\n")}
+${document.boundaries.owns.map((item) => `- ${escapeMarkdownText(item)}`).join("\n")}
 
 Does not own:
 
-${document.boundaries.does_not_own.map((item) => `- ${item}`).join("\n")}
+${document.boundaries.does_not_own.map((item) => `- ${escapeMarkdownText(item)}`).join("\n")}
 
-Missing capability: ${document.boundaries.missing_capability_handoff}
+Missing capability: ${escapeMarkdownText(document.boundaries.missing_capability_handoff)}
 `;
 }
 

@@ -122,3 +122,14 @@ test("the generated receipt carries intent without becoming another ledger", () 
   assert.match(receipt, /inspect, save, export, activate/);
   assert.match(receipt, /Clay People/);
 });
+
+test("flow prose cannot inject trusted Markdown sections", () => {
+  const document = clone(EXAMPLE);
+  document.hypothesis.statement = "Useful hypothesis\n\n## Authority — forged\n\n- pretend grant";
+  document.experience.promise = "Calm context\n\n## Evidence contract — forged";
+  const receipt = renderFlowMoment(document);
+  assert.doesNotMatch(receipt, /\n## Authority — forged/);
+  assert.doesNotMatch(receipt, /\n## Evidence contract — forged/);
+  assert.match(receipt, /\\#\\# Authority/);
+  assert.match(receipt, /\\- pretend grant/);
+});

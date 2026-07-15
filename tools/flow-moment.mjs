@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { escapeMarkdownText, markdownBulletList } from "./markdown-text.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FLOW_SCHEMA_PATH = path.join(ROOT, "spec/product/flow-moment.schema.json");
@@ -141,23 +142,18 @@ export function validateFlowMoment(document, options = {}) {
   return { valid: errors.length === 0, errors };
 }
 
-function bulletList(items, empty = "None") {
-  if (!items || items.length === 0) return `- ${empty}`;
-  return items.map((item) => `- ${item}`).join("\n");
-}
-
 export function renderFlowMoment(document) {
   const signals = document.evidence_contract.signals
-    .map((signal) => `- **${signal.id}** (${signal.kind}): ${signal.question}`)
+    .map((signal) => `- **${signal.id}** (${signal.kind}): ${escapeMarkdownText(signal.question)}`)
     .join("\n");
   const exemplars = document.exemplars
-    .map((item) => `- **${item.product} — ${item.workflow_moment}**\n  - Adopt: ${item.adopt}\n  - Reject: ${item.reject}\n  - Ref: ${item.ref}`)
+    .map((item) => `- **${escapeMarkdownText(item.product)} — ${escapeMarkdownText(item.workflow_moment)}**\n  - Adopt: ${escapeMarkdownText(item.adopt)}\n  - Reject: ${escapeMarkdownText(item.reject)}\n  - Ref: ${item.ref}`)
     .join("\n");
   const components = document.components.length === 0
     ? "- None attached"
     : document.components.map((component) => `- ${component.ref} — **${component.maturity}**`).join("\n");
 
-  return `# ${document.title}
+  return `# ${escapeMarkdownText(document.title)}
 
 **Flow moment:** ${document.flow_moment_id}
 
@@ -169,27 +165,27 @@ export function renderFlowMoment(document) {
 
 ## Operator and progress
 
-**Actor:** ${document.actor.role} — ${document.actor.context}
+**Actor:** ${escapeMarkdownText(document.actor.role)} — ${escapeMarkdownText(document.actor.context)}
 
-**Entry state:** ${document.entry_state}
+**Entry state:** ${escapeMarkdownText(document.entry_state)}
 
-**Desired progress:** ${document.desired_progress}
+**Desired progress:** ${escapeMarkdownText(document.desired_progress)}
 
-**Dream outcome:** ${document.dream_outcome}
+**Dream outcome:** ${escapeMarkdownText(document.dream_outcome)}
 
 ## Product hypothesis
 
-${document.hypothesis.statement}
+${escapeMarkdownText(document.hypothesis.statement)}
 
 Falsified or revised when:
 
-${bulletList(document.hypothesis.falsifiable_by)}
+${markdownBulletList(document.hypothesis.falsifiable_by)}
 
 ## Experience boundary
 
-${document.experience.promise}
+${escapeMarkdownText(document.experience.promise)}
 
-${document.experience.recommendation_boundary}
+${escapeMarkdownText(document.experience.recommendation_boundary)}
 
 Available actions: ${document.experience.actions.join(", ")}.
 
@@ -203,23 +199,23 @@ Learning references: ${document.evidence_contract.learning_refs.length}.
 
 ## Exposure contract
 
-**Audience:** ${document.exposure.audience}
+**Audience:** ${escapeMarkdownText(document.exposure.audience)}
 
-**Owner:** ${document.exposure.owner}
+**Owner:** ${escapeMarkdownText(document.exposure.owner)}
 
-**Review trigger:** ${document.exposure.review_trigger}
+**Review trigger:** ${escapeMarkdownText(document.exposure.review_trigger)}
 
-**Flag:** ${document.exposure.flag_ref ?? "not wired; dark hypotheses may remain unflagged"}
+**Flag:** ${escapeMarkdownText(document.exposure.flag_ref ?? "not wired; dark hypotheses may remain unflagged")}
 
 ## Boundaries
 
 Does:
 
-${bulletList(document.boundaries.does)}
+${markdownBulletList(document.boundaries.does)}
 
 Does not:
 
-${bulletList(document.boundaries.does_not)}
+${markdownBulletList(document.boundaries.does_not)}
 
 ## Exemplars
 
@@ -231,7 +227,7 @@ ${components}
 
 ## Decision references
 
-${bulletList(document.decision_refs)}
+${document.decision_refs.length ? document.decision_refs.map((reference) => `- ${reference}`).join("\n") : "- None"}
 `;
 }
 

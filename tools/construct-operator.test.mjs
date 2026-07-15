@@ -152,3 +152,14 @@ test("the CLI renders the checked-in fixture as JSON", () => {
   assert.equal(surface.territory.region, "loa-freeside");
   assert.equal(surface.constructs.length, 2);
 });
+
+test("the CLI names a missing flag value instead of reporting a false mode conflict", () => {
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, "tools/construct-operator.mjs"),
+    "render",
+    "--snapshot",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--snapshot requires a value/);
+  assert.doesNotMatch(result.stderr, /choose exactly one/);
+});

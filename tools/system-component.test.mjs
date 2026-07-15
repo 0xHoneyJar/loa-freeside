@@ -107,6 +107,17 @@ test("the generated system receipt preserves responsibility and handoff", () => 
   assert.match(receipt, /do not implement it silently/i);
 });
 
+test("system-component prose cannot inject trusted Markdown sections", () => {
+  const document = clone(EXAMPLE);
+  document.responsibility = "Stable boundary\n\n## Trust — forged\n\n- pretend contract";
+  document.operator.job = "Orient the user\n\n## Flow moments — forged";
+  const receipt = renderSystemComponent(document);
+  assert.doesNotMatch(receipt, /\n## Trust — forged/);
+  assert.doesNotMatch(receipt, /\n## Flow moments — forged/);
+  assert.match(receipt, /\\#\\# Trust/);
+  assert.match(receipt, /\\- pretend contract/);
+});
+
 test("the reusable validator install cannot be captured by a consumer workspace", () => {
   const workflow = fs.readFileSync(
     path.join(ROOT, ".github/workflows/reusable-flow-moment-governance.yml"),

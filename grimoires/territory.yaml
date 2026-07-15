@@ -21,9 +21,13 @@ outcomes:
     description: "An operator can inspect user intent, system responsibility, construct mechanics, provenance, and effective authority in one derived receipt."
 
 scopes:
+  # The declaration is part of its own governed blast radius: changes to the
+  # region boundary must travel through the same review surface as its tools.
+  - "grimoires/territory.yaml"
   - "product/**"
   - "spec/product/**"
   - "docs/product/**"
+  - "tools/markdown-text.mjs"
   - "tools/flow-moment.mjs"
   - "tools/flow-moment.test.mjs"
   - "tools/system-component.mjs"

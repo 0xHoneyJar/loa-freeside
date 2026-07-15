@@ -26,7 +26,19 @@
             "description": "The operator can inspect the joined contract in one receipt."
           }
         ],
-        "scopes": ["docs/product/**", "product/**", "spec/product/**", "tools/construct-operator*"],
+        "scopes": [
+          "grimoires/territory.yaml",
+          "product/**",
+          "spec/product/**",
+          "docs/product/**",
+          "tools/markdown-text.mjs",
+          "tools/flow-moment.mjs",
+          "tools/flow-moment.test.mjs",
+          "tools/system-component.mjs",
+          "tools/system-component.test.mjs",
+          "tools/construct-operator.mjs",
+          "tools/construct-operator.test.mjs"
+        ],
         "loadout": [
           {
             "construct": "the-arcade",

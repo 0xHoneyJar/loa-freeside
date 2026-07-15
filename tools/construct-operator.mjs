@@ -6,6 +6,7 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { validateSystemComponent } from "./system-component.mjs";
+import { escapeMarkdownText } from "./markdown-text.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_SYSTEM = "product/system-components/loa-freeside.system.json";
@@ -32,14 +33,6 @@ function duplicateValues(values) {
     seen.add(value);
     return false;
   }))];
-}
-
-function escapeMarkdownText(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replace(/([\\`*_[\]{}()#+\-.!|])/g, "\\$1");
 }
 
 function normalizeExecutionContract(capabilities) {
@@ -361,7 +354,10 @@ Live mode runs read-only Constructs verbs only: capabilities, atlas, and info --
 
 function flagValue(args, name) {
   const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] : undefined;
+  if (index < 0) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${name} requires a value`);
+  return value;
 }
 
 async function main(args) {
