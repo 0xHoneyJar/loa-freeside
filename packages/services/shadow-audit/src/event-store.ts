@@ -16,10 +16,20 @@ export type Reaction = z.infer<typeof ReactionSchema>;
 export const CtaInteractionSchema = z.enum(['product', 'conversation']);
 
 /** An aggregate run-event. Deliberately carries NO member-level data. */
+/**
+ * Which lifecycle produced this run. `dogfood-full` is the authed operator audit;
+ * `public-gate-leak` is the login-less public teaser (`GET /v1/access-risk`). Both
+ * are aggregate-only and member-field-free — the mode only records provenance so a
+ * public teaser run can be registered (and thus receive feedback) without pretending
+ * to be a full dogfood audit.
+ */
+export const RunModeSchema = z.enum(['dogfood-full', 'public-gate-leak']);
+export type RunMode = z.infer<typeof RunModeSchema>;
+
 export const RunEventSchema = z
   .object({
     run_id: z.string().min(1),
-    mode: z.literal('dogfood-full'),
+    mode: RunModeSchema,
     inputs_hash: z.string().regex(/^[0-9a-f]{64}$/),
     /** Aggregate cohort size only — never the member list. */
     stale_set_size: z.number().int().nonnegative(),
