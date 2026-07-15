@@ -53,5 +53,5 @@ jobs:
         run: node tools/flow-moment.mjs render product/flow-moments/audit-community-composition.flow.json > /tmp/audit-flow-receipt.md
       - name: Prove the system receipt renders from source
         run: node tools/system-component.mjs render product/system-components/loa-freeside.system.json > /tmp/loa-freeside-system-receipt.md
-      - name: Prove the construct operator receipt renders from deterministic seams
+      - name: Smoke render construct receipt (partial is visible, not accepted)
         run: node tools/construct-operator.mjs render --snapshot tools/fixtures/construct-operator.snapshot.json > /tmp/loa-freeside-construct-receipt.md

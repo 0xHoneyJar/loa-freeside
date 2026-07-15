@@ -18,6 +18,8 @@ node tools/system-component.mjs render product/system-components/loa-freeside.sy
 
 The system manifest captures the engineering operator, component object, consumer question, stable responsibility, trust surface, actions, ownership boundary, and handoff. It links to a canonical `FM-*` record when the relationship is real. An unmapped component must say why instead of inventing a user-truth relationship.
 
+JSON Schema is the portable shape contract; it rejects structurally invalid records and exact duplicate array items. The repository CLIs are the canonical acceptance layer because identity invariants such as duplicate signal IDs and duplicate `flow_moment_id` values cannot be expressed by portable JSON Schema alone. CI and cross-repository consumers must run the appropriate CLI rather than treating schema-only validation as semantic acceptance.
+
 ## Three independent axes
 
 | Axis | Answers | States |
@@ -85,7 +87,7 @@ Mechanical gates read the atlas's structured `ratification_status`; the neighbor
 `loa-freeside` ratifies the first bounded territory at `grimoires/territory.yaml`. The joined operator receipt derives from the existing system component, the live Constructs producer, and that region-owned declaration:
 
 ```bash
-# Deterministic fixture seam used by CI
+# Deterministic smoke-render seam used by CI; partial remains visible by design
 node tools/construct-operator.mjs render \
   --snapshot tools/fixtures/construct-operator.snapshot.json
 
@@ -96,4 +98,4 @@ node tools/construct-operator.mjs render \
 ```
 
 Live mode invokes only `capabilities`, `atlas`, and `info --rung local`. Mutation verbs are displayed in a separate set but are never executed. Until the territory is committed on the region's default branch and the producer can prove stationing, the overall receipt stays `partial` rather than presenting a working-tree declaration as ratified expertise.
-Release gates may add `--require-ok` to reject `partial`; ordinary operator inspection deliberately renders partial receipts so missing or unratified state remains visible.
+The checked-in fixture step is a smoke-render check, not a release-acceptance gate: its purpose is to prove that incomplete expertise remains inspectable. Release gates add `--require-ok` to reject `partial`; ordinary operator inspection deliberately renders partial receipts so missing or unratified state remains visible.
