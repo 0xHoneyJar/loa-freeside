@@ -108,4 +108,61 @@ describe('PostgresEventStore round-trip (real SQL)', () => {
           VALUES ('x', 'not-a-mode', ${HASH}, 0, 0, NOW())`,
     ).rejects.toThrow();
   });
+
+  it('round-trips an appended needs_input -> delivered journey without digest mutation', async () => {
+    const run = {
+      run_id: 'gate_round_trip',
+      journey_token: 'journey_round_trip',
+      subject: { chain_id: '80094', contract_address: '0xabc' },
+      inputs_hash: '1'.repeat(64),
+      threshold: 1,
+      outcome: 'needs_input' as const,
+      ts: '2026-07-15T12:00:00.000Z',
+    };
+    expect(await conn.store.appendPublicGateLeakRun(run)).toEqual({ created: true });
+    expect(await conn.store.appendPublicGateLeakRun(run)).toEqual({ created: false });
+    await conn.store.appendPublicJourneyInput({
+      run_id: run.run_id,
+      input: 'access_started_at',
+      value: '2026-06-01',
+      ts: '2026-07-15T12:01:00.000Z',
+    });
+    await conn.store.appendPublicJourneyTransition({
+      run_id: run.run_id,
+      outcome: 'delivered_e1',
+      ts: '2026-07-15T12:02:00.000Z',
+    });
+    const folded = await conn.store.getPublicGateLeakJourney(run.run_id);
+    expect(folded?.inputs_hash).toBe(run.inputs_hash);
+    expect(folded?.outcome).toBe('needs_input');
+    expect(folded?.current_outcome).toBe('delivered_e1');
+    expect(folded?.supplied_access_started_at).toBe('2026-06-01');
+  });
+
+  it('dedupes attention per journey+kind but counts a distinct journey', async () => {
+    const event = {
+      subject_chain_id: '80094',
+      subject_contract_address: '0xabc',
+      journey_token: 'journey_attention_1',
+      kind: 'submitted' as const,
+      ts: '2026-07-15T12:00:00.000Z',
+    };
+    expect(await conn.store.appendAttention(event)).toEqual({ created: true });
+    expect(await conn.store.appendAttention(event)).toEqual({ created: false });
+    expect(await conn.store.appendAttention({ ...event, journey_token: 'journey_attention_2' })).toEqual({ created: true });
+  });
+
+  it('widens an already-existing NAMED narrow mode CHECK', async () => {
+    // Regression: initialize() previously excluded the named constraint from its drop loop,
+    // then saw the name existed and left the old dogfood-only CHECK in place.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sql = (conn.store as any).sql;
+    await sql`DELETE FROM shadow_audit_run_events WHERE mode = 'public-gate-leak'`;
+    await sql`ALTER TABLE shadow_audit_run_events DROP CONSTRAINT shadow_audit_run_events_mode_check`;
+    await sql`ALTER TABLE shadow_audit_run_events ADD CONSTRAINT shadow_audit_run_events_mode_check CHECK (mode = 'dogfood-full')`;
+    await conn.store.initialize();
+    await expect(
+      conn.store.appendRunEvent(publicRun({ run_id: `risk_${'9'.repeat(24)}` })),
+    ).resolves.toBeUndefined();
+  });
 });

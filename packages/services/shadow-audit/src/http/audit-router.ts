@@ -28,7 +28,9 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
   OrderSchema,
+  PUBLIC_JOURNEY_HTTP_STATUS,
   REFUSAL_HTTP_STATUS,
+  projectPublicJourney,
   type CohortCount,
   type Cta,
   type DriftReport,
@@ -59,10 +61,14 @@ import {
   type EventStore,
   type RunEvent,
 } from '../event-store.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { RoleSnapshotSchema } from '../role-snapshot.js';
 import { timingSafeEqualStr, type RoleSink } from '../role-store.js';
-import { computeAccessRisk } from '../access-risk.js';
+import {
+  computeAccessRisk,
+  type AccessRiskOutput,
+  type AccessRiskResult,
+} from '../access-risk.js';
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
@@ -260,6 +266,145 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const TEASER_CACHE_MAX = 500;
   const teaserCache = new Map<string, { at: number; body: unknown }>();
 
+  const GateLeakBodySchema = z
+    .object({
+      chain: z.string().min(1),
+      contract: z.string().min(1),
+      access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      threshold: z.number().int().positive().optional(),
+      /** Client-retained retry key. Omitted means a genuinely new journey. */
+      journey_token: z.string().min(1).max(128).optional(),
+    })
+    .strict();
+  const ResumeGateLeakBodySchema = z
+    .object({
+      access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    })
+    .strict();
+
+  const publicSubject = (chain: string, contract: string) => ({
+    chain_id: chain,
+    contract_address: contract.toLowerCase(),
+  });
+  const originalSubmissionHash = (chain: string, contract: string, threshold: number): string =>
+    createHash('sha256')
+      .update(
+        JSON.stringify({
+          chain_id: chain,
+          contract_address: contract.toLowerCase(),
+          threshold,
+          source: 'public_gate_leak',
+        }),
+      )
+      .digest('hex');
+  const publicRunId = (journeyToken: string, chain: string, contract: string): string =>
+    `gate_${createHash('sha256')
+      .update(`${journeyToken}:${chain}:${contract.toLowerCase()}`)
+      .digest('hex')
+      .slice(0, 24)}`;
+
+  const cacheSuccessfulTeaser = (key: string, now: number, output: AccessRiskOutput): void => {
+    if (teaserCache.size >= TEASER_CACHE_MAX) {
+      const oldest = teaserCache.keys().next().value;
+      if (oldest !== undefined) teaserCache.delete(oldest);
+    }
+    teaserCache.set(key, { at: now, body: output });
+  };
+
+  type PublicCompute = { kind: 'result'; result: AccessRiskResult } | { kind: 'budget' };
+  const computePublic = async (args: {
+    chain: string;
+    contract: string;
+    accessStartedAt: string;
+    threshold: number;
+    now: number;
+  }): Promise<PublicCompute> => {
+    const cacheKey = `${args.chain}/${args.contract}/${args.accessStartedAt}/${args.threshold}`;
+    const hit = teaserCache.get(cacheKey);
+    if (hit && args.now - hit.at < teaserTtlMs) {
+      return { kind: 'result', result: { ok: true, output: hit.body as AccessRiskOutput } };
+    }
+    if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) return { kind: 'budget' };
+    const result = await computeAccessRisk(
+      {
+        chain: args.chain,
+        contract: args.contract,
+        snapshotDate: args.accessStartedAt,
+        threshold: args.threshold,
+        nowUnixSeconds: Math.floor(args.now / 1000),
+        cta: deps.cta,
+      },
+      { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
+    );
+    if (result.ok) cacheSuccessfulTeaser(cacheKey, args.now, result.output);
+    return { kind: 'result', result };
+  };
+
+  const attention = async (
+    subject: ReturnType<typeof publicSubject>,
+    journeyToken: string,
+    kind: 'submitted' | 'delivered_e1' | 'needs_input' | 'refused',
+    now: number,
+  ): Promise<void> => {
+    await deps.eventStore.appendAttention({
+      subject_chain_id: subject.chain_id,
+      subject_contract_address: subject.contract_address,
+      journey_token: journeyToken,
+      kind,
+      ts: new Date(now).toISOString(),
+    });
+  };
+
+  const registerPublicJourney = async (args: {
+    runId: string;
+    journeyToken: string;
+    chain: string;
+    contract: string;
+    threshold: number;
+    inputsHash: string;
+    outcome: 'needs_input' | 'delivered_e1' | 'refused' | 'unavailable';
+    refusalCode?: Refusal['code'];
+    accessStartedAt?: string;
+    staleSetSize?: number;
+    now: number;
+  }) => {
+    const subject = publicSubject(args.chain, args.contract);
+    await deps.eventStore.appendPublicGateLeakRun({
+      run_id: args.runId,
+      journey_token: args.journeyToken,
+      subject,
+      inputs_hash: args.inputsHash,
+      threshold: args.threshold,
+      outcome: args.outcome,
+      refusal_code: args.refusalCode,
+      access_started_at: args.accessStartedAt,
+      ts: new Date(args.now).toISOString(),
+    });
+    // Self-healing binding: if a prior attempt persisted the public journey but died before
+    // registering the feedback run, the retry fills the missing append-only event.
+    if (!(await deps.eventStore.getRun(args.runId))) {
+      await deps.eventStore.appendRunEvent({
+        run_id: args.runId,
+        mode: 'public-gate-leak',
+        inputs_hash: args.inputsHash,
+        stale_set_size: args.staleSetSize ?? 0,
+        reruns: 0,
+        ts: new Date(args.now).toISOString(),
+      });
+    }
+    await attention(subject, args.journeyToken, 'submitted', args.now);
+    if (args.outcome === 'needs_input' || args.outcome === 'delivered_e1' || args.outcome === 'refused') {
+      await attention(subject, args.journeyToken, args.outcome, args.now);
+    }
+    return projectPublicJourney({
+      run_id: args.runId,
+      journey_token: args.journeyToken,
+      subject,
+      outcome: args.outcome,
+      refusal_code: args.refusalCode,
+    });
+  };
+
   app.get('/v1/access-risk', async (c) => {
     // Anti-abuse #1 — per-IP speed bump. BEST-EFFORT ONLY: the key derives from X-Forwarded-For, which the
     // CALLER supplies. A live probe (2026-07-12) rotated XFF across 9 requests against the 6/min teaser and
@@ -356,6 +501,247 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
     teaserCache.set(cacheKey, { at: now, body: result.output });
     return c.json(result.output);
+  });
+
+  // ---- POST /v1/access-risk — address-first, typed + resumable ------------
+  app.post('/v1/access-risk', async (c) => {
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    const parsed = GateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid gate-leak input', issues: parsed.error.issues }, 400);
+
+    const threshold = parsed.data.threshold ?? 1;
+    const journeyToken = parsed.data.journey_token ?? randomUUID();
+    const runId = publicRunId(journeyToken, parsed.data.chain, parsed.data.contract);
+    const inputsHash = originalSubmissionHash(parsed.data.chain, parsed.data.contract, threshold);
+    const now = deps.now();
+
+    if (!deps.collectionRegistry) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'unavailable',
+        now,
+      });
+      return c.json({ journey }, 503);
+    }
+
+    const ref = deps.collectionRegistry({ chain: parsed.data.chain, contract: parsed.data.contract });
+    if (!ref) {
+      const refusal: Refusal = {
+        code: 'unindexed-contract',
+        reason: 'contract is not in the audited collection registry',
+        retryable: false,
+      };
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'refused',
+        refusalCode: refusal.code,
+        now,
+      });
+      return c.json({ journey, error: refusal }, refusalStatus(refusal));
+    }
+
+    const accessStartedAt = parsed.data.access_started_at ?? ref.access_started_at;
+    if (!accessStartedAt) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'needs_input',
+        now,
+      });
+      return c.json({ journey }, 428);
+    }
+
+    const computed = await computePublic({
+      chain: parsed.data.chain,
+      contract: parsed.data.contract,
+      accessStartedAt,
+      threshold,
+      now,
+    });
+    if (computed.kind === 'budget') {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'refused',
+        refusalCode: rateLimitRefusal.code,
+        accessStartedAt,
+        now,
+      });
+      return c.json({ journey, error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    if (!computed.result.ok) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'refused',
+        refusalCode: computed.result.refusal.code,
+        accessStartedAt,
+        now,
+      });
+      return c.json({ journey, error: computed.result.refusal }, refusalStatus(computed.result.refusal));
+    }
+
+    const staleUpper = computed.result.output.stale_access_upper_bound;
+    const journey = await registerPublicJourney({
+      runId,
+      journeyToken,
+      chain: parsed.data.chain,
+      contract: parsed.data.contract,
+      threshold,
+      inputsHash,
+      outcome: 'delivered_e1',
+      accessStartedAt,
+      staleSetSize: staleUpper.kind === 'exact' ? staleUpper.value : 0,
+      now,
+    });
+    return c.json({ journey, report: { ...computed.result.output, run_id: runId } }, 200);
+  });
+
+  // Appends the missing semantic input; never rewrites the original submission/digest.
+  app.post('/v1/access-risk/:runId/resume', async (c) => {
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    const parsed = ResumeGateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid resume input', issues: parsed.error.issues }, 400);
+
+    const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
+    if (!run) return c.json({ error: 'journey not found' }, 404);
+    if (run.current_outcome !== 'needs_input') {
+      const journey = projectPublicJourney({
+        run_id: run.run_id,
+        journey_token: run.journey_token,
+        subject: run.subject,
+        outcome: run.current_outcome,
+        refusal_code: run.current_refusal_code,
+      });
+      const status = PUBLIC_JOURNEY_HTTP_STATUS[journey.status.state];
+      return c.json({ journey }, status === 200 ? 200 : status === 503 ? 503 : status === 428 ? 428 : 202);
+    }
+
+    const now = deps.now();
+    try {
+      await deps.eventStore.appendPublicJourneyInput({
+        run_id: run.run_id,
+        input: 'access_started_at',
+        value: parsed.data.access_started_at,
+        ts: new Date(now).toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('conflicting journey input')) {
+        return c.json({ error: 'access_started_at conflicts with the previously supplied value' }, 409);
+      }
+      throw error;
+    }
+
+    const computed = await computePublic({
+      chain: run.subject.chain_id,
+      contract: run.subject.contract_address,
+      accessStartedAt: parsed.data.access_started_at,
+      threshold: run.threshold,
+      now,
+    });
+    if (computed.kind === 'budget') {
+      await deps.eventStore.appendPublicJourneyTransition({
+        run_id: run.run_id,
+        outcome: 'refused',
+        refusal_code: rateLimitRefusal.code,
+        ts: new Date(now).toISOString(),
+      });
+      await attention(run.subject, run.journey_token, 'refused', now);
+      const journey = projectPublicJourney({
+        run_id: run.run_id,
+        journey_token: run.journey_token,
+        subject: run.subject,
+        outcome: 'refused',
+        refusal_code: rateLimitRefusal.code,
+      });
+      return c.json({ journey, error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    if (!computed.result.ok) {
+      await deps.eventStore.appendPublicJourneyTransition({
+        run_id: run.run_id,
+        outcome: 'refused',
+        refusal_code: computed.result.refusal.code,
+        ts: new Date(now).toISOString(),
+      });
+      await attention(run.subject, run.journey_token, 'refused', now);
+      const journey = projectPublicJourney({
+        run_id: run.run_id,
+        journey_token: run.journey_token,
+        subject: run.subject,
+        outcome: 'refused',
+        refusal_code: computed.result.refusal.code,
+      });
+      return c.json({ journey, error: computed.result.refusal }, refusalStatus(computed.result.refusal));
+    }
+
+    await deps.eventStore.appendPublicJourneyTransition({
+      run_id: run.run_id,
+      outcome: 'delivered_e1',
+      ts: new Date(now).toISOString(),
+    });
+    await attention(run.subject, run.journey_token, 'delivered_e1', now);
+    const staleUpper = computed.result.output.stale_access_upper_bound;
+    await deps.eventStore.appendRunEvent({
+      run_id: run.run_id,
+      mode: 'public-gate-leak',
+      inputs_hash: run.inputs_hash,
+      stale_set_size: staleUpper.kind === 'exact' ? staleUpper.value : 0,
+      reruns: 0,
+      ts: new Date(now).toISOString(),
+    });
+    const journey = projectPublicJourney({
+      run_id: run.run_id,
+      journey_token: run.journey_token,
+      subject: run.subject,
+      outcome: 'delivered_e1',
+    });
+    return c.json({ journey, report: { ...computed.result.output, run_id: run.run_id } }, 200);
+  });
+
+  // Minimal internal/public poll. The dashboard BFF remains a later medium-specific projection.
+  app.get('/v1/access-risk/:runId', async (c) => {
+    try {
+      const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
+      if (!run) return c.json({ error: 'journey not found' }, 404);
+      const journey = projectPublicJourney({
+        run_id: run.run_id,
+        journey_token: run.journey_token,
+        subject: run.subject,
+        outcome: run.current_outcome,
+        refusal_code: run.current_refusal_code,
+      });
+      return c.json({ journey }, 200);
+    } catch {
+      return c.json({ run_id: c.req.param('runId'), status: { state: 'unavailable' } }, 503);
+    }
   });
 
   // ---- GET /v1/audit — anonymous aggregate -------------------------------

@@ -102,3 +102,66 @@ describe('isRunWithinWindow (IMP-007)', () => {
     expect(isRunWithinWindow(undefined, now, HOUR)).toBe(false);
   });
 });
+
+describe('public gate-leak append-only journey + attention', () => {
+  const initial = {
+    run_id: 'gate_1',
+    journey_token: 'journey_1',
+    subject: { chain_id: '80094', contract_address: '0xabc' },
+    inputs_hash: 'a'.repeat(64),
+    threshold: 1,
+    outcome: 'needs_input' as const,
+    ts: '2026-07-15T12:00:00.000Z',
+  };
+
+  it('resumes by appending input + transition without mutating the original digest', async () => {
+    const store = new InMemoryEventStore();
+    expect(await store.appendPublicGateLeakRun(initial)).toEqual({ created: true });
+    expect(await store.appendPublicGateLeakRun(initial)).toEqual({ created: false });
+    await store.appendPublicJourneyInput({
+      run_id: initial.run_id,
+      input: 'access_started_at',
+      value: '2026-06-01',
+      ts: '2026-07-15T12:01:00.000Z',
+    });
+    await store.appendPublicJourneyTransition({
+      run_id: initial.run_id,
+      outcome: 'delivered_e1',
+      ts: '2026-07-15T12:02:00.000Z',
+    });
+    const folded = await store.getPublicGateLeakJourney(initial.run_id);
+    expect(folded?.inputs_hash).toBe(initial.inputs_hash);
+    expect(folded?.outcome).toBe('needs_input');
+    expect(folded?.current_outcome).toBe('delivered_e1');
+    expect(folded?.supplied_access_started_at).toBe('2026-06-01');
+  });
+
+  it('dedupes one journey retry while counting a distinct journey once', async () => {
+    const store = new InMemoryEventStore();
+    const event = {
+      subject_chain_id: '80094',
+      subject_contract_address: '0xabc',
+      journey_token: 'journey_1',
+      kind: 'submitted' as const,
+      ts: '2026-07-15T12:00:00.000Z',
+    };
+    expect(await store.appendAttention(event)).toEqual({ created: true });
+    expect(await store.appendAttention(event)).toEqual({ created: false });
+    expect(await store.appendAttention({ ...event, journey_token: 'journey_2' })).toEqual({ created: true });
+    expect(store.counts().attention).toBe(2);
+  });
+
+  it('rejects member/PII fields at the storage boundary', async () => {
+    const store = new InMemoryEventStore();
+    await expect(
+      store.appendAttention({
+        subject_chain_id: '80094',
+        subject_contract_address: '0xabc',
+        journey_token: 'journey_1',
+        kind: 'feedback',
+        ts: '2026-07-15T12:00:00.000Z',
+        wallet: '0xmember',
+      } as never),
+    ).rejects.toThrow();
+  });
+});

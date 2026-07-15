@@ -22,6 +22,8 @@ import type { CollectionSource, SourceResolver } from './collection-union.js';
 export interface CollectionRef {
   readonly collection: string;
   readonly standard: TokenStandard;
+  /** Ratified date when access began. Optional; absence produces typed needs_input. */
+  readonly access_started_at?: string;
 }
 
 /** Resolve a chain+contract to its belt-gateway collection, or undefined for an unknown one. */
@@ -132,6 +134,29 @@ export function buildCollectionIndex(map: Record<string, CollectionRef>): Collec
   // Canonical order, so the source set (hence the inputs_hash) never depends on map iteration order.
   for (const group of byCollection.values()) {
     group.sort((a, b) => (a.chain === b.chain ? a.contract.localeCompare(b.contract) : a.chain.localeCompare(b.chain)));
+  }
+  // Access-start is collection-level truth. Every deployment in a union must resolve to the
+  // same ratified date; otherwise the answer would depend on which sibling contract was pasted.
+  for (const [collection, group] of byCollection) {
+    const dates = new Set(
+      group
+        .map(({ chain, contract }) => norm.get(`${chain}/${contract}`)?.access_started_at)
+        .filter((value): value is string => value !== undefined),
+    );
+    if (dates.size > 1) {
+      throw new Error(`shadow-audit: conflicting access_started_at values for collection ${collection}`);
+    }
+    const [date] = dates;
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error(`shadow-audit: invalid access_started_at for collection ${collection}`);
+    }
+    if (date) {
+      for (const { chain, contract } of group) {
+        const key = `${chain}/${contract}`;
+        const ref = norm.get(key);
+        if (ref) norm.set(key, { ...ref, access_started_at: date });
+      }
+    }
   }
   const registry: CollectionRegistry = ({ chain, contract }) => norm.get(`${chain}/${contract}`.toLowerCase());
   const sources: SourceResolver = (args) => {

@@ -378,3 +378,106 @@ describe('GET /v1/access-risk registers the PUBLIC run (G-2 — feedback can now
     expect(eventStore.counts().runEvents).toBe(1);
   });
 });
+
+describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', () => {
+  const registry =
+    (m: Record<string, { collection: string; standard: 'erc721' | 'erc1155'; access_started_at?: string }>) =>
+    ({ chain, contract }: { chain: string; contract: string }) =>
+      m[`${chain}/${contract}`.toLowerCase()];
+  const gateLeakDeps = (eventStore: InMemoryEventStore, accessStartedAt?: string) =>
+    makeDeps({
+      eventStore,
+      collectionRegistry: registry({
+        [`1/${CONTRACT}`]: {
+          collection: 'thj',
+          standard: 'erc721',
+          ...(accessStartedAt ? { access_started_at: accessStartedAt } : {}),
+        },
+      }),
+    });
+
+  it('returns typed needs_input when no access-start is supplied or ratified', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore));
+    const res = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: 'journey-needs-input',
+    });
+    expect(res.status).toBe(428);
+    const body = (await res.json()) as any;
+    expect(body.journey.status).toEqual({ state: 'needs_input', required_input: 'access_started_at' });
+    expect(body.journey.run_id).toMatch(/^gate_/);
+    expect(eventStore.counts()).toMatchObject({ publicRuns: 1, attention: 2, runEvents: 1 });
+  });
+
+  it('appends access_started_at and resumes the SAME journey to delivered_e1', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore));
+    const first = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: 'journey-resume',
+    });
+    const firstBody = (await first.json()) as any;
+    const runBefore = await eventStore.getPublicGateLeakJourney(firstBody.journey.run_id);
+
+    const resumed = await post(app, `/v1/access-risk/${firstBody.journey.run_id}/resume`, {
+      access_started_at: '2026-06-22',
+    });
+    expect(resumed.status).toBe(200);
+    const resumedBody = (await resumed.json()) as any;
+    expect(resumedBody.journey.run_id).toBe(firstBody.journey.run_id);
+    expect(resumedBody.journey.journey_token).toBe(firstBody.journey.journey_token);
+    expect(resumedBody.journey.status).toEqual({ state: 'delivered_e1' });
+    expect(resumedBody.report.run_id).toBe(firstBody.journey.run_id);
+
+    const runAfter = await eventStore.getPublicGateLeakJourney(firstBody.journey.run_id);
+    expect(runAfter?.inputs_hash).toBe(runBefore?.inputs_hash); // original digest is immutable
+    expect(runAfter?.outcome).toBe('needs_input'); // first event remains historical truth
+    expect(runAfter?.current_outcome).toBe('delivered_e1');
+    expect(runAfter?.supplied_access_started_at).toBe('2026-06-22');
+
+    const poll = await app.request(`/v1/access-risk/${firstBody.journey.run_id}`);
+    expect(poll.status).toBe(200);
+    expect(((await poll.json()) as any).journey.status).toEqual({ state: 'delivered_e1' });
+  });
+
+  it('uses a ratified registry access-start without silently inventing a date', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore, '2026-06-22'));
+    const res = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: 'journey-ratified-date',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.journey.status).toEqual({ state: 'delivered_e1' });
+    expect((await eventStore.getPublicGateLeakJourney(body.journey.run_id))?.access_started_at).toBe('2026-06-22');
+  });
+
+  it('keeps every public exit channel member-free and sub-k-safe', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore));
+    const needs = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: 'journey-privacy',
+    });
+    const serializedNeeds = JSON.stringify(await needs.json());
+    for (const forbidden of ['wallet', 'email', 'role_ids', 'sub_k_denominator', 'free_text']) {
+      expect(serializedNeeds).not.toContain(forbidden);
+    }
+
+    const refused = await post(createAuditRouter(makeDeps({ eventStore })), '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: 'journey-refused',
+    });
+    const serializedRefusal = JSON.stringify(await refused.json());
+    for (const forbidden of ['wallet', 'email', 'role_ids', 'sub_k_denominator', 'free_text']) {
+      expect(serializedRefusal).not.toContain(forbidden);
+    }
+  });
+});

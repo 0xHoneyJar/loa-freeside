@@ -232,6 +232,7 @@ export function buildAuditApp(
         c.req.path === '/healthz' ||
         c.req.path === '/v1/role-snapshot' ||
         c.req.path === '/v1/access-risk' ||
+        /^\/v1\/access-risk\/[^/]+(?:\/resume)?$/.test(c.req.path) ||
         /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)
       )
         return next();

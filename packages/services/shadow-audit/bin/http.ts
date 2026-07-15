@@ -67,7 +67,13 @@ try {
 // `collection` would match no Transfers → an empty, silently-wrong audit.
 const RegistrySchema = z.record(
   z.string(),
-  z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
+  z
+    .object({
+      collection: z.string().min(1),
+      standard: z.enum(['erc721', 'erc1155']),
+      access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    })
+    .strict(),
 );
 
 function loadRegistryFromEnv(): { map: Record<string, CollectionRef>; chains: Set<string> } {
