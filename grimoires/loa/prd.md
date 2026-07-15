@@ -1,45 +1,44 @@
-# PRD — Shadow-Audit MVP: The Shadow-Mode Access-Intelligence Wedge (+ Agent-First Railway IaC)
+# PRD — Public Gate Leak Lifecycle (the first free rung)
 
 **Version:** 1.0
-**Date:** 2026-07-10
-**Cycle:** shadow-audit-mvp
-**Author:** discovering-requirements (operator-driven; exhaustive session context)
-**Supersedes-active:** waggle-s1 (archived → `prd.waggle-s1.md`; sprint #412 completed)
+**Date:** 2026-07-15
+**Cycle:** public-gate-leak-lifecycle
+**Domain:** `shared` (composes the `shadow-audit` + `ordering` buildings; no platform/network cross)
+**Branch:** `feat/public-gate-leak-lifecycle`, stacked on `origin/feat/shadow-audit-mvp`
+**Author:** simstim discovering-requirements (autonomous cycle `simstim-20260715-008e0d78`)
 
-> **Sources (this PRD traces to):** `grimoires/loa/context/2026-07-10-shadow-audit-mvp-definition-of-done.md`,
-> `2026-07-10-shadow-audit-collection-registry.grounded.md`, `2026-07-10-boehm-sovereignty-discriminator.md`;
-> issue `0xHoneyJar/loa-freeside#283` (D1 contract, Eileen-ratified Option C); the Codex Railway-vs-Cloudflare
-> research verdict; operator interview (2026-07-10, this session); `project_deployed-but-unconsumed-pattern`.
+> **Sources this PRD traces to:**
+> `grimoires/loa/context/2026-07-15-public-gate-leak-lifecycle-seed.md` (the operator seed),
+> `grimoires/loa/context/2026-07-15-gate-leak-grounding.md` (two `file:line`-anchored grounding passes over
+> `shadow-audit` + `ordering`). Every architectural claim below is grounded there, not inferred.
 
 ---
 
 ## 1. Problem & Vision
 
-**The wedge (operator thesis, interview 2026-07-10):** *Freeside is the Shadow-Mode intelligence layer for
-Web3 communities — it runs BESIDE existing gating tools (Collab.Land / Guild / Matrica), builds the canonical
-member graph, detects access/lifecycle drift, and shows operators which members are valuable, risky, lapsed,
-or worth acting on.* The first sellable product is not "token gating" — it is an **access-intelligence audit
-for communities already using token gating**: enter without ripping out the incumbent, prove value, then
-gradually take over lifecycle → member intelligence → monetization.
+**The move (operator seed):** *Freeside's first sellable moment is a free, login-less "Gate Leak Preview".*
+A visitor pastes an NFT contract address and — when the prerequisites exist — gets an honest, aggregate,
+k-anonymous read of how much access has leaked (holders who qualified at a snapshot but have since sold/lapsed).
+Value precedes signup. Contact, auth, and claim are optional follow-ons. The primary next action after this
+rung is **Enhance → Holder Role Drift**; paid monitoring/history, x402, credits, CRM, and member-level
+artifacts are explicitly out of scope.
 
-**Why this, why now (grounded reality, issue #283):** the MVP is a member-intelligence + access-lifecycle
-control-plane delivered as two coupled halves — **D4 Shadow-Mode coexistence** (install behind incumbent,
-touch no roles, explain divergences) and **D1 member graph / holder-quality**. A read-only verification pass
-found a sharp asymmetry: **D4 is materially BUILT** (`packages/adapters/coexistence/`, ~14.5k ln: incumbent
-detector, shadow ledger, namespaced role manager "MUST NEVER touch incumbent roles", parallel-mode
-orchestrator, migration manager — runtime/wireability unverified `[?]`); **D1 exists only as SCHEMA**
-(`apps/worker/src/data/schema.ts` `profiles` table binds communityId+discordId+wallet + tier/rank/scores;
-the reasoning that fills it does not exist). **Option C (Hybrid) is RATIFIED by Eileen;** #283 settles the
-D1 *contract* (bands, provenance, `AccessDecisionRecord`, explanation seam) — *"a decision, not code."*
+**Why now (grounded reality):** the compute already exists. `shadow-audit` ships a public, unauthenticated,
+registry-gated, k-anonymous `GET /v1/access-risk` that returns a `run_id`, `inputs_hash`, and an explicit
+on-chain upper-bound disclosure [grounding §A]. `ordering` ships a durable `placed→routing→producing→
+fulfilled/failed` lifecycle with a Postgres transactional outbox [grounding §B]. What is missing is the thin
+*lifecycle around the free rung*: a valid submission today is either answered ephemerally (no durable record,
+no feedback binding) or **refused before any interest is ever observed**. The cluster's signature failure is
+substrate shipping without a durable, honest consumer path — this cycle closes that for the public entrance.
 
-**The cycle problem (the cure applied):** the cluster's signature failure is *substrate shipping before a
-live consumer* (`project_deployed-but-unconsumed-pattern`, operator-validated). This cycle applies the cure to
-the shadow-audit: land **one real community (thj) seeing its real drift next to its incumbent roles, live** —
-the first load-bearing consumer of the Shadow-Mode wedge — and give the member graph its **first real writer**.
+**The cycle problem (the cure):** make a valid, login-less submission a *first-class durable observation* —
+answered honestly when it can be, resumably parked when a semantic prerequisite is missing, and privacy-safely
+counted as demand either way — **without** corrupting the existing k-anon/refusal invariants, without
+member-level data in shared events, and without collapsing a report run into an onboarding order.
 
-**Vision framing (BOEHM boring-box discipline, `boehm-sovereignty-discriminator.md`):** boring box over
-distributed system; the member graph and organization-as-code are **seeded by** this MVP, never blockers on
-its spine. Stay on Railway (Codex research: agent-first requires code-first IaC, not leaving Railway).
+**Scope discipline:** this is the *smallest canonical backend lifecycle* needed to later hang a dashboard BFF
+slice on. It builds no UI, no payments, no immutable artifact history, no member-level exports, no graph
+enrichment beyond a validated `(chain_id, contract_address)` subject + bounded aggregate interest.
 
 ---
 
@@ -47,153 +46,102 @@ its spine. Stay on Railway (Codex research: agent-first requires code-first IaC,
 
 | ID | Goal | Success metric |
 |----|------|----------------|
-| **G-1** | Deploy the shadow-audit box **via Railway native IaC** (agent-first, dogfooded) | Service live as its own `shadow-audit-api` project, deployed from `.railway/railway.ts` via `config plan` → operator-approved `apply`; fail-closed verified (refuses startup on missing required vars) |
-| **G-2** *(SPINE)* | **thj sees real drift next to its incumbent roles, live** (Shadow Access Audit, dogfood-full) | Dashboard renders thj's stale-access confront set + turnover + newly-eligible from the LIVE deployed audit, computed next to incumbent roles (shadow-read, no forced cutover) |
-| **G-3** | **Role-snapshot exporter** (freeside-characters) — produces the `RoleSnapshot` AND writes the member-object **FACTS** (D1 first writer) | Exporter emits a `RoleSnapshotSchema`-valid JSON; writes identity+eligibility facts (discord↔wallet, community, roles, eligibility state, last-verified, provenance) into the existing `profiles` substrate |
-| **G-4** | **thj onboarded** as an operated community (`community-onboarding` order) | Order fulfilled on the live ordering-service → thj is `isOperatedCommunity` (the shadow-audit's mode gate) |
-| **G-5** | **Contract Access-Risk Audit** — no-install, on-chain-only teaser (`access-risk-audit` preset) | Given `{chain, contract, snapshot/reference date, optional gating rule}` returns holder turnover · sold/lapsed count · newly-eligible count · whale/concentration notes · stale-access risk estimate · CTA "Map this to Discord roles with a no-install Shadow Access Audit" |
-| **G-6** | **Organization-as-code** convention + first instances + minimal agent gate | ≥2 buildings represented as `.railway/railway.ts` (shadow-audit + ordering-service, both PoC-pulled); agent gate: `config plan` on PR, fail on unexpected drift, human-approve production + all destructive |
+| **G-1** | **Durable, fail-loud EventStore.** A Postgres `EventStore` adapter for `shadow-audit`, wired fail-loud in production. | `PostgresEventStore implements EventStore` round-trips `appendRunEvent`/`appendContact`/`getRun` through the real adapter (read back by the reader's path, not a stub); production wiring refuses startup when the durable store is required but `DATABASE_URL` is absent; no in-memory store masquerades as a durable run. Closes seed gap 5. |
+| **G-2** | **Public runs are registered; feedback binds.** A successful or refused public Gate Leak attempt is registered so reaction/contact can bind to its `run_id`. | A `run_id` returned by the public path is resolvable by `getRun`; `POST /v1/audit/reaction` + `/contact` bound to a public `run_id` succeed within the run window instead of 404-ing. Closes seed gap 4. |
+| **G-3** | **Honest semantic-prerequisite state.** When a contract alone cannot establish access-start, the public path returns a typed, resumable `needs_input(access_started_at)` state — never a silently chosen date called "Gate Leak". | For a valid collection with no ratified access-start, the public path returns a typed `needs_input` projection (not a 200 answer, not an opaque 400); supplying `access_started_at` resumes to a delivered E1 without re-submitting. Closes seed gap 1. |
+| **G-4** | **Anonymous intake for valid-but-unknown collections.** A valid submission for a collection not yet in the registry creates a durable interest/onboarding observation instead of being refused into the void — contact optional, source/attribution explicit. | A valid unknown contract yields a durable `indexing` observation via a new anonymous-friendly ordering preset (contact NOT required; explicit non-dashboard `source`), **without** widening `CommunityOnboardingInputs` or mutating any immutable input digest. Closes seed gaps 2 + 3. |
+| **G-5** | **Typed public lifecycle projection + privacy-safe attention.** A short, typed projection distinguishing the public journey states, plus append-only attention/demand events that carry a canonical subject but no member/wallet/email/IP. | The projection enumerates at least `submitted → resolving_subject → indexing → needs_input(access_started_at) → computing → delivered_e1 → refused | unavailable`; attention events contain a `(chain_id, contract_address)` subject + bounded aggregate interest and are schema-forbidden from carrying raw wallets, roles, holdings, free-text, email, or IP. Closes seed gaps 6 + 7 (contract only; dashboard BFF is a later cycle). |
+| **G-6** | **Idempotency, anti-abuse, migrations, contract tests — the invariants hold.** Retries reuse expensive work; distinct human journeys still contribute bounded aggregate demand; existing k-anon/cache/global-budget/union/typed-refusal invariants remain intact; production fails closed when durable upstream is unavailable. | Idempotent replay of a submission does not duplicate indexing/compute yet distinct journeys increment aggregate interest; a known-bad regression input pins each invariant; migrations apply cleanly; contract tests cover the new schemas; no public path silently degrades to an in-memory stub. |
 
-**Success gate (cycle DONE) — operator-selected "drift renders + hand-verified + quantitative coverage":**
-- **SM-1:** G-2 spine met — thj's real drift renders from the live audit, sanity-checked against **≥1
-  hand-verified known holder** (deploy-runbook §5 spot-check; wrong registry → silently-wrong audit).
-- **SM-2 (quantitative, denominator FIXED before the run — flatline IMP-006):** resolution rate =
-  `(role-holders resolved to a wallet) / (thj members holding a Freeside-audited role at the snapshot,
-  EXCLUDING known bots/webhooks and de-duplicated by discord_id)`. The denominator, bot/duplicate treatment,
-  and the measurement query are pinned in the SDD BEFORE the run (not self-calibrated post-hoc). **Target
-  ≥80%**; unmatched are FLAGGED, never dropped. Audit completes within the §10.1 latency bound (RoleSnapshot
-  max-age + audit SLO numerically bounded in the SDD — flatline IMP-007).
-- **SM-3:** G-1 deploy done via IaC with a green `config plan` and fail-closed verified.
-- **SM-4:** G-5 teaser returns the specified outputs for a real thj contract (Honeycomb) with no Discord access.
-
-**Timeline:** done-when-done (operator-confirmed). Sequence by dependency + BOEHM boring-box discipline;
-no deadline (near-zero-users / pre-PMF stage).
+> Metrics are **evidence layers, not one funnel** (seed): proof-of-interest (G-4/G-5), proof-of-delivered-value
+> (G-2/G-3), and proof-of-willingness-to-advance (Enhance intent) stay separately measurable.
 
 ---
 
 ## 3. Users & Stakeholders
 
-- **End buyer / operator (external):** a Web3 community manager already running Collab.Land/Guild/Matrica.
-  Buyer story (lead with the MECHANISM, per #283): *"You already use Collab.Land. Freeside runs in Shadow
-  Mode — it finds role drift, stale access, no-longer-eligible sellers, eligible members missing roles, and
-  explains each divergence, without touching your incumbent roles."* Gets the **wow** (two-layer rule: the
-  end-user surface is where craft goes).
-- **First real consumer (this cycle):** **thj** (The Honey Jar) — operated by us, so we have the role
-  snapshot; the deployed-but-unconsumed first load-bearing consumer.
-- **Internal consumer:** the operator + agents driving the backend as code (crappiest-version-first;
-  agent-first Railway IaC).
-- **Adjacent stakeholders (deferred deliverables):** Eileen (ratifies the D1 contract, #283); Hermes
-  (drafting the holder-quality contract, Lane C).
+- **Anonymous visitor** — pastes a contract, expects honest value or an honest "not yet / need one more thing",
+  with no login. Primary user.
+- **Returning/claiming user** — later attaches contact, notification, or claim intent to a prior run; must find
+  the run still bound.
+- **Community operator (subject)** — the collection being observed; a submission is *interest*, never an
+  assertion of ownership, membership, or gate semantics about them.
+- **Downstream dashboard BFF (future consumer)** — a later cycle consumes this typed projection; this cycle
+  ships the upstream contract it will bind to, not the page.
+- **Freeside platform** — owns k-anon / privacy / budget invariants that this cycle must not weaken.
 
 ---
 
 ## 4. Functional Requirements
 
-- **FR-1 (Shadow Access Audit, dogfood-full):** the live `GET /v1/audit` path (`runAudit`, ~35-line box +
-  Sonar/RPC ownership adapter) computes, for an operated community with a fresh `RoleSnapshot`, the drift
-  between incumbent Discord roles and current on-chain token qualification: `stale_access`, `sold_lapsed`,
-  `newly_eligible`, `holder_turnover`, whale concentration — k-anonymized. Reads only; NEVER mutates
-  incumbent roles. `[grounded: session Explore agent map + DoD brief]`
-- **FR-2 (Contract Access-Risk Audit, no-install teaser — G-5):** the `access-risk-audit` preset computes
-  the on-chain HALF of the audit from public data alone (chain + contract + date + optional gating rule) — no
-  Discord access required — returning turnover/sold-lapsed/newly-eligible/whale/stale-risk + the CTA. This is
-  the top-of-funnel wedge (targetable at any community's contract, e.g. Pythenians, without onboarding).
-- **FR-3 (Role-snapshot exporter — G-3):** a one-shot freeside-characters CLI (fork
-  `apps/bot/src/cli/member-graph.ts`) that enumerates the thj guild (privileged `GuildMembers` intent),
-  resolves discord→wallet via `member-identity-client`, and emits a `RoleSnapshotSchema`-valid JSON
-  (`role_ids` as Discord snowflakes; unmatched wallets FLAGGED not dropped). `[brief: freeside-characters
-  grimoires/loa/context/2026-07-10-role-export-exporter-brief.md]`
-- **FR-4 (member-graph FIRST WRITER — G-3, facts half):** the exporter ALSO writes the member object's
-  **identity+eligibility FACTS** (discord↔wallet, community, current roles, eligibility state, last-verified,
-  provenance) into the existing `profiles` substrate — D1's first real writer. **The REASONING half**
-  (holder-quality bands, reason codes, `AccessDecisionRecord`, explanation layer) is DEFERRED to #283 /
-  Option C / Eileen and is NOT implemented here. `[operator decision 2026-07-10: "facts now, reasoning
-  deferred"]`
-- **FR-5 (deploy via Railway IaC — G-1):** define the shadow-audit service in `.railway/railway.ts`
-  (source=loa-freeside monorepo, repo-root build context, `dockerfilePath=packages/services/shadow-audit/Dockerfile`),
-  env = the greenlit `COLLECTION_REGISTRY` (17 entries, chains 1/10/8453/42161/80094) + verified RPCs +
-  `SHADOW_AUDIT_API_KEY`; `config plan` → operator approves the exact plan → `apply`. `[registry brief]`
-- **FR-6 (thj onboarding — G-4):** place a `community-onboarding` order (POST /v1/orders on the live
-  ordering-service; inputs chain_id/contract=Honeycomb/contact_email/source="dashboard_onboarding") → thj
-  becomes an operated community. Operator action; tracked as a gate.
-- **FR-7 (organization-as-code — G-6):** establish the CONVENTION of representing buildings as native Railway
-  IaC + a minimal agent gate (plan-on-PR, fail-on-unexpected-drift, human-approve prod/destructive). First
-  instances: shadow-audit + ordering-service (both already PoC-pulled). NOT all buildings.
+| ID | Requirement | Traces |
+|----|-------------|--------|
+| FR-1 | Provide a `PostgresEventStore` implementing the existing `EventStore` port (`appendRunEvent`, `appendContact`, `getRun`) over `sql/0001_shadow_audit_events.sql` (+ a forward migration for public-run + telemetry columns), preserving append-only + no-member-field invariants. | G-1 |
+| FR-2 | Wire the durable EventStore fail-loud in production: when durability is required, absence of `DATABASE_URL` refuses startup; `InMemoryEventStore` remains the explicit dev/test default only. | G-1, G-6 |
+| FR-3 | Register the public Gate Leak run (success **and** typed refusal) in the EventStore at delivery time so its `run_id` is resolvable by `getRun` and by the reaction/contact routes. | G-2 |
+| FR-4 | Add a typed `needs_input(access_started_at)` state to the public path for a valid collection lacking a ratified access-start; make it resumable (supplying the input continues the same journey to a delivered E1) without silently choosing a date. | G-3 |
+| FR-5 | Introduce a new anonymous-friendly `gate-leak` product/preset in `protocol/ordering` (contact optional; explicit `source`/attribution; `.strict()`) that rides the existing order lifecycle to index a valid-but-unknown collection and produce a durable subject/interest observation. | G-4 |
+| FR-6 | Define the narrow `order_id`-keyed join from a gate-leak observation into `community-onboarding` (attach contact/notification/claim intent later as an appended event/transition) — never by widening `CommunityOnboardingInputs` or mutating an input digest. | G-4 |
+| FR-7 | Define a short typed **public lifecycle projection** enumerating the seed journey states and a minimal internal poll to read it (the dashboard-owned public POST/poll BFF is explicitly deferred). | G-5 |
+| FR-8 | Emit append-only, privacy-safe **attention/demand events** carrying a canonical `(chain_id, contract_address)` subject + bounded aggregate interest; schema-forbid raw wallets, roles, holdings, free-text feedback, email, IP. | G-5, G-6 |
+| FR-9 | Separate idempotent work reuse from demand measurement: a replayed submission reuses indexing/compute (no duplicate expensive work) while distinct journeys still contribute bounded aggregate interest. | G-6 |
+| FR-10 | Ship migrations, anti-abuse bounds (reuse the existing cache + identity-independent global budget; do not regress k-anon), and contract/round-trip tests — each new invariant pinned by a known-bad regression input. | G-6 |
 
 ---
 
-## 5. Technical & Non-Functional Requirements
+## 5. Non-Goals (hard boundary — seed Build Boundary)
 
-- **NFR-1 (stay on Railway):** deploy on Railway via native IaC. Cloudflare/Alchemy migration is OUT (Codex
-  research: agent-first requires code-first IaC, not leaving Railway; the persistent-gateway Discord bot +
-  long-running indexers fail the Cloudflare fit test).
-- **NFR-2 (Railway IaC v0 safety):** the feature is Experimental v0 (codegen bugs are agent-absorbable — PoC
-  patched a `postgresVolume` bug). **NEVER** `railway config apply --yes` / `--confirm-destructive` from an
-  agent without explicit operator approval of the exact plan. Pin the CLI/SDK version.
-- **NFR-3 (correctness where it costs — money/ops):** the audit's correctness risk is the Sonar/RPC
-  block-at-date reconstruction + the `COLLECTION_REGISTRY` mapping (a wrong address → silently-wrong audit).
-  Derisk THERE (hand-verified holder spot-check), not in plumbing.
-- **NFR-4 (Shadow-Mode invariant):** the audit is READ-ONLY and MUST NEVER mutate incumbent roles (D4
-  coexistence invariant, #283). No forced cutover; the community decides.
-- **NFR-5 (fail-closed):** the shadow-audit service refuses startup when a required var is absent; missing
-  `SHADOW_AUDIT_API_URL` in the dashboard → loud error, never fabricated data.
-- **NFR-6 (multi-repo coordination):** master=loa-freeside, child=freeside-characters, coordinator at
-  `~/bonfire/shadow-audit-mvp-coordinator` (scaffolded; bootstrap staged, not yet applied).
+- ❌ Dashboard page, animation, lead-magnet UI, account-claim UI.
+- ❌ Payments, x402, credits, paid monitoring/history.
+- ❌ Canonical immutable report artifacts / history; member-level E3 exports.
+- ❌ Graph enrichment beyond a validated subject/interest observation.
+- ❌ The public **address-based POST/poll dashboard BFF** (later dashboard-owned cycle — this cycle ships only
+  the upstream typed contract it will consume).
+- ❌ Widening `CommunityOnboardingInputs`, or routing the anonymous journey through the onboarding recipe
+  (grounding §C: structurally unsafe).
+- ❌ Introducing Effect-TS into `shadow-audit` or `ordering` (both are Zod + plain-TS; grounding §A/§B).
+- ❌ Gemini / Grok-via-Cursor / Cursor model routes (this cycle: Codex + Claude + Grok-headless only).
 
 ---
 
-## 6. Scope & Prioritization
+## 6. Technical Constraints (grounded)
 
-**MVP (this cycle):** G-1..G-6 above. **The DONE gate is G-2 (the spine) — SM-1..SM-3.** G-5 (teaser) and
-G-6 (org-as-code) are **parallel, independent workstreams, NOT blockers on DONE** (flatline IMP-015): the
-cycle is done when thj sees drift + the box is deployed via IaC + the exporter writes facts; G-5/G-6 land
-alongside but their absence does not hold the spine. Sequencing bias: land the SPINE (G-2, needs G-1 + G-3 +
-G-4) first; G-5 + G-6 parallel; FR-4 member-graph write follows the exporter.
-
-**DEFERRED to a governed lane (explicit — these are ratified/in-flight elsewhere, not this PRD's to settle):**
-- **D1 holder-quality REASONING + explanation layer + `AccessDecisionRecord` contract** → issue #283 /
-  Option C / Eileen. This cycle writes member FACTS only.
-- **Lane C — holder-quality signal contract** (eligibility/lifecycle/retention/risk/contribution/monetization/
-  operator signal categories) → Hermes is drafting.
-- **Lane D — action layer** (what Freeside DOES with an insight: remove/warn/grant/re-engage/block/alert) →
-  "later" (operator: the wedge is the data model, not the actions, first).
-
-**EXPLICITLY OUT (non-goals):**
-- Cloudflare/Alchemy migration (parked behind a forcing function).
-- Inventory canonical DNS flip + inventory-api §10.4 hardening (bead `arrakis-jfm4e`, producer-side).
-- The `packages/services/shadow-mode` event-sourced ShadowLedger service as a NEW build — `[ASSUMPTION:
-  the member-graph write target is the existing profiles substrate, NOT the event-sourced ledger; which
-  substrate is canonical is a /architect decision]`.
-- Broader IaC rollout across all ~13 buildings beyond the convention + 2 first instances.
-- AI features, monetization, Telegram, quests (operator anti-pattern: scope collapse).
+- **Compose, don't fork.** Prefer composition of the existing Ordering + Shadow-Audit lifecycles over a third
+  independent lead-magnet queue (seed). New `gate-leak` preset rides the existing order lifecycle + outbox.
+- **Immutable validated inputs.** Preserve them or model later input as an explicit event/transition; never
+  mutate an input digest invisibly (grounding §B: `inputs_digest` excluded from `OrderPatch`).
+- **Privacy is a hard invariant.** No raw member wallets/roles/holdings/free-text/email/IP in shared
+  attention/graph events. Existing k-anon, cache, global budget, union semantics, typed refusals stay intact.
+- **A submission is not an assertion.** A product-interest observation may create/reference a canonical
+  `(chain_id, contract_address)` subject but may not assert community ownership, membership, identity, or gate
+  semantics.
+- **Fail closed.** Public production paths fail closed when durable upstream services are unavailable; no
+  in-memory stub may masquerade as a queued/durable run.
+- **Match the idiom.** async-Promise + Zod + discriminated-union result unions + tagged-refusal (Zod enum +
+  `REFUSAL_HTTP_STATUS` map). Follow Effect only where a package already uses it (neither of these does).
+- **Short, typed, strict, readable** contracts/policies — a human reviewer must be able to read them.
 
 ---
 
 ## 7. Risks & Dependencies
 
-| Risk / Dependency | Impact | Mitigation |
-|---|---|---|
-| Railway IaC is Experimental v0 | codegen/apply bugs | agent-patches v0 bugs (PoC proven); pin version; never unapproved destructive apply (NFR-2) |
-| Wrong `COLLECTION_REGISTRY` address | silently-wrong audit (money/ops) | grounded + greenlit registry; hand-verified holder §5 spot-check (SM-1) |
-| thj identity-link rate low | few members resolve to wallets | unmatched FLAGGED not dropped; SM-2 threshold calibrated to reality, not assumed |
-| D4 coexistence runtime unverified `[?]` (#283) — flatline IMP-002 | if the SPINE depended on D4 runtime, it couldn't be demonstrated | **the spine's audit path is the STANDALONE Sonar/RPC audit box, NOT the D4 coexistence runtime** — so G-2 is demonstrable end-to-end even with D4 unverified. D4 coexistence is the broader install-behind-incumbent *delivery* wedge; its runtime verification is a separate spike, out of this cycle's spine |
-| Member-graph substrate ambiguity (profiles vs shadow-mode ledger vs coexistence ledger) | mis-placed writes | resolve in /architect (flagged); write FACTS to profiles per #283 as the assumption |
-| Pre-empting the #283 D1 contract | process violation (Eileen-ratified) | strict facts/reasoning split (FR-4); reasoning deferred |
-| Cross-repo (loa-freeside ↔ freeside-characters) | coordination drift | shadow-audit-mvp coordinator; child runs its own loa cycle |
-| Dependency: ordering-service live (onboarding), identity-api live (discord→wallet), Sonar/RPC (ownership) | all required for the spine | all confirmed live this session (probed) |
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| **R-1: base-branch `ordering` preset drift.** `protocol/ordering/src/preset.ts` is stale vs its own tests + orchestrator (missing `metadata_snapshot`/`metadata-snapshot`) [grounding §D]. Extending `preset.ts` against a stale recipe would reason against a wrong shape. | High | Sprint 0 step: confirm base-branch `ordering-protocol` test state *before* extending; if red, reconcile the drift as a scoped prerequisite or add the new preset without disturbing the drifted recipe. Verify-first; do not scope-creep an unrelated fix. |
+| **R-2: privacy leak via a sibling channel.** k-anon on the aggregate can leak through a refusal string, error path, telemetry event, or the new projection (cf. prior sub-k leak through refusal prose). | High | Enumerate every exit channel (200, typed refusal, `needs_input`, attention event, poll projection, logs) and pin the no-member/no-sub-k-denominator invariant as a schema `.strict()` + a known-bad regression test, not a comment. |
+| **R-3: teaser-run registration widening the run schema with member data.** Registering public runs must not smuggle member fields into `RunEvent`. | Med | Keep `RunEventSchema` `.strict()` + member-field-free; add only aggregate/telemetry columns; round-trip test through the real Postgres adapter (read back by the reader's path). |
+| **R-4: retries inflating demand OR dedup erasing distinct journeys.** | Med | Idempotency key on expensive work (index/compute) keyed to the subject; distinct-journey demand keyed to a distinct order_id/journey token; a test asserts both properties on the same replay. |
+| **R-5: scope creep into the dashboard/payments.** | Med | Non-Goals §5 are enforced by the sprint acceptance criteria; the projection is a contract + internal poll only. |
+| **Dependency:** live Postgres for the round-trip + fail-loud tests; the existing `shadow-audit` registry + `access-risk` compute; the `ordering` outbox drain (note: no scheduler wires `publishOutbox` in `bin/` today — the gate-leak lifecycle must not assume an already-running drain [grounding §B]). | — | — |
 
 ---
 
-## 8. Grounding & Source Map
+## 8. Acceptance (cycle-level)
 
-- Deployed-but-unconsumed cure + BOEHM discipline: `project_deployed-but-unconsumed-pattern`,
-  `2026-07-10-boehm-sovereignty-discriminator.md`.
-- Audit box + registry + deploy: `2026-07-10-shadow-audit-mvp-definition-of-done.md`,
-  `2026-07-10-shadow-audit-collection-registry.grounded.md`, bead `arrakis-ltokd`.
-- Exporter: `freeside-characters/grimoires/loa/context/2026-07-10-role-export-exporter-brief.md`.
-- D1/D4 grounding + Option C ratification: issue `#283`; repo `[OBSERVED]` tags therein.
-- Railway IaC direction: `reference_railway-graphql-api-full-automation`,
-  `project_agent-first-cloud-control-alchemy-vs-railway`; Codex research verdict.
-- Interview (2026-07-10): ledger fork = un-gate (member graph is the product, exporter is first writer);
-  success gate = drift+hand-verified+quantitative; timeline = done-when-done; member-graph write = facts now,
-  reasoning deferred; MVP lanes + Contract Access-Risk Audit spec provided verbatim.
+The cycle is done when: a valid login-less submission for a **known** collection with a ratified access-start
+delivers a durable, feedback-bindable E1; the same for a collection **missing** access-start returns a typed
+resumable `needs_input`; a valid **unknown** collection creates a durable anonymous interest/indexing
+observation instead of a void refusal; every path emits privacy-safe attention with a canonical subject and no
+member data; the EventStore is Postgres-backed and fail-loud in production; and every new invariant is pinned by
+a known-bad regression test — all with zero changes to the dashboard, payments, artifact history, CRM, or
+member-level surfaces.
