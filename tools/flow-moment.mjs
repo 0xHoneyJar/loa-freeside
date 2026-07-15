@@ -66,7 +66,7 @@ function evidenceKindsCovered(document) {
   return covered;
 }
 
-function semanticErrors(document, asOf) {
+function semanticErrors(document, asOf, systemComponentsPath) {
   const errors = [];
   const signals = document.evidence_contract.signals;
   const observations = document.evidence_contract.observations;
@@ -131,7 +131,7 @@ function semanticErrors(document, asOf) {
     errors.push(`components: duplicate refs: ${componentRefs.join(", ")}`);
   }
 
-  const localComponentIds = collectSystemComponentIds();
+  const localComponentIds = collectSystemComponentIds(systemComponentsPath);
   const duplicateLocalComponentIds = duplicates(localComponentIds);
   if (duplicateLocalComponentIds.length > 0) {
     errors.push(`system components: duplicate component ids: ${duplicateLocalComponentIds.join(", ")}`);
@@ -160,6 +160,7 @@ function semanticErrors(document, asOf) {
 
 export function validateFlowMoment(document, options = {}) {
   const observedToday = options.today ?? new Date().toISOString().slice(0, 10);
+  const systemComponentsPath = options.systemComponentsPath ?? DEFAULT_SYSTEM_COMPONENTS_PATH;
   const asOf = document?.as_of;
   if (!isRealDate(observedToday)) {
     return { valid: false, errors: ["today: expected a real calendar date in YYYY-MM-DD format"] };
@@ -172,7 +173,7 @@ export function validateFlowMoment(document, options = {}) {
   if (schemaValid && Date.parse(`${asOf}T00:00:00Z`) > Date.parse(`${observedToday}T00:00:00Z`)) {
     errors.push(`as_of: ${asOf} cannot be later than validator date ${observedToday}`);
   }
-  if (schemaValid) errors.push(...semanticErrors(document, asOf));
+  if (schemaValid) errors.push(...semanticErrors(document, asOf, systemComponentsPath));
   return { valid: errors.length === 0, errors };
 }
 
@@ -337,6 +338,7 @@ async function main(args) {
   const command = args[0];
   if (command === "validate") {
     const { target: targetArg, today } = parseValidateArgs(args.slice(1));
+    const systemComponentsPath = path.resolve("product/system-components");
     const files = collectFlowFiles(targetArg);
     if (files.length === 0) {
       console.error(`flow-moment: no .flow.json records found at ${targetArg}`);
@@ -352,7 +354,7 @@ async function main(args) {
         console.error(`FAIL ${path.relative(ROOT, file)}: invalid JSON: ${error.message}`);
         continue;
       }
-      const result = validateFlowMoment(document, { today });
+      const result = validateFlowMoment(document, { today, systemComponentsPath });
       if (result.valid) {
         console.log(`PASS ${path.relative(ROOT, file)}`);
       } else {
@@ -372,7 +374,10 @@ async function main(args) {
       return 1;
     }
     const document = readJson(path.resolve(file));
-    const result = validateFlowMoment(document, { today });
+    const result = validateFlowMoment(document, {
+      today,
+      systemComponentsPath: path.resolve("product/system-components"),
+    });
     if (!result.valid) {
       console.error(`flow-moment: refusing to render invalid record\n${result.errors.map((error) => `  - ${error}`).join("\n")}`);
       return 1;

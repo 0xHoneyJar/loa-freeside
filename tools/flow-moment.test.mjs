@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,6 +10,10 @@ import { renderFlowMoment, validateFlowMoment } from "./flow-moment.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXAMPLE = JSON.parse(fs.readFileSync(
   path.join(ROOT, "product/flow-moments/audit-community-composition.flow.json"),
+  "utf8",
+));
+const SYSTEM_EXAMPLE = JSON.parse(fs.readFileSync(
+  path.join(ROOT, "product/system-components/loa-freeside.system.json"),
   "utf8",
 ));
 const TODAY = "2026-07-14";
@@ -191,6 +196,41 @@ test("local component references resolve exactly and external references stay ex
   const external = validate(mislabeled);
   assert.equal(external.valid, false);
   assert.match(external.errors.join("\n"), /must NOT be valid/);
+});
+
+test("the reusable flow CLI resolves local components from the consumer repository", () => {
+  const consumerRoot = fs.mkdtempSync(path.join(os.tmpdir(), "flow-consumer-"));
+  try {
+    fs.mkdirSync(path.join(consumerRoot, "product/flow-moments"), { recursive: true });
+    fs.mkdirSync(path.join(consumerRoot, "product/system-components"), { recursive: true });
+    const flow = clone(EXAMPLE);
+    flow.components = [{
+      ref: "component:consumer-widget",
+      resolution: "local",
+      maturity: "uncaptured",
+    }];
+    const component = clone(SYSTEM_EXAMPLE);
+    component.component_id = "consumer-widget";
+    fs.writeFileSync(
+      path.join(consumerRoot, "product/flow-moments/consumer.flow.json"),
+      `${JSON.stringify(flow, null, 2)}\n`,
+    );
+    fs.writeFileSync(
+      path.join(consumerRoot, "product/system-components/consumer.system.json"),
+      `${JSON.stringify(component, null, 2)}\n`,
+    );
+    const result = spawnSync(process.execPath, [
+      path.join(ROOT, "tools/flow-moment.mjs"),
+      "validate",
+      "product/flow-moments",
+      "--today",
+      TODAY,
+    ], { cwd: consumerRoot, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Validated 1 flow moment\(s\); 0 failed/);
+  } finally {
+    fs.rmSync(consumerRoot, { recursive: true, force: true });
+  }
 });
 
 test("the flow CLI rejects unknown flags", () => {
