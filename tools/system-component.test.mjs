@@ -2,12 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { renderSystemComponent, validateSystemComponent } from "./system-component.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const run = promisify(execFile);
+const SYSTEM_CLI = path.join(ROOT, "tools/system-component.mjs");
 const EXAMPLE = JSON.parse(fs.readFileSync(
   path.join(ROOT, "product/system-components/loa-freeside.system.json"),
   "utf8",
@@ -71,6 +75,41 @@ test("every canonical flow reference resolves exactly once", async (t) => {
   assert.match(result.errors.join("\n"), /exactly one.*found 2/);
 });
 
+test("portable validation preserves typed flow links without requiring local canonical records", async (t) => {
+  const repo = await mkdtemp(path.join(tmpdir(), "portable-system-component-"));
+  t.after(() => rm(repo, { recursive: true, force: true }));
+  await mkdir(path.join(repo, "product", "system-components"), { recursive: true });
+  await writeFile(path.join(repo, "README.md"), "# Consumer\n");
+  const document = clone(EXAMPLE);
+  document.trust.contract_refs = ["file:README.md"];
+  document.trust.evidence_refs = [];
+  await writeFile(
+    path.join(repo, "product", "system-components", "consumer.system.json"),
+    JSON.stringify(document),
+  );
+
+  const portable = validateSystemComponent(document, {
+    repoRoot: repo,
+    requireCanonicalFlowRecords: false,
+  });
+  assert.equal(portable.valid, true, portable.errors.join("\n"));
+  const { stdout, stderr } = await run(
+    process.execPath,
+    [SYSTEM_CLI, "validate", "product/system-components", "--portable"],
+    { cwd: repo },
+  );
+  assert.equal(stderr, "");
+  assert.match(stdout, /Validated 1 system component\(s\); 0 failed/);
+
+  document.flow_moments[0].canonical_ref = "flow:FM-SOMETHING-ELSE";
+  const inconsistent = validateSystemComponent(document, {
+    repoRoot: repo,
+    requireCanonicalFlowRecords: false,
+  });
+  assert.equal(inconsistent.valid, false);
+  assert.match(inconsistent.errors.join("\n"), /canonical_ref/);
+});
+
 test("declared local contracts must exist inside the consumer repository", () => {
   const document = clone(EXAMPLE);
   document.trust.contract_refs = ["file:does-not-exist.openapi.yaml"];
@@ -127,4 +166,6 @@ test("the reusable validator install cannot be captured by a consumer workspace"
     workflow,
     /pnpm install --frozen-lockfile --ignore-scripts --ignore-workspace/,
   );
+  assert.match(workflow, /--portable/);
+  assert.match(workflow, /inputs\.validate-flow-moments/);
 });

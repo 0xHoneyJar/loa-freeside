@@ -147,11 +147,11 @@ export function renderFlowMoment(document) {
     .map((signal) => `- **${signal.id}** (${signal.kind}): ${escapeMarkdownText(signal.question)}`)
     .join("\n");
   const exemplars = document.exemplars
-    .map((item) => `- **${escapeMarkdownText(item.product)} — ${escapeMarkdownText(item.workflow_moment)}**\n  - Adopt: ${escapeMarkdownText(item.adopt)}\n  - Reject: ${escapeMarkdownText(item.reject)}\n  - Ref: ${item.ref}`)
+    .map((item) => `- **${escapeMarkdownText(item.product)} — ${escapeMarkdownText(item.workflow_moment)}**\n  - Adopt: ${escapeMarkdownText(item.adopt)}\n  - Reject: ${escapeMarkdownText(item.reject)}\n  - Ref: ${escapeMarkdownText(item.ref)}`)
     .join("\n");
   const components = document.components.length === 0
     ? "- None attached"
-    : document.components.map((component) => `- ${component.ref} — **${component.maturity}**`).join("\n");
+    : document.components.map((component) => `- ${escapeMarkdownText(component.ref)} — **${component.maturity}**`).join("\n");
 
   return `# ${escapeMarkdownText(document.title)}
 
@@ -227,7 +227,7 @@ ${components}
 
 ## Decision references
 
-${document.decision_refs.length ? document.decision_refs.map((reference) => `- ${reference}`).join("\n") : "- None"}
+${document.decision_refs.length ? document.decision_refs.map((reference) => `- ${escapeMarkdownText(reference)}`).join("\n") : "- None"}
 `;
 }
 

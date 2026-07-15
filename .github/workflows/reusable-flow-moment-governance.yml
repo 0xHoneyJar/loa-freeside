@@ -38,7 +38,11 @@ jobs:
       - name: Install governance validator dependencies
         working-directory: .flow-governance
         run: pnpm install --frozen-lockfile --ignore-scripts --ignore-workspace
-      - name: Validate system component intent
+      - name: Validate portable system component intent
+        if: ${{ ! inputs.validate-flow-moments }}
+        run: node .flow-governance/tools/system-component.mjs validate product/system-components --portable
+      - name: Validate system component intent with canonical flow records
+        if: ${{ inputs.validate-flow-moments }}
         run: node .flow-governance/tools/system-component.mjs validate product/system-components
       - name: Validate repo-local user-flow moments
         if: ${{ inputs.validate-flow-moments }}

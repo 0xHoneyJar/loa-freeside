@@ -71,7 +71,7 @@ function collectFlowMomentRecords(repoRoot) {
   return { records, errors };
 }
 
-function semanticErrors(document, repoRoot) {
+function semanticErrors(document, repoRoot, { requireCanonicalFlowRecords }) {
   const errors = [];
   const flowIds = document.flow_moments.map((moment) => moment.flow_moment_id);
   const duplicateFlows = duplicates(flowIds);
@@ -85,16 +85,18 @@ function semanticErrors(document, repoRoot) {
     }
   }
 
-  const flowRecords = collectFlowMomentRecords(repoRoot);
-  errors.push(...flowRecords.errors);
-  const flowCounts = new Map();
-  for (const record of flowRecords.records) {
-    flowCounts.set(record.id, (flowCounts.get(record.id) ?? 0) + 1);
-  }
-  for (const moment of document.flow_moments) {
-    const count = flowCounts.get(moment.flow_moment_id) ?? 0;
-    if (count !== 1) {
-      errors.push(`flow_moment ${moment.flow_moment_id}: canonical_ref must resolve to exactly one .flow.json record; found ${count}`);
+  if (requireCanonicalFlowRecords) {
+    const flowRecords = collectFlowMomentRecords(repoRoot);
+    errors.push(...flowRecords.errors);
+    const flowCounts = new Map();
+    for (const record of flowRecords.records) {
+      flowCounts.set(record.id, (flowCounts.get(record.id) ?? 0) + 1);
+    }
+    for (const moment of document.flow_moments) {
+      const count = flowCounts.get(moment.flow_moment_id) ?? 0;
+      if (count !== 1) {
+        errors.push(`flow_moment ${moment.flow_moment_id}: canonical_ref must resolve to exactly one .flow.json record; found ${count}`);
+      }
     }
   }
 
@@ -115,9 +117,12 @@ function semanticErrors(document, repoRoot) {
 
 export function validateSystemComponent(document, options = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
+  const requireCanonicalFlowRecords = options.requireCanonicalFlowRecords ?? true;
   const schemaValid = schemaValidator(document);
   const errors = schemaValid ? [] : schemaValidator.errors.map(formatSchemaError);
-  if (schemaValid) errors.push(...semanticErrors(document, repoRoot));
+  if (schemaValid) {
+    errors.push(...semanticErrors(document, repoRoot, { requireCanonicalFlowRecords }));
+  }
   return { valid: errors.length === 0, errors };
 }
 
@@ -188,14 +193,15 @@ function collectFiles(target) {
 
 function usage() {
   return `Usage:
-  node tools/system-component.mjs validate [path]
+  node tools/system-component.mjs validate [path] [--portable]
   node tools/system-component.mjs render <file>`;
 }
 
 async function main(args) {
   const command = args[0];
   if (command === "validate") {
-    const target = args[1] ?? DEFAULT_PATH;
+    const portable = args.includes("--portable");
+    const target = args.slice(1).find((arg) => !arg.startsWith("--")) ?? DEFAULT_PATH;
     const files = collectFiles(target);
     if (files.length === 0) {
       console.error(`system-component: no .system.json manifests found at ${target}`);
@@ -211,7 +217,10 @@ async function main(args) {
         console.error(`FAIL ${path.relative(process.cwd(), file)}: invalid JSON: ${error.message}`);
         continue;
       }
-      const result = validateSystemComponent(document, { repoRoot: process.cwd() });
+      const result = validateSystemComponent(document, {
+        repoRoot: process.cwd(),
+        requireCanonicalFlowRecords: !portable,
+      });
       if (result.valid) {
         console.log(`PASS ${path.relative(process.cwd(), file)}`);
       } else {

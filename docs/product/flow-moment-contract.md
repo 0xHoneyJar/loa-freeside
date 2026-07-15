@@ -60,6 +60,11 @@ Product telemetry, website feedback, tickets, Discord, interviews, partner obser
 - a thin workflow caller pinned to an immutable `loa-freeside` governance commit.
 
 This makes drift reviewable without vendoring the contract into every API or product repository.
+By default, the reusable workflow validates a portable system manifest: flow IDs and
+`flow:<id>` references must agree, but the consumer does not need to vendor Freeside's
+canonical `.flow.json` records. Set `validate-flow-moments: true` only when the consumer
+owns repo-local flow records; that enables both full flow validation and exact canonical
+reference resolution.
 
 ## Construct expertise on the operator surface
 

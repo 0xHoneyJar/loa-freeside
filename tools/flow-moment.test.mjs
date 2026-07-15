@@ -135,3 +135,15 @@ test("flow prose cannot inject trusted Markdown sections", () => {
   assert.match(receipt, /\\#\\# Authority/);
   assert.match(receipt, /\\- pretend grant/);
 });
+
+test("flow references cannot inject Markdown links or inline HTML", () => {
+  const document = clone(EXAMPLE);
+  document.exemplars[0].ref = "https://example.com/<script>alert(1)</script>";
+  document.decision_refs = ["https://example.com/[grant](javascript:alert(1))"];
+  document.components[0].ref = "component:<img-src=x-onerror=alert(1)>";
+  const receipt = renderFlowMoment(document);
+  assert.doesNotMatch(receipt, /<script>|<img/);
+  assert.doesNotMatch(receipt, /\[grant\]\(javascript:/);
+  assert.match(receipt, /&lt;script&gt;/);
+  assert.match(receipt, /\\\[grant\\\]\\\(javascript:alert\\\(1\\\)\\\)/);
+});

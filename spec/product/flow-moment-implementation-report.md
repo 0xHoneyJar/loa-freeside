@@ -20,7 +20,7 @@ The implementation does not create another decision or learning ledger. `product
 - **T-4 Tests:** `tools/flow-moment.test.mjs` covers valid unproven state, Hivemind's actionless boundary, flag exposure, default-on evidence, typed provenance, evidence claims, Gold maturity, date bypass, and receipt rendering.
 - **T-5 CI:** `.github/workflows/flow-moment-governance.yml:35` validates every flow record after proving the red paths.
 - **T-6 Estate adoption:** `spec/product/system-component.schema.json`, `tools/system-component.mjs`, and the reusable workflow let each API or product declare a local responsibility without copying the canonical flow schema.
-- **T-7 Constructs info contract:** a stacked `loa-constructs` change adds `info_schema_version: 1.0`, separates non-authoritative `orientation` from declared `mechanics`, exposes per-skill capability metadata, and supports pinned local provenance.
+- **T-7 Constructs info contract:** `loa-constructs#276` adds `info_schema_version: 1.0`, separates non-authoritative `orientation` from declared `mechanics`, exposes per-skill capability metadata, and supports pinned local provenance.
 - **T-8 Freeside territory ratification:** `grimoires/territory.yaml` declares three product-governance outcomes and stations The Arcade + Beacon at an observe-only ceiling over an explicit file blast radius.
 - **T-9 Operator expertise projection:** `tools/construct-operator.mjs` joins the system-component record, territory atlas, construct info, and CLI capabilities into deterministic JSON or Markdown.
 - **T-10 Deterministic seams and CI:** `tools/construct-operator.test.mjs` and its checked-in producer snapshot prove prose/authority separation, mechanical unavailability, structured ratification, fail-closed authority, read/write verb separation, and byte-stable rendering.
@@ -52,7 +52,7 @@ node tools/system-component.mjs render product/system-components/loa-freeside.sy
 node tools/construct-operator.mjs render --snapshot tools/fixtures/construct-operator.snapshot.json
 ```
 
-Result: 26 tests passed; 1 real flow record and 1 canonical system-component manifest passed; all three receipts rendered; the live producer validated the Freeside territory and returned both stationings as expected dry-runs pending default-branch ratification. Targeted lint and workflow parsing pass. The reusable install remains isolated from a caller's pnpm workspace.
+Result: 38 tests passed; 1 real flow record and 1 canonical system-component manifest passed; all three receipts rendered; the live producer validated the Freeside territory and returned both stationings as expected dry-runs pending default-branch ratification. Targeted lint and workflow parsing pass. Portable consumer validation no longer requires canonical flow records unless `validate-flow-moments: true`, and the reusable install remains isolated from a caller's pnpm workspace.
 
 ## Known limitations
 
@@ -62,7 +62,7 @@ Result: 26 tests passed; 1 real flow record and 1 canonical system-component man
 - Consumer repositories call the reusable workflow and validator checkout by immutable commit SHA so contract changes cannot arrive implicitly.
 - Component `github:0xHoneyJar/freeside-dashboard#111` remains honestly `uncaptured`; this slice does not claim Silver or Gold adoption in the dashboard.
 - The older standalone Hivemind shell validator is unchanged; the flow validator uses full JSON Schema validation for the nested Hivemind object.
-- The live operator projection depends on the stacked `loa-constructs` info-contract change. CI uses a deterministic snapshot until that producer contract is merged and can be pinned by release.
+- The live operator projection depends on the `loa-constructs#276` info-contract change. CI uses a deterministic snapshot until that producer contract is merged and can be pinned by release.
 - The territory is deliberately unratified on this feature branch. Producer dry-runs report the untracked/non-default-branch blockers; no station receipt is written before merge.
 - The CLI receipt is the first operator projection. The deployed Hono operator dashboard can consume this JSON later, but this slice does not introduce a cross-repository runtime dependency into that service.
 
