@@ -12,6 +12,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FLOW_SCHEMA_PATH = path.join(ROOT, "spec/product/flow-moment.schema.json");
 const HIVEMIND_SCHEMA_PATH = path.join(ROOT, "tools/hivemind/hivemind-labels.v1.0.json");
 const DEFAULT_RECORDS_PATH = path.join(ROOT, "product/flow-moments");
+const DEFAULT_SYSTEM_COMPONENTS_PATH = path.join(ROOT, "product/system-components");
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -39,6 +40,18 @@ function duplicates(values) {
     seen.add(value);
     return false;
   }))];
+}
+
+function collectSystemComponentIds(target = DEFAULT_SYSTEM_COMPONENTS_PATH) {
+  if (!fs.existsSync(target)) return [];
+  return fs.readdirSync(target, { withFileTypes: true })
+    .flatMap((entry) => {
+      const child = path.join(target, entry.name);
+      if (entry.isDirectory()) return collectSystemComponentIds(child);
+      if (!entry.isFile() || !entry.name.endsWith(".system.json")) return [];
+      const document = readJson(child);
+      return typeof document.component_id === "string" ? [document.component_id] : [];
+    });
 }
 
 function evidenceKindsCovered(document) {
@@ -118,6 +131,20 @@ function semanticErrors(document, asOf) {
     errors.push(`components: duplicate refs: ${componentRefs.join(", ")}`);
   }
 
+  const localComponentIds = collectSystemComponentIds();
+  const duplicateLocalComponentIds = duplicates(localComponentIds);
+  if (duplicateLocalComponentIds.length > 0) {
+    errors.push(`system components: duplicate component ids: ${duplicateLocalComponentIds.join(", ")}`);
+  }
+  const knownLocalComponents = new Set(localComponentIds);
+  for (const component of document.components) {
+    if (component.resolution !== "local") continue;
+    const componentId = component.ref.slice("component:".length);
+    if (!knownLocalComponents.has(componentId)) {
+      errors.push(`component ${component.ref}: no matching local system-component manifest`);
+    }
+  }
+
   const todayMs = Date.parse(`${asOf}T00:00:00Z`);
   for (const component of document.components) {
     if (component.maturity !== "gold") continue;
@@ -158,7 +185,7 @@ export function renderFlowMoment(document) {
     .join("\n");
   const components = document.components.length === 0
     ? "- None attached"
-    : document.components.map((component) => `- ${escapeMarkdownText(component.ref)} — **${component.maturity}**`).join("\n");
+    : document.components.map((component) => `- ${escapeMarkdownText(component.ref)} — **${component.maturity}** (${component.resolution})`).join("\n");
 
   return `# ${escapeMarkdownText(document.title)}
 
@@ -263,12 +290,7 @@ function isRealDate(value) {
 function usage() {
   return `Usage:
   node tools/flow-moment.mjs validate [path] [--today YYYY-MM-DD]
-  node tools/flow-moment.mjs render <file>`;
-}
-
-function rejectUnknownFlags(args, allowed) {
-  const unknown = args.find((arg) => arg.startsWith("--") && !allowed.has(arg));
-  if (unknown) throw new Error(`unknown option ${unknown}`);
+  node tools/flow-moment.mjs render <file> [--today YYYY-MM-DD]`;
 }
 
 function parseValidateArgs(args) {
@@ -290,6 +312,25 @@ function parseValidateArgs(args) {
     targetSeen = true;
   }
   return { target, today };
+}
+
+function parseRenderArgs(args) {
+  let file;
+  let today;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--today") {
+      const value = args[index + 1];
+      if (!isRealDate(value)) throw new Error("--today requires YYYY-MM-DD");
+      today = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) throw new Error(`unknown option ${arg}`);
+    if (file) throw new Error(`unexpected argument ${arg}`);
+    file = arg;
+  }
+  return { file, today };
 }
 
 async function main(args) {
@@ -325,14 +366,13 @@ async function main(args) {
   }
 
   if (command === "render") {
-    rejectUnknownFlags(args.slice(1), new Set());
-    const file = args[1];
+    const { file, today } = parseRenderArgs(args.slice(1));
     if (!file) {
       console.error(usage());
       return 1;
     }
     const document = readJson(path.resolve(file));
-    const result = validateFlowMoment(document);
+    const result = validateFlowMoment(document, { today });
     if (!result.valid) {
       console.error(`flow-moment: refusing to render invalid record\n${result.errors.map((error) => `  - ${error}`).join("\n")}`);
       return 1;

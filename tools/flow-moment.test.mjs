@@ -85,7 +85,8 @@ test("typed references reject trailing newlines rather than prefix-matching", ()
 test("Gold proves reusable maturity and enforces the production floor", () => {
   const document = clone(EXAMPLE);
   document.components = [{
-    ref: "component:MemberTimeline",
+    ref: "component:loa-freeside",
+    resolution: "local",
     maturity: "gold",
     intent: "Let a manager inspect the history behind a member classification.",
     feel: "Calm, factual, and compact.",
@@ -120,7 +121,8 @@ test("Gold maturity uses the record as-of date instead of the wall clock", () =>
   const document = clone(EXAMPLE);
   document.as_of = "2026-07-10";
   document.components = [{
-    ref: "component:MemberTimeline",
+    ref: "component:loa-freeside",
+    resolution: "local",
     maturity: "gold",
     intent: "Let a manager inspect the history behind a member classification.",
     feel: "Calm, factual, and compact.",
@@ -166,6 +168,31 @@ test("observation signal references use the canonical signal id grammar", () => 
   assert.match(result.errors.join("\n"), /pattern/);
 });
 
+test("local component references resolve exactly and external references stay explicit", () => {
+  const local = clone(EXAMPLE);
+  local.components = [{
+    ref: "component:loa-freeside",
+    resolution: "local",
+    maturity: "uncaptured",
+  }];
+  assert.equal(validate(local).valid, true);
+
+  local.components[0].ref = "component:missing-building";
+  const missing = validate(local);
+  assert.equal(missing.valid, false);
+  assert.match(missing.errors.join("\n"), /no matching local system-component manifest/);
+
+  const mislabeled = clone(EXAMPLE);
+  mislabeled.components[0] = {
+    ref: "component:loa-freeside",
+    resolution: "external",
+    maturity: "uncaptured",
+  };
+  const external = validate(mislabeled);
+  assert.equal(external.valid, false);
+  assert.match(external.errors.join("\n"), /must NOT be valid/);
+});
+
 test("the flow CLI rejects unknown flags", () => {
   const result = spawnSync(process.execPath, [
     path.join(ROOT, "tools/flow-moment.mjs"),
@@ -189,6 +216,18 @@ test("the flow CLI rejects ambiguous positional targets", () => {
   ], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /unexpected argument product\/flow-moments/);
+});
+
+test("flow receipt rendering accepts an explicit validation date", () => {
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, "tools/flow-moment.mjs"),
+    "render",
+    "--today",
+    "2026-07-13",
+    "product/flow-moments/audit-community-composition.flow.json",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /cannot be later than validator date 2026-07-13/);
 });
 
 test("the generated receipt carries intent without becoming another ledger", () => {

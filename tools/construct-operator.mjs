@@ -22,6 +22,13 @@ function requireObject(value, label) {
   return value;
 }
 
+function requireString(value, label) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  return value;
+}
+
 function byName(a, b) {
   return a.name.localeCompare(b.name);
 }
@@ -40,6 +47,10 @@ function normalizeExecutionContract(capabilities) {
   if (!Array.isArray(capabilities.verbs)) {
     throw new Error("constructs capabilities.verbs must be an array");
   }
+  capabilities.verbs.forEach((verb, index) => {
+    requireObject(verb, `constructs capabilities.verbs[${index}]`);
+    requireString(verb.name, `constructs capabilities.verbs[${index}].name`);
+  });
   const verbs = capabilities.verbs.map((verb) => ({
     name: verb.name,
     summary: verb.summary,
@@ -103,6 +114,16 @@ function normalizeConstructInfo(slug, payload) {
   if (!new Set(["declared", "unavailable"]).has(mechanics.kind)) {
     throw new Error(`constructs info ${slug}: unknown mechanics kind ${JSON.stringify(mechanics.kind)}`);
   }
+  const skills = Array.isArray(mechanics.skills) ? mechanics.skills : [];
+  const commands = Array.isArray(mechanics.commands) ? mechanics.commands : [];
+  skills.forEach((skill, index) => {
+    requireObject(skill, `constructs info ${slug}.mechanics.skills[${index}]`);
+    requireString(skill.slug, `constructs info ${slug}.mechanics.skills[${index}].slug`);
+  });
+  commands.forEach((command, index) => {
+    requireObject(command, `constructs info ${slug}.mechanics.commands[${index}]`);
+    requireString(command.name, `constructs info ${slug}.mechanics.commands[${index}].name`);
+  });
 
   return {
     slug,
@@ -122,8 +143,8 @@ function normalizeConstructInfo(slug, payload) {
       authority_effect: "none",
       reason: mechanics.reason ?? null,
       source_refs: Array.isArray(mechanics.source_refs) ? [...mechanics.source_refs].toSorted() : [],
-      skills: Array.isArray(mechanics.skills)
-        ? mechanics.skills.map((skill) => ({
+      skills: skills.length > 0
+        ? skills.map((skill) => ({
           slug: skill.slug,
           path: skill.path ?? null,
           metadata_status: skill.metadata_status ?? "unknown",
@@ -131,8 +152,8 @@ function normalizeConstructInfo(slug, payload) {
           capabilities: skill.capabilities ?? null,
         })).toSorted((a, b) => a.slug.localeCompare(b.slug))
         : [],
-      commands: Array.isArray(mechanics.commands)
-        ? mechanics.commands.map((command) => ({
+      commands: commands.length > 0
+        ? commands.map((command) => ({
           name: command.name,
           path: command.path ?? null,
           path_status: command.path_status ?? "unknown",

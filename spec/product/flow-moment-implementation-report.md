@@ -54,7 +54,7 @@ node tools/system-component.mjs render product/system-components/loa-freeside.sy
 node tools/construct-operator.mjs render --snapshot tools/fixtures/construct-operator.snapshot.json
 ```
 
-Result: 47 tests passed; 1 real flow record and 1 canonical system-component manifest passed; all three receipts rendered; the live producer validated the Freeside territory and returned both stationings as expected dry-runs pending default-branch ratification. Targeted lint and workflow parsing pass. Portable consumer validation no longer requires canonical flow records unless `validate-flow-moments: true`, both validator CLIs reject ambiguous positional targets, and the reusable install remains isolated from a caller's pnpm workspace.
+Result: 50 tests passed; 1 real flow record and 1 canonical system-component manifest passed; all three receipts rendered; the live producer validated the Freeside territory and returned both stationings as expected dry-runs pending default-branch ratification. Targeted lint and workflow parsing pass. Portable consumer validation no longer requires canonical flow records unless `validate-flow-moments: true`, local component references resolve exactly, both validator CLIs reject ambiguous positional targets, receipt validation dates are replayable, malformed producer names fail with field-specific errors, and the reusable install remains isolated from a caller's pnpm workspace.
 
 ## Known limitations
 

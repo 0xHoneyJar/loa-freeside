@@ -298,9 +298,13 @@
     "component": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ref", "maturity"],
+      "required": ["ref", "resolution", "maturity"],
       "properties": {
         "ref": { "$ref": "#/$defs/reference" },
+        "resolution": {
+          "type": "string",
+          "enum": ["local", "external"]
+        },
         "maturity": {
           "type": "string",
           "enum": ["uncaptured", "silver", "gold", "retired"]
@@ -361,6 +365,24 @@
           },
           "then": {
             "required": ["graduation"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "resolution": { "const": "local" } },
+            "required": ["resolution"]
+          },
+          "then": {
+            "properties": { "ref": { "pattern": "^component:[a-z0-9][a-z0-9-]*$" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "resolution": { "const": "external" } },
+            "required": ["resolution"]
+          },
+          "then": {
+            "properties": { "ref": { "not": { "pattern": "^component:" } } }
           }
         }
       ]

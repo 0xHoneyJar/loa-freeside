@@ -52,6 +52,22 @@ test("declared mechanics cannot grant authority", () => {
   assert.throws(() => build(snapshot), /cannot grant authority/);
 });
 
+test("malformed producer names fail with field-specific contract errors", () => {
+  const capabilities = clone(SNAPSHOT);
+  delete capabilities.capabilities.verbs[0].name;
+  assert.throws(
+    () => build(capabilities),
+    /constructs capabilities\.verbs\[0\]\.name must be a non-empty string/,
+  );
+
+  const command = clone(SNAPSHOT);
+  delete command.info["the-arcade"].data.mechanics.commands[0].name;
+  assert.throws(
+    () => build(command),
+    /constructs info the-arcade\.mechanics\.commands\[0\]\.name must be a non-empty string/,
+  );
+});
+
 test("missing construct info stays visible as a partial surface", () => {
   const snapshot = clone(SNAPSHOT);
   snapshot.info.beacon = { error: { message: "beacon is not installed" } };

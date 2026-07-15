@@ -131,6 +131,7 @@
   "components": [
     {
       "ref": "github:0xHoneyJar/freeside-dashboard#111",
+      "resolution": "external",
       "maturity": "uncaptured"
     }
   ],
