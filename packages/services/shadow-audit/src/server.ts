@@ -27,7 +27,7 @@ import type { CollectionIndex } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
 import { makeDurableRoleStore, type DurableRoleStore } from './role-store.js';
 import { makeBalanceWhaleSource } from './whale-source.js';
-import { InMemoryEventStore } from './event-store.js';
+import { InMemoryEventStore, type EventStore } from './event-store.js';
 import { InMemoryNonceStore } from './association-verifier.js';
 import { FixedWindowRateLimiter } from './rate-limiter.js';
 import type { OwnershipSource, RoleSource } from './audit-service.js';
@@ -60,11 +60,18 @@ export interface AuditServerConfig {
   roleSnapshotStore?: 'file' | 'postgres';
   /** Required when roleSnapshotStore=postgres. Kept out of logs and response surfaces. */
   databaseUrl?: string;
+  /** G-1: event-store backend. `memory` (default) is per-replica/non-durable — dev/test ONLY.
+   *  `postgres` is durable; production sets it so a registered run (and its feedback binding)
+   *  survives a restart/deploy. When `postgres`, the runtime MUST supply an initialized
+   *  eventStore or the app fails closed (never a silent in-memory masquerade). */
+  eventStoreBackend?: 'memory' | 'postgres';
 }
 
 export interface AuditAppRuntime {
   /** Pre-initialized shared store. Required when roleSnapshotStore=postgres. */
   roleStore?: DurableRoleStore;
+  /** G-1: pre-initialized durable event store. REQUIRED when eventStoreBackend=postgres. */
+  eventStore?: EventStore;
 }
 
 /** Fail-closed auth for the un-wired V2 POST path: `recover` returns a wallet that can never match a real
@@ -164,6 +171,14 @@ export function buildAuditApp(
     roles = makeFileRoleSource(config.roleSnapshotPath);
   }
 
+  // G-1: fail closed — a durable-required deployment must supply an initialized durable store; it may
+  // NEVER silently fall back to the in-memory store (which would make a "registered" run vanish on restart
+  // and drop feedback binding across a deploy). The rate limiter stays in-memory (best-effort anti-abuse).
+  if (config.eventStoreBackend === 'postgres' && !runtime.eventStore) {
+    throw new Error('EVENT_STORE=postgres requires an initialized Postgres event store');
+  }
+  const eventStore = runtime.eventStore ?? new InMemoryEventStore();
+
   const deps: AuditRouterDeps = {
     ownership,
     collectionRegistry: collections?.registry,
@@ -171,11 +186,9 @@ export function buildAuditApp(
     whale: makeBalanceWhaleSource(),
     roles,
     ingest,
-    // F4: the event store + rate limiter are IN-MEMORY (per-replica, non-durable). That is correct for the
-    // single-replica MVP — the audit is stateless read-modelling + best-effort anti-abuse, not a ledger.
-    // loa:shortcut: in-memory event/rate state; if this scales past one replica, back both with Redis (the
-    //   rate window + the nonce/event store), else limits + replay-dedup are per-replica.
-    eventStore: new InMemoryEventStore(),
+    // The event store is durable (Postgres) when eventStoreBackend=postgres, else in-memory (dev/test).
+    // The rate limiter remains IN-MEMORY per-replica by design (best-effort anti-abuse, not a ledger).
+    eventStore,
     rateLimiter: new FixedWindowRateLimiter({ limit: rl.limit, windowMs: rl.windowMs, now }),
     // S2-T3 (IMP-006): the PUBLIC teaser gets its OWN, tighter per-IP budget — best-effort only.
     teaserRateLimiter: new FixedWindowRateLimiter({
@@ -275,7 +288,17 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
   if (roleSnapshotStore === 'postgres' && !env.ROLE_SNAPSHOT_INGEST_TOKEN) {
     throw new Error('ROLE_SNAPSHOT_INGEST_TOKEN is required when ROLE_SNAPSHOT_STORE=postgres');
   }
+  // G-1: event-store backend. Default memory (dev/test). Postgres is durable + fails loud without a URL,
+  // so a durable-required deploy can never boot on the non-durable in-memory store.
+  const eventStoreBackend = env.SHADOW_AUDIT_EVENT_STORE || 'memory';
+  if (eventStoreBackend !== 'memory' && eventStoreBackend !== 'postgres') {
+    throw new Error(`SHADOW_AUDIT_EVENT_STORE must be "memory" or "postgres" (got "${eventStoreBackend}")`);
+  }
+  if (eventStoreBackend === 'postgres' && !env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required when SHADOW_AUDIT_EVENT_STORE=postgres');
+  }
   return {
+    eventStoreBackend,
     apiKey: env.SHADOW_AUDIT_API_KEY || undefined,
     operatedCommunities: operated,
     cta: { product, conversation },

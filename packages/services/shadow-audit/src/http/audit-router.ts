@@ -333,6 +333,22 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       );
     }
 
+    // G-2: register the PUBLIC teaser run so its run_id resolves via getRun and reaction/contact can BIND to
+    // it (previously the teaser returned a run_id backed by NO event, so every follow-up 404'd). Aggregate
+    // only: stale_set_size mirrors recordRun — the exact cohort, or 0 when k-anon-suppressed (never a
+    // back-computable sub-k count). Runs on the cache-MISS path only (a cache hit returned above), so a
+    // flood does not multiply registrations. Fail-closed by design: if the durable store is unavailable the
+    // teaser errors rather than promise a feedback binding it cannot honor.
+    const staleUpper = result.output.stale_access_upper_bound;
+    await deps.eventStore.appendRunEvent({
+      run_id: result.output.run_id,
+      mode: 'public-gate-leak',
+      inputs_hash: result.output.inputs_hash,
+      stale_set_size: staleUpper.kind === 'exact' ? staleUpper.value : 0,
+      reruns: 0,
+      ts: new Date(now).toISOString(),
+    });
+
     if (teaserCache.size >= TEASER_CACHE_MAX) {
       // Evict the oldest insertion (Map preserves insertion order) — bounded memory, no LRU needed.
       const oldest = teaserCache.keys().next().value;

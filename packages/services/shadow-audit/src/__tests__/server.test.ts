@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AuditOutputSchema } from '@freeside/shadow-audit-protocol';
 import { buildAuditApp, configFromEnv, validateApiKeyEnv, type AuditServerConfig } from '../server.js';
+import { InMemoryEventStore } from '../event-store.js';
 import { makeBalanceWhaleSource } from '../whale-source.js';
 import { makeFileRoleSource } from '../role-source.js';
 import type { OwnershipSource, Balances } from '../audit-service.js';
@@ -368,3 +369,49 @@ describe('buildAuditApp — §12.3 correct key returns 200', () => {
     ).toBe(401);
   });
 });
+
+describe('event-store durability — fail loud, never an in-memory masquerade (G-1)', () => {
+  const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[Y, 1n]]));
+  const pgBase = {
+    OPERATED_COMMUNITIES: 'thj',
+    CTA_PRODUCT: 'p',
+    CTA_CONVERSATION: 'c',
+  };
+
+  it('configFromEnv refuses SHADOW_AUDIT_EVENT_STORE=postgres without DATABASE_URL', () => {
+    expect(() =>
+      configFromEnv({ ...pgBase, SHADOW_AUDIT_EVENT_STORE: 'postgres' } as NodeJS.ProcessEnv),
+    ).toThrow(/DATABASE_URL/);
+  });
+
+  it('configFromEnv accepts postgres with a URL and defaults to memory otherwise', () => {
+    expect(
+      configFromEnv({
+        ...pgBase,
+        SHADOW_AUDIT_EVENT_STORE: 'postgres',
+        DATABASE_URL: 'postgres://db/shadow',
+      } as NodeJS.ProcessEnv).eventStoreBackend,
+    ).toBe('postgres');
+    expect(configFromEnv(pgBase as NodeJS.ProcessEnv).eventStoreBackend).toBe('memory');
+  });
+
+  it('configFromEnv rejects an unknown event-store backend', () => {
+    expect(() =>
+      configFromEnv({ ...pgBase, SHADOW_AUDIT_EVENT_STORE: 'redis' } as NodeJS.ProcessEnv),
+    ).toThrow(/SHADOW_AUDIT_EVENT_STORE/);
+  });
+
+  it('buildAuditApp throws when postgres is required but no durable store is wired', () => {
+    expect(() =>
+      buildAuditApp(ownership, baseConfig({ eventStoreBackend: 'postgres' }), collections, {}),
+    ).toThrow(/requires an initialized Postgres event store/);
+  });
+
+  it('buildAuditApp accepts an injected durable store (and does not fall back silently)', () => {
+    expect(() =>
+      buildAuditApp(ownership, baseConfig({ eventStoreBackend: 'postgres' }), collections, {
+        eventStore: new InMemoryEventStore(),
+      }),
+    ).not.toThrow();
+  });
+})

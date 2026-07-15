@@ -339,3 +339,42 @@ describe('role coverage on the wire (bug 20260712-486383)', () => {
     expect(html).not.toContain('snapshot is stale');
   });
 });
+
+describe('GET /v1/access-risk registers the PUBLIC run (G-2 — feedback can now bind)', () => {
+  const registry =
+    (m: Record<string, { collection: string; standard: 'erc721' | 'erc1155' }>) =>
+    ({ chain, contract }: { chain: string; contract: string }) =>
+      m[`${chain}/${contract}`.toLowerCase()];
+  const ACCESS_RISK_URL = `/v1/access-risk?chain=1&contract=${CONTRACT}&snapshot_date=2026-06-22&threshold=1`;
+  const gateLeakDeps = (over: Partial<AuditRouterDeps> = {}) =>
+    makeDeps({
+      collectionRegistry: registry({ [`1/${CONTRACT}`]: { collection: 'thj', standard: 'erc721' } }),
+      ...over,
+    });
+
+  it('registers the teaser run so getRun resolves it and a reaction binds (was a 404 ghost)', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps({ eventStore }));
+    const res = await app.request(ACCESS_RISK_URL);
+    expect(res.status).toBe(200);
+    const { run_id } = (await res.json()) as { run_id: string };
+    expect(run_id).toMatch(/^risk_/);
+    // The run is now durably registered under the public-gate-leak mode.
+    expect(await eventStore.getRun(run_id)).toBeDefined();
+    // ...so a reaction BINDS (before registration this returned 404 — the teaser run_id backed no event).
+    expect((await post(app, '/v1/audit/reaction', { run_id, reaction: 'expected' })).status).toBe(200);
+    // A consented contact binds too.
+    expect(
+      (await post(app, '/v1/audit/contact', { run_id, contact: 'a@b.co', consent: true })).status,
+    ).toBe(200);
+  });
+
+  it('registration carries NO member data — only aggregate provenance (RunEvent is .strict())', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps({ eventStore }));
+    await app.request(ACCESS_RISK_URL);
+    // The store accepted the run: the .strict() RunEvent schema would have thrown on any smuggled member
+    // field, so a successful registration is itself the proof that only aggregate fields were written.
+    expect(eventStore.counts().runEvents).toBe(1);
+  });
+});
