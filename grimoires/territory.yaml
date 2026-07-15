@@ -34,6 +34,8 @@ scopes:
   - "tools/system-component.test.mjs"
   - "tools/construct-operator.mjs"
   - "tools/construct-operator.test.mjs"
+  - "tools/fixtures/construct-operator.snapshot.json"
+  - "tools/hivemind/hivemind-labels.v1.0.json"
 
 # Structural architecture and machine-readable projection are the bounded
 # expertise needed by this region. Both are observations at birth.

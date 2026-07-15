@@ -187,7 +187,7 @@ ${escapeMarkdownText(document.experience.promise)}
 
 ${escapeMarkdownText(document.experience.recommendation_boundary)}
 
-Available actions: ${document.experience.actions.join(", ")}.
+Available actions: ${document.experience.actions.map(escapeMarkdownText).join(", ")}.
 
 ## Evidence contract
 

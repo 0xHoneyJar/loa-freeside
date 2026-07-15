@@ -281,13 +281,14 @@ export function buildConstructOperatorSurface({ component, snapshot, regionId })
 
 function skillLine(skill) {
   const caps = skill.capabilities;
-  if (!caps) return `- \`${skill.slug}\` — metadata ${skill.metadata_status}`;
-  return `- \`${skill.slug}\` — ${caps.model_tier ?? "model?"} · ${caps.danger_level ?? "danger?"} · ${caps.effort_hint ?? "effort?"} · ${caps.execution_hint ?? "execution?"}`;
+  const slug = escapeMarkdownText(skill.slug);
+  if (!caps) return `- \`${slug}\` — metadata ${escapeMarkdownText(skill.metadata_status)}`;
+  return `- \`${slug}\` — ${escapeMarkdownText(caps.model_tier ?? "model?")} · ${escapeMarkdownText(caps.danger_level ?? "danger?")} · ${escapeMarkdownText(caps.effort_hint ?? "effort?")} · ${escapeMarkdownText(caps.execution_hint ?? "execution?")}`;
 }
 
 export function renderConstructOperatorSurface(surface) {
   const flows = surface.component.flow_moments
-    .map((flow) => `- **${flow.flow_moment_id}** (${flow.role}): ${flow.contribution}`)
+    .map((flow) => `- **${flow.flow_moment_id}** (${escapeMarkdownText(flow.role)}): ${escapeMarkdownText(flow.contribution)}`)
     .join("\n");
   const constructs = surface.constructs.map((construct) => {
     const orientation = construct.orientation.available
@@ -295,13 +296,13 @@ export function renderConstructOperatorSurface(surface) {
       : `Unavailable: ${construct.orientation.reason}`;
     const mechanics = construct.mechanics.available
       ? (construct.mechanics.skills.length > 0 ? construct.mechanics.skills.map(skillLine).join("\n") : "- No skills declared")
-      : `- Unavailable: ${construct.mechanics.reason}`;
-    return `### ${construct.slug}\n\n**Orientation — prose, no authority**\n\n${escapeMarkdownText(orientation)}\n\n**Mechanical declaration — callable surface, no authority**\n\n${mechanics}\n\n**Authority — territory + earned evidence**\n\nCeiling: **${construct.authority.ceiling}** · Earned: **${construct.authority.earned}** · Effective: **${construct.authority.effective}**\n\nAnswers for: ${construct.answers_for.map((outcome) => outcome.id).join(", ")}`;
+      : `- Unavailable: ${escapeMarkdownText(construct.mechanics.reason)}`;
+    return `### ${escapeMarkdownText(construct.slug)}\n\n**Orientation — prose, no authority**\n\n${escapeMarkdownText(orientation)}\n\n**Mechanical declaration — callable surface, no authority**\n\n${mechanics}\n\n**Authority — territory + earned evidence**\n\nCeiling: **${construct.authority.ceiling}** · Earned: **${construct.authority.earned}** · Effective: **${construct.authority.effective}**\n\nAnswers for: ${construct.answers_for.map((outcome) => outcome.id).join(", ")}`;
   }).join("\n\n");
-  const reads = surface.execution_contract.read_verbs.map((verb) => `\`${verb.name}\``).join(", ");
-  const mutations = surface.execution_contract.mutation_verbs.map((verb) => `\`${verb.name}\``).join(", ");
+  const reads = surface.execution_contract.read_verbs.map((verb) => `\`${escapeMarkdownText(verb.name)}\``).join(", ");
+  const mutations = surface.execution_contract.mutation_verbs.map((verb) => `\`${escapeMarkdownText(verb.name)}\``).join(", ");
 
-  return `# ${surface.component.id} construct operator surface\n\n**Status:** ${surface.status}\n\n## User-flow responsibility\n\n${surface.component.operator.role}: ${surface.component.operator.job}\n\n${surface.component.question}\n\n${surface.component.responsibility}\n\n### Flow moments\n\n${flows}\n\n## Region-owned expertise\n\nRegion: **${surface.territory.region}** · Vantage: **${surface.territory.vantage}**\n\n${constructs}\n\n## Constructs execution contract\n\nDeterminism: **${surface.execution_contract.determinism?.class ?? "unknown"}**\n\nInfo schema: **${surface.execution_contract.info_contract?.schema_path ?? "unavailable"}**\n\nAtlas ratification gate: **${surface.territory.ratification_status}**\n\nRead verbs: ${reads || "none"}\n\nMutation verbs: ${mutations || "none"}\n\nMutation verbs are listed separately; this receipt invokes read verbs only.\n`;
+  return `# ${escapeMarkdownText(surface.component.id)} construct operator surface\n\n**Status:** ${escapeMarkdownText(surface.status)}\n\n## User-flow responsibility\n\n${escapeMarkdownText(surface.component.operator.role)}: ${escapeMarkdownText(surface.component.operator.job)}\n\n${escapeMarkdownText(surface.component.question)}\n\n${escapeMarkdownText(surface.component.responsibility)}\n\n### Flow moments\n\n${flows}\n\n## Region-owned expertise\n\nRegion: **${escapeMarkdownText(surface.territory.region)}** · Vantage: **${escapeMarkdownText(surface.territory.vantage)}**\n\n${constructs}\n\n## Constructs execution contract\n\nDeterminism: **${escapeMarkdownText(surface.execution_contract.determinism?.class ?? "unknown")}**\n\nInfo schema: **${escapeMarkdownText(surface.execution_contract.info_contract?.schema_path ?? "unavailable")}**\n\nAtlas ratification gate: **${escapeMarkdownText(surface.territory.ratification_status)}**\n\nRead verbs: ${reads || "none"}\n\nMutation verbs: ${mutations || "none"}\n\nMutation verbs are listed separately; this receipt invokes read verbs only.\n`;
 }
 
 function runConstructs(cli, args, cwd) {

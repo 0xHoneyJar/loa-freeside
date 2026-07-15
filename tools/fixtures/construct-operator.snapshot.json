@@ -37,7 +37,9 @@
           "tools/system-component.mjs",
           "tools/system-component.test.mjs",
           "tools/construct-operator.mjs",
-          "tools/construct-operator.test.mjs"
+          "tools/construct-operator.test.mjs",
+          "tools/fixtures/construct-operator.snapshot.json",
+          "tools/hivemind/hivemind-labels.v1.0.json"
         ],
         "loadout": [
           {
