@@ -288,7 +288,7 @@ function skillLine(skill) {
 
 export function renderConstructOperatorSurface(surface) {
   const flows = surface.component.flow_moments
-    .map((flow) => `- **${flow.flow_moment_id}** (${escapeMarkdownText(flow.role)}): ${escapeMarkdownText(flow.contribution)}`)
+    .map((flow) => `- **${escapeMarkdownText(flow.flow_moment_id)}** (${escapeMarkdownText(flow.role)}): ${escapeMarkdownText(flow.contribution)}`)
     .join("\n");
   const constructs = surface.constructs.map((construct) => {
     const orientation = construct.orientation.available
@@ -297,7 +297,7 @@ export function renderConstructOperatorSurface(surface) {
     const mechanics = construct.mechanics.available
       ? (construct.mechanics.skills.length > 0 ? construct.mechanics.skills.map(skillLine).join("\n") : "- No skills declared")
       : `- Unavailable: ${escapeMarkdownText(construct.mechanics.reason)}`;
-    return `### ${escapeMarkdownText(construct.slug)}\n\n**Orientation — prose, no authority**\n\n${escapeMarkdownText(orientation)}\n\n**Mechanical declaration — callable surface, no authority**\n\n${mechanics}\n\n**Authority — territory + earned evidence**\n\nCeiling: **${construct.authority.ceiling}** · Earned: **${construct.authority.earned}** · Effective: **${construct.authority.effective}**\n\nAnswers for: ${construct.answers_for.map((outcome) => outcome.id).join(", ")}`;
+    return `### ${escapeMarkdownText(construct.slug)}\n\n**Orientation — prose, no authority**\n\n${escapeMarkdownText(orientation)}\n\n**Mechanical declaration — callable surface, no authority**\n\n${mechanics}\n\n**Authority — territory + earned evidence**\n\nCeiling: **${construct.authority.ceiling}** · Earned: **${construct.authority.earned}** · Effective: **${construct.authority.effective}**\n\nAnswers for: ${construct.answers_for.map((outcome) => escapeMarkdownText(outcome.id)).join(", ")}`;
   }).join("\n\n");
   const reads = surface.execution_contract.read_verbs.map((verb) => `\`${escapeMarkdownText(verb.name)}\``).join(", ");
   const mutations = surface.execution_contract.mutation_verbs.map((verb) => `\`${escapeMarkdownText(verb.name)}\``).join(", ");
