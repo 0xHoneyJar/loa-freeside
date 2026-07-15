@@ -202,12 +202,27 @@ function rejectUnknownFlags(args, allowed) {
   if (unknown) throw new Error(`unknown option ${unknown}`);
 }
 
+function parseValidateArgs(args) {
+  let target = DEFAULT_PATH;
+  let targetSeen = false;
+  let portable = false;
+  for (const arg of args) {
+    if (arg === "--portable") {
+      portable = true;
+      continue;
+    }
+    if (arg.startsWith("--")) throw new Error(`unknown option ${arg}`);
+    if (targetSeen) throw new Error(`unexpected argument ${arg}`);
+    target = arg;
+    targetSeen = true;
+  }
+  return { target, portable };
+}
+
 async function main(args) {
   const command = args[0];
   if (command === "validate") {
-    rejectUnknownFlags(args.slice(1), new Set(["--portable"]));
-    const portable = args.includes("--portable");
-    const target = args.slice(1).find((arg) => !arg.startsWith("--")) ?? DEFAULT_PATH;
+    const { target, portable } = parseValidateArgs(args.slice(1));
     const files = collectFiles(target);
     if (files.length === 0) {
       console.error(`system-component: no .system.json manifests found at ${target}`);

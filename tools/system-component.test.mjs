@@ -95,7 +95,7 @@ test("portable validation preserves typed flow links without requiring local can
   assert.equal(portable.valid, true, portable.errors.join("\n"));
   const { stdout, stderr } = await run(
     process.execPath,
-    [SYSTEM_CLI, "validate", "product/system-components", "--portable"],
+    [SYSTEM_CLI, "validate", "--portable", "product/system-components"],
     { cwd: repo },
   );
   assert.equal(stderr, "");
@@ -180,4 +180,16 @@ test("the system-component CLI rejects unknown flags", () => {
   ], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /unknown option --portabl/);
+});
+
+test("the system-component CLI rejects ambiguous positional targets", () => {
+  const result = spawnSync(process.execPath, [
+    SYSTEM_CLI,
+    "validate",
+    "--portable",
+    "product/system-components",
+    "product/system-components",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unexpected argument product\/system-components/);
 });

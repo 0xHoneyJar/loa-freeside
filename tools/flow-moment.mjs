@@ -254,16 +254,6 @@ function collectFlowFiles(target) {
     .toSorted();
 }
 
-function parseToday(args) {
-  const index = args.indexOf("--today");
-  if (index === -1) return undefined;
-  const value = args[index + 1];
-  if (!isRealDate(value)) {
-    throw new Error("--today requires YYYY-MM-DD");
-  }
-  return value;
-}
-
 function isRealDate(value) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
@@ -281,17 +271,36 @@ function rejectUnknownFlags(args, allowed) {
   if (unknown) throw new Error(`unknown option ${unknown}`);
 }
 
+function parseValidateArgs(args) {
+  let target = DEFAULT_RECORDS_PATH;
+  let targetSeen = false;
+  let today;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--today") {
+      const value = args[index + 1];
+      if (!isRealDate(value)) throw new Error("--today requires YYYY-MM-DD");
+      today = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) throw new Error(`unknown option ${arg}`);
+    if (targetSeen) throw new Error(`unexpected argument ${arg}`);
+    target = arg;
+    targetSeen = true;
+  }
+  return { target, today };
+}
+
 async function main(args) {
   const command = args[0];
   if (command === "validate") {
-    rejectUnknownFlags(args.slice(1), new Set(["--today"]));
-    const targetArg = args[1] && !args[1].startsWith("--") ? args[1] : DEFAULT_RECORDS_PATH;
+    const { target: targetArg, today } = parseValidateArgs(args.slice(1));
     const files = collectFlowFiles(targetArg);
     if (files.length === 0) {
       console.error(`flow-moment: no .flow.json records found at ${targetArg}`);
       return 1;
     }
-    const today = parseToday(args);
     let failures = 0;
     for (const file of files) {
       let document;

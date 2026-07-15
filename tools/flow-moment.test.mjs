@@ -178,6 +178,19 @@ test("the flow CLI rejects unknown flags", () => {
   assert.match(result.stderr, /unknown option --todays/);
 });
 
+test("the flow CLI rejects ambiguous positional targets", () => {
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, "tools/flow-moment.mjs"),
+    "validate",
+    "--today",
+    TODAY,
+    "product/flow-moments",
+    "product/flow-moments",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unexpected argument product\/flow-moments/);
+});
+
 test("the generated receipt carries intent without becoming another ledger", () => {
   const receipt = renderFlowMoment(EXAMPLE);
   assert.match(receipt, /Teams|community is composed and changing/i);
