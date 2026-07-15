@@ -6,6 +6,10 @@ import {
   resolvePreset,
   ORDER_LIFECYCLE_SUBJECTS,
   INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
+  GateLeakCommunityJoinSchema,
+  GateLeakInputSuppliedSchema,
+  ORDER_GATE_LEAK_JOIN_SUBJECT,
+  ORDER_GATE_LEAK_INPUT_SUBJECT,
   PRESETS,
   type OrderPlaced,
 } from '@freeside/ordering-protocol';
@@ -49,6 +53,8 @@ export interface IntakeDeps {
   serviceTokenLabel?: string;
   /** Deploy-facing healthz payload extras (write-route posture, store kind, …). */
   healthz?: Record<string, unknown>;
+  /** Explicit production composition gate; false refuses gate-leak before persistence. */
+  gateLeakEnabled?: boolean;
 }
 
 const PlaceOrderBodySchema = z
@@ -72,6 +78,18 @@ const AdvanceIngredientBodySchema = z
 const ReprobeBodySchema = z
   .object({
     ingredient: z.enum(['sonar', 'score', 'worlds_manifest', 'discord_observer', 'shadow_preview']).optional(),
+  })
+  .strict();
+
+const JoinCommunityBodySchema = z
+  .object({
+    community_onboarding_order_id: z.string().min(1),
+  })
+  .strict();
+
+const ResumeGateLeakBodySchema = z
+  .object({
+    access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   })
   .strict();
 
@@ -106,6 +124,9 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     const body = PlaceOrderBodySchema.safeParse(raw);
     if (!body.success) {
       return c.json({ error: 'invalid order envelope', issues: body.error.issues }, 400);
+    }
+    if (body.data.product === 'gate-leak' && deps.gateLeakEnabled === false) {
+      return c.json({ error: 'gate-leak is unavailable' }, 503);
     }
 
     // Per-product input validation is the PRESET's job (the audit's gating_rule stays sealed).
@@ -166,6 +187,38 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
       ...deps.healthz,
     }),
   );
+
+  // Anonymous continuation of the same capability-addressed journey. The order id is the
+  // client-retained correlation key; the semantic value appends beside immutable inputs.
+  if (deps.orchestrator) {
+    app.post('/v1/orders/:id/resume-gate-leak', async (c) => {
+      const body = ResumeGateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: 'invalid resume payload', issues: body.error.issues }, 400);
+      const orderId = c.req.param('id');
+      const record = await deps.store.get(orderId);
+      if (!record) return c.json({ error: 'order not found' }, 404);
+      if (record.product !== 'gate-leak') return c.json({ error: 'not a gate-leak order' }, 409);
+      const suppliedAt = Math.floor(deps.now() / 1000);
+      const signal = GateLeakInputSuppliedSchema.parse({
+        gate_leak_order_id: orderId,
+        input: 'access_started_at',
+        supplied_at_unix: suppliedAt,
+      });
+      try {
+        await deps.store.appendGateLeakInput(
+          { ...signal, value: body.data.access_started_at },
+          { subject: ORDER_GATE_LEAK_INPUT_SUBJECT, payload: signal },
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'resume failed';
+        return c.json({ error: message }, message.includes('conflicting') ? 409 : 400);
+      }
+      const result = await deps.orchestrator!.process(orderId);
+      const current = await deps.store.get(orderId);
+      if (!current) return c.json({ error: 'order not found' }, 404);
+      return c.json(toPublicOrder(current), result.success && current.state === 'fulfilled' ? 200 : 202);
+    });
+  }
 
   if (deps.orchestrator) {
     const requireToken = (c: Context): boolean => {
@@ -239,6 +292,27 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
       }
 
       return c.json({ ...toPublicOrder(result.record), probes: result.probes }, 200);
+    });
+
+    app.post('/v1/orders/:id/join-community', async (c) => {
+      if (!requireToken(c)) return c.json({ error: 'unauthorized' }, 401);
+      const body = JoinCommunityBodySchema.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: 'invalid join payload', issues: body.error.issues }, 400);
+      const join = GateLeakCommunityJoinSchema.parse({
+        gate_leak_order_id: c.req.param('id'),
+        community_onboarding_order_id: body.data.community_onboarding_order_id,
+        joined_at_unix: Math.floor(deps.now() / 1000),
+      });
+      try {
+        const result = await deps.store.appendGateLeakJoin(join, {
+          subject: ORDER_GATE_LEAK_JOIN_SUBJECT,
+          payload: join,
+        });
+        return c.json({ ...join, created: result.created }, 200);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'join failed';
+        return c.json({ error: message }, 404);
+      }
     });
   }
 

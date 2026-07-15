@@ -133,7 +133,7 @@ describe('unknown-preset support (FR-1)', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string; available_presets: string[] };
     expect(body.error).toContain('espresso-machine');
-    expect(body.available_presets).toEqual(['access-risk-audit', 'community-onboarding']);
+    expect(body.available_presets).toEqual(['access-risk-audit', 'community-onboarding', 'gate-leak']);
   });
 
   it('prototype-chain keys (constructor) get the same friendly 400 (Object.hasOwn, review #2)', async () => {
@@ -145,6 +145,6 @@ describe('unknown-preset support (FR-1)', () => {
     });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { available_presets: string[] };
-    expect(body.available_presets).toEqual(['access-risk-audit', 'community-onboarding']);
+    expect(body.available_presets).toEqual(['access-risk-audit', 'community-onboarding', 'gate-leak']);
   });
 });

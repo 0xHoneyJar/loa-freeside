@@ -29,6 +29,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@electric-sql/pglite-socket": "^0.2.7",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.15.2",
     "typescript": "^5.7.0",

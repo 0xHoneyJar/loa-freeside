@@ -25,7 +25,7 @@ function newOrder(): NewOrder {
     order_id: 'ord_ops',
     product: 'access-risk-audit',
     placed_by: 'op',
-    inputs: { chain: 'ethereum', contract: CONTRACT, snapshot_date: '2026-06-01', threshold: 1 },
+    inputs: { chain: '1', contract: CONTRACT, snapshot_date: '2026-06-01', threshold: 1 },
     placed_at_unix: 1_700_000_000,
     inputs_digest: 'a'.repeat(64),
   };

@@ -9,6 +9,9 @@ import { CommunityOnboardingOrchestrator, type CommunityOnboardingOrchestratorDe
 import type { TriagePorts } from './triage-ports.js';
 import { StubTriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
+import { GateLeakOrchestrator } from './gate-leak-orchestrator.js';
+import type { GateLeakIndexPort, GateLeakPort } from './gate-leak-ports.js';
+import { publishOutbox, type LifecyclePublisher } from './lifecycle-publisher.js';
 
 /**
  * The thin orchestrator (SDD §6) — dispatches by product to preset-specific handlers.
@@ -41,10 +44,15 @@ export interface OrchestratorDeps {
    *  EVERY CommunityOnboardingOrchestrator instance, intake included, or the choke
    *  point has teeth only on the worker path. */
   discordHealth?: CommunityOnboardingOrchestratorDeps['discordHealth'];
+  gateLeak?: GateLeakPort;
+  gateLeakIndex?: GateLeakIndexPort;
+  /** When wired, every process pass drains the durable outbox inline. */
+  lifecyclePublisher?: LifecyclePublisher;
 }
 
 export class OrderOrchestrator {
   private readonly accessRiskAudit: AccessRiskAuditOrchestrator;
+  private readonly gateLeak: GateLeakOrchestrator;
   readonly communityOnboarding: CommunityOnboardingOrchestrator;
 
   constructor(private readonly deps: OrchestratorDeps) {
@@ -66,6 +74,13 @@ export class OrderOrchestrator {
       enqueue: deps.enqueue,
       discordHealth: deps.discordHealth,
     });
+    this.gateLeak = new GateLeakOrchestrator({
+      store: deps.store,
+      resolver: deps.resolver,
+      gateLeak: deps.gateLeak,
+      index: deps.gateLeakIndex,
+      now: deps.now,
+    });
   }
 
   async process(orderId: string): Promise<ProcessResult> {
@@ -73,11 +88,24 @@ export class OrderOrchestrator {
     if (!record) {
       return { success: false, retryable: true, error: new Error(`order not persisted: ${orderId}`) };
     }
-    if (isTerminal(record.state)) return { success: true };
-
-    if (record.product === 'community-onboarding') {
-      return this.communityOnboarding.process(orderId, record);
+    if (isTerminal(record.state)) {
+      if (this.deps.lifecyclePublisher) {
+        await publishOutbox(this.deps.store, this.deps.lifecyclePublisher);
+      }
+      return { success: true };
     }
-    return this.accessRiskAudit.process(orderId, record);
+
+    let result: ProcessResult;
+    if (record.product === 'community-onboarding') {
+      result = await this.communityOnboarding.process(orderId, record);
+    } else if (record.product === 'gate-leak') {
+      result = await this.gateLeak.process(orderId, record);
+    } else {
+      result = await this.accessRiskAudit.process(orderId, record);
+    }
+    if (this.deps.lifecyclePublisher) {
+      await publishOutbox(this.deps.store, this.deps.lifecyclePublisher);
+    }
+    return result;
   }
 }

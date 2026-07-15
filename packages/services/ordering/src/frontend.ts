@@ -57,7 +57,7 @@ const FORM_PAGE = `<!DOCTYPE html>
   <p class="muted">Internal order intake. Fill the inputs and place; you'll get an order id to track.</p>
   <form id="f">
     <label>Placed by</label><input name="placed_by" value="operator:demo" required>
-    <label>Chain</label><input name="chain" value="ethereum" required>
+    <label>Chain ID</label><input name="chain" value="1" inputmode="numeric" required>
     <label>Contract (0x…40 hex)</label><input name="contract" placeholder="0x…" required>
     <label>Snapshot date (YYYY-MM-DD)</label><input name="snapshot_date" placeholder="2026-06-01" required>
     <label>Threshold (optional)</label><input name="threshold" type="number" value="1">

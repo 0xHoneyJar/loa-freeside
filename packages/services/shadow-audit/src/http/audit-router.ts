@@ -265,6 +265,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const teaserTtlMs = deps.teaserCacheTtlMs ?? 300_000; // 5 min
   const TEASER_CACHE_MAX = 500;
   const teaserCache = new Map<string, { at: number; body: unknown }>();
+  const teaserInFlight = new Map<string, Promise<PublicCompute>>();
 
   const GateLeakBodySchema = z
     .object({
@@ -324,20 +325,30 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (hit && args.now - hit.at < teaserTtlMs) {
       return { kind: 'result', result: { ok: true, output: hit.body as AccessRiskOutput } };
     }
+    const active = teaserInFlight.get(cacheKey);
+    if (active) return active;
     if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) return { kind: 'budget' };
-    const result = await computeAccessRisk(
-      {
-        chain: args.chain,
-        contract: args.contract,
-        snapshotDate: args.accessStartedAt,
-        threshold: args.threshold,
-        nowUnixSeconds: Math.floor(args.now / 1000),
-        cta: deps.cta,
-      },
-      { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
-    );
-    if (result.ok) cacheSuccessfulTeaser(cacheKey, args.now, result.output);
-    return { kind: 'result', result };
+    const computation = (async (): Promise<PublicCompute> => {
+      const result = await computeAccessRisk(
+        {
+          chain: args.chain,
+          contract: args.contract,
+          snapshotDate: args.accessStartedAt,
+          threshold: args.threshold,
+          nowUnixSeconds: Math.floor(args.now / 1000),
+          cta: deps.cta,
+        },
+        { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
+      );
+      if (result.ok) cacheSuccessfulTeaser(cacheKey, args.now, result.output);
+      return { kind: 'result', result };
+    })();
+    teaserInFlight.set(cacheKey, computation);
+    try {
+      return await computation;
+    } finally {
+      if (teaserInFlight.get(cacheKey) === computation) teaserInFlight.delete(cacheKey);
+    }
   };
 
   const attention = async (

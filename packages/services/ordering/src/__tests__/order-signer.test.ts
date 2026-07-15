@@ -5,7 +5,7 @@ import { signOrder, verifyOrder, type CanonicalOrder } from '../order-signer.js'
 const order: CanonicalOrder = {
   order_id: 'ord_1',
   product: 'access-risk-audit',
-  inputs: { chain: 'ethereum', contract: '0x' + '2'.repeat(40), snapshot_date: '2026-06-01', threshold: 1 },
+  inputs: { chain: '1', contract: '0x' + '2'.repeat(40), snapshot_date: '2026-06-01', threshold: 1 },
   schema_version: '0.1.0',
   preset_version: 'access-risk-audit',
   audit_request_digest: 'a'.repeat(64),

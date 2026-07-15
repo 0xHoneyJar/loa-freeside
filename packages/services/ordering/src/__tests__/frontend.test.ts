@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { AuditRequest, AuditServiceResult } from '@freeside/shadow-audit-service';
-import type { AuditOutput, Cta } from '@freeside/shadow-audit-protocol';
+import type { AuditOutput, Cta, DriftReport } from '@freeside/shadow-audit-protocol';
 import { createFrontendApp } from '../frontend.js';
 import { createIntakeApp } from '../intake.js';
 import { InMemoryOrderStore } from '../store.js';
@@ -15,12 +15,19 @@ const FAKE_OUTPUT = {
   run_id: 'demo',
   aggregate: { holder_turnover: 0.2, stale_access: { kind: 'exact', value: 3 } },
 } as unknown as AuditOutput;
-const OK: AuditServiceResult = { ok: true, output: FAKE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
+const OK: AuditServiceResult = {
+  ok: true,
+  output: FAKE_OUTPUT,
+  uncertain: false,
+  uncertainReasons: [],
+  unmatchedRoleHolders: 0,
+  drift: {} as DriftReport,
+};
 
 const VALID_BODY = {
   product: 'access-risk-audit',
   placed_by: 'operator:demo',
-  inputs: { chain: 'ethereum', contract: CONTRACT, snapshot_date: '2026-06-01', threshold: 1 },
+  inputs: { chain: '1', contract: CONTRACT, snapshot_date: '2026-06-01', threshold: 1 },
 };
 
 function app() {

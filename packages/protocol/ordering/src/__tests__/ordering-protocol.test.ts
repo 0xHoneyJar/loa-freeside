@@ -16,6 +16,10 @@ import {
   CapabilityNeed,
   TriageCapabilityNeed,
   CommunityOnboardingIngredients,
+  GateLeakInputs,
+  GATE_LEAK_PRESET,
+  GateLeakCommunityJoinSchema,
+  GateLeakInputSuppliedSchema,
 } from '../index.js';
 
 const validOrder = {
@@ -84,8 +88,8 @@ describe('access-risk-audit preset', () => {
   });
   it('validates good inputs and rejects a bad date', () => {
     const inputs = ACCESS_RISK_AUDIT_PRESET.inputSchema;
-    expect(inputs.parse({ chain: 'berachain', contract: '0xabc', snapshot_date: '2026-06-29' })).toBeTruthy();
-    expect(() => inputs.parse({ chain: 'berachain', contract: '0xabc', snapshot_date: 'June 29' })).toThrow();
+    expect(inputs.parse({ chain: '80094', contract: '0x' + 'a'.repeat(40), snapshot_date: '2026-06-29' })).toBeTruthy();
+    expect(() => inputs.parse({ chain: '80094', contract: '0x' + 'a'.repeat(40), snapshot_date: 'June 29' })).toThrow();
   });
   it('reads the member-graph spine + roles (the LADDER), not sonar/score directly', () => {
     expect(ACCESS_RISK_AUDIT_PRESET.recipe.map((s) => s.capability)).toEqual(['member-graph', 'roles']);
@@ -102,7 +106,7 @@ describe('community-onboarding preset', () => {
     expect(
       inputs.parse({
         chain_id: '8453',
-        contract_address: '0xabc',
+        contract_address: '0x' + 'a'.repeat(40),
         contact_email: 'cm@example.com',
         source: 'dashboard_onboarding',
       }),
@@ -110,7 +114,7 @@ describe('community-onboarding preset', () => {
     expect(() =>
       inputs.parse({
         chain_id: '8453',
-        contract_address: '0xabc',
+        contract_address: '0x' + 'a'.repeat(40),
         contact_email: 'not-an-email',
         source: 'dashboard_onboarding',
       }),
@@ -190,6 +194,85 @@ describe('metadata_snapshot protocol additions (T-1)', () => {
         extra: 'bad',
       }),
     ).toThrow();
+  });
+});
+
+describe('gate-leak preset — anonymous free rung', () => {
+  it('accepts an anonymous submission and keeps contact optional', () => {
+    expect(
+      GateLeakInputs.parse({
+        chain_id: '80094',
+        contract_address: '0x' + 'a'.repeat(40),
+        source: 'public_gate_leak',
+      }),
+    ).toEqual({
+      chain_id: '80094',
+      contract_address: '0x' + 'a'.repeat(40),
+      source: 'public_gate_leak',
+    });
+  });
+
+  it('does not accept the dashboard-onboarding source or unknown keys', () => {
+    expect(
+      GateLeakInputs.safeParse({
+        chain_id: '80094',
+        contract_address: '0x' + 'a'.repeat(40),
+        source: 'dashboard_onboarding',
+      }).success,
+    ).toBe(false);
+    expect(
+      GateLeakInputs.safeParse({
+        chain_id: '80094',
+        contract_address: '0x' + 'a'.repeat(40),
+        source: 'public_gate_leak',
+        wallet: '0xmember',
+      }).success,
+    ).toBe(false);
+    expect(
+      GateLeakInputs.safeParse({
+        chain_id: '80094',
+        contract_address: '0x' + 'a'.repeat(40),
+        source: 'public_gate_leak',
+        contact_email: 'captured-without-consent@example.test',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('resolves a distinct 3-step recipe without widening community-onboarding', () => {
+    expect(resolvePreset('gate-leak')).toBe(GATE_LEAK_PRESET);
+    expect(GATE_LEAK_PRESET.recipe.map((step) => step.capability)).toEqual([
+      'subject-resolution',
+      'collection-index',
+      'shadow-gate-leak',
+    ]);
+  });
+
+  it('types the narrow order-id join', () => {
+    expect(
+      GateLeakCommunityJoinSchema.parse({
+        gate_leak_order_id: 'gate-order',
+        community_onboarding_order_id: 'onboarding-order',
+        joined_at_unix: 1_700_000_000,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('types the value-minimized prerequisite signal', () => {
+    expect(
+      GateLeakInputSuppliedSchema.parse({
+        gate_leak_order_id: 'gate-order',
+        input: 'access_started_at',
+        supplied_at_unix: 1_700_000_000,
+      }),
+    ).toBeTruthy();
+    expect(
+      GateLeakInputSuppliedSchema.safeParse({
+        gate_leak_order_id: 'gate-order',
+        input: 'access_started_at',
+        value: '2026-06-22',
+        supplied_at_unix: 1_700_000_000,
+      }).success,
+    ).toBe(false);
   });
 });
 

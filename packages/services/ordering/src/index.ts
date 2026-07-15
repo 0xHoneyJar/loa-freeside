@@ -24,6 +24,8 @@ export {
   type OrderRecord,
   type OrderPatch,
   type TransitionOpts,
+  type GateLeakWorkClaim,
+  type GateLeakOrderInput,
   type OrderStore,
   OrderNotFoundError,
   type InMemoryOrderStoreOptions,
@@ -33,6 +35,8 @@ export {
 export {
   type LifecyclePublisher,
   RecordingPublisher,
+  HttpLifecyclePublisher,
+  lifecyclePublisherFromEnv,
   publishOutbox,
 } from './lifecycle-publisher.js';
 
@@ -57,6 +61,21 @@ export {
 export { DeclaredLocalAuditAdapter } from './declared-local-audit-adapter.js';
 
 export { type ProcessResult, type OrchestratorDeps, OrderOrchestrator } from './orchestrator.js';
+
+export {
+  GateLeakOrchestrator,
+  type GateLeakOrchestratorDeps,
+} from './gate-leak-orchestrator.js';
+
+export {
+  type GateLeakSubmission,
+  type GateLeakSubmissionResult,
+  type GateLeakPort,
+  type GateLeakIndexPort,
+  HttpGateLeakPort,
+  HttpGateLeakIndexPort,
+  gateLeakPortsFromEnv,
+} from './gate-leak-ports.js';
 
 export {
   AccessRiskAuditOrchestrator,
@@ -115,7 +134,12 @@ export {
 } from './http-building-probes.js';
 export { normalizeContractAddress, normalizeChainId } from './contract-address.js';
 export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';
-export { createOrderingComposition, serviceTokenFromEnv, ctaFromEnv } from './composition.js';
+export {
+  createOrderingComposition,
+  serviceTokenFromEnv,
+  ctaFromEnv,
+  type OrderingComposition,
+} from './composition.js';
 
 export { createFrontendApp } from './frontend.js';
 

@@ -13,7 +13,17 @@
  *  - any contract resolves to a demo community — real uses a configured operated-community registry.
  */
 import { serve } from '@hono/node-server';
-import { AuditOutputSchema, type AuditOutput, type Cta } from '@freeside/shadow-audit-protocol';
+import {
+  AuditOutputSchema,
+  DriftReportSchema,
+  DRIFT_DISCLOSURE,
+  STALE_FLOOR_ASSUMPTION,
+  STALE_FLOOR_BREAKS_WHEN,
+  UNDERGRANT_FLOOR_ASSUMPTION,
+  UNDERGRANT_FLOOR_BREAKS_WHEN,
+  type AuditOutput,
+  type Cta,
+} from '@freeside/shadow-audit-protocol';
 import type { AuditRequest, AuditServiceResult } from '@freeside/shadow-audit-service';
 import {
   InMemoryOrderStore,
@@ -29,6 +39,29 @@ const CTA: Cta = {
   product: 'https://freeside.example/audit',
   conversation: 'https://freeside.example/talk',
 };
+
+const SAMPLE_DRIFT = DriftReportSchema.parse({
+  access_basis: 'counts-only',
+  role_members: { kind: 'exact', value: 8 },
+  per_source_holders: [{ chain: '1', holders: { kind: 'exact', value: 12 } }],
+  k_anonymity: 5,
+  stale_floor: {
+    value: 0,
+    bounds: 'wallets',
+    assumption: STALE_FLOOR_ASSUMPTION,
+    breaks_when: STALE_FLOOR_BREAKS_WHEN,
+    direction_if_violated: 'overstates',
+  },
+  undergrant_floor: {
+    value: 4,
+    bounds: 'wallets',
+    assumption: UNDERGRANT_FLOOR_ASSUMPTION,
+    breaks_when: UNDERGRANT_FLOOR_BREAKS_WHEN,
+    direction_if_violated: 'overstates',
+  },
+  floors_from_public_bound: false,
+  disclosure: DRIFT_DISCLOSURE,
+});
 
 // A schema-valid sample audit output (validated at construction so the demo can't drift from the contract).
 const SAMPLE_OUTPUT: AuditOutput = AuditOutputSchema.parse({
@@ -49,11 +82,19 @@ const SAMPLE_OUTPUT: AuditOutput = AuditOutputSchema.parse({
     coverage_uncertain: false,
   },
   cta: CTA,
+  drift: SAMPLE_DRIFT,
 });
 
 class DemoAuditAdapter implements AuditPort {
   async invoke(_req: AuditRequest): Promise<AuditServiceResult> {
-    return { ok: true, output: SAMPLE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
+    return {
+      ok: true,
+      output: SAMPLE_OUTPUT,
+      uncertain: false,
+      uncertainReasons: [],
+      unmatchedRoleHolders: 0,
+      drift: SAMPLE_DRIFT,
+    };
   }
 }
 

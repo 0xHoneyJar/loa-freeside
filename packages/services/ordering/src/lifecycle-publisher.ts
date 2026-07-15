@@ -21,6 +21,41 @@ export class RecordingPublisher implements LifecyclePublisher {
   }
 }
 
+/** Minimal production drain adapter for an event/webhook ingress. Marked published only on 2xx. */
+export class HttpLifecyclePublisher implements LifecyclePublisher {
+  private readonly fetchFn: typeof fetch;
+
+  constructor(
+    private readonly config: { url: string; token?: string },
+    fetchImpl?: typeof fetch,
+  ) {
+    this.fetchFn = fetchImpl ?? fetch;
+  }
+
+  async publish(subject: string, payload: unknown): Promise<void> {
+    const response = await this.fetchFn(this.config.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(this.config.token ? { authorization: `Bearer ${this.config.token}` } : {}),
+      },
+      body: JSON.stringify({ subject, payload }),
+    });
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`lifecycle publisher rejected ${subject} with status ${response.status}`);
+    }
+  }
+}
+
+export function lifecyclePublisherFromEnv(fetchImpl?: typeof fetch): LifecyclePublisher | undefined {
+  const url = process.env.ORDER_LIFECYCLE_PUBLISH_URL?.trim();
+  if (!url) return undefined;
+  return new HttpLifecyclePublisher(
+    { url, token: process.env.ORDER_LIFECYCLE_PUBLISH_TOKEN?.trim() || undefined },
+    fetchImpl,
+  );
+}
+
 /**
  * Drain the outbox: publish each pending event, then mark it published.
  *

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AuditRequest, AuditServiceResult } from '@freeside/shadow-audit-service';
-import type { AuditOutput, Cta } from '@freeside/shadow-audit-protocol';
+import type { AuditOutput, Cta, DriftReport } from '@freeside/shadow-audit-protocol';
 import { ORDER_LIFECYCLE_SUBJECTS } from '@freeside/ordering-protocol';
 import { OrderOrchestrator } from '../orchestrator.js';
 import { InMemoryOrderStore, type NewOrder } from '../store.js';
@@ -16,7 +16,14 @@ const CTA: Cta = { product: 'https://example.test/audit', conversation: 'https:/
 // audit aggregate's shape). A representative object stands in; the audit's output validity is the
 // audit package's own concern.
 const FAKE_OUTPUT = { run_id: 'run_test', mode: 'dogfood-full', note: 'opaque-to-ordering' } as unknown as AuditOutput;
-const OK_RESULT: AuditServiceResult = { ok: true, output: FAKE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
+const OK_RESULT: AuditServiceResult = {
+  ok: true,
+  output: FAKE_OUTPUT,
+  uncertain: false,
+  uncertainReasons: [],
+  unmatchedRoleHolders: 0,
+  drift: {} as DriftReport,
+};
 
 class FakeAudit implements AuditPort {
   calls = 0;
@@ -42,7 +49,7 @@ function newOrder(orderId = 'ord_1', contract = CONTRACT): NewOrder {
     order_id: orderId,
     product: 'access-risk-audit',
     placed_by: 'operator:test',
-    inputs: { chain: 'ethereum', contract, snapshot_date: '2026-06-01', threshold: 1 },
+    inputs: { chain: '1', contract, snapshot_date: '2026-06-01', threshold: 1 },
     placed_at_unix: 1_700_000_000,
     inputs_digest: 'a'.repeat(64),
   };

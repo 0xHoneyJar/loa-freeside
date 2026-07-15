@@ -157,10 +157,13 @@ describe('CommunityOnboardingOrchestrator.reprobe', () => {
     const elapsed = Date.now() - started;
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    for (const outcome of Object.values(result.probes)) {
-      expect(outcome).toMatchObject({ freshness: 'ambiguous', error_class: 'timeout' });
+    for (const key of ['sonar', 'score', 'worlds_manifest']) {
+      expect(result.probes[key]).toMatchObject({ freshness: 'ambiguous', error_class: 'timeout' });
     }
-    // 2 pending targets (sonar, score) in one ≤3 batch at 50ms — far inside the 30s budget.
+    // Structural metadata-port absence is a fresh pending result, owned by the worker's
+    // audited pending→optional self-resolution rather than misclassified as a timeout.
+    expect(result.probes.metadata_snapshot).toMatchObject({ status: 'pending', freshness: 'fresh' });
+    // 4 pending targets in two ≤3 batches at 50ms — far inside the 30s budget.
     expect(elapsed).toBeLessThan(5_000);
     delete process.env.REPROBE_PER_PROBE_TIMEOUT_MS;
     vi.resetModules();

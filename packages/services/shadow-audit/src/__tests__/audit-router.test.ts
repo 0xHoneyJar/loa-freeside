@@ -457,6 +457,51 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     expect((await eventStore.getPublicGateLeakJourney(body.journey.run_id))?.access_started_at).toBe('2026-06-22');
   });
 
+  it('counts two demand journeys while doing the expensive subject/input compute once', async () => {
+    const eventStore = new InMemoryEventStore();
+    let snapshotCalls = 0;
+    const countingOwnership: OwnershipSource = {
+      ...ownership,
+      resolveSnapshotBlock: async (args) => {
+        snapshotCalls++;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return ownership.resolveSnapshotBlock(args);
+      },
+    };
+    const app = createAuditRouter(
+      makeDeps({
+        eventStore,
+        ownership: countingOwnership,
+        collectionRegistry: registry({
+          [`1/${CONTRACT}`]: {
+            collection: 'thj',
+            standard: 'erc721',
+            access_started_at: '2026-06-22',
+          },
+        }),
+      }),
+    );
+    const [first, second] = await Promise.all([
+      post(app, '/v1/access-risk', {
+        chain: '1',
+        contract: CONTRACT,
+        journey_token: 'demand-a',
+      }),
+      post(app, '/v1/access-risk', {
+        chain: '1',
+        contract: CONTRACT,
+        journey_token: 'demand-b',
+      }),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const firstBody = (await first.json()) as any;
+    const secondBody = (await second.json()) as any;
+    expect(firstBody.journey.run_id).not.toBe(secondBody.journey.run_id);
+    expect(snapshotCalls).toBe(1);
+    expect(eventStore.counts()).toMatchObject({ publicRuns: 2, attention: 4, runEvents: 2 });
+  });
+
   it('keeps every public exit channel member-free and sub-k-safe', async () => {
     const eventStore = new InMemoryEventStore();
     const app = createAuditRouter(gateLeakDeps(eventStore));
