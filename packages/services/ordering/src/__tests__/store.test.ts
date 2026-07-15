@@ -85,6 +85,15 @@ describe('InMemoryOrderStore', () => {
     expect(subjects).toContain('orders.lifecycle.producing.v1');
   });
 
+  it('appendEventOnce dedupes replayed producing history on its semantic key', async () => {
+    const s = store();
+    await s.placeOrder(NEW_ORDER, PLACED_EVENT);
+    const event = { subject: 'orders.lifecycle.producing.v1', payload: { step: 0 } };
+    expect((await s.appendEventOnce('ord_1', event, 'ord_1:producing:0')).created).toBe(true);
+    expect((await s.appendEventOnce('ord_1', event, 'ord_1:producing:0')).created).toBe(false);
+    expect((await s.pendingOutbox()).filter((entry) => entry.subject === event.subject)).toHaveLength(1);
+  });
+
   it('markPublished removes an entry from the pending set', async () => {
     const s = store();
     await s.placeOrder(NEW_ORDER, PLACED_EVENT);

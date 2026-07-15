@@ -30,6 +30,7 @@ function publicRun(over: Partial<RunEvent> = {}): RunEvent {
 }
 
 describe('PostgresEventStore round-trip (real SQL)', () => {
+  const budget = { bucket: 'test', window_started_at: '2026-07-15T12:00:00.000Z', limit: 100 };
   let conn: PostgresEventStoreConnection;
   let pglite: PGlite | undefined;
   let socket: PGLiteSocketServer | undefined;
@@ -113,14 +114,14 @@ describe('PostgresEventStore round-trip (real SQL)', () => {
     const run = {
       run_id: 'gate_round_trip',
       journey_token: 'journey_round_trip',
-      subject: { chain_id: '80094', contract_address: '0xabc' },
+      subject: { chain_id: '80094', contract_address: `0x${'a'.repeat(40)}` },
       inputs_hash: '1'.repeat(64),
       threshold: 1,
       outcome: 'needs_input' as const,
       ts: '2026-07-15T12:00:00.000Z',
     };
-    expect(await conn.store.appendPublicGateLeakRun(run)).toEqual({ created: true });
-    expect(await conn.store.appendPublicGateLeakRun(run)).toEqual({ created: false });
+    expect(await conn.store.appendPublicGateLeakRun(run, budget)).toEqual({ created: true });
+    expect(await conn.store.appendPublicGateLeakRun(run, budget)).toEqual({ created: false });
     await conn.store.appendPublicJourneyInput({
       run_id: run.run_id,
       input: 'access_started_at',
@@ -139,10 +140,101 @@ describe('PostgresEventStore round-trip (real SQL)', () => {
     expect(folded?.supplied_access_started_at).toBe('2026-06-01');
   });
 
+  it('serializes terminal transitions and persists a distributed compute result', async () => {
+    const run = {
+      run_id: 'gate_serialized',
+      journey_token: 'journey_serialized',
+      subject: { chain_id: '1', contract_address: `0x${'b'.repeat(40)}` },
+      inputs_hash: '2'.repeat(64),
+      threshold: 1,
+      outcome: 'needs_input' as const,
+      ts: '2026-07-15T12:00:00.000Z',
+    };
+    await conn.store.appendPublicGateLeakRun(run, budget);
+    await conn.store.appendPublicJourneyTransition({
+      run_id: run.run_id,
+      outcome: 'delivered_e1',
+      ts: '2026-07-15T12:01:00.000Z',
+    });
+    await expect(
+      conn.store.appendPublicJourneyTransition({
+        run_id: run.run_id,
+        outcome: 'refused',
+        refusal_code: 'rate-limited',
+        ts: '2026-07-15T12:02:00.000Z',
+      }),
+    ).rejects.toThrow(/terminal public journey/);
+
+    const claim = {
+      compute_key: 'e'.repeat(64),
+      owner_token: 'pg-owner-a',
+      claimed_at: '2026-07-15T12:00:00.000Z',
+      lease_expires_at: '2026-07-15T12:02:00.000Z',
+    };
+    expect(await conn.store.claimPublicCompute(claim)).toBe('claimed');
+    expect(await conn.store.claimPublicCompute({ ...claim, owner_token: 'pg-owner-b' })).toBe('busy');
+    expect(
+      await conn.store.completePublicCompute(claim.compute_key, claim.owner_token, { aggregate: true }, claim.claimed_at),
+    ).toBe(true);
+    expect(await conn.store.getPublicComputeResult(claim.compute_key)).toEqual({ aggregate: true });
+    expect(
+      await conn.store.completePublicCompute(
+        claim.compute_key,
+        'pg-owner-b',
+        { aggregate: false },
+        claim.claimed_at,
+      ),
+    ).toBe(false);
+    expect(await conn.store.getPublicComputeResult(claim.compute_key)).toEqual({ aggregate: true });
+
+    const expired = {
+      ...claim,
+      compute_key: 'c'.repeat(64),
+      owner_token: 'pg-expired-owner',
+      lease_expires_at: '2026-07-15T12:00:01.000Z',
+    };
+    expect(await conn.store.claimPublicCompute(expired)).toBe('claimed');
+    expect(
+      await conn.store.completePublicCompute(
+        expired.compute_key,
+        expired.owner_token,
+        { stale: true },
+        '2026-07-15T12:00:02.000Z',
+      ),
+    ).toBe(false);
+    expect(await conn.store.getPublicComputeResult(expired.compute_key)).toBeUndefined();
+  });
+
+  it('charges the durable write budget only for a newly created journey', async () => {
+    const tight = { bucket: 'tight-test', window_started_at: '2026-07-15T13:00:00.000Z', limit: 1 };
+    const first = {
+      run_id: 'gate_budget_a',
+      journey_token: 'journey_budget_a',
+      subject: { chain_id: '1', contract_address: `0x${'c'.repeat(40)}` },
+      inputs_hash: '3'.repeat(64),
+      threshold: 1,
+      outcome: 'submitted' as const,
+      ts: '2026-07-15T13:00:00.000Z',
+    };
+    expect(await conn.store.appendPublicGateLeakRun(first, tight)).toEqual({ created: true });
+    expect(await conn.store.appendPublicGateLeakRun(first, tight)).toEqual({ created: false });
+    expect(
+      await conn.store.appendPublicGateLeakRun(
+        {
+          ...first,
+          run_id: 'gate_budget_b',
+          journey_token: 'journey_budget_b',
+          inputs_hash: '4'.repeat(64),
+        },
+        tight,
+      ),
+    ).toEqual({ created: false, rate_limited: true });
+  });
+
   it('dedupes attention per journey+kind but counts a distinct journey', async () => {
     const event = {
       subject_chain_id: '80094',
-      subject_contract_address: '0xabc',
+      subject_contract_address: `0x${'a'.repeat(40)}`,
       journey_token: 'journey_attention_1',
       kind: 'submitted' as const,
       ts: '2026-07-15T12:00:00.000Z',

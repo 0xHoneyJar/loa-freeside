@@ -12,7 +12,7 @@ import {
 } from '../src/composition.js';
 import { ReProbeWorker } from '../src/reprobe-worker.js';
 
-const { store, orchestrator, enqueue, gateLeakReady } = await createOrderingComposition();
+const { store, orchestrator, enqueue, gateLeakReady, gateLeakIntakeBudget } = await createOrderingComposition();
 
 const serviceToken = serviceTokenFromEnv();
 const writeRoutes = writeRoutePostureFromEnv();
@@ -44,6 +44,7 @@ const app = createIntakeApp({
   serviceToken,
   serviceTokenLabel: serviceTokenLabelFromEnv(),
   gateLeakEnabled: gateLeakReady,
+  gateLeakIntakeBudget,
   healthz: {
     store: process.env.DATABASE_URL ? 'postgres' : 'memory',
     kitchen_enqueue: Boolean(enqueue),

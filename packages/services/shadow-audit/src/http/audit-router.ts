@@ -27,14 +27,18 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
+  AccessStartedAtDateSchema,
   OrderSchema,
   PUBLIC_JOURNEY_HTTP_STATUS,
+  PublicGateLeakChainIdSchema,
+  PublicGateLeakContractAddressSchema,
   REFUSAL_HTTP_STATUS,
   projectPublicJourney,
   type CohortCount,
   type Cta,
   type DriftReport,
   type Order,
+  type PublicJourneyProjection,
   type Refusal,
 } from '@freeside/shadow-audit-protocol';
 import {
@@ -118,8 +122,12 @@ export interface AuditRouterDeps {
    * reconstructions per window no matter who calls, how many IPs they rotate, or what headers they forge.
    */
   teaserBudget?: RateLimiter;
+  /** Required deployment-wide durable-write budget, consumed atomically by EventStore registration. */
+  publicJourneyBudget: { limit: number; windowMs: number };
   /** S2-T3: TTL for memoizing the (deterministic) teaser result, so repeat queries cost ZERO chain work. */
   teaserCacheTtlMs?: number;
+  /** Distributed compute-claim lease. A crashed worker becomes retryable after this interval. */
+  publicComputeLeaseMs?: number;
 }
 
 const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
@@ -129,6 +137,8 @@ const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
 const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
 
 type RefusalStatus = 404 | 422 | 429 | 503;
+
+class PublicJourneyBudgetExceededError extends Error {}
 
 function refusalStatus(refusal: Refusal): RefusalStatus {
   return (REFUSAL_HTTP_STATUS[refusal.code] ?? 422) as RefusalStatus;
@@ -222,6 +232,12 @@ async function readBody(c: Context): Promise<{ body: unknown; isForm: boolean }>
 export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const app = new Hono();
   const runWindow = deps.runWindowMs ?? DEFAULT_RUN_WINDOW_MS;
+  if (!Number.isInteger(deps.publicJourneyBudget.limit) || deps.publicJourneyBudget.limit < 1) {
+    throw new Error('publicJourneyBudget.limit must be a positive integer');
+  }
+  if (!Number.isInteger(deps.publicJourneyBudget.windowMs) || deps.publicJourneyBudget.windowMs < 1) {
+    throw new Error('publicJourneyBudget.windowMs must be a positive integer');
+  }
 
   const isRateLimited = (c: Context): boolean =>
     !deps.rateLimiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed;
@@ -269,17 +285,17 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
   const GateLeakBodySchema = z
     .object({
-      chain: z.string().min(1),
-      contract: z.string().min(1),
-      access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      chain: PublicGateLeakChainIdSchema,
+      contract: PublicGateLeakContractAddressSchema,
+      access_started_at: AccessStartedAtDateSchema.optional(),
       threshold: z.number().int().positive().optional(),
-      /** Client-retained retry key. Omitted means a genuinely new journey. */
+      /** Server-issued retry capability. A supplied token must already exist. */
       journey_token: z.string().min(1).max(128).optional(),
     })
     .strict();
   const ResumeGateLeakBodySchema = z
     .object({
-      access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      access_started_at: AccessStartedAtDateSchema,
     })
     .strict();
 
@@ -298,11 +314,11 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         }),
       )
       .digest('hex');
-  const publicRunId = (journeyToken: string, chain: string, contract: string): string =>
-    `gate_${createHash('sha256')
-      .update(`${journeyToken}:${chain}:${contract.toLowerCase()}`)
-      .digest('hex')
-      .slice(0, 24)}`;
+  // The run id is the anonymous mutation capability. It MUST be server-random; the
+  // caller-controlled journey token is only an idempotency/correlation key.
+  const publicRunId = (): string => `gate_${randomUUID().replaceAll('-', '')}`;
+  const isFutureAccessDate = (value: string, now: number): boolean =>
+    value > new Date(now).toISOString().slice(0, 10);
 
   const cacheSuccessfulTeaser = (key: string, now: number, output: AccessRiskOutput): void => {
     if (teaserCache.size >= TEASER_CACHE_MAX) {
@@ -311,8 +327,23 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
     teaserCache.set(key, { at: now, body: output });
   };
+  const publicComputeCacheKey = (args: {
+    chain: string;
+    contract: string;
+    accessStartedAt: string;
+    threshold: number;
+  }): string => `${args.chain}/${args.contract}/${args.accessStartedAt}/${args.threshold}`;
+  const publicComputeKey = (args: {
+    chain: string;
+    contract: string;
+    accessStartedAt: string;
+    threshold: number;
+  }): string => createHash('sha256').update(publicComputeCacheKey(args)).digest('hex');
 
-  type PublicCompute = { kind: 'result'; result: AccessRiskResult } | { kind: 'budget' };
+  type PublicCompute =
+    | { kind: 'result'; result: AccessRiskResult }
+    | { kind: 'budget' }
+    | { kind: 'in_progress' };
   const computePublic = async (args: {
     chain: string;
     contract: string;
@@ -320,28 +351,85 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     threshold: number;
     now: number;
   }): Promise<PublicCompute> => {
-    const cacheKey = `${args.chain}/${args.contract}/${args.accessStartedAt}/${args.threshold}`;
+    const cacheKey = publicComputeCacheKey(args);
+    const computeKey = publicComputeKey(args);
     const hit = teaserCache.get(cacheKey);
     if (hit && args.now - hit.at < teaserTtlMs) {
       return { kind: 'result', result: { ok: true, output: hit.body as AccessRiskOutput } };
     }
+    const durable = await deps.eventStore.getPublicComputeResult(computeKey);
+    if (durable !== undefined) {
+      const output = durable as AccessRiskOutput;
+      cacheSuccessfulTeaser(cacheKey, args.now, output);
+      return { kind: 'result', result: { ok: true, output } };
+    }
     const active = teaserInFlight.get(cacheKey);
     if (active) return active;
-    if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) return { kind: 'budget' };
+    const ownerToken = randomUUID();
+    const claimedAt = new Date(args.now).toISOString();
+    const claim = await deps.eventStore.claimPublicCompute({
+      compute_key: computeKey,
+      owner_token: ownerToken,
+      claimed_at: claimedAt,
+      lease_expires_at: new Date(args.now + (deps.publicComputeLeaseMs ?? 600_000)).toISOString(),
+    });
+    if (claim === 'complete') {
+      const completed = await deps.eventStore.getPublicComputeResult(computeKey);
+      if (completed !== undefined) {
+        const output = completed as AccessRiskOutput;
+        cacheSuccessfulTeaser(cacheKey, args.now, output);
+        return { kind: 'result', result: { ok: true, output } };
+      }
+      return { kind: 'in_progress' };
+    }
+    if (claim === 'busy') return { kind: 'in_progress' };
+    if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) {
+      await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+      return { kind: 'budget' };
+    }
     const computation = (async (): Promise<PublicCompute> => {
-      const result = await computeAccessRisk(
-        {
-          chain: args.chain,
-          contract: args.contract,
-          snapshotDate: args.accessStartedAt,
-          threshold: args.threshold,
-          nowUnixSeconds: Math.floor(args.now / 1000),
-          cta: deps.cta,
-        },
-        { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
-      );
-      if (result.ok) cacheSuccessfulTeaser(cacheKey, args.now, result.output);
-      return { kind: 'result', result };
+      try {
+        const result = await computeAccessRisk(
+          {
+            chain: args.chain,
+            contract: args.contract,
+            snapshotDate: args.accessStartedAt,
+            threshold: args.threshold,
+            nowUnixSeconds: Math.floor(args.now / 1000),
+            cta: deps.cta,
+          },
+          { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
+        );
+        if (result.ok) {
+          // Re-read the clock after the expensive work. Passing the claim timestamp here
+          // would let a computation that actually outlived its lease commit stale work.
+          const completed = await deps.eventStore.completePublicCompute(
+            computeKey,
+            ownerToken,
+            result.output,
+            new Date(deps.now()).toISOString(),
+          );
+          if (!completed) {
+            // Another replica may have renewed the lease while this one was working.
+            // Never publish or locally cache the stale owner's result.
+            const replacement = await deps.eventStore.getPublicComputeResult(computeKey);
+            if (replacement !== undefined) {
+              const output = replacement as AccessRiskOutput;
+              cacheSuccessfulTeaser(cacheKey, deps.now(), output);
+              return { kind: 'result', result: { ok: true, output } };
+            }
+            await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+            return { kind: 'in_progress' };
+          }
+          cacheSuccessfulTeaser(cacheKey, deps.now(), result.output);
+        } else {
+          await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+        }
+        return { kind: 'result', result };
+      } catch (error) {
+        await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+        throw error;
+      }
     })();
     teaserInFlight.set(cacheKey, computation);
     try {
@@ -373,29 +461,69 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     contract: string;
     threshold: number;
     inputsHash: string;
-    outcome: 'needs_input' | 'delivered_e1' | 'refused' | 'unavailable';
+    outcome: 'submitted' | 'computing' | 'needs_input' | 'delivered_e1' | 'refused' | 'unavailable';
     refusalCode?: Refusal['code'];
     accessStartedAt?: string;
     staleSetSize?: number;
     now: number;
   }) => {
     const subject = publicSubject(args.chain, args.contract);
-    await deps.eventStore.appendPublicGateLeakRun({
-      run_id: args.runId,
-      journey_token: args.journeyToken,
-      subject,
-      inputs_hash: args.inputsHash,
-      threshold: args.threshold,
-      outcome: args.outcome,
-      refusal_code: args.refusalCode,
-      access_started_at: args.accessStartedAt,
-      ts: new Date(args.now).toISOString(),
-    });
+    const appended = await deps.eventStore.appendPublicGateLeakRun(
+      {
+        run_id: args.runId,
+        journey_token: args.journeyToken,
+        subject,
+        inputs_hash: args.inputsHash,
+        threshold: args.threshold,
+        outcome: args.outcome,
+        refusal_code: args.refusalCode,
+        access_started_at: args.accessStartedAt,
+        ts: new Date(args.now).toISOString(),
+      },
+      {
+        bucket: 'public-gate-leak',
+        window_started_at: new Date(
+          Math.floor(args.now / deps.publicJourneyBudget.windowMs) * deps.publicJourneyBudget.windowMs,
+        ).toISOString(),
+        limit: deps.publicJourneyBudget.limit,
+      },
+    );
+    if (appended.rate_limited) throw new PublicJourneyBudgetExceededError();
+    let durable = await deps.eventStore.getPublicGateLeakJourneyByToken(args.journeyToken);
+    if (!durable) throw new Error(`public journey disappeared after append: ${args.journeyToken}`);
+    if (!appended.created && args.accessStartedAt) {
+      await deps.eventStore.appendPublicJourneyInput({
+        run_id: durable.run_id,
+        input: 'access_started_at',
+        value: args.accessStartedAt,
+        ts: new Date(args.now).toISOString(),
+      });
+    }
+    if (!appended.created && args.outcome !== 'submitted' && durable.current_outcome !== args.outcome) {
+      try {
+        await deps.eventStore.appendPublicJourneyTransition({
+          run_id: durable.run_id,
+          outcome: args.outcome,
+          refusal_code: args.refusalCode,
+          ts: new Date(args.now).toISOString(),
+        });
+      } catch (error) {
+        // A concurrent terminal writer wins. Durable state, never the attempted state,
+        // remains the response truth. Other conflicts (notably semantic input) surface.
+        if (!(error instanceof Error && error.message.includes('terminal public journey'))) throw error;
+      }
+      durable = (await deps.eventStore.getPublicGateLeakJourney(durable.run_id)) ?? durable;
+    }
+    const runId = durable.run_id;
     // Self-healing binding: if a prior attempt persisted the public journey but died before
     // registering the feedback run, the retry fills the missing append-only event.
-    if (!(await deps.eventStore.getRun(args.runId))) {
+    if (
+      durable.current_outcome !== 'submitted' &&
+      durable.current_outcome !== 'computing' &&
+      !(await deps.eventStore.getRun(runId))
+    ) {
       await deps.eventStore.appendRunEvent({
-        run_id: args.runId,
+        run_id: runId,
         mode: 'public-gate-leak',
         inputs_hash: args.inputsHash,
         stale_set_size: args.staleSetSize ?? 0,
@@ -403,17 +531,62 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         ts: new Date(args.now).toISOString(),
       });
     }
-    await attention(subject, args.journeyToken, 'submitted', args.now);
-    if (args.outcome === 'needs_input' || args.outcome === 'delivered_e1' || args.outcome === 'refused') {
-      await attention(subject, args.journeyToken, args.outcome, args.now);
+    await attention(durable.subject, durable.journey_token, 'submitted', args.now);
+    if (
+      durable.current_outcome === 'needs_input' ||
+      durable.current_outcome === 'delivered_e1' ||
+      durable.current_outcome === 'refused'
+    ) {
+      await attention(durable.subject, durable.journey_token, durable.current_outcome, args.now);
     }
     return projectPublicJourney({
-      run_id: args.runId,
-      journey_token: args.journeyToken,
-      subject,
-      outcome: args.outcome,
-      refusal_code: args.refusalCode,
+      run_id: durable.run_id,
+      journey_token: durable.journey_token,
+      subject: durable.subject,
+      outcome: durable.current_outcome,
+      refusal_code: durable.current_refusal_code,
     });
+  };
+
+  const publicJourneyStatus = (journey: PublicJourneyProjection): 200 | 202 | 404 | 422 | 428 | 429 | 503 =>
+    journey.status.state === 'refused'
+      ? (REFUSAL_HTTP_STATUS[journey.status.refusal_code] as 404 | 422 | 429 | 503)
+      : (PUBLIC_JOURNEY_HTTP_STATUS[journey.status.state] as 200 | 202 | 428 | 503);
+
+  const respondFromDurableJourney = async (
+    c: Context,
+    args: {
+      journey: PublicJourneyProjection;
+      attemptedRefusal?: Refusal;
+      output?: AccessRiskOutput;
+      compute?: { chain: string; contract: string; accessStartedAt: string; threshold: number };
+    },
+  ): Promise<Response> => {
+    if (args.journey.status.state === 'delivered_e1') {
+      let output = args.output;
+      if (!output && args.compute) {
+        output = (await deps.eventStore.getPublicComputeResult(publicComputeKey(args.compute))) as
+          | AccessRiskOutput
+          | undefined;
+      }
+      if (!output) {
+        // A delivered transition without its immutable aggregate artifact is a
+        // storage inconsistency. Never attach the losing attempted refusal or
+        // fabricate a success body.
+        return c.json({ journey: args.journey, error: 'delivered report is temporarily unavailable' }, 503);
+      }
+      return c.json({ journey: args.journey, report: { ...output, run_id: args.journey.run_id } }, 200);
+    }
+    if (
+      args.journey.status.state === 'refused' &&
+      args.attemptedRefusal?.code === args.journey.status.refusal_code
+    ) {
+      return c.json(
+        { journey: args.journey, error: args.attemptedRefusal },
+        publicJourneyStatus(args.journey),
+      );
+    }
+    return c.json({ journey: args.journey }, publicJourneyStatus(args.journey));
   };
 
   app.get('/v1/access-risk', async (c) => {
@@ -524,10 +697,51 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (!parsed.success) return c.json({ error: 'invalid gate-leak input', issues: parsed.error.issues }, 400);
 
     const threshold = parsed.data.threshold ?? 1;
-    const journeyToken = parsed.data.journey_token ?? randomUUID();
-    const runId = publicRunId(journeyToken, parsed.data.chain, parsed.data.contract);
     const inputsHash = originalSubmissionHash(parsed.data.chain, parsed.data.contract, threshold);
     const now = deps.now();
+    if (parsed.data.access_started_at && isFutureAccessDate(parsed.data.access_started_at, now)) {
+      return c.json({ error: 'access_started_at cannot be in the future' }, 400);
+    }
+    const existing = parsed.data.journey_token
+      ? await deps.eventStore.getPublicGateLeakJourneyByToken(parsed.data.journey_token)
+      : undefined;
+    if (parsed.data.journey_token && !existing) {
+      // Tokens are capabilities issued by this server, not caller-chosen aliases.
+      // Rejecting unknown tokens prevents low-entropy preclaims from becoming a
+      // lookup path to the server-random run/resume capability.
+      return c.json({ error: 'journey_token is unknown' }, 404);
+    }
+    const journeyToken = existing?.journey_token ?? randomUUID();
+    if (
+      existing &&
+      (existing.inputs_hash !== inputsHash ||
+        existing.subject.chain_id !== parsed.data.chain ||
+        existing.subject.contract_address !== parsed.data.contract.toLowerCase() ||
+        existing.threshold !== threshold ||
+        (parsed.data.access_started_at !== undefined &&
+          existing.supplied_access_started_at !== undefined &&
+          parsed.data.access_started_at !== existing.supplied_access_started_at))
+    ) {
+      return c.json({ error: 'journey_token conflicts with its original submission' }, 409);
+    }
+    const runId = existing?.run_id ?? publicRunId();
+    try {
+      await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'submitted',
+        now,
+      });
+    } catch (error) {
+      if (error instanceof PublicJourneyBudgetExceededError) {
+        return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+      }
+      throw error;
+    }
 
     if (!deps.collectionRegistry) {
       const journey = await registerPublicJourney({
@@ -540,7 +754,17 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         outcome: 'unavailable',
         now,
       });
-      return c.json({ journey }, 503);
+      return respondFromDurableJourney(c, {
+        journey,
+        compute: existing?.supplied_access_started_at
+          ? {
+              chain: parsed.data.chain,
+              contract: parsed.data.contract,
+              accessStartedAt: existing.supplied_access_started_at,
+              threshold,
+            }
+          : undefined,
+      });
     }
 
     const ref = deps.collectionRegistry({ chain: parsed.data.chain, contract: parsed.data.contract });
@@ -561,7 +785,18 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         refusalCode: refusal.code,
         now,
       });
-      return c.json({ journey, error: refusal }, refusalStatus(refusal));
+      return respondFromDurableJourney(c, {
+        journey,
+        attemptedRefusal: refusal,
+        compute: existing?.supplied_access_started_at
+          ? {
+              chain: parsed.data.chain,
+              contract: parsed.data.contract,
+              accessStartedAt: existing.supplied_access_started_at,
+              threshold,
+            }
+          : undefined,
+      });
     }
 
     const accessStartedAt = parsed.data.access_started_at ?? ref.access_started_at;
@@ -576,7 +811,52 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         outcome: 'needs_input',
         now,
       });
-      return c.json({ journey }, 428);
+      return respondFromDurableJourney(c, {
+        journey,
+        compute: existing?.supplied_access_started_at
+          ? {
+              chain: parsed.data.chain,
+              contract: parsed.data.contract,
+              accessStartedAt: existing.supplied_access_started_at,
+              threshold,
+            }
+          : undefined,
+      });
+    }
+    if (!AccessStartedAtDateSchema.safeParse(accessStartedAt).success || isFutureAccessDate(accessStartedAt, now)) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'unavailable',
+        now,
+      });
+      if (journey.status.state === 'unavailable') {
+        return c.json({ journey, error: 'registry access_started_at is invalid or in the future' }, 503);
+      }
+      return respondFromDurableJourney(c, { journey });
+    }
+
+    const computingJourney = await registerPublicJourney({
+      runId,
+      journeyToken,
+      chain: parsed.data.chain,
+      contract: parsed.data.contract,
+      threshold,
+      inputsHash,
+      outcome: 'computing',
+      accessStartedAt,
+      now,
+    });
+    if (computingJourney.status.state === 'delivered_e1' || computingJourney.status.state === 'refused') {
+      // A concurrent terminal state wins. A delivered retry continues to the durable
+      // compute cache below so the report can be returned; a refusal is already complete.
+      if (computingJourney.status.state === 'refused') {
+        return c.json({ journey: computingJourney }, publicJourneyStatus(computingJourney));
+      }
     }
 
     const computed = await computePublic({
@@ -599,7 +879,28 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         accessStartedAt,
         now,
       });
-      return c.json({ journey, error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+      return respondFromDurableJourney(c, {
+        journey,
+        attemptedRefusal: rateLimitRefusal,
+        compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+      });
+    }
+    if (computed.kind === 'in_progress') {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'computing',
+        accessStartedAt,
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+      });
     }
     if (!computed.result.ok) {
       const journey = await registerPublicJourney({
@@ -614,7 +915,11 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         accessStartedAt,
         now,
       });
-      return c.json({ journey, error: computed.result.refusal }, refusalStatus(computed.result.refusal));
+      return respondFromDurableJourney(c, {
+        journey,
+        attemptedRefusal: computed.result.refusal,
+        compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+      });
     }
 
     const staleUpper = computed.result.output.stale_access_upper_bound;
@@ -630,7 +935,11 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       staleSetSize: staleUpper.kind === 'exact' ? staleUpper.value : 0,
       now,
     });
-    return c.json({ journey, report: { ...computed.result.output, run_id: runId } }, 200);
+    return respondFromDurableJourney(c, {
+      journey,
+      output: computed.result.output,
+      compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+    });
   });
 
   // Appends the missing semantic input; never rewrites the original submission/digest.
@@ -641,10 +950,14 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
     const parsed = ResumeGateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid resume input', issues: parsed.error.issues }, 400);
+    const now = deps.now();
+    if (isFutureAccessDate(parsed.data.access_started_at, now)) {
+      return c.json({ error: 'access_started_at cannot be in the future' }, 400);
+    }
 
     const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
     if (!run) return c.json({ error: 'journey not found' }, 404);
-    if (run.current_outcome !== 'needs_input') {
+    if (run.current_outcome !== 'needs_input' && run.current_outcome !== 'computing') {
       const journey = projectPublicJourney({
         run_id: run.run_id,
         journey_token: run.journey_token,
@@ -652,11 +965,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         outcome: run.current_outcome,
         refusal_code: run.current_refusal_code,
       });
-      const status = PUBLIC_JOURNEY_HTTP_STATUS[journey.status.state];
-      return c.json({ journey }, status === 200 ? 200 : status === 503 ? 503 : status === 428 ? 428 : 202);
+      return c.json({ journey }, publicJourneyStatus(journey));
     }
 
-    const now = deps.now();
     try {
       await deps.eventStore.appendPublicJourneyInput({
         run_id: run.run_id,
@@ -678,63 +989,39 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       threshold: run.threshold,
       now,
     });
-    if (computed.kind === 'budget') {
-      await deps.eventStore.appendPublicJourneyTransition({
-        run_id: run.run_id,
-        outcome: 'refused',
-        refusal_code: rateLimitRefusal.code,
-        ts: new Date(now).toISOString(),
-      });
-      await attention(run.subject, run.journey_token, 'refused', now);
-      const journey = projectPublicJourney({
-        run_id: run.run_id,
-        journey_token: run.journey_token,
-        subject: run.subject,
-        outcome: 'refused',
-        refusal_code: rateLimitRefusal.code,
-      });
-      return c.json({ journey, error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
-    }
-    if (!computed.result.ok) {
-      await deps.eventStore.appendPublicJourneyTransition({
-        run_id: run.run_id,
-        outcome: 'refused',
-        refusal_code: computed.result.refusal.code,
-        ts: new Date(now).toISOString(),
-      });
-      await attention(run.subject, run.journey_token, 'refused', now);
-      const journey = projectPublicJourney({
-        run_id: run.run_id,
-        journey_token: run.journey_token,
-        subject: run.subject,
-        outcome: 'refused',
-        refusal_code: computed.result.refusal.code,
-      });
-      return c.json({ journey, error: computed.result.refusal }, refusalStatus(computed.result.refusal));
-    }
-
-    await deps.eventStore.appendPublicJourneyTransition({
-      run_id: run.run_id,
-      outcome: 'delivered_e1',
-      ts: new Date(now).toISOString(),
+    const refusal =
+      computed.kind === 'budget'
+        ? rateLimitRefusal
+        : computed.kind === 'result' && !computed.result.ok
+          ? computed.result.refusal
+          : undefined;
+    const output = computed.kind === 'result' && computed.result.ok ? computed.result.output : undefined;
+    const staleUpper = output?.stale_access_upper_bound;
+    const outcome = computed.kind === 'in_progress' ? 'computing' : refusal ? 'refused' : 'delivered_e1';
+    const journey = await registerPublicJourney({
+      runId: run.run_id,
+      journeyToken: run.journey_token,
+      chain: run.subject.chain_id,
+      contract: run.subject.contract_address,
+      threshold: run.threshold,
+      inputsHash: run.inputs_hash,
+      outcome,
+      refusalCode: refusal?.code,
+      accessStartedAt: parsed.data.access_started_at,
+      staleSetSize: staleUpper?.kind === 'exact' ? staleUpper.value : 0,
+      now,
     });
-    await attention(run.subject, run.journey_token, 'delivered_e1', now);
-    const staleUpper = computed.result.output.stale_access_upper_bound;
-    await deps.eventStore.appendRunEvent({
-      run_id: run.run_id,
-      mode: 'public-gate-leak',
-      inputs_hash: run.inputs_hash,
-      stale_set_size: staleUpper.kind === 'exact' ? staleUpper.value : 0,
-      reruns: 0,
-      ts: new Date(now).toISOString(),
+    return respondFromDurableJourney(c, {
+      journey,
+      attemptedRefusal: refusal,
+      output,
+      compute: {
+        chain: run.subject.chain_id,
+        contract: run.subject.contract_address,
+        accessStartedAt: parsed.data.access_started_at,
+        threshold: run.threshold,
+      },
     });
-    const journey = projectPublicJourney({
-      run_id: run.run_id,
-      journey_token: run.journey_token,
-      subject: run.subject,
-      outcome: 'delivered_e1',
-    });
-    return c.json({ journey, report: { ...computed.result.output, run_id: run.run_id } }, 200);
   });
 
   // Minimal internal/public poll. The dashboard BFF remains a later medium-specific projection.

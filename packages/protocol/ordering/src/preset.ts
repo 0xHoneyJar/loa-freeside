@@ -59,12 +59,19 @@ const NumericEvmChainId = z.string().regex(/^\d+$/, 'chain must be a numeric EVM
 const EvmContractAddress = z
   .string()
   .regex(/^0x[0-9a-fA-F]{40}$/, 'contract must be a 0x-prefixed 20-byte EVM address');
+const IsoCalendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+  }, 'expected a real calendar date');
 
 /** Inputs for the access-risk-audit product (order-level only). */
 export const AccessRiskAuditInputs = z
   .object({
-    chain: NumericEvmChainId,
-    contract: EvmContractAddress,
+    chain: z.string().min(1),
+    contract: z.string().min(1),
     snapshot_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD'),
     threshold: z.number().int().positive().optional(),
   })
@@ -84,12 +91,12 @@ export const CommunityOnboardingInputs = z
   .strict();
 export type CommunityOnboardingInputs = z.infer<typeof CommunityOnboardingInputs>;
 
-/** Anonymous-friendly input for the free gate-leak rung. Contact is explicitly optional. */
+/** Anonymous-friendly input for the free gate-leak rung. Contact is excluded until explicit signup/consent. */
 export const GateLeakInputs = z
   .object({
     chain_id: NumericEvmChainId,
     contract_address: EvmContractAddress,
-    access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    access_started_at: IsoCalendarDate.optional(),
     source: z.literal('public_gate_leak'),
     attribution: z.string().min(1).max(160).optional(),
   })
@@ -104,7 +111,9 @@ export const CommunityOnboardingIngredients = z
   .object({
     sonar: IngredientStatus,
     score: IngredientStatus,
-    metadata_snapshot: IngredientStatus,
+    // Existing persisted onboarding rows predate this ingredient. Parse them as
+    // opted-out; newly placed rows still initialize it to `pending` below.
+    metadata_snapshot: IngredientStatus.default('optional'),
     worlds_manifest: IngredientStatus,
     discord_observer: IngredientStatus,
     shadow_preview: IngredientStatus,

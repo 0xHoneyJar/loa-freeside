@@ -50,6 +50,8 @@ export interface AuditServerConfig {
   /** S2-T3 HARD BOUND: global cap on teaser chain-reconstructions (cache misses), keyed on a constant so
    *  no header/IP rotation can raise it. Default 30 / 60s. */
   teaserBudget?: { limit: number; windowMs: number };
+  /** Global cap on NEW durable anonymous journeys. Default 120 / 60s per replica. */
+  publicJourneyBudget?: { limit: number; windowMs: number };
   /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
    *  the role source falls back to the file at `roleSnapshotPath` (existing behavior). */
@@ -132,6 +134,7 @@ export function buildAuditApp(
   // reconstructions — keyed on a constant, so no amount of IP/header rotation raises it. 30/min bounds
   // worst-case RPC spend on the public endpoint regardless of caller identity.
   const teaserBudgetCfg = config.teaserBudget ?? { limit: 30, windowMs: 60_000 };
+  const publicJourneyBudgetCfg = config.publicJourneyBudget ?? { limit: 120, windowMs: 60_000 };
 
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
   // the ingestion sink (POST /v1/role-snapshot writes it, load() reads it — the SAME instance, so an
@@ -202,6 +205,7 @@ export function buildAuditApp(
       windowMs: teaserBudgetCfg.windowMs,
       now,
     }),
+    publicJourneyBudget: publicJourneyBudgetCfg,
     auth: failClosedAuth(),
     isOperatedCommunity: (id) => config.operatedCommunities.includes(id),
     cta: config.cta,

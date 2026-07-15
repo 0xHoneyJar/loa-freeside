@@ -114,9 +114,19 @@ export interface GateLeakOrderInput {
   supplied_at_unix: number;
 }
 
+export interface OrderWriteBudget {
+  bucket: string;
+  window_started_at: string;
+  limit: number;
+}
+
 export interface OrderStore {
   /** Persist a new order in `placed` + enqueue its `placed` event. Idempotent on `order_id`. */
-  placeOrder(order: NewOrder, placedEvent: OutboxEvent): Promise<{ created: boolean; record: OrderRecord }>;
+  placeOrder(
+    order: NewOrder,
+    placedEvent: OutboxEvent,
+    writeBudget?: OrderWriteBudget,
+  ): Promise<{ created: boolean; record: OrderRecord }>;
   get(orderId: string): Promise<OrderRecord | undefined>;
   /** CAS transition: applies only when current state === `expectedFrom`. Returns `{ ok: false }` on a CAS miss. */
   transition(
@@ -127,6 +137,8 @@ export interface OrderStore {
   ): Promise<{ ok: boolean; record?: OrderRecord }>;
   /** Enqueue an event WITHOUT a state change (e.g. `producing`, emitted 0..n times while in `producing`). */
   appendEvent(orderId: string, event: OutboxEvent): Promise<void>;
+  /** Enqueue once on a durable semantic key (used for replay-safe lifecycle steps). */
+  appendEventOnce(orderId: string, event: OutboxEvent, idempotencyKey: string): Promise<{ created: boolean }>;
   /** Patch fields without a lifecycle transition (e.g. ingredient updates while `producing`). */
   patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord>;
   pendingOutbox(): Promise<OutboxEntry[]>;
@@ -150,6 +162,13 @@ export class OrderNotFoundError extends Error {
   }
 }
 
+export class OrderWriteBudgetExceededError extends Error {
+  constructor() {
+    super('order write budget exceeded');
+    this.name = 'OrderWriteBudgetExceededError';
+  }
+}
+
 export interface InMemoryOrderStoreOptions {
   /** Unix-seconds clock for created_at/updated_at. Injectable for deterministic tests. */
   now?: () => number;
@@ -166,6 +185,8 @@ export class InMemoryOrderStore implements OrderStore {
   private readonly gateLeakWork = new Map<string, GateLeakWorkClaim>();
   private readonly gateLeakInputs = new Map<string, GateLeakOrderInput>();
   private readonly gateLeakJoins: GateLeakCommunityJoin[] = [];
+  private readonly outboxIdempotencyKeys = new Set<string>();
+  private readonly orderWrites = new Map<string, number>();
   private seq = 0;
   private readonly now: () => number;
 
@@ -177,9 +198,22 @@ export class InMemoryOrderStore implements OrderStore {
     this.outbox.push({ seq: this.seq++, order_id: orderId, subject: event.subject, payload: event.payload, published: false });
   }
 
-  async placeOrder(order: NewOrder, placedEvent: OutboxEvent): Promise<{ created: boolean; record: OrderRecord }> {
+  async placeOrder(
+    order: NewOrder,
+    placedEvent: OutboxEvent,
+    writeBudget?: OrderWriteBudget,
+  ): Promise<{ created: boolean; record: OrderRecord }> {
     const existing = this.orders.get(order.order_id);
     if (existing) return { created: false, record: existing };
+    if (writeBudget) {
+      if (!Number.isInteger(writeBudget.limit) || writeBudget.limit < 1) {
+        throw new Error('order write budget limit must be positive');
+      }
+      const budgetKey = `${writeBudget.bucket}:${writeBudget.window_started_at}`;
+      const used = this.orderWrites.get(budgetKey) ?? 0;
+      if (used >= writeBudget.limit) throw new OrderWriteBudgetExceededError();
+      this.orderWrites.set(budgetKey, used + 1);
+    }
     const ts = this.now();
     const record: OrderRecord = {
       order_id: order.order_id,
@@ -230,6 +264,18 @@ export class InMemoryOrderStore implements OrderStore {
   async appendEvent(orderId: string, event: OutboxEvent): Promise<void> {
     if (!this.orders.has(orderId)) throw new OrderNotFoundError(orderId);
     this.enqueue(orderId, event);
+  }
+
+  async appendEventOnce(
+    orderId: string,
+    event: OutboxEvent,
+    idempotencyKey: string,
+  ): Promise<{ created: boolean }> {
+    if (!this.orders.has(orderId)) throw new OrderNotFoundError(orderId);
+    if (this.outboxIdempotencyKeys.has(idempotencyKey)) return { created: false };
+    this.outboxIdempotencyKeys.add(idempotencyKey);
+    this.enqueue(orderId, event);
+    return { created: true };
   }
 
   async patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord> {

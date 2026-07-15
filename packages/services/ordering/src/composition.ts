@@ -16,6 +16,7 @@ import { FulfillmentOrchestrator, FulfillmentOrchestratorWorker } from './fulfil
 import { CommunityOnboardingOrchestrator } from './community-onboarding-orchestrator.js';
 import { gateLeakPortsFromEnv } from './gate-leak-ports.js';
 import { lifecyclePublisherFromEnv, type LifecyclePublisher } from './lifecycle-publisher.js';
+import { gateLeakIntakeBudgetFromEnv, type GateLeakIntakeBudget } from './gate-leak-budget.js';
 
 class NoopAudit implements AuditPort {
   async invoke(): Promise<AuditServiceResult> {
@@ -68,6 +69,7 @@ export interface OrderingComposition {
   lifecyclePublisher: LifecyclePublisher | undefined;
   /** True only when index, compute, and durable lifecycle publication are all wired. */
   gateLeakReady: boolean;
+  gateLeakIntakeBudget: GateLeakIntakeBudget;
 }
 
 export async function createOrderingComposition(): Promise<OrderingComposition> {
@@ -78,6 +80,7 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
   const enqueue = github || httpProbes ? new IngredientEnqueueService(store, github, httpProbes) : undefined;
   const gateLeakPorts = gateLeakPortsFromEnv();
   const lifecyclePublisher = lifecyclePublisherFromEnv();
+  const gateLeakIntakeBudget = gateLeakIntakeBudgetFromEnv();
   const gateLeakParts = [gateLeakPorts.gateLeak, gateLeakPorts.index, lifecyclePublisher].filter(Boolean).length;
   const gateLeakReady = gateLeakParts === 3;
   if (gateLeakParts > 0 && !gateLeakReady) {
@@ -104,7 +107,7 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
     lifecyclePublisher,
   });
 
-  return { store, orchestrator, enqueue, lifecyclePublisher, gateLeakReady };
+  return { store, orchestrator, enqueue, lifecyclePublisher, gateLeakReady, gateLeakIntakeBudget };
 }
 
 export function orchestratorEnabled(): boolean {

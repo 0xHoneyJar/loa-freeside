@@ -83,10 +83,11 @@ export class GateLeakOrchestrator {
     if (!record.output) {
       for (const [step, recipeStep] of GATE_LEAK_PRESET.recipe.entries()) {
         const producing: OrderProducing = { order_id: orderId, step, step_label: recipeStep.label };
-        await this.deps.store.appendEvent(orderId, {
-          subject: ORDER_LIFECYCLE_SUBJECTS.producing,
-          payload: producing,
-        });
+        await this.deps.store.appendEventOnce(
+          orderId,
+          { subject: ORDER_LIFECYCLE_SUBJECTS.producing, payload: producing },
+          `${orderId}:gate-leak:producing:${step}`,
+        );
       }
     }
 
@@ -149,7 +150,12 @@ export class GateLeakOrchestrator {
               chain: inputs.chain_id,
               contract: inputs.contract_address,
               access_started_at: accessStartedAt,
-              journey_token: orderId,
+              // The public service issues this capability. The local indexing
+              // projection uses orderId placeholders and must not promote them.
+              journey_token:
+                priorJourney.success && priorJourney.data.run_id !== orderId
+                  ? priorJourney.data.journey_token
+                  : undefined,
             });
     } catch (error) {
       return { success: false, retryable: true, error: error instanceof Error ? error : new Error(String(error)) };
@@ -171,8 +177,8 @@ export class GateLeakOrchestrator {
         await this.deps.store.patchRecord(orderId, {
           output: {
             journey: projectPublicJourney({
-              run_id: orderId,
-              journey_token: orderId,
+              run_id: submitted.journey.run_id,
+              journey_token: submitted.journey.journey_token,
               subject,
               outcome: 'indexing',
             }),

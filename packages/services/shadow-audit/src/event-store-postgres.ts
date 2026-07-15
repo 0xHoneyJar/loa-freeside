@@ -5,27 +5,32 @@
  * runtime historically wired ONLY `InMemoryEventStore` (per-replica, non-durable) —
  * so a registered run vanished on restart and feedback could never bind across a
  * deploy. This adapter makes the store durable while preserving every EventStore
- * invariant: append-only (INSERT only, no UPDATE/DELETE), aggregate-only (the row
- * shape has NO member columns), and consent-required contact.
+ * invariant: the journey/event ledger is append-only, aggregate-only (the row shape
+ * has NO member columns), and consent-required. The separate compute cache is an
+ * operational renewable lease, so it deliberately updates/deletes lease rows.
  *
  * Same idiom as role-store-postgres.ts: the `postgres` tagged-template client, an
  * idempotent `initialize()` that runs before HTTP bind, and a `connect*` helper that
  * owns the pool + close.
  */
 
-import postgres, { type Sql } from 'postgres';
+import postgres, { type Sql, type TransactionSql } from 'postgres';
 import {
   ContactRecordSchema,
   PublicGateLeakRunSchema,
   PublicJourneyInputEventSchema,
   PublicJourneyTransitionSchema,
   RunEventSchema,
+  publicJourneyTransitionDisposition,
   type ContactRecord,
   type EventStore,
+  type PublicComputeClaim,
+  type PublicComputeClaimResult,
   type PublicGateLeakJourneyRecord,
   type PublicGateLeakRun,
   type PublicJourneyInputEvent,
   type PublicJourneyTransition,
+  type PublicJourneyWriteBudget,
   type RunEvent,
 } from './event-store.js';
 import {
@@ -35,10 +40,11 @@ import {
   type RefusalCode,
 } from '@freeside/shadow-audit-protocol';
 
+class PublicJourneyBudgetExceededError extends Error {}
+
 /**
  * Durable EventStore over Postgres. Schema init is idempotent and completes before
- * the server accepts traffic. Append-only by construction — this class issues no
- * UPDATE or DELETE.
+ * the server accepts traffic. Journey history is append-only; compute leases are not history.
  */
 export class PostgresEventStore implements EventStore {
   constructor(private readonly sql: Sql) {}
@@ -70,6 +76,17 @@ export class PostgresEventStore implements EventStore {
     `;
     await this.sql`
       CREATE INDEX IF NOT EXISTS shadow_audit_run_events_ts_idx ON shadow_audit_run_events (ts)
+    `;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS shadow_audit_public_run_registration_keys (
+        run_id TEXT PRIMARY KEY
+      )
+    `;
+    await this.sql`
+      INSERT INTO shadow_audit_public_run_registration_keys (run_id)
+      SELECT DISTINCT run_id FROM shadow_audit_run_events
+      WHERE mode = 'public-gate-leak' AND reaction IS NULL AND cta_interaction IS NULL
+      ON CONFLICT (run_id) DO NOTHING
     `;
     await this.sql`
       CREATE TABLE IF NOT EXISTS shadow_audit_contacts (
@@ -148,6 +165,25 @@ export class PostgresEventStore implements EventStore {
         UNIQUE (journey_token, kind)
       )
     `;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS gate_leak_compute_cache (
+        compute_key                CHAR(64)    PRIMARY KEY,
+        state                      TEXT        NOT NULL CHECK (state IN ('running', 'complete')),
+        owner_token                TEXT        NOT NULL,
+        lease_expires_at           TIMESTAMPTZ NOT NULL,
+        result                     JSONB,
+        updated_at                 TIMESTAMPTZ NOT NULL,
+        CHECK ((state = 'complete') = (result IS NOT NULL))
+      )
+    `;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS gate_leak_journey_write_budget (
+        bucket                     TEXT        NOT NULL,
+        window_started_at          TIMESTAMPTZ NOT NULL,
+        used                       INTEGER     NOT NULL CHECK (used >= 0),
+        PRIMARY KEY (bucket, window_started_at)
+      )
+    `;
     // Forward-migrate an existing table that still carries 0001's narrow (mode = 'dogfood-full')
     // CHECK. No-op on a table this class just created with the widened constraint.
     await this.sql`
@@ -179,16 +215,31 @@ export class PostgresEventStore implements EventStore {
   async appendRunEvent(event: RunEvent): Promise<void> {
     // Validate at the boundary — a smuggled member field is a hard parse failure (.strict()).
     const e = RunEventSchema.parse(event);
-    await this.sql`
-      INSERT INTO shadow_audit_run_events (
-        run_id, mode, inputs_hash, stale_set_size,
-        time_on_stale_section_ms, reruns, reaction, cta_interaction, ts
-      ) VALUES (
-        ${e.run_id}, ${e.mode}, ${e.inputs_hash}, ${e.stale_set_size},
-        ${e.time_on_stale_section_ms ?? null}, ${e.reruns},
-        ${e.reaction ?? null}, ${e.cta_interaction ?? null}, ${e.ts}::timestamptz
-      )
-    `;
+    const append = async (sql: Sql | TransactionSql): Promise<void> => {
+      await sql`
+        INSERT INTO shadow_audit_run_events (
+          run_id, mode, inputs_hash, stale_set_size,
+          time_on_stale_section_ms, reruns, reaction, cta_interaction, ts
+        ) VALUES (
+          ${e.run_id}, ${e.mode}, ${e.inputs_hash}, ${e.stale_set_size},
+          ${e.time_on_stale_section_ms ?? null}, ${e.reruns},
+          ${e.reaction ?? null}, ${e.cta_interaction ?? null}, ${e.ts}::timestamptz
+        )
+      `;
+    };
+    if (e.mode !== 'public-gate-leak' || e.reaction || e.cta_interaction) {
+      await append(this.sql);
+      return;
+    }
+    await this.sql.begin(async (sql) => {
+      const keys = await sql<{ run_id: string }[]>`
+        INSERT INTO shadow_audit_public_run_registration_keys (run_id)
+        VALUES (${e.run_id})
+        ON CONFLICT (run_id) DO NOTHING
+        RETURNING run_id
+      `;
+      if (keys.length > 0) await append(sql);
+    });
   }
 
   async appendContact(record: ContactRecord): Promise<void> {
@@ -220,69 +271,149 @@ export class PostgresEventStore implements EventStore {
     return { ts, inputs_hash: row.inputs_hash };
   }
 
-  async appendPublicGateLeakRun(run: PublicGateLeakRun): Promise<{ created: boolean }> {
+  async appendPublicGateLeakRun(
+    run: PublicGateLeakRun,
+    budget: PublicJourneyWriteBudget,
+  ): Promise<{ created: boolean; rate_limited?: boolean }> {
     const value = PublicGateLeakRunSchema.parse(run);
-    await this.sql`
-      INSERT INTO gate_leak_subject (
-        subject_chain_id, subject_contract_address, first_seen_ts
-      ) VALUES (
-        ${value.subject.chain_id}, ${value.subject.contract_address}, ${value.ts}::timestamptz
-      ) ON CONFLICT (subject_chain_id, subject_contract_address) DO NOTHING
-    `;
-    const inserted = await this.sql<{ run_id: string }[]>`
-      INSERT INTO public_gate_leak_runs (
-        run_id, journey_token, inputs_hash, subject_chain_id, subject_contract_address,
-        threshold, outcome, refusal_code, access_started_at, ts
-      ) VALUES (
-        ${value.run_id}, ${value.journey_token}, ${value.inputs_hash},
-        ${value.subject.chain_id}, ${value.subject.contract_address},
-        ${value.threshold}, ${value.outcome}, ${value.refusal_code ?? null},
-        ${value.access_started_at ?? null}::date, ${value.ts}::timestamptz
-      ) ON CONFLICT (run_id) DO NOTHING
-      RETURNING run_id
-    `;
-    if (inserted.length > 0) return { created: true };
+    if (!Number.isInteger(budget.limit) || budget.limit < 1) throw new Error('public journey budget limit must be positive');
+    try {
+      return await this.sql.begin(async (sql) => {
+        const inserted = await sql<{ run_id: string }[]>`
+          INSERT INTO public_gate_leak_runs (
+            run_id, journey_token, inputs_hash, subject_chain_id, subject_contract_address,
+            threshold, outcome, refusal_code, access_started_at, ts
+          ) VALUES (
+            ${value.run_id}, ${value.journey_token}, ${value.inputs_hash},
+            ${value.subject.chain_id}, ${value.subject.contract_address},
+            ${value.threshold}, ${value.outcome}, ${value.refusal_code ?? null},
+            ${value.access_started_at ?? null}::date, ${value.ts}::timestamptz
+          ) ON CONFLICT DO NOTHING
+          RETURNING run_id
+        `;
+        if (inserted.length === 0) {
+          const rows = await sql<{
+            run_id: string;
+            journey_token: string;
+            inputs_hash: string;
+            subject_chain_id: string;
+            subject_contract_address: string;
+            threshold: number | string;
+          }[]>`
+            SELECT run_id, journey_token, inputs_hash, subject_chain_id, subject_contract_address, threshold
+            FROM public_gate_leak_runs
+            WHERE run_id = ${value.run_id} OR journey_token = ${value.journey_token}
+            LIMIT 1
+          `;
+          const existing = rows[0];
+          if (
+            !existing ||
+            existing.journey_token !== value.journey_token ||
+            existing.inputs_hash !== value.inputs_hash ||
+            existing.subject_chain_id !== value.subject.chain_id ||
+            existing.subject_contract_address !== value.subject.contract_address ||
+            Number(existing.threshold) !== value.threshold
+          ) {
+            throw new Error(`conflicting public gate-leak run_id: ${value.run_id}`);
+          }
+          return { created: false };
+        }
 
-    const existing = await this.getPublicGateLeakJourney(value.run_id);
-    if (
-      !existing ||
-      existing.journey_token !== value.journey_token ||
-      existing.inputs_hash !== value.inputs_hash ||
-      existing.subject.chain_id !== value.subject.chain_id ||
-      existing.subject.contract_address !== value.subject.contract_address ||
-      existing.threshold !== value.threshold
-    ) {
-      throw new Error(`conflicting public gate-leak run_id: ${value.run_id}`);
+        const consumed = await sql<{ used: number }[]>`
+          INSERT INTO gate_leak_journey_write_budget (bucket, window_started_at, used)
+          VALUES (${budget.bucket}, ${budget.window_started_at}::timestamptz, 1)
+          ON CONFLICT (bucket, window_started_at) DO UPDATE SET
+            used = gate_leak_journey_write_budget.used + 1
+          WHERE gate_leak_journey_write_budget.used < ${budget.limit}
+          RETURNING used
+        `;
+        if (consumed.length === 0) throw new PublicJourneyBudgetExceededError();
+        await sql`
+          INSERT INTO gate_leak_subject (
+            subject_chain_id, subject_contract_address, first_seen_ts
+          ) VALUES (
+            ${value.subject.chain_id}, ${value.subject.contract_address}, ${value.ts}::timestamptz
+          ) ON CONFLICT (subject_chain_id, subject_contract_address) DO NOTHING
+        `;
+        return { created: true };
+      });
+    } catch (error) {
+      if (error instanceof PublicJourneyBudgetExceededError) return { created: false, rate_limited: true };
+      throw error;
     }
-    return { created: false };
   }
 
   async appendPublicJourneyInput(event: PublicJourneyInputEvent): Promise<{ created: boolean }> {
     const value = PublicJourneyInputEventSchema.parse(event);
-    const inserted = await this.sql<{ id: number }[]>`
-      INSERT INTO gate_leak_journey_inputs (run_id, input_name, input_value, ts)
-      VALUES (${value.run_id}, ${value.input}, ${value.value}::date, ${value.ts}::timestamptz)
-      ON CONFLICT (run_id, input_name) DO NOTHING
-      RETURNING id
-    `;
-    if (inserted.length > 0) return { created: true };
-    const existing = await this.getPublicGateLeakJourney(value.run_id);
-    if (!existing) throw new Error(`unknown public run_id: ${value.run_id}`);
-    if (existing.supplied_access_started_at !== value.value) {
-      throw new Error(`conflicting journey input: ${value.run_id}/${value.input}`);
-    }
-    return { created: false };
+    return this.sql.begin(async (sql) => {
+      const runRows = await sql<{ access_started_at: Date | string | null }[]>`
+        SELECT access_started_at FROM public_gate_leak_runs
+        WHERE run_id = ${value.run_id}
+        FOR UPDATE
+      `;
+      const run = runRows[0];
+      if (!run) throw new Error(`unknown public run_id: ${value.run_id}`);
+      const baseDate = run.access_started_at instanceof Date
+        ? run.access_started_at.toISOString().slice(0, 10)
+        : run.access_started_at
+          ? String(run.access_started_at).slice(0, 10)
+          : undefined;
+      if (baseDate) {
+        if (baseDate !== value.value) throw new Error(`conflicting journey input: ${value.run_id}/${value.input}`);
+        return { created: false };
+      }
+      const inserted = await sql<{ id: number }[]>`
+        INSERT INTO gate_leak_journey_inputs (run_id, input_name, input_value, ts)
+        VALUES (${value.run_id}, ${value.input}, ${value.value}::date, ${value.ts}::timestamptz)
+        ON CONFLICT (run_id, input_name) DO NOTHING
+        RETURNING id
+      `;
+      if (inserted.length > 0) return { created: true };
+      const existingRows = await sql<{ input_value: Date | string }[]>`
+        SELECT input_value FROM gate_leak_journey_inputs
+        WHERE run_id = ${value.run_id} AND input_name = ${value.input}
+      `;
+      const existing = existingRows[0]?.input_value;
+      const existingDate = existing instanceof Date ? existing.toISOString().slice(0, 10) : String(existing).slice(0, 10);
+      if (existingDate !== value.value) throw new Error(`conflicting journey input: ${value.run_id}/${value.input}`);
+      return { created: false };
+    });
   }
 
   async appendPublicJourneyTransition(event: PublicJourneyTransition): Promise<{ created: boolean }> {
     const value = PublicJourneyTransitionSchema.parse(event);
-    const inserted = await this.sql<{ id: number }[]>`
-      INSERT INTO gate_leak_journey_events (run_id, outcome, refusal_code, ts)
-      VALUES (${value.run_id}, ${value.outcome}, ${value.refusal_code ?? null}, ${value.ts}::timestamptz)
-      ON CONFLICT (run_id, outcome) DO NOTHING
-      RETURNING id
-    `;
-    return { created: inserted.length > 0 };
+    return this.sql.begin(async (sql) => {
+      const runRows = await sql<{ outcome: PublicGateLeakOutcome; refusal_code: RefusalCode | null }[]>`
+        SELECT outcome, refusal_code
+        FROM public_gate_leak_runs
+        WHERE run_id = ${value.run_id}
+        FOR UPDATE
+      `;
+      const run = runRows[0];
+      if (!run) throw new Error(`unknown public run_id: ${value.run_id}`);
+      const transitionRows = await sql<{ outcome: PublicGateLeakOutcome; refusal_code: RefusalCode | null }[]>`
+        SELECT outcome, refusal_code
+        FROM gate_leak_journey_events
+        WHERE run_id = ${value.run_id}
+        ORDER BY id DESC
+        LIMIT 1
+      `;
+      const latest = transitionRows[0];
+      const disposition = publicJourneyTransitionDisposition(
+        {
+          current_outcome: latest?.outcome ?? run.outcome,
+          current_refusal_code: latest?.refusal_code ?? run.refusal_code ?? undefined,
+        },
+        value,
+      );
+      if (disposition === 'noop') return { created: false };
+      const inserted = await sql<{ id: number }[]>`
+        INSERT INTO gate_leak_journey_events (run_id, outcome, refusal_code, ts)
+        VALUES (${value.run_id}, ${value.outcome}, ${value.refusal_code ?? null}, ${value.ts}::timestamptz)
+        RETURNING id
+      `;
+      return { created: inserted.length > 0 };
+    });
   }
 
   async appendAttention(event: AttentionEvent): Promise<{ created: boolean }> {
@@ -366,6 +497,77 @@ export class PostgresEventStore implements EventStore {
       current_refusal_code: row.current_refusal_code ?? undefined,
       supplied_access_started_at: isoDate(row.supplied_access_started_at),
     };
+  }
+
+  async getPublicGateLeakJourneyByToken(journeyToken: string): Promise<PublicGateLeakJourneyRecord | undefined> {
+    const rows = await this.sql<{ run_id: string }[]>`
+      SELECT run_id FROM public_gate_leak_runs WHERE journey_token = ${journeyToken} LIMIT 1
+    `;
+    return rows[0] ? this.getPublicGateLeakJourney(rows[0].run_id) : undefined;
+  }
+
+  async getPublicComputeResult(computeKey: string): Promise<unknown | undefined> {
+    const rows = await this.sql<{ result: unknown }[]>`
+      SELECT result FROM gate_leak_compute_cache
+      WHERE compute_key = ${computeKey} AND state = 'complete'
+      LIMIT 1
+    `;
+    return rows[0]?.result;
+  }
+
+  async claimPublicCompute(claim: PublicComputeClaim): Promise<PublicComputeClaimResult> {
+    const rows = await this.sql<{ state: 'running' | 'complete' }[]>`
+      INSERT INTO gate_leak_compute_cache (
+        compute_key, state, owner_token, lease_expires_at, result, updated_at
+      ) VALUES (
+        ${claim.compute_key}, 'running', ${claim.owner_token},
+        ${claim.lease_expires_at}::timestamptz, NULL, ${claim.claimed_at}::timestamptz
+      )
+      ON CONFLICT (compute_key) DO UPDATE SET
+        state = 'running',
+        owner_token = EXCLUDED.owner_token,
+        lease_expires_at = EXCLUDED.lease_expires_at,
+        result = NULL,
+        updated_at = EXCLUDED.updated_at
+      WHERE gate_leak_compute_cache.state = 'running'
+        AND gate_leak_compute_cache.lease_expires_at <= ${claim.claimed_at}::timestamptz
+      RETURNING state
+    `;
+    if (rows.length > 0) return 'claimed';
+    const current = await this.sql<{ state: 'running' | 'complete' }[]>`
+      SELECT state FROM gate_leak_compute_cache WHERE compute_key = ${claim.compute_key}
+    `;
+    return current[0]?.state === 'complete' ? 'complete' : 'busy';
+  }
+
+  async completePublicCompute(
+    computeKey: string,
+    ownerToken: string,
+    result: unknown,
+    completedAt: string,
+  ): Promise<boolean> {
+    const rows = await this.sql<{ compute_key: string }[]>`
+      UPDATE gate_leak_compute_cache SET
+        state = 'complete',
+        result = ${this.sql.json(result as never)},
+        updated_at = ${completedAt}::timestamptz
+      WHERE compute_key = ${computeKey}
+        AND state = 'running'
+        AND owner_token = ${ownerToken}
+        AND lease_expires_at > ${completedAt}::timestamptz
+      RETURNING compute_key
+    `;
+    // Only this owner's guarded UPDATE is a successful completion. A different
+    // owner may already have completed the key; false tells the caller to read
+    // that winner rather than cache its own late, uncommitted result.
+    return rows.length > 0;
+  }
+
+  async releasePublicCompute(computeKey: string, ownerToken: string): Promise<void> {
+    await this.sql`
+      DELETE FROM gate_leak_compute_cache
+      WHERE compute_key = ${computeKey} AND state = 'running' AND owner_token = ${ownerToken}
+    `;
   }
 }
 

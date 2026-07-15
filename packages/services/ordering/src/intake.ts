@@ -13,9 +13,10 @@ import {
   PRESETS,
   type OrderPlaced,
 } from '@freeside/ordering-protocol';
-import type { OrderStore } from './store.js';
+import { OrderWriteBudgetExceededError, type OrderStore } from './store.js';
 import { digestOf } from './digest.js';
 import type { OrderOrchestrator } from './orchestrator.js';
+import type { GateLeakIntakeBudget } from './gate-leak-budget.js';
 import { IngredientStatus } from '@freeside/ordering-protocol';
 import { toPublicOrder } from './projection.js';
 import {
@@ -55,6 +56,8 @@ export interface IntakeDeps {
   healthz?: Record<string, unknown>;
   /** Explicit production composition gate; false refuses gate-leak before persistence. */
   gateLeakEnabled?: boolean;
+  /** Required with gateLeakEnabled: identity-independent bound on NEW anonymous orders. */
+  gateLeakIntakeBudget?: GateLeakIntakeBudget;
 }
 
 const PlaceOrderBodySchema = z
@@ -89,12 +92,26 @@ const JoinCommunityBodySchema = z
 
 const ResumeGateLeakBodySchema = z
   .object({
-    access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    access_started_at: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .refine((value) => {
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+      }, 'expected a real calendar date'),
   })
   .strict();
 
 export function createIntakeApp(deps: IntakeDeps): Hono {
   const app = new Hono();
+  if (deps.gateLeakEnabled === true && deps.gateLeakIntakeBudget) {
+    if (!Number.isInteger(deps.gateLeakIntakeBudget.limit) || deps.gateLeakIntakeBudget.limit < 1) {
+      throw new Error('gateLeakIntakeBudget.limit must be a positive integer');
+    }
+    if (!Number.isInteger(deps.gateLeakIntakeBudget.windowMs) || deps.gateLeakIntakeBudget.windowMs < 1) {
+      throw new Error('gateLeakIntakeBudget.windowMs must be a positive integer');
+    }
+  }
 
   app.post('/v1/orders', async (c) => {
     let raw: unknown;
@@ -125,7 +142,10 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     if (!body.success) {
       return c.json({ error: 'invalid order envelope', issues: body.error.issues }, 400);
     }
-    if (body.data.product === 'gate-leak' && deps.gateLeakEnabled === false) {
+    if (
+      body.data.product === 'gate-leak' &&
+      (deps.gateLeakEnabled !== true || !deps.gateLeakIntakeBudget)
+    ) {
       return c.json({ error: 'gate-leak is unavailable' }, 503);
     }
 
@@ -135,28 +155,44 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     if (!inputsParsed.success) {
       return c.json({ error: 'invalid inputs for product', issues: inputsParsed.error.issues }, 400);
     }
-
     const order_id = randomUUID();
-    const placed_at_unix = Math.floor(deps.now() / 1000);
+    const nowMs = deps.now();
+    const placed_at_unix = Math.floor(nowMs / 1000);
     const inputs = inputsParsed.data as Record<string, unknown>;
     const inputs_digest = digestOf(inputs);
     const placedEvent: OrderPlaced = { order_id, product: body.data.product, inputs_digest };
 
-    await deps.store.placeOrder(
-      {
-        order_id,
-        product: body.data.product,
-        placed_by: body.data.placed_by,
-        inputs,
-        placed_at_unix,
-        inputs_digest,
-        ingredients:
-          body.data.product === 'community-onboarding'
-            ? { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS }
-            : undefined,
-      },
-      { subject: ORDER_LIFECYCLE_SUBJECTS.placed, payload: placedEvent },
-    );
+    try {
+      await deps.store.placeOrder(
+        {
+          order_id,
+          product: body.data.product,
+          placed_by: body.data.placed_by,
+          inputs,
+          placed_at_unix,
+          inputs_digest,
+          ingredients:
+            body.data.product === 'community-onboarding'
+              ? { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS }
+              : undefined,
+        },
+        { subject: ORDER_LIFECYCLE_SUBJECTS.placed, payload: placedEvent },
+        body.data.product === 'gate-leak'
+          ? {
+              bucket: 'public-gate-leak',
+              window_started_at: new Date(
+                Math.floor(nowMs / deps.gateLeakIntakeBudget!.windowMs) * deps.gateLeakIntakeBudget!.windowMs,
+              ).toISOString(),
+              limit: deps.gateLeakIntakeBudget!.limit,
+            }
+          : undefined,
+      );
+    } catch (error) {
+      if (error instanceof OrderWriteBudgetExceededError) {
+        return c.json({ error: 'gate-leak intake is rate limited' }, 429);
+      }
+      throw error;
+    }
 
     deps.onPlaced?.(order_id);
 
@@ -194,6 +230,9 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     app.post('/v1/orders/:id/resume-gate-leak', async (c) => {
       const body = ResumeGateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
       if (!body.success) return c.json({ error: 'invalid resume payload', issues: body.error.issues }, 400);
+      if (body.data.access_started_at > new Date(deps.now()).toISOString().slice(0, 10)) {
+        return c.json({ error: 'access_started_at cannot be in the future' }, 400);
+      }
       const orderId = c.req.param('id');
       const record = await deps.store.get(orderId);
       if (!record) return c.json({ error: 'order not found' }, 404);

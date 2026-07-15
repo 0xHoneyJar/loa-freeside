@@ -195,6 +195,18 @@ describe('metadata_snapshot protocol additions (T-1)', () => {
       }),
     ).toThrow();
   });
+
+  it('reads pre-metadata persisted rows as an explicit opt-out', () => {
+    expect(
+      CommunityOnboardingIngredients.parse({
+        sonar: 'complete',
+        score: 'complete',
+        worlds_manifest: 'complete',
+        discord_observer: 'optional',
+        shadow_preview: 'complete',
+      }).metadata_snapshot,
+    ).toBe('optional');
+  });
 });
 
 describe('gate-leak preset — anonymous free rung', () => {

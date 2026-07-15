@@ -9,7 +9,7 @@ import {
 const base = {
   run_id: 'gate_123',
   journey_token: 'journey_123',
-  subject: { chain_id: '80094', contract_address: '0xabc' },
+  subject: { chain_id: '80094', contract_address: `0x${'a'.repeat(40)}` },
 };
 
 describe('public gate-leak journey protocol', () => {
@@ -49,7 +49,7 @@ describe('public gate-leak journey protocol', () => {
 describe('AttentionEvent privacy boundary', () => {
   const safe = {
     subject_chain_id: '80094',
-    subject_contract_address: '0xabc',
+    subject_contract_address: `0x${'a'.repeat(40)}`,
     journey_token: 'journey_123',
     kind: 'submitted' as const,
     ts: '2026-07-15T12:00:00.000Z',

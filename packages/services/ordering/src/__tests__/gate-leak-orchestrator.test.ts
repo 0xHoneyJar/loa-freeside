@@ -55,22 +55,24 @@ class CachingGateLeak implements GateLeakPort {
   readonly runTokens = new Map<string, string>();
   readonly cache = new Set<string>();
   computeCalls = 0;
+  private issued = 0;
 
   async submit(input: GateLeakSubmission): Promise<GateLeakSubmissionResult> {
     this.submissions.push(input);
-    const runId = `gate_${input.journey_token}`;
-    this.runTokens.set(runId, input.journey_token);
+    const journeyToken = input.journey_token ?? `server-issued-${++this.issued}`;
+    const runId = `gate_${journeyToken}`;
+    this.runTokens.set(runId, journeyToken);
     if (!input.access_started_at) {
       return {
         journey: projectPublicJourney({
           run_id: runId,
-          journey_token: input.journey_token,
+          journey_token: journeyToken,
           subject: { chain_id: input.chain, contract_address: input.contract.toLowerCase() },
           outcome: 'needs_input',
         }),
       };
     }
-    return this.deliver(runId, input.journey_token, input.chain, input.contract, input.access_started_at);
+    return this.deliver(runId, journeyToken, input.chain, input.contract, input.access_started_at);
   }
 
   async resume(runId: string, accessStartedAt: string): Promise<GateLeakSubmissionResult> {
@@ -183,7 +185,8 @@ describe('GateLeakOrchestrator', () => {
     index.status = 'complete';
     await orchestrator.process('journey-a');
     await orchestrator.process('journey-b');
-    expect(gateLeak.submissions.map((call) => call.journey_token)).toEqual(['journey-a', 'journey-b']);
+    expect(gateLeak.submissions.map((call) => call.journey_token)).toEqual([undefined, undefined]);
+    expect(new Set([...gateLeak.runTokens.values()]).size).toBe(2);
     expect(gateLeak.computeCalls).toBe(1);
     expect((await store.get('journey-a'))?.state).toBe('fulfilled');
     expect((await store.get('journey-b'))?.state).toBe('fulfilled');
@@ -194,8 +197,10 @@ describe('GateLeakOrchestrator', () => {
     index.status = 'complete';
     const app = createIntakeApp({
       store,
-      now: () => 1_700_000_000_000,
+      now: () => Date.UTC(2026, 6, 15),
       orchestrator,
+      gateLeakEnabled: true,
+      gateLeakIntakeBudget: { limit: 1_000, windowMs: 60_000 },
     });
     const placed = await app.request('/v1/orders', {
       method: 'POST',
@@ -213,6 +218,7 @@ describe('GateLeakOrchestrator', () => {
     await orchestrator.process(orderId);
     expect((await store.get(orderId))?.state).toBe('producing');
     expect((await store.get(orderId))?.output).toMatchObject({ journey: { status: { state: 'needs_input' } } });
+    const upstreamRunId = ((await store.get(orderId))?.output as { journey: { run_id: string } }).journey.run_id;
 
     const resumed = await app.request(`/v1/orders/${orderId}/resume-gate-leak`, {
       method: 'POST',
@@ -221,7 +227,7 @@ describe('GateLeakOrchestrator', () => {
     });
     expect(resumed.status).toBe(200);
     expect((await resumed.json()) as unknown).toMatchObject({ state: 'fulfilled' });
-    expect(gateLeak.resumes).toEqual([{ runId: `gate_${orderId}`, accessStartedAt: '2026-06-22' }]);
+    expect(gateLeak.resumes).toEqual([{ runId: upstreamRunId, accessStartedAt: '2026-06-22' }]);
     const completed = await store.get(orderId);
     expect(completed?.inputs).toEqual(original?.inputs);
     expect(completed?.inputs_digest).toBe(original?.inputs_digest);

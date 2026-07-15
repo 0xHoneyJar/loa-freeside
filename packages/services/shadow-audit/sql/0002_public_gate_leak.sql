@@ -46,6 +46,16 @@ BEGIN
     END IF;
 END $$;
 
+-- One semantic registration key per public journey. Backfill DISTINCT keys without
+-- deleting any historical append-only rows that predate idempotent registration.
+CREATE TABLE IF NOT EXISTS shadow_audit_public_run_registration_keys (
+    run_id TEXT PRIMARY KEY
+);
+INSERT INTO shadow_audit_public_run_registration_keys (run_id)
+SELECT DISTINCT run_id FROM shadow_audit_run_events
+WHERE mode = 'public-gate-leak' AND reaction IS NULL AND cta_interaction IS NULL
+ON CONFLICT (run_id) DO NOTHING;
+
 -- Canonical observed subject. Observation is deliberately not an ownership assertion.
 CREATE TABLE IF NOT EXISTS gate_leak_subject (
     subject_chain_id           TEXT        NOT NULL,
@@ -107,4 +117,25 @@ CREATE TABLE IF NOT EXISTS gate_leak_attention (
     )),
     ts                         TIMESTAMPTZ NOT NULL,
     UNIQUE (journey_token, kind)
+);
+
+-- Operational distributed single-flight. Unlike the append-only journey ledger, this
+-- cache owns a renewable lease and a completed aggregate result; it contains no members.
+CREATE TABLE IF NOT EXISTS gate_leak_compute_cache (
+    compute_key                CHAR(64)    PRIMARY KEY,
+    state                      TEXT        NOT NULL CHECK (state IN ('running', 'complete')),
+    owner_token                TEXT        NOT NULL,
+    lease_expires_at           TIMESTAMPTZ NOT NULL,
+    result                     JSONB,
+    updated_at                 TIMESTAMPTZ NOT NULL,
+    CHECK ((state = 'complete') = (result IS NOT NULL))
+);
+
+-- Deployment-wide anonymous-write budget. Registration and counter consumption
+-- happen in the same transaction, so retries never spend the allowance twice.
+CREATE TABLE IF NOT EXISTS gate_leak_journey_write_budget (
+    bucket                     TEXT        NOT NULL,
+    window_started_at          TIMESTAMPTZ NOT NULL,
+    used                       INTEGER     NOT NULL CHECK (used >= 0),
+    PRIMARY KEY (bucket, window_started_at)
 );

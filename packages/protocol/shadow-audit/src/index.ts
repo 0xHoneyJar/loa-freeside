@@ -98,6 +98,9 @@ export {
   computeInputsHash,
 } from './inputs-hash.js';
 export {
+  PublicGateLeakChainIdSchema,
+  PublicGateLeakContractAddressSchema,
+  AccessStartedAtDateSchema,
   PublicGateLeakSubjectSchema,
   type PublicGateLeakSubject,
   RequiredPublicInputSchema,

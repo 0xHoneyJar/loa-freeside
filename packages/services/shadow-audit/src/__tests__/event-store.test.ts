@@ -104,10 +104,11 @@ describe('isRunWithinWindow (IMP-007)', () => {
 });
 
 describe('public gate-leak append-only journey + attention', () => {
+  const budget = { bucket: 'test', window_started_at: '2026-07-15T12:00:00.000Z', limit: 100 };
   const initial = {
     run_id: 'gate_1',
     journey_token: 'journey_1',
-    subject: { chain_id: '80094', contract_address: '0xabc' },
+    subject: { chain_id: '80094', contract_address: `0x${'a'.repeat(40)}` },
     inputs_hash: 'a'.repeat(64),
     threshold: 1,
     outcome: 'needs_input' as const,
@@ -116,8 +117,8 @@ describe('public gate-leak append-only journey + attention', () => {
 
   it('resumes by appending input + transition without mutating the original digest', async () => {
     const store = new InMemoryEventStore();
-    expect(await store.appendPublicGateLeakRun(initial)).toEqual({ created: true });
-    expect(await store.appendPublicGateLeakRun(initial)).toEqual({ created: false });
+    expect(await store.appendPublicGateLeakRun(initial, budget)).toEqual({ created: true });
+    expect(await store.appendPublicGateLeakRun(initial, budget)).toEqual({ created: false });
     await store.appendPublicJourneyInput({
       run_id: initial.run_id,
       input: 'access_started_at',
@@ -136,11 +137,59 @@ describe('public gate-leak append-only journey + attention', () => {
     expect(folded?.supplied_access_started_at).toBe('2026-06-01');
   });
 
+  it('reuses the server-random run bound to an idempotency token and rejects terminal regression', async () => {
+    const store = new InMemoryEventStore();
+    expect(await store.appendPublicGateLeakRun(initial, budget)).toEqual({ created: true });
+    expect(await store.appendPublicGateLeakRun({ ...initial, run_id: 'gate_other', outcome: 'delivered_e1' }, budget)).toEqual({ created: false });
+    expect((await store.getPublicGateLeakJourneyByToken(initial.journey_token))?.run_id).toBe(initial.run_id);
+    await store.appendPublicJourneyTransition({
+      run_id: initial.run_id,
+      outcome: 'delivered_e1',
+      ts: '2026-07-15T12:02:00.000Z',
+    });
+    await expect(
+      store.appendPublicJourneyTransition({
+        run_id: initial.run_id,
+        outcome: 'refused',
+        refusal_code: 'rate-limited',
+        ts: '2026-07-15T12:03:00.000Z',
+      }),
+    ).rejects.toThrow(/terminal public journey/);
+  });
+
+  it('leases aggregate compute once and makes the completed result reusable', async () => {
+    const store = new InMemoryEventStore();
+    const claim = {
+      compute_key: 'f'.repeat(64),
+      owner_token: 'owner-a',
+      claimed_at: '2026-07-15T12:00:00.000Z',
+      lease_expires_at: '2026-07-15T12:02:00.000Z',
+    };
+    expect(await store.claimPublicCompute(claim)).toBe('claimed');
+    expect(await store.claimPublicCompute({ ...claim, owner_token: 'owner-b' })).toBe('busy');
+    await store.completePublicCompute(claim.compute_key, claim.owner_token, { aggregate: true }, claim.claimed_at);
+    expect(await store.claimPublicCompute({ ...claim, owner_token: 'owner-c' })).toBe('complete');
+    expect(await store.getPublicComputeResult(claim.compute_key)).toEqual({ aggregate: true });
+
+    // A late/replayed owner must read the durable winner, never treat its own
+    // uncommitted payload as the completed value.
+    await expect(
+      store.completePublicCompute(claim.compute_key, 'owner-b', { aggregate: false }, claim.claimed_at),
+    ).resolves.toBe(false);
+    expect(await store.getPublicComputeResult(claim.compute_key)).toEqual({ aggregate: true });
+
+    const expired = { ...claim, compute_key: 'd'.repeat(64), owner_token: 'expired-owner' };
+    expect(await store.claimPublicCompute(expired)).toBe('claimed');
+    await expect(
+      store.completePublicCompute(expired.compute_key, expired.owner_token, { stale: true }, '2026-07-15T12:03:00.000Z'),
+    ).resolves.toBe(false);
+  });
+
   it('dedupes one journey retry while counting a distinct journey once', async () => {
     const store = new InMemoryEventStore();
     const event = {
       subject_chain_id: '80094',
-      subject_contract_address: '0xabc',
+      subject_contract_address: `0x${'a'.repeat(40)}`,
       journey_token: 'journey_1',
       kind: 'submitted' as const,
       ts: '2026-07-15T12:00:00.000Z',
@@ -156,7 +205,7 @@ describe('public gate-leak append-only journey + attention', () => {
     await expect(
       store.appendAttention({
         subject_chain_id: '80094',
-        subject_contract_address: '0xabc',
+        subject_contract_address: `0x${'a'.repeat(40)}`,
         journey_token: 'journey_1',
         kind: 'feedback',
         ts: '2026-07-15T12:00:00.000Z',

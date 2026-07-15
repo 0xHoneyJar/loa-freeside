@@ -1,5 +1,16 @@
 -- Public gate-leak ordering lifecycle. Additive and idempotent.
 
+ALTER TABLE order_outbox ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS order_outbox_idempotency_idx
+  ON order_outbox (idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS order_write_budget (
+  bucket             TEXT NOT NULL,
+  window_started_at  TIMESTAMPTZ NOT NULL,
+  used               INTEGER NOT NULL CHECK (used >= 0),
+  PRIMARY KEY (bucket, window_started_at)
+);
+
 -- Dedupes subject indexing across distinct journeys while preserving each journey's
 -- own order and attention signal. Shadow Audit owns input-specific compute single-flight.
 CREATE TABLE IF NOT EXISTS gate_leak_work_claims (

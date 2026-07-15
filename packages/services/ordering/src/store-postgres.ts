@@ -6,10 +6,12 @@ import pg from 'pg';
 import type { OrderState } from './order-state.js';
 import {
   OrderNotFoundError,
+  OrderWriteBudgetExceededError,
   type NewOrder,
   type OrderPatch,
   type OrderRecord,
   type OrderStore,
+  type OrderWriteBudget,
   type OutboxEntry,
   type OutboxEvent,
   type TransitionOpts,
@@ -37,7 +39,9 @@ function rowToRecord(row: pg.QueryResultRow): OrderRecord {
     output: row.output ?? undefined,
     output_digest: row.output_digest ?? undefined,
     refusal: row.refusal ?? undefined,
-    ingredients: row.ingredients ?? undefined,
+    ingredients: row.ingredients
+      ? { metadata_snapshot: 'optional', ...row.ingredients }
+      : undefined,
     fulfillment: row.fulfillment ?? undefined,
     ingredient_jobs: (row.ingredient_jobs ?? []) as IngredientJob[],
     operator_audit: (row.operator_audit ?? []) as OperatorAuditEntry[],
@@ -81,7 +85,14 @@ export class PostgresOrderStore implements OrderStore {
     await this.pool.end();
   }
 
-  async placeOrder(order: NewOrder, placedEvent: OutboxEvent): Promise<{ created: boolean; record: OrderRecord }> {
+  async placeOrder(
+    order: NewOrder,
+    placedEvent: OutboxEvent,
+    writeBudget?: OrderWriteBudget,
+  ): Promise<{ created: boolean; record: OrderRecord }> {
+    if (writeBudget && (!Number.isInteger(writeBudget.limit) || writeBudget.limit < 1)) {
+      throw new Error('order write budget limit must be positive');
+    }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -89,6 +100,19 @@ export class PostgresOrderStore implements OrderStore {
       if (existing.rows.length > 0) {
         await client.query('COMMIT');
         return { created: false, record: rowToRecord(existing.rows[0]) };
+      }
+
+      if (writeBudget) {
+        const consumed = await client.query(
+          `INSERT INTO order_write_budget (bucket, window_started_at, used)
+           VALUES ($1,$2,1)
+           ON CONFLICT (bucket, window_started_at) DO UPDATE SET
+             used = order_write_budget.used + 1
+           WHERE order_write_budget.used < $3
+           RETURNING used`,
+          [writeBudget.bucket, writeBudget.window_started_at, writeBudget.limit],
+        );
+        if (consumed.rows.length === 0) throw new OrderWriteBudgetExceededError();
       }
 
       const ts = this.now();
@@ -210,6 +234,23 @@ export class PostgresOrderStore implements OrderStore {
       event.subject,
       JSON.stringify(event.payload),
     ]);
+  }
+
+  async appendEventOnce(
+    orderId: string,
+    event: OutboxEvent,
+    idempotencyKey: string,
+  ): Promise<{ created: boolean }> {
+    const exists = await this.pool.query('SELECT 1 FROM orders WHERE order_id = $1', [orderId]);
+    if (exists.rows.length === 0) throw new OrderNotFoundError(orderId);
+    const inserted = await this.pool.query(
+      `INSERT INTO order_outbox (order_id, subject, payload, idempotency_key)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+       RETURNING seq`,
+      [orderId, event.subject, JSON.stringify(event.payload), idempotencyKey],
+    );
+    return { created: inserted.rows.length > 0 };
   }
 
   async patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord> {

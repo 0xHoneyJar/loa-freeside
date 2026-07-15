@@ -1,11 +1,25 @@
 import { z } from 'zod';
 import { RefusalCodeSchema } from './schemas/refusal.js';
 
+export const PublicGateLeakChainIdSchema = z
+  .string()
+  .regex(/^\d+$/, 'chain must be a numeric EVM chain id');
+export const PublicGateLeakContractAddressSchema = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]{40}$/, 'contract must be a 0x-prefixed 20-byte EVM address');
+export const AccessStartedAtDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+  }, 'expected a real calendar date');
+
 /** Canonical public subject. It asserts observation only, never ownership or membership. */
 export const PublicGateLeakSubjectSchema = z
   .object({
-    chain_id: z.string().min(1),
-    contract_address: z.string().min(1),
+    chain_id: PublicGateLeakChainIdSchema,
+    contract_address: PublicGateLeakContractAddressSchema,
   })
   .strict();
 export type PublicGateLeakSubject = z.infer<typeof PublicGateLeakSubjectSchema>;
@@ -68,8 +82,8 @@ export type AttentionKind = z.infer<typeof AttentionKindSchema>;
  */
 export const AttentionEventSchema = z
   .object({
-    subject_chain_id: z.string().min(1),
-    subject_contract_address: z.string().min(1),
+    subject_chain_id: PublicGateLeakChainIdSchema,
+    subject_contract_address: PublicGateLeakContractAddressSchema,
     journey_token: z.string().min(1),
     kind: AttentionKindSchema,
     ts: z.string().datetime(),

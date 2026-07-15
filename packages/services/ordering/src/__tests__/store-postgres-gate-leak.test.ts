@@ -101,6 +101,9 @@ describe('PostgresOrderStore gate-leak lifecycle (real SQL)', () => {
       ),
     ).rejects.toThrow(/conflicting/);
     expect(await store.getGateLeakInput('sql-gate-a')).toEqual(input);
+    const producing = { subject: 'orders.lifecycle.producing.v1', payload: { step: 0 } };
+    expect((await store.appendEventOnce('sql-gate-a', producing, 'sql-gate-a:producing:0')).created).toBe(true);
+    expect((await store.appendEventOnce('sql-gate-a', producing, 'sql-gate-a:producing:0')).created).toBe(false);
   });
 
   it('joins orders without mutating either immutable input record', async () => {
@@ -135,5 +138,14 @@ describe('PostgresOrderStore gate-leak lifecycle (real SQL)', () => {
     const subjects = (await store.pendingOutbox()).map((entry) => entry.subject);
     expect(subjects.filter((subject) => subject === 'orders.gate-leak.input-supplied.v1')).toHaveLength(1);
     expect(subjects.filter((subject) => subject === 'orders.gate-leak.community-joined.v1')).toHaveLength(1);
+  });
+
+  it('enforces the anonymous order budget transactionally in real SQL', async () => {
+    const budget = { bucket: 'tight-order-test', window_started_at: '2026-07-15T12:00:00.000Z', limit: 1 };
+    const event = (id: string) => ({ subject: 'orders.lifecycle.placed.v1', payload: { order_id: id } });
+    expect((await store.placeOrder(gateOrder('sql-budget-a'), event('sql-budget-a'), budget)).created).toBe(true);
+    await expect(store.placeOrder(gateOrder('sql-budget-b'), event('sql-budget-b'), budget)).rejects.toThrow(/budget/);
+    expect(await store.get('sql-budget-b')).toBeUndefined();
+    expect((await store.pendingOutbox()).some((entry) => entry.order_id === 'sql-budget-b')).toBe(false);
   });
 });

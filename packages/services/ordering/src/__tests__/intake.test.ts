@@ -4,7 +4,12 @@ import { InMemoryOrderStore } from '../store.js';
 
 function harness() {
   const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
-  const app = createIntakeApp({ store, now: () => 1_700_000_000_000 });
+  const app = createIntakeApp({
+    store,
+    now: () => 1_700_000_000_000,
+    gateLeakEnabled: true,
+    gateLeakIntakeBudget: { limit: 1_000, windowMs: 60_000 },
+  });
   return { store, app };
 }
 
@@ -152,6 +157,34 @@ describe('order-intake POST /v1/orders', () => {
     });
     expect(res.status).toBe(503);
     expect(await store.pendingOutbox()).toHaveLength(0);
+  });
+
+  it('defaults gate-leak disabled and bounds enabled anonymous writes', async () => {
+    const disabledStore = new InMemoryOrderStore();
+    const disabled = createIntakeApp({ store: disabledStore, now: () => Date.UTC(2026, 6, 15) });
+    expect(
+      (await disabled.request('/v1/orders', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(VALID_GATE_LEAK_BODY),
+      })).status,
+    ).toBe(503);
+
+    const boundedStore = new InMemoryOrderStore();
+    const bounded = createIntakeApp({
+      store: boundedStore,
+      now: () => Date.UTC(2026, 6, 15),
+      gateLeakEnabled: true,
+      gateLeakIntakeBudget: { limit: 1, windowMs: 60_000 },
+    });
+    const request = () => bounded.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(VALID_GATE_LEAK_BODY),
+    });
+    expect((await request()).status).toBe(200);
+    expect((await request()).status).toBe(429);
+    expect((await boundedStore.pendingOutbox())).toHaveLength(1);
   });
 });
 

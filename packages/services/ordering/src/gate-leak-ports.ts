@@ -10,7 +10,8 @@ export interface GateLeakSubmission {
   chain: string;
   contract: string;
   access_started_at?: string;
-  journey_token: string;
+  /** Server-issued retry capability. Omit on the first submission. */
+  journey_token?: string;
 }
 
 export interface GateLeakSubmissionResult {

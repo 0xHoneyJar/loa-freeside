@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import {
+  AccessStartedAtDateSchema,
   AttentionEventSchema,
   PublicGateLeakOutcomeSchema,
   PublicGateLeakSubjectSchema,
@@ -62,8 +63,6 @@ export const ContactRecordSchema = z
   .strict();
 export type ContactRecord = z.infer<typeof ContactRecordSchema>;
 
-const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
-
 /** Immutable first observation for a login-less gate-leak journey. */
 export const PublicGateLeakRunSchema = z
   .object({
@@ -76,7 +75,7 @@ export const PublicGateLeakRunSchema = z
     outcome: PublicGateLeakOutcomeSchema,
     refusal_code: RefusalCodeSchema.optional(),
     /** Present for a direct compute; absent on the initial needs-input observation. */
-    access_started_at: IsoDateSchema.optional(),
+    access_started_at: AccessStartedAtDateSchema.optional(),
     ts: z.string().datetime(),
   })
   .strict()
@@ -92,7 +91,7 @@ export const PublicJourneyInputEventSchema = z
   .object({
     run_id: z.string().min(1),
     input: z.literal('access_started_at'),
-    value: IsoDateSchema,
+    value: AccessStartedAtDateSchema,
     ts: z.string().datetime(),
   })
   .strict();
@@ -121,6 +120,62 @@ export interface PublicGateLeakJourneyRecord extends PublicGateLeakRun {
   supplied_access_started_at?: string;
 }
 
+export interface PublicComputeClaim {
+  compute_key: string;
+  owner_token: string;
+  claimed_at: string;
+  lease_expires_at: string;
+}
+
+export type PublicComputeClaimResult = 'claimed' | 'busy' | 'complete';
+
+export interface PublicJourneyWriteBudget {
+  bucket: string;
+  window_started_at: string;
+  limit: number;
+}
+
+const RETRYABLE_REFUSALS = new Set(['unindexed-contract', 'reconstruction-failed', 'upstream-exhausted', 'rate-limited']);
+
+/** One state-machine rule shared by memory and Postgres adapters. */
+export function publicJourneyTransitionDisposition(
+  current: Pick<PublicGateLeakJourneyRecord, 'current_outcome' | 'current_refusal_code'>,
+  next: PublicJourneyTransition,
+): 'append' | 'noop' {
+  if (current.current_outcome === next.outcome) {
+    if (current.current_refusal_code !== next.refusal_code) {
+      throw new Error(`conflicting public journey transition: ${next.run_id}/${next.outcome}`);
+    }
+    return 'noop';
+  }
+  if (current.current_outcome === 'delivered_e1') {
+    throw new Error(`terminal public journey cannot transition: ${next.run_id}/delivered_e1`);
+  }
+  if (
+    current.current_outcome === 'refused' &&
+    (!current.current_refusal_code || !RETRYABLE_REFUSALS.has(current.current_refusal_code))
+  ) {
+    throw new Error(`terminal public journey cannot transition: ${next.run_id}/refused`);
+  }
+
+  const allowed: Record<PublicGateLeakOutcome, ReadonlySet<PublicGateLeakOutcome>> = {
+    submitted: new Set(['resolving_subject', 'indexing', 'computing', 'needs_input', 'delivered_e1', 'refused', 'unavailable']),
+    resolving_subject: new Set(['indexing', 'computing', 'needs_input', 'delivered_e1', 'refused', 'unavailable']),
+    indexing: new Set(['computing', 'needs_input', 'delivered_e1', 'refused', 'unavailable']),
+    computing: new Set(['delivered_e1', 'refused', 'unavailable']),
+    needs_input: new Set(['computing', 'delivered_e1', 'refused', 'unavailable']),
+    delivered_e1: new Set(),
+    refused: new Set(['computing', 'needs_input', 'delivered_e1', 'unavailable']),
+    unavailable: new Set(['computing', 'needs_input', 'delivered_e1', 'refused']),
+  };
+  if (!allowed[current.current_outcome].has(next.outcome)) {
+    throw new Error(
+      `invalid public journey transition: ${next.run_id}/${current.current_outcome}->${next.outcome}`,
+    );
+  }
+  return 'append';
+}
+
 /** Append-only event store. No update/delete by design. */
 export interface EventStore {
   appendRunEvent(event: RunEvent): Promise<void>;
@@ -130,12 +185,21 @@ export interface EventStore {
    *  fingerprint (so a follow-up reaction event can reuse it)? */
   getRun(runId: string): Promise<{ ts: string; inputs_hash: string } | undefined>;
   /** Idempotent on run_id; a conflicting replay is rejected. Also observes the canonical subject. */
-  appendPublicGateLeakRun(run: PublicGateLeakRun): Promise<{ created: boolean }>;
+  appendPublicGateLeakRun(
+    run: PublicGateLeakRun,
+    budget: PublicJourneyWriteBudget,
+  ): Promise<{ created: boolean; rate_limited?: boolean }>;
   appendPublicJourneyInput(event: PublicJourneyInputEvent): Promise<{ created: boolean }>;
   appendPublicJourneyTransition(event: PublicJourneyTransition): Promise<{ created: boolean }>;
   /** Idempotent on (journey_token, kind), so one journey cannot inflate demand by retrying. */
   appendAttention(event: AttentionEvent): Promise<{ created: boolean }>;
   getPublicGateLeakJourney(runId: string): Promise<PublicGateLeakJourneyRecord | undefined>;
+  getPublicGateLeakJourneyByToken(journeyToken: string): Promise<PublicGateLeakJourneyRecord | undefined>;
+  getPublicComputeResult(computeKey: string): Promise<unknown | undefined>;
+  claimPublicCompute(claim: PublicComputeClaim): Promise<PublicComputeClaimResult>;
+  /** Commit only while this owner still holds a live lease. False means the work lost the lease. */
+  completePublicCompute(computeKey: string, ownerToken: string, result: unknown, completedAt: string): Promise<boolean>;
+  releasePublicCompute(computeKey: string, ownerToken: string): Promise<void>;
 }
 
 /** In-memory append-only store (tests + a reference impl). */
@@ -143,12 +207,33 @@ export class InMemoryEventStore implements EventStore {
   private readonly runEvents: RunEvent[] = [];
   private readonly contacts: ContactRecord[] = [];
   private readonly publicRuns = new Map<string, PublicGateLeakRun>();
+  private readonly publicRunIdsByToken = new Map<string, string>();
   private readonly publicInputs: PublicJourneyInputEvent[] = [];
   private readonly publicTransitions: PublicJourneyTransition[] = [];
   private readonly attention = new Map<string, AttentionEvent>();
+  private readonly publicComputes = new Map<
+    string,
+    { state: 'running'; owner_token: string; lease_expires_at: string } | { state: 'complete'; result: unknown }
+  >();
+  private readonly publicJourneyWrites = new Map<string, number>();
 
   async appendRunEvent(event: RunEvent): Promise<void> {
-    this.runEvents.push(RunEventSchema.parse(event));
+    const parsed = RunEventSchema.parse(event);
+    if (
+      parsed.mode === 'public-gate-leak' &&
+      !parsed.reaction &&
+      !parsed.cta_interaction &&
+      this.runEvents.some(
+        (candidate) =>
+          candidate.run_id === parsed.run_id &&
+          candidate.mode === 'public-gate-leak' &&
+          !candidate.reaction &&
+          !candidate.cta_interaction,
+      )
+    ) {
+      return;
+    }
+    this.runEvents.push(parsed);
   }
 
   async appendContact(record: ContactRecord): Promise<void> {
@@ -166,22 +251,45 @@ export class InMemoryEventStore implements EventStore {
     return ev ? { ts: ev.ts, inputs_hash: ev.inputs_hash } : undefined;
   }
 
-  async appendPublicGateLeakRun(run: PublicGateLeakRun): Promise<{ created: boolean }> {
+  async appendPublicGateLeakRun(
+    run: PublicGateLeakRun,
+    budget: PublicJourneyWriteBudget,
+  ): Promise<{ created: boolean; rate_limited?: boolean }> {
     const parsed = PublicGateLeakRunSchema.parse(run);
-    const existing = this.publicRuns.get(parsed.run_id);
+    const existingById = this.publicRuns.get(parsed.run_id);
+    const existingIdForToken = this.publicRunIdsByToken.get(parsed.journey_token);
+    const existing = existingById ?? (existingIdForToken ? this.publicRuns.get(existingIdForToken) : undefined);
     if (existing) {
-      if (JSON.stringify(existing) !== JSON.stringify(parsed)) {
-        throw new Error(`conflicting public gate-leak run_id: ${parsed.run_id}`);
+      if (
+        existing.journey_token !== parsed.journey_token ||
+        existing.inputs_hash !== parsed.inputs_hash ||
+        existing.subject.chain_id !== parsed.subject.chain_id ||
+        existing.subject.contract_address !== parsed.subject.contract_address ||
+        existing.threshold !== parsed.threshold
+      ) {
+        throw new Error(`conflicting public gate-leak journey: ${parsed.run_id}/${parsed.journey_token}`);
       }
       return { created: false };
     }
+    const budgetKey = `${budget.bucket}:${budget.window_started_at}`;
+    const used = this.publicJourneyWrites.get(budgetKey) ?? 0;
+    if (used >= budget.limit) return { created: false, rate_limited: true };
+    this.publicJourneyWrites.set(budgetKey, used + 1);
     this.publicRuns.set(parsed.run_id, parsed);
+    this.publicRunIdsByToken.set(parsed.journey_token, parsed.run_id);
     return { created: true };
   }
 
   async appendPublicJourneyInput(event: PublicJourneyInputEvent): Promise<{ created: boolean }> {
     const parsed = PublicJourneyInputEventSchema.parse(event);
-    if (!this.publicRuns.has(parsed.run_id)) throw new Error(`unknown public run_id: ${parsed.run_id}`);
+    const run = this.publicRuns.get(parsed.run_id);
+    if (!run) throw new Error(`unknown public run_id: ${parsed.run_id}`);
+    if (run.access_started_at) {
+      if (run.access_started_at !== parsed.value) {
+        throw new Error(`conflicting journey input: ${parsed.run_id}/${parsed.input}`);
+      }
+      return { created: false };
+    }
     const existing = this.publicInputs.find((candidate) =>
       candidate.run_id === parsed.run_id && candidate.input === parsed.input,
     );
@@ -195,11 +303,9 @@ export class InMemoryEventStore implements EventStore {
 
   async appendPublicJourneyTransition(event: PublicJourneyTransition): Promise<{ created: boolean }> {
     const parsed = PublicJourneyTransitionSchema.parse(event);
-    if (!this.publicRuns.has(parsed.run_id)) throw new Error(`unknown public run_id: ${parsed.run_id}`);
-    const existing = this.publicTransitions.find((candidate) =>
-      candidate.run_id === parsed.run_id && candidate.outcome === parsed.outcome,
-    );
-    if (existing) return { created: false };
+    const current = await this.getPublicGateLeakJourney(parsed.run_id);
+    if (!current) throw new Error(`unknown public run_id: ${parsed.run_id}`);
+    if (publicJourneyTransitionDisposition(current, parsed) === 'noop') return { created: false };
     this.publicTransitions.push(parsed);
     return { created: true };
   }
@@ -224,6 +330,53 @@ export class InMemoryEventStore implements EventStore {
       current_refusal_code: latest?.refusal_code ?? run.refusal_code,
       supplied_access_started_at: supplied?.value ?? run.access_started_at,
     };
+  }
+
+  async getPublicGateLeakJourneyByToken(journeyToken: string): Promise<PublicGateLeakJourneyRecord | undefined> {
+    const runId = this.publicRunIdsByToken.get(journeyToken);
+    return runId ? this.getPublicGateLeakJourney(runId) : undefined;
+  }
+
+  async getPublicComputeResult(computeKey: string): Promise<unknown | undefined> {
+    const value = this.publicComputes.get(computeKey);
+    return value?.state === 'complete' ? value.result : undefined;
+  }
+
+  async claimPublicCompute(claim: PublicComputeClaim): Promise<PublicComputeClaimResult> {
+    const current = this.publicComputes.get(claim.compute_key);
+    if (current?.state === 'complete') return 'complete';
+    if (current?.state === 'running' && Date.parse(current.lease_expires_at) > Date.parse(claim.claimed_at)) {
+      return 'busy';
+    }
+    this.publicComputes.set(claim.compute_key, {
+      state: 'running',
+      owner_token: claim.owner_token,
+      lease_expires_at: claim.lease_expires_at,
+    });
+    return 'claimed';
+  }
+
+  async completePublicCompute(
+    computeKey: string,
+    ownerToken: string,
+    result: unknown,
+    completedAt: string,
+  ): Promise<boolean> {
+    const current = this.publicComputes.get(computeKey);
+    if (current?.state === 'complete') return false;
+    if (current?.state !== 'running' || current.owner_token !== ownerToken) {
+      return false;
+    }
+    if (Date.parse(current.lease_expires_at) <= Date.parse(completedAt)) {
+      return false;
+    }
+    this.publicComputes.set(computeKey, { state: 'complete', result });
+    return true;
+  }
+
+  async releasePublicCompute(computeKey: string, ownerToken: string): Promise<void> {
+    const current = this.publicComputes.get(computeKey);
+    if (current?.state === 'running' && current.owner_token === ownerToken) this.publicComputes.delete(computeKey);
   }
 
   /** Test/inspection helper. */

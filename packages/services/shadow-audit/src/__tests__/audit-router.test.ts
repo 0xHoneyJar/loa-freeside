@@ -64,6 +64,7 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
     cta: { product: '/shadow-access', conversation: '/talk' },
     now: () => NOW_MS,
     clientKey: (xff) => xff ?? 'default',
+    publicJourneyBudget: { limit: 1_000, windowMs: 60_000 },
     k: 1,
     ...over,
   };
@@ -402,12 +403,11 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     const res = await post(app, '/v1/access-risk', {
       chain: '1',
       contract: CONTRACT,
-      journey_token: 'journey-needs-input',
     });
     expect(res.status).toBe(428);
     const body = (await res.json()) as any;
     expect(body.journey.status).toEqual({ state: 'needs_input', required_input: 'access_started_at' });
-    expect(body.journey.run_id).toMatch(/^gate_/);
+    expect(body.journey.run_id).toMatch(/^gate_[0-9a-f]{32}$/);
     expect(eventStore.counts()).toMatchObject({ publicRuns: 1, attention: 2, runEvents: 1 });
   });
 
@@ -417,7 +417,6 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     const first = await post(app, '/v1/access-risk', {
       chain: '1',
       contract: CONTRACT,
-      journey_token: 'journey-resume',
     });
     const firstBody = (await first.json()) as any;
     const runBefore = await eventStore.getPublicGateLeakJourney(firstBody.journey.run_id);
@@ -434,7 +433,7 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
 
     const runAfter = await eventStore.getPublicGateLeakJourney(firstBody.journey.run_id);
     expect(runAfter?.inputs_hash).toBe(runBefore?.inputs_hash); // original digest is immutable
-    expect(runAfter?.outcome).toBe('needs_input'); // first event remains historical truth
+    expect(runAfter?.outcome).toBe('submitted'); // first event remains historical truth
     expect(runAfter?.current_outcome).toBe('delivered_e1');
     expect(runAfter?.supplied_access_started_at).toBe('2026-06-22');
 
@@ -443,18 +442,82 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     expect(((await poll.json()) as any).journey.status).toEqual({ state: 'delivered_e1' });
   });
 
+  it('persists retry transitions before returning delivered (ledger is response truth)', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore));
+    const first = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+    });
+    const firstBody = (await first.json()) as any;
+    const retried = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: firstBody.journey.journey_token,
+      access_started_at: '2026-06-22',
+    });
+    expect(retried.status).toBe(200);
+    const retriedBody = (await retried.json()) as any;
+    expect(retriedBody.journey.run_id).toBe(firstBody.journey.run_id);
+    expect((await eventStore.getPublicGateLeakJourney(firstBody.journey.run_id))?.current_outcome).toBe('delivered_e1');
+  });
+
+  it('rejects malformed subjects, impossible dates, and future dates before persistence', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore));
+    for (const body of [
+      { chain: 'ethereum', contract: CONTRACT },
+      { chain: '1', contract: '0xabc' },
+      { chain: '1', contract: CONTRACT, access_started_at: '2026-02-31' },
+      { chain: '1', contract: CONTRACT, access_started_at: '2027-01-01' },
+    ]) {
+      expect((await post(app, '/v1/access-risk', body)).status).toBe(400);
+    }
+    expect(eventStore.counts().publicRuns).toBe(0);
+  });
+
+  it('rejects a caller-chosen retry token unless the server already issued it', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(gateLeakDeps(eventStore));
+    const response = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: 'predictable-token',
+    });
+    expect(response.status).toBe(404);
+    expect(eventStore.counts().publicRuns).toBe(0);
+  });
+
+  it('bounds new durable journeys independently of caller identity', async () => {
+    const eventStore = new InMemoryEventStore();
+    const bounded = createAuditRouter({
+      ...gateLeakDeps(eventStore),
+      publicJourneyBudget: { limit: 1, windowMs: 60_000 },
+    });
+    expect((await post(bounded, '/v1/access-risk', { chain: '1', contract: CONTRACT })).status).toBe(428);
+    expect((await post(bounded, '/v1/access-risk', { chain: '1', contract: CONTRACT })).status).toBe(429);
+    expect(eventStore.counts().publicRuns).toBe(1);
+  });
+
   it('uses a ratified registry access-start without silently inventing a date', async () => {
     const eventStore = new InMemoryEventStore();
     const app = createAuditRouter(gateLeakDeps(eventStore, '2026-06-22'));
     const res = await post(app, '/v1/access-risk', {
       chain: '1',
       contract: CONTRACT,
-      journey_token: 'journey-ratified-date',
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.journey.status).toEqual({ state: 'delivered_e1' });
-    expect((await eventStore.getPublicGateLeakJourney(body.journey.run_id))?.access_started_at).toBe('2026-06-22');
+    expect((await eventStore.getPublicGateLeakJourney(body.journey.run_id))?.supplied_access_started_at).toBe('2026-06-22');
+    const conflict = await post(app, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: body.journey.journey_token,
+      access_started_at: '2026-06-21',
+    });
+    expect(conflict.status).toBe(409);
+    expect((await eventStore.getPublicGateLeakJourney(body.journey.run_id))?.supplied_access_started_at).toBe('2026-06-22');
   });
 
   it('counts two demand journeys while doing the expensive subject/input compute once', async () => {
@@ -468,8 +531,7 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
         return ownership.resolveSnapshotBlock(args);
       },
     };
-    const app = createAuditRouter(
-      makeDeps({
+    const sharedDeps = makeDeps({
         eventStore,
         ownership: countingOwnership,
         collectionRegistry: registry({
@@ -479,27 +541,122 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
             access_started_at: '2026-06-22',
           },
         }),
-      }),
-    );
+      });
+    const firstReplica = createAuditRouter(sharedDeps);
+    const secondReplica = createAuditRouter(sharedDeps);
     const [first, second] = await Promise.all([
-      post(app, '/v1/access-risk', {
+      post(firstReplica, '/v1/access-risk', {
         chain: '1',
         contract: CONTRACT,
-        journey_token: 'demand-a',
       }),
-      post(app, '/v1/access-risk', {
+      post(secondReplica, '/v1/access-risk', {
         chain: '1',
         contract: CONTRACT,
-        journey_token: 'demand-b',
       }),
     ]);
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
+    expect([first.status, second.status].sort()).toEqual([200, 202]);
     const firstBody = (await first.json()) as any;
     const secondBody = (await second.json()) as any;
     expect(firstBody.journey.run_id).not.toBe(secondBody.journey.run_id);
+    const pendingToken = first.status === 202
+      ? firstBody.journey.journey_token
+      : secondBody.journey.journey_token;
+    const settled = await post(secondReplica, '/v1/access-risk', {
+      chain: '1',
+      contract: CONTRACT,
+      journey_token: pendingToken,
+    });
+    expect(settled.status).toBe(200);
     expect(snapshotCalls).toBe(1);
     expect(eventStore.counts()).toMatchObject({ publicRuns: 2, attention: 4, runEvents: 2 });
+  });
+
+  it('does not commit or cache a compute result after its distributed lease expires', async () => {
+    const eventStore = new InMemoryEventStore();
+    let clock = NOW_MS;
+    let snapshotCalls = 0;
+    const slowOwnership: OwnershipSource = {
+      ...ownership,
+      resolveSnapshotBlock: async (args) => {
+        snapshotCalls++;
+        clock += 2;
+        return ownership.resolveSnapshotBlock(args);
+      },
+    };
+    const app = createAuditRouter(makeDeps({
+      eventStore,
+      ownership: slowOwnership,
+      now: () => clock,
+      publicComputeLeaseMs: 1,
+      collectionRegistry: registry({
+        [`1/${CONTRACT}`]: {
+          collection: 'thj',
+          standard: 'erc721',
+          access_started_at: '2026-06-22',
+        },
+      }),
+    }));
+
+    const first = await post(app, '/v1/access-risk', { chain: '1', contract: CONTRACT });
+    expect(first.status).toBe(202);
+    const firstBody = (await first.json()) as any;
+    expect(
+      (
+        await post(app, '/v1/access-risk', {
+          chain: '1',
+          contract: CONTRACT,
+          journey_token: firstBody.journey.journey_token,
+        })
+      ).status,
+    ).toBe(202);
+    expect(snapshotCalls).toBe(2); // the stale first result never entered either cache
+    expect(eventStore.counts().runEvents).toBe(0);
+  });
+
+  it('returns the concurrent durable delivery instead of the losing attempted refusal', async () => {
+    class ConcurrentDeliveryStore extends InMemoryEventStore {
+      private winnerVisible = false;
+
+      override async appendPublicJourneyTransition(
+        event: Parameters<InMemoryEventStore['appendPublicJourneyTransition']>[0],
+      ): Promise<{ created: boolean }> {
+        if (event.outcome === 'refused') {
+          await super.appendPublicJourneyTransition({
+            ...event,
+            outcome: 'delivered_e1',
+            refusal_code: undefined,
+          });
+          this.winnerVisible = true;
+        }
+        return super.appendPublicJourneyTransition(event);
+      }
+
+      override async getPublicComputeResult(): Promise<unknown | undefined> {
+        return this.winnerVisible ? { concurrent_winner: true } : undefined;
+      }
+    }
+
+    const eventStore = new ConcurrentDeliveryStore();
+    const app = createAuditRouter(makeDeps({
+      eventStore,
+      teaserBudget: {
+        check: () => ({ allowed: false, remaining: 0, retryAfterMs: 60_000 }),
+      },
+      collectionRegistry: registry({
+        [`1/${CONTRACT}`]: {
+          collection: 'thj',
+          standard: 'erc721',
+          access_started_at: '2026-06-22',
+        },
+      }),
+    }));
+
+    const response = await post(app, '/v1/access-risk', { chain: '1', contract: CONTRACT });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as any;
+    expect(body.journey.status).toEqual({ state: 'delivered_e1' });
+    expect(body.report.concurrent_winner).toBe(true);
+    expect(body.error).toBeUndefined();
   });
 
   it('keeps every public exit channel member-free and sub-k-safe', async () => {
@@ -508,7 +665,6 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     const needs = await post(app, '/v1/access-risk', {
       chain: '1',
       contract: CONTRACT,
-      journey_token: 'journey-privacy',
     });
     const serializedNeeds = JSON.stringify(await needs.json());
     for (const forbidden of ['wallet', 'email', 'role_ids', 'sub_k_denominator', 'free_text']) {
@@ -518,7 +674,6 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     const refused = await post(createAuditRouter(makeDeps({ eventStore })), '/v1/access-risk', {
       chain: '1',
       contract: CONTRACT,
-      journey_token: 'journey-refused',
     });
     const serializedRefusal = JSON.stringify(await refused.json());
     for (const forbidden of ['wallet', 'email', 'role_ids', 'sub_k_denominator', 'free_text']) {

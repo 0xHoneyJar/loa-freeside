@@ -23,7 +23,7 @@ describe('HttpGateLeakPort', () => {
     });
     const port = new HttpGateLeakPort('https://shadow.test/', fetchFn);
 
-    const first = await port.submit({ chain: '1', contract: CONTRACT, journey_token: 'journey-1' });
+    const first = await port.submit({ chain: '1', contract: CONTRACT });
     expect(first.journey.status).toEqual({ state: 'needs_input', required_input: 'access_started_at' });
     const resumed = await port.resume('gate_run', '2026-06-22');
     expect(resumed.journey.status).toEqual({ state: 'delivered_e1' });
