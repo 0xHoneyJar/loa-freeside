@@ -348,9 +348,14 @@ export function captureLiveSnapshot({ cli, cwd = ROOT, regionId }) {
 
 function usage() {
   return `Usage:
-  node tools/construct-operator.mjs render [--system <file>] [--region <id>] (--snapshot <file> | --constructs-cli <path>) [--json]
+  node tools/construct-operator.mjs render [--system <file>] [--region <id>] (--snapshot <file> | --constructs-cli <path>) [--json] [--require-ok]
 
 Live mode runs read-only Constructs verbs only: capabilities, atlas, and info --rung local.`;
+}
+
+function rejectUnknownFlags(args, allowed) {
+  const unknown = args.find((arg) => arg.startsWith("--") && !allowed.has(arg));
+  if (unknown) throw new Error(`unknown option ${unknown}`);
 }
 
 function flagValue(args, name) {
@@ -366,6 +371,14 @@ async function main(args) {
     console.error(usage());
     return 1;
   }
+  rejectUnknownFlags(args.slice(1), new Set([
+    "--system",
+    "--region",
+    "--snapshot",
+    "--constructs-cli",
+    "--json",
+    "--require-ok",
+  ]));
   const systemPath = flagValue(args, "--system") ?? DEFAULT_SYSTEM;
   const component = readJson(systemPath);
   const regionId = flagValue(args, "--region") ?? component.component_id;
@@ -382,7 +395,12 @@ async function main(args) {
   const surface = buildConstructOperatorSurface({ component, snapshot, regionId });
   if (args.includes("--json")) process.stdout.write(`${JSON.stringify(surface, null, 2)}\n`);
   else process.stdout.write(renderConstructOperatorSurface(surface));
-  return surface.status === "drift" ? 5 : 0;
+  if (surface.status === "drift") return 5;
+  if (args.includes("--require-ok") && surface.status !== "ok") {
+    console.error(`construct-operator: --require-ok rejected status ${surface.status}`);
+    return 1;
+  }
+  return 0;
 }
 
 const isDirect = process.argv[1]

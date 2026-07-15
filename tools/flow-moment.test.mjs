@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { renderFlowMoment, validateFlowMoment } from "./flow-moment.mjs";
 
@@ -113,6 +114,45 @@ test("the Gold clock cannot be bypassed with an impossible as-of date", () => {
   const result = validateFlowMoment(EXAMPLE, { today: "2026-99-99" });
   assert.equal(result.valid, false);
   assert.match(result.errors.join("\n"), /real calendar date/);
+});
+
+test("Gold maturity uses the record as-of date instead of the wall clock", () => {
+  const document = clone(EXAMPLE);
+  document.as_of = "2026-07-10";
+  document.components = [{
+    ref: "component:MemberTimeline",
+    maturity: "gold",
+    intent: "Let a manager inspect the history behind a member classification.",
+    feel: "Calm, factual, and compact.",
+    inspiration: ["operator-reference:mobbin/clay-people-2026-07-14"],
+    rejected: ["Essay-like summary without event provenance."],
+    graduation: {
+      taste_owner: "Freeside product",
+      production_since: "2026-07-01",
+      no_regressions: true,
+      active_use: true,
+      evidence_refs: ["github:0xHoneyJar/freeside-dashboard#111"],
+    },
+  }];
+  const premature = validateFlowMoment(document);
+  assert.equal(premature.valid, false);
+  assert.match(premature.errors.join("\n"), /requires 14 production days/);
+
+  document.as_of = "2026-07-15";
+  const mature = validateFlowMoment(document);
+  assert.equal(mature.valid, true, mature.errors.join("\n"));
+});
+
+test("the flow CLI rejects unknown flags", () => {
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, "tools/flow-moment.mjs"),
+    "validate",
+    "product/flow-moments",
+    "--todays",
+    TODAY,
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unknown option --todays/);
 });
 
 test("the generated receipt carries intent without becoming another ledger", () => {

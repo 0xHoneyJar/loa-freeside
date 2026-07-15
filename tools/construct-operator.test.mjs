@@ -190,3 +190,29 @@ test("the CLI names a missing flag value instead of reporting a false mode confl
   assert.match(result.stderr, /--snapshot requires a value/);
   assert.doesNotMatch(result.stderr, /choose exactly one/);
 });
+
+test("the CLI rejects unknown flags", () => {
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, "tools/construct-operator.mjs"),
+    "render",
+    "--snapshot",
+    path.join(ROOT, "tools/fixtures/construct-operator.snapshot.json"),
+    "--requier-ok",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unknown option --requier-ok/);
+});
+
+test("--require-ok rejects partial operator surfaces without hiding the receipt", () => {
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, "tools/construct-operator.mjs"),
+    "render",
+    "--snapshot",
+    path.join(ROOT, "tools/fixtures/construct-operator.snapshot.json"),
+    "--json",
+    "--require-ok",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.equal(JSON.parse(result.stdout).status, "partial");
+  assert.match(result.stderr, /--require-ok rejected status partial/);
+});

@@ -197,9 +197,15 @@ function usage() {
   node tools/system-component.mjs render <file>`;
 }
 
+function rejectUnknownFlags(args, allowed) {
+  const unknown = args.find((arg) => arg.startsWith("--") && !allowed.has(arg));
+  if (unknown) throw new Error(`unknown option ${unknown}`);
+}
+
 async function main(args) {
   const command = args[0];
   if (command === "validate") {
+    rejectUnknownFlags(args.slice(1), new Set(["--portable"]));
     const portable = args.includes("--portable");
     const target = args.slice(1).find((arg) => !arg.startsWith("--")) ?? DEFAULT_PATH;
     const files = collectFiles(target);
@@ -234,6 +240,7 @@ async function main(args) {
   }
 
   if (command === "render") {
+    rejectUnknownFlags(args.slice(1), new Set());
     const file = args[1];
     if (!file) {
       console.error(usage());

@@ -132,7 +132,7 @@ function semanticErrors(document, today) {
 }
 
 export function validateFlowMoment(document, options = {}) {
-  const today = options.today ?? new Date().toISOString().slice(0, 10);
+  const today = options.today ?? document?.as_of;
   if (!isRealDate(today)) {
     return { valid: false, errors: ["today: expected a real calendar date in YYYY-MM-DD format"] };
   }
@@ -158,6 +158,8 @@ export function renderFlowMoment(document) {
 **Flow moment:** ${document.flow_moment_id}
 
 **Record:** ${document.record_state}
+
+**As of:** ${document.as_of}
 
 **Outcome confidence:** ${document.hivemind.learning_status}
 
@@ -247,7 +249,7 @@ function collectFlowFiles(target) {
 
 function parseToday(args) {
   const index = args.indexOf("--today");
-  if (index === -1) return new Date().toISOString().slice(0, 10);
+  if (index === -1) return undefined;
   const value = args[index + 1];
   if (!isRealDate(value)) {
     throw new Error("--today requires YYYY-MM-DD");
@@ -267,9 +269,15 @@ function usage() {
   node tools/flow-moment.mjs render <file>`;
 }
 
+function rejectUnknownFlags(args, allowed) {
+  const unknown = args.find((arg) => arg.startsWith("--") && !allowed.has(arg));
+  if (unknown) throw new Error(`unknown option ${unknown}`);
+}
+
 async function main(args) {
   const command = args[0];
   if (command === "validate") {
+    rejectUnknownFlags(args.slice(1), new Set(["--today"]));
     const targetArg = args[1] && !args[1].startsWith("--") ? args[1] : DEFAULT_RECORDS_PATH;
     const files = collectFlowFiles(targetArg);
     if (files.length === 0) {
@@ -301,6 +309,7 @@ async function main(args) {
   }
 
   if (command === "render") {
+    rejectUnknownFlags(args.slice(1), new Set());
     const file = args[1];
     if (!file) {
       console.error(usage());

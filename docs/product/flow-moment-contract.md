@@ -35,6 +35,7 @@ A Gold component can appear inside a falsified flow. A Silver prototype can prod
 - Exposed research requires a feature-flag reference and an evidence contract.
 - Default-on research requires a learning reference and an operator decision.
 - Gold requires Silver metadata, a taste owner, 14 production days, active use, no regressions, and evidence references.
+- Gold age is evaluated against the record's explicit `as_of` date. Advancing the maturity clock is therefore a reviewable record change, not an ambient CI clock.
 - CI validates claims and evidence pointers. It cannot decide whether the taste is good or the hypothesis is true.
 
 ## Evidence privacy
@@ -92,3 +93,4 @@ node tools/construct-operator.mjs render \
 ```
 
 Live mode invokes only `capabilities`, `atlas`, and `info --rung local`. Mutation verbs are displayed in a separate set but are never executed. Until the territory is committed on the region's default branch and the producer can prove stationing, the overall receipt stays `partial` rather than presenting a working-tree declaration as ratified expertise.
+Release gates may add `--require-ok` to reject `partial`; ordinary operator inspection deliberately renders partial receipts so missing or unratified state remains visible.

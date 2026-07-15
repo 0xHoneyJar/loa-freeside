@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -168,4 +168,15 @@ test("the reusable validator install cannot be captured by a consumer workspace"
   );
   assert.match(workflow, /--portable/);
   assert.match(workflow, /inputs\.validate-flow-moments/);
+});
+
+test("the system-component CLI rejects unknown flags", () => {
+  const result = spawnSync(process.execPath, [
+    SYSTEM_CLI,
+    "validate",
+    "product/system-components",
+    "--portabl",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unknown option --portabl/);
 });

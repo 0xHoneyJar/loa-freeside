@@ -10,6 +10,7 @@
     "flow_moment_id",
     "title",
     "record_state",
+    "as_of",
     "hivemind",
     "actor",
     "entry_state",
@@ -36,6 +37,7 @@
       "type": "string",
       "enum": ["draft", "active", "retired"]
     },
+    "as_of": { "type": "string", "format": "date" },
     "hivemind": {
       "allOf": [
         { "$ref": "https://loa.dev/hivemind/labels.schema.json" },
