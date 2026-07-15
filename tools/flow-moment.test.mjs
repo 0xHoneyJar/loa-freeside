@@ -134,13 +134,36 @@ test("Gold maturity uses the record as-of date instead of the wall clock", () =>
       evidence_refs: ["github:0xHoneyJar/freeside-dashboard#111"],
     },
   }];
-  const premature = validateFlowMoment(document);
+  const premature = validateFlowMoment(document, { today: "2026-07-15" });
   assert.equal(premature.valid, false);
   assert.match(premature.errors.join("\n"), /requires 14 production days/);
 
   document.as_of = "2026-07-15";
-  const mature = validateFlowMoment(document);
+  const mature = validateFlowMoment(document, { today: "2026-07-15" });
   assert.equal(mature.valid, true, mature.errors.join("\n"));
+});
+
+test("a record cannot self-certify maturity against a future as-of date", () => {
+  const document = clone(EXAMPLE);
+  document.as_of = "2026-07-16";
+  const result = validateFlowMoment(document, { today: "2026-07-15" });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("\n"), /cannot be later than validator date/);
+});
+
+test("observation signal references use the canonical signal id grammar", () => {
+  const document = clone(EXAMPLE);
+  document.evidence_contract.observations = [{
+    id: "OBS-FIRST",
+    captured_at: "2026-07-14T12:00:00Z",
+    signal_ids: ["Not_A_Signal"],
+    summary: "A bounded observation.",
+    source_type: "partner-observation",
+    ref: "github:0xHoneyJar/loa-freeside#468",
+  }];
+  const result = validate(document);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join("\n"), /pattern/);
 });
 
 test("the flow CLI rejects unknown flags", () => {

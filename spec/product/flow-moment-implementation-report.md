@@ -34,7 +34,7 @@ The implementation does not create another decision or learning ledger. `product
 - Requires learning and operator-decision references before research becomes default-on.
 - Requires both behavioral and qualitative evidence for `strongly-validated`.
 - Requires Silver intent metadata and a 14-day, evidence-backed production floor for Gold.
-- Evaluates the Gold production floor against a record-owned `as_of` date, keeping a commit's result deterministic.
+- Evaluates the Gold production floor against a record-owned `as_of` date, while refusing dates beyond the validator's observed UTC date.
 - Fails when no records are found, preventing a green check that validated nothing.
 - Refuses a construct whose prose claims authority or whose mechanics claim an authority effect.
 - Treats missing construct details and unchecked territory ratification as `partial`, not success.
@@ -54,7 +54,7 @@ node tools/system-component.mjs render product/system-components/loa-freeside.sy
 node tools/construct-operator.mjs render --snapshot tools/fixtures/construct-operator.snapshot.json
 ```
 
-Result: 43 tests passed; 1 real flow record and 1 canonical system-component manifest passed; all three receipts rendered; the live producer validated the Freeside territory and returned both stationings as expected dry-runs pending default-branch ratification. Targeted lint and workflow parsing pass. Portable consumer validation no longer requires canonical flow records unless `validate-flow-moments: true`, and the reusable install remains isolated from a caller's pnpm workspace.
+Result: 45 tests passed; 1 real flow record and 1 canonical system-component manifest passed; all three receipts rendered; the live producer validated the Freeside territory and returned both stationings as expected dry-runs pending default-branch ratification. Targeted lint and workflow parsing pass. Portable consumer validation no longer requires canonical flow records unless `validate-flow-moments: true`, and the reusable install remains isolated from a caller's pnpm workspace.
 
 ## Known limitations
 

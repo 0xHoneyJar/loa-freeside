@@ -224,15 +224,16 @@
       "minLength": 3,
       "pattern": "^(?![\\s\\S]*\\s)[a-z][a-z0-9+.-]*:\\S+$"
     },
+    "signalId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+    },
     "signal": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind", "question", "success_indicator", "failure_indicator", "source_types"],
       "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
-        },
+        "id": { "$ref": "#/$defs/signalId" },
         "kind": {
           "type": "string",
           "enum": ["behavioral", "qualitative", "operational"]
@@ -274,7 +275,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string" }
+          "items": { "$ref": "#/$defs/signalId" }
         },
         "summary": { "$ref": "#/$defs/nonEmptyString" },
         "source_type": { "$ref": "#/$defs/evidenceSourceType" },

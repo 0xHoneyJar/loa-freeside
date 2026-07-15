@@ -53,7 +53,7 @@ function evidenceKindsCovered(document) {
   return covered;
 }
 
-function semanticErrors(document, today) {
+function semanticErrors(document, asOf) {
   const errors = [];
   const signals = document.evidence_contract.signals;
   const observations = document.evidence_contract.observations;
@@ -118,7 +118,7 @@ function semanticErrors(document, today) {
     errors.push(`components: duplicate refs: ${componentRefs.join(", ")}`);
   }
 
-  const todayMs = Date.parse(`${today}T00:00:00Z`);
+  const todayMs = Date.parse(`${asOf}T00:00:00Z`);
   for (const component of document.components) {
     if (component.maturity !== "gold") continue;
     const productionMs = Date.parse(`${component.graduation.production_since}T00:00:00Z`);
@@ -132,13 +132,20 @@ function semanticErrors(document, today) {
 }
 
 export function validateFlowMoment(document, options = {}) {
-  const today = options.today ?? document?.as_of;
-  if (!isRealDate(today)) {
+  const observedToday = options.today ?? new Date().toISOString().slice(0, 10);
+  const asOf = document?.as_of;
+  if (!isRealDate(observedToday)) {
     return { valid: false, errors: ["today: expected a real calendar date in YYYY-MM-DD format"] };
+  }
+  if (!isRealDate(asOf)) {
+    return { valid: false, errors: ["as_of: expected a real calendar date in YYYY-MM-DD format"] };
   }
   const schemaValid = schemaValidator(document);
   const errors = schemaValid ? [] : schemaValidator.errors.map(formatSchemaError);
-  if (schemaValid) errors.push(...semanticErrors(document, today));
+  if (schemaValid && Date.parse(`${asOf}T00:00:00Z`) > Date.parse(`${observedToday}T00:00:00Z`)) {
+    errors.push(`as_of: ${asOf} cannot be later than validator date ${observedToday}`);
+  }
+  if (schemaValid) errors.push(...semanticErrors(document, asOf));
   return { valid: errors.length === 0, errors };
 }
 

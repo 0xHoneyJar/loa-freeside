@@ -35,7 +35,7 @@ A Gold component can appear inside a falsified flow. A Silver prototype can prod
 - Exposed research requires a feature-flag reference and an evidence contract.
 - Default-on research requires a learning reference and an operator decision.
 - Gold requires Silver metadata, a taste owner, 14 production days, active use, no regressions, and evidence references.
-- Gold age is evaluated against the record's explicit `as_of` date. Advancing the maturity clock is therefore a reviewable record change, not an ambient CI clock.
+- Gold age is evaluated against the record's explicit `as_of` date. Advancing the maturity clock is therefore a reviewable record change, not an ambient CI clock; validation also refuses an `as_of` later than the validator's observed UTC date.
 - CI validates claims and evidence pointers. It cannot decide whether the taste is good or the hypothesis is true.
 
 ## Evidence privacy
@@ -61,6 +61,9 @@ Product telemetry, website feedback, tickets, Discord, interviews, partner obser
 - a thin workflow caller pinned to an immutable `loa-freeside` governance commit.
 
 This makes drift reviewable without vendoring the contract into every API or product repository.
+The `governance-ref` input must be a full lowercase 40-character commit SHA; branches
+and tags are rejected before the governance checkout so a caller's verifier cannot move
+without a reviewed caller change.
 By default, the reusable workflow validates a portable system manifest: flow IDs and
 `flow:<id>` references must agree, but the consumer does not need to vendor Freeside's
 canonical `.flow.json` records. Set `validate-flow-moments: true` only when the consumer

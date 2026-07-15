@@ -168,6 +168,7 @@ test("the reusable validator install cannot be captured by a consumer workspace"
   );
   assert.match(workflow, /--portable/);
   assert.match(workflow, /inputs\.validate-flow-moments/);
+  assert.match(workflow, /governance-ref must be a full lowercase 40-character commit SHA/);
 });
 
 test("the system-component CLI rejects unknown flags", () => {
