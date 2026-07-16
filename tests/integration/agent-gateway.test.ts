@@ -524,9 +524,15 @@ describe('SSE Streaming Proxy', () => {
     });
     await redis.set(budgetLimitKey(request.context.tenantId), '1000');
 
+    const reconciliationCalls: Array<Parameters<ReconciliationQueue['add']>[1]> = [];
+    const reconciliationQueue: ReconciliationQueue = {
+      async add(_name, data) {
+        reconciliationCalls.push(data);
+      },
+    };
     let streamError: unknown;
     try {
-      for await (const _event of createStreamingGateway().stream(request)) {
+      for await (const _event of createStreamingGateway(reconciliationQueue).stream(request)) {
         // A non-2xx response must fail before any stream event is produced.
       }
     } catch (error) {
@@ -538,6 +544,49 @@ describe('SSE Streaming Proxy', () => {
       code: 'UPSTREAM_ERROR',
       statusCode: 503,
     });
+    expect(reconciliationCalls).toEqual([]);
+  });
+
+  it('preserves the transport failure when reconciliation enqueue fails', async () => {
+    stub.setStreamBehavior({
+      events: [{ text: 'partial' }],
+      usage: { promptTokens: 50, completionTokens: 30, costUsd: 0.002 },
+      dropAfterEvents: 1,
+    });
+
+    const request = createStreamRequest({
+      communityId: 'comm-stream-reconcile-failure',
+      userId: 'user-stream-reconcile-failure',
+      idempotencyKey: 'idem-stream-reconcile-failure',
+      traceId: 'trace-stream-reconcile-failure',
+    });
+    await redis.set(budgetLimitKey(request.context.tenantId), '1000');
+    const reconciliationFailure = new Error('queue unavailable');
+    const reconciliationQueue: ReconciliationQueue = {
+      async add() {
+        throw reconciliationFailure;
+      },
+    };
+
+    let streamError: unknown;
+    try {
+      for await (const _event of createStreamingGateway(reconciliationQueue).stream(request)) {
+        // Consume until the simulated transport drop.
+      }
+    } catch (error) {
+      streamError = error;
+    }
+
+    expect(streamError).toBeInstanceOf(AgentGatewayError);
+    expect(streamError).toMatchObject({
+      code: 'STREAM_INTERRUPTED',
+      statusCode: 502,
+    });
+    if (!(streamError instanceof AgentGatewayError)) {
+      throw new Error('Expected AgentGatewayError');
+    }
+    expect(streamError.cause).toBeInstanceOf(TypeError);
+    expect(streamError).not.toBe(reconciliationFailure);
   });
 });
 

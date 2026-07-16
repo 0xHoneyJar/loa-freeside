@@ -24,7 +24,7 @@ import type {
 } from '@freeside/core/ports';
 import type { BudgetManager } from './budget-manager.js';
 import type { AgentRateLimiter } from './agent-rate-limiter.js';
-import type { LoaFinnClient } from './loa-finn-client.js';
+import { LoaFinnError, type LoaFinnClient } from './loa-finn-client.js';
 import type { TierAccessMapper } from './tier-access-mapper.js';
 import type { StreamReconciliationJob } from './stream-reconciliation-worker.js';
 import {
@@ -540,6 +540,7 @@ export class AgentGateway implements IAgentGateway {
     let finalized = false;
     let streamFailed = false;
     let streamFailure: unknown;
+    let cleanupFailure: unknown;
 
     try {
       for await (const event of this.loaFinn.stream(request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
@@ -571,18 +572,32 @@ export class AgentGateway implements IAgentGateway {
       streamFailed = true;
       streamFailure = error;
     } finally {
-      // Lifecycle: → FAILED if not already terminal (abort/error path)
-      if (!lifecycle.isTerminal()) {
-        lifecycle.fail({ reason: finalized ? 'POST_FINALIZE_ERROR' : 'STREAM_NOT_FINALIZED' });
-      }
+      try {
+        // Lifecycle: → FAILED if not already terminal (abort/error path)
+        if (!lifecycle.isTerminal()) {
+          lifecycle.fail({ reason: finalized ? 'POST_FINALIZE_ERROR' : 'STREAM_NOT_FINALIZED' });
+        }
 
-      // Reconciliation in finally block ensures budget accounting even on abort (S10-T2)
-      if (!finalized) {
-        await this.scheduleReconciliation(context, log);
+        // Reconciliation taxonomy:
+        // - dropped transport / abort / timeout: enqueue because execution may have continued;
+        // - clean EOF or stream-processing failure before usage: enqueue for the same uncertainty;
+        // - explicit loa-finn HTTP refusal: do not enqueue because execution was rejected upstream.
+        if (!finalized && shouldScheduleStreamReconciliation(streamFailed, streamFailure)) {
+          await this.scheduleReconciliation(context, log);
+        }
+      } catch (error) {
+        cleanupFailure = error;
       }
     }
 
     if (streamFailed) {
+      if (cleanupFailure !== undefined) {
+        log.error(
+          { err: cleanupFailure, streamFailure },
+          'Stream cleanup failed; preserving the original stream failure',
+        );
+      }
+
       if (!finalized && isStreamTransportFailure(streamFailure)) {
         throw new AgentGatewayError(
           'STREAM_INTERRUPTED',
@@ -594,6 +609,10 @@ export class AgentGateway implements IAgentGateway {
       }
 
       throw streamFailure;
+    }
+
+    if (cleanupFailure !== undefined) {
+      throw cleanupFailure;
     }
   }
 
@@ -731,27 +750,23 @@ export class AgentGateway implements IAgentGateway {
       return;
     }
 
-    try {
-      await this.reconciliationQueue.add('stream-reconcile', {
-        idempotencyKey: context.idempotencyKey,
-        communityId: context.tenantId,
-        userId: context.userId,
-        traceId: context.traceId,
-        reservedAt: Date.now(),
-      }, {
-        // 30s: Delay before first reconciliation attempt. Gives loa-finn time to
-        // process the stream and record usage before we query. See SDD §4.7.1.
-        delay: 30_000,
-        // 3 attempts with 10s exponential backoff (10s, 20s, 40s). Total window ~100s.
-        // After 3 failures, reservation falls through to reaper cleanup (§8.4).
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 10_000 },
-      });
+    await this.reconciliationQueue.add('stream-reconcile', {
+      idempotencyKey: context.idempotencyKey,
+      communityId: context.tenantId,
+      userId: context.userId,
+      traceId: context.traceId,
+      reservedAt: Date.now(),
+    }, {
+      // 30s: Delay before first reconciliation attempt. Gives loa-finn time to
+      // process the stream and record usage before we query. See SDD §4.7.1.
+      delay: 30_000,
+      // 3 attempts with 10s exponential backoff (10s, 20s, 40s). Total window ~100s.
+      // After 3 failures, reservation falls through to reaper cleanup (§8.4).
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10_000 },
+    });
 
-      log.info('Scheduled stream reconciliation');
-    } catch (err) {
-      log.error({ err }, 'Failed to schedule stream reconciliation');
-    }
+    log.info('Scheduled stream reconciliation');
   }
 
   /**
@@ -857,6 +872,14 @@ function isStreamTransportFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true;
   return error instanceof DOMException
     && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+function shouldScheduleStreamReconciliation(
+  streamFailed: boolean,
+  streamFailure: unknown,
+): boolean {
+  if (!streamFailed) return true;
+  return !(streamFailure instanceof LoaFinnError && streamFailure.statusCode !== undefined);
 }
 
 // --------------------------------------------------------------------------
