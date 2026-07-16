@@ -8,6 +8,7 @@ import type {
   AuthorizationScope,
   LocalCapabilitySnapshot,
   ResolutionCreateCommand,
+  ResolutionRefreshCommand,
   ResolutionRequestMaterial,
 } from "@freeside/collection-resolution-protocol";
 import {
@@ -554,17 +555,48 @@ describe("CR-006 Ordering resolution service", () => {
 
     sonar.nextCandidates = multiSnapshot.candidates;
     sonar.nextDiagnostics = multiSnapshot.diagnostics;
-    await expect(
-      service.refresh(
+    const refreshCommand: ResolutionRefreshCommand = {
+      schema_version: 1,
+      expected_confirmation_version: 1,
+      idempotency_key: "refresh-regroup",
+    };
+    let firstStale: SelectionStaleError | undefined;
+    try {
+      await service.refresh(
         created.resolution_id,
-        {
-          schema_version: 1,
-          expected_confirmation_version: 1,
-          idempotency_key: "refresh-regroup",
-        },
+        refreshCommand,
         scope,
-      ),
-    ).rejects.toBeInstanceOf(SelectionStaleError);
+      );
+    } catch (error) {
+      if (!(error instanceof SelectionStaleError)) throw error;
+      firstStale = error;
+    }
+    if (firstStale === undefined) {
+      throw new Error("expected changed deployment grouping to produce selection_stale");
+    }
+
+    const probesAfterFirstAttempt = sonar.probes;
+    sonar.nextCandidates = evmSnapshot.candidates;
+    sonar.nextDiagnostics = evmSnapshot.diagnostics;
+    let replayedStale: SelectionStaleError | undefined;
+    try {
+      await service.refresh(created.resolution_id, refreshCommand, scope);
+    } catch (error) {
+      if (!(error instanceof SelectionStaleError)) throw error;
+      replayedStale = error;
+    }
+    if (replayedStale === undefined) {
+      throw new Error("expected exact refresh retry to replay selection_stale");
+    }
+
+    expect(sonar.probes).toBe(probesAfterFirstAttempt);
+    expect(replayedStale.reason).toBe(firstStale.reason);
+    expect(replayedStale.previous_candidate_snapshot_digest).toEqual(
+      firstStale.previous_candidate_snapshot_digest,
+    );
+    expect(replayedStale.current_candidate_snapshot_digest).toEqual(
+      firstStale.current_candidate_snapshot_digest,
+    );
 
     const persisted = await store.get(created.resolution_id);
     expect(persisted?.selected_deployment_ids).toBeUndefined();

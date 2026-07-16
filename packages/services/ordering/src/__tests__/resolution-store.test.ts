@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { ConfirmedResolutionRecord } from "@freeside/collection-resolution-protocol";
+import type {
+  ConfirmedResolutionRecord,
+  ResolutionRefreshCommand,
+} from "@freeside/collection-resolution-protocol";
 import { isDeepFrozen } from "@freeside/collection-resolution-protocol";
-import { InMemoryResolutionStore } from "../resolution-store.js";
+import {
+  InMemoryResolutionStore,
+  type ResolutionSelectionStaleOutcome,
+} from "../resolution-store.js";
 
 const baseRecord = (overrides: Partial<ConfirmedResolutionRecord> = {}): ConfirmedResolutionRecord =>
   ({
@@ -303,5 +309,144 @@ describe("InMemoryResolutionStore CAS and idempotency", () => {
 
     // Current truth remains confirmed — historical replay did not roll back.
     expect((await store.get("res_store_1"))?.confirmation_version).toBe(1);
+  });
+
+  it("concurrent stale refresh loser replays the winner's exact observed outcome", async () => {
+    const store = new InMemoryResolutionStore();
+    await store.createAtomic({
+      record: baseRecord(),
+      command: {
+        schema_version: 1,
+        identifier: "0xabc",
+        environment: "mainnet",
+        report_type: "gate_leak",
+        report_version: "v1",
+        idempotency_key: "create-stale-race",
+      },
+      command_digest: "digest-create-stale-race",
+      now_ms: 1,
+    });
+
+    const previousDigest = baseRecord().candidate_snapshot_digest;
+    const firstDigest = { ...previousDigest, digest: "4".repeat(64) };
+    const secondDigest = { ...previousDigest, digest: "5".repeat(64) };
+    const firstStale: ResolutionSelectionStaleOutcome = {
+      reason: "deployment_changed",
+      previous_candidate_snapshot_digest: previousDigest,
+      current_candidate_snapshot_digest: firstDigest,
+    };
+    const secondStale: ResolutionSelectionStaleOutcome = {
+      reason: "recognition_changed",
+      previous_candidate_snapshot_digest: previousDigest,
+      current_candidate_snapshot_digest: secondDigest,
+    };
+    const command: ResolutionRefreshCommand = {
+      schema_version: 1,
+      expected_confirmation_version: 0,
+      idempotency_key: "refresh-stale-race",
+    };
+
+    const outcomes = await Promise.all([
+      store.refreshCas({
+        resolution_id: "res_store_1",
+        expected_confirmation_version: 0,
+        command,
+        command_digest: "digest-refresh-stale-race",
+        accepted_digest: "accepted-first",
+        selection_stale: firstStale,
+        subject_id: "subject-alice",
+        patch: {
+          candidate_snapshot_digest: firstDigest,
+          confirmation_version: 1,
+          updated_at: "2026-07-16T08:01:00Z",
+          clear_selection: true,
+        },
+        now_ms: 2,
+      }),
+      store.refreshCas({
+        resolution_id: "res_store_1",
+        expected_confirmation_version: 0,
+        command,
+        command_digest: "digest-refresh-stale-race",
+        accepted_digest: "accepted-second",
+        selection_stale: secondStale,
+        subject_id: "subject-alice",
+        patch: {
+          candidate_snapshot_digest: secondDigest,
+          confirmation_version: 1,
+          updated_at: "2026-07-16T08:02:00Z",
+          clear_selection: true,
+        },
+        now_ms: 2,
+      }),
+    ]);
+    const winner = outcomes.find((outcome) => outcome.kind === "refreshed");
+    const loser = outcomes.find((outcome) => outcome.kind === "replay");
+    if (winner?.kind !== "refreshed" || loser?.kind !== "replay") {
+      throw new Error("expected one stale refresh winner and one replaying loser");
+    }
+
+    expect(loser.selection_stale).toEqual(winner.selection_stale);
+    expect(loser.record).toEqual(winner.record);
+    expect(await store.get("res_store_1")).toEqual(winner.record);
+  });
+
+  it("rejects cross-subject confirm and refresh at the CAS boundary", async () => {
+    const store = new InMemoryResolutionStore();
+    await store.createAtomic({
+      record: baseRecord(),
+      command: {
+        schema_version: 1,
+        identifier: "0xabc",
+        environment: "mainnet",
+        report_type: "gate_leak",
+        report_version: "v1",
+        idempotency_key: "create-subject-boundary",
+      },
+      command_digest: "digest-create-subject-boundary",
+      now_ms: 1,
+    });
+
+    const confirm = await store.confirmCas({
+      resolution_id: "res_store_1",
+      expected_confirmation_version: 0,
+      command: {
+        schema_version: 1,
+        candidate_snapshot_digest: baseRecord().candidate_snapshot_digest,
+        selected_deployment_ids: [],
+        expected_confirmation_version: 0,
+        idempotency_key: "cross-subject-confirm",
+      },
+      command_digest: "digest-cross-subject-confirm",
+      subject_id: "subject-bob",
+      patch: {
+        selected_deployment_ids: [],
+        confirmed_at: "2026-07-16T08:01:00Z",
+        updated_at: "2026-07-16T08:01:00Z",
+        confirmation_version: 1,
+      },
+      now_ms: 2,
+    });
+    const refresh = await store.refreshCas({
+      resolution_id: "res_store_1",
+      expected_confirmation_version: 0,
+      command: {
+        schema_version: 1,
+        expected_confirmation_version: 0,
+        idempotency_key: "cross-subject-refresh",
+      },
+      command_digest: "digest-cross-subject-refresh",
+      subject_id: "subject-bob",
+      patch: {
+        confirmation_version: 1,
+        updated_at: "2026-07-16T08:01:00Z",
+      },
+      now_ms: 2,
+    });
+
+    expect(confirm.kind).toBe("subject_mismatch");
+    expect(refresh.kind).toBe("subject_mismatch");
+    expect(store.idempotencySize()).toBe(1);
+    expect((await store.get("res_store_1"))?.confirmation_version).toBe(0);
   });
 });

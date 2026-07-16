@@ -19,6 +19,7 @@ import type {
   ResolutionCreateCommand,
   ResolutionConfirmCommand,
   ResolutionRefreshCommand,
+  SelectionStaleError,
 } from "@freeside/collection-resolution-protocol";
 import {
   IDEMPOTENCY_KEY_RETENTION_MS,
@@ -26,6 +27,12 @@ import {
 } from "@freeside/collection-resolution-protocol";
 
 export type ResolutionOperation = "create" | "confirm" | "refresh";
+
+export interface ResolutionSelectionStaleOutcome {
+  readonly reason: SelectionStaleError["reason"];
+  readonly previous_candidate_snapshot_digest: ConfirmedResolutionRecord["candidate_snapshot_digest"];
+  readonly current_candidate_snapshot_digest: ConfirmedResolutionRecord["candidate_snapshot_digest"];
+}
 
 export interface IdempotencyRecord {
   readonly operation: ResolutionOperation;
@@ -47,11 +54,17 @@ export interface IdempotencyRecord {
    * it never rolls current store truth back.
    */
   readonly response_snapshot: ConfirmedResolutionRecord;
+  /** Typed externally observed refresh failure replayed with the snapshot. */
+  readonly response_selection_stale?: ResolutionSelectionStaleOutcome;
 }
 
 export type IdempotencyLookupResult =
   | { readonly kind: "absent" }
-  | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
+  | {
+      readonly kind: "replay";
+      readonly record: ConfirmedResolutionRecord;
+      readonly selection_stale?: ResolutionSelectionStaleOutcome;
+    }
   | { readonly kind: "conflict" };
 
 export interface ResolutionStore {
@@ -110,6 +123,7 @@ export interface ResolutionStore {
     | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
     | { readonly kind: "conflict" }
     | { readonly kind: "version_conflict"; readonly record: ConfirmedResolutionRecord }
+    | { readonly kind: "subject_mismatch" }
     | { readonly kind: "not_found" }
   >;
 
@@ -124,6 +138,7 @@ export interface ResolutionStore {
     readonly command: ResolutionRefreshCommand;
     readonly command_digest: string;
     readonly accepted_digest?: string;
+    readonly selection_stale?: ResolutionSelectionStaleOutcome;
     readonly subject_id: string;
     readonly patch: Partial<
       Pick<
@@ -145,10 +160,19 @@ export interface ResolutionStore {
     };
     readonly now_ms: number;
   }): Promise<
-    | { readonly kind: "refreshed"; readonly record: ConfirmedResolutionRecord }
-    | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
+    | {
+        readonly kind: "refreshed";
+        readonly record: ConfirmedResolutionRecord;
+        readonly selection_stale?: ResolutionSelectionStaleOutcome;
+      }
+    | {
+        readonly kind: "replay";
+        readonly record: ConfirmedResolutionRecord;
+        readonly selection_stale?: ResolutionSelectionStaleOutcome;
+      }
     | { readonly kind: "conflict" }
     | { readonly kind: "version_conflict"; readonly record: ConfirmedResolutionRecord }
+    | { readonly kind: "subject_mismatch" }
     | { readonly kind: "not_found" }
   >;
 
@@ -171,6 +195,16 @@ const sealRecord = (record: ConfirmedResolutionRecord): ConfirmedResolutionRecor
 
 const sealReplay = (entry: IdempotencyRecord): ConfirmedResolutionRecord =>
   sealRecord(entry.response_snapshot);
+
+const replayResult = (
+  entry: IdempotencyRecord,
+): Extract<IdempotencyLookupResult, { readonly kind: "replay" }> => ({
+  kind: "replay",
+  record: sealReplay(entry),
+  ...(entry.response_selection_stale !== undefined
+    ? { selection_stale: deepCloneFreeze(entry.response_selection_stale) }
+    : {}),
+});
 
 export class InMemoryResolutionStore implements ResolutionStore {
   private readonly records = new Map<string, ConfirmedResolutionRecord>();
@@ -198,7 +232,7 @@ export class InMemoryResolutionStore implements ResolutionStore {
     const existing = this.idempotency.get(key);
     if (existing === undefined) return { kind: "absent" };
     if (existing.command_digest !== input.command_digest) return { kind: "conflict" };
-    return { kind: "replay", record: sealReplay(existing) };
+    return replayResult(existing);
   }
 
   async createAtomic(input: {
@@ -222,7 +256,7 @@ export class InMemoryResolutionStore implements ResolutionStore {
       if (existing.command_digest !== input.command_digest) {
         return { kind: "conflict" };
       }
-      return { kind: "replay", record: sealReplay(existing) };
+      return replayResult(existing);
     }
 
     const sealed = sealRecord(input.record);
@@ -261,20 +295,23 @@ export class InMemoryResolutionStore implements ResolutionStore {
     | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
     | { readonly kind: "conflict" }
     | { readonly kind: "version_conflict"; readonly record: ConfirmedResolutionRecord }
+    | { readonly kind: "subject_mismatch" }
     | { readonly kind: "not_found" }
   > {
     await this.pruneIdempotency(input.now_ms);
+    const current = this.records.get(input.resolution_id);
+    if (current === undefined) return { kind: "not_found" };
+    if (current.requester_subject !== input.subject_id) return { kind: "subject_mismatch" };
+
     const key = idempotencyMapKey("confirm", input.subject_id, input.command.idempotency_key);
     const existing = this.idempotency.get(key);
     if (existing !== undefined) {
       if (existing.command_digest !== input.command_digest) {
         return { kind: "conflict" };
       }
-      return { kind: "replay", record: sealReplay(existing) };
+      return replayResult(existing);
     }
 
-    const current = this.records.get(input.resolution_id);
-    if (current === undefined) return { kind: "not_found" };
     if (current.confirmation_version !== input.expected_confirmation_version) {
       return { kind: "version_conflict", record: sealRecord(current) };
     }
@@ -311,6 +348,7 @@ export class InMemoryResolutionStore implements ResolutionStore {
     readonly command: ResolutionRefreshCommand;
     readonly command_digest: string;
     readonly accepted_digest?: string;
+    readonly selection_stale?: ResolutionSelectionStaleOutcome;
     readonly subject_id: string;
     readonly patch: Partial<
       Pick<
@@ -332,24 +370,35 @@ export class InMemoryResolutionStore implements ResolutionStore {
     };
     readonly now_ms: number;
   }): Promise<
-    | { readonly kind: "refreshed"; readonly record: ConfirmedResolutionRecord }
-    | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
+    | {
+        readonly kind: "refreshed";
+        readonly record: ConfirmedResolutionRecord;
+        readonly selection_stale?: ResolutionSelectionStaleOutcome;
+      }
+    | {
+        readonly kind: "replay";
+        readonly record: ConfirmedResolutionRecord;
+        readonly selection_stale?: ResolutionSelectionStaleOutcome;
+      }
     | { readonly kind: "conflict" }
     | { readonly kind: "version_conflict"; readonly record: ConfirmedResolutionRecord }
+    | { readonly kind: "subject_mismatch" }
     | { readonly kind: "not_found" }
   > {
     await this.pruneIdempotency(input.now_ms);
+    const current = this.records.get(input.resolution_id);
+    if (current === undefined) return { kind: "not_found" };
+    if (current.requester_subject !== input.subject_id) return { kind: "subject_mismatch" };
+
     const key = idempotencyMapKey("refresh", input.subject_id, input.command.idempotency_key);
     const existing = this.idempotency.get(key);
     if (existing !== undefined) {
       if (existing.command_digest !== input.command_digest) {
         return { kind: "conflict" };
       }
-      return { kind: "replay", record: sealReplay(existing) };
+      return replayResult(existing);
     }
 
-    const current = this.records.get(input.resolution_id);
-    if (current === undefined) return { kind: "not_found" };
     if (current.confirmation_version !== input.expected_confirmation_version) {
       return { kind: "version_conflict", record: sealRecord(current) };
     }
@@ -423,8 +472,17 @@ export class InMemoryResolutionStore implements ResolutionStore {
       stored_at_unix_ms: input.now_ms,
       response_confirmation_version: sealed.confirmation_version,
       response_snapshot: sealRecord(sealed),
+      ...(input.selection_stale !== undefined
+        ? { response_selection_stale: deepCloneFreeze(input.selection_stale) }
+        : {}),
     });
-    return { kind: "refreshed", record: sealRecord(sealed) };
+    return {
+      kind: "refreshed",
+      record: sealRecord(sealed),
+      ...(input.selection_stale !== undefined
+        ? { selection_stale: deepCloneFreeze(input.selection_stale) }
+        : {}),
+    };
   }
 
   async pruneIdempotency(

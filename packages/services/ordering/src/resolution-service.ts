@@ -62,7 +62,10 @@ import {
   type ResolutionRequestMaterial,
   COLLECTION_RESOLUTION_SCHEMA_VERSION,
 } from "@freeside/collection-resolution-protocol";
-import type { ResolutionStore } from "./resolution-store.js";
+import type {
+  ResolutionSelectionStaleOutcome,
+  ResolutionStore,
+} from "./resolution-store.js";
 
 const runEffect = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
   const exit = await Effect.runPromiseExit(effect);
@@ -374,6 +377,9 @@ export class CollectionResolutionService {
         reason: "command_mismatch",
       });
     }
+    if (result.kind === "subject_mismatch") {
+      throw new AuthorizationScopeMismatchError({ reason: "cross_subject_replay" });
+    }
     if (result.kind === "version_conflict") {
       if (result.record.selected_deployment_ids !== undefined) {
         throw new ConcurrentConfirmationError({
@@ -464,7 +470,7 @@ export class CollectionResolutionService {
       });
     }
     if (preProbeLookup.kind === "replay") {
-      return sealProjection(preProbeLookup.record);
+      return this.mapRefreshResult(resolutionId, sealedCommand, preProbeLookup);
     }
 
     const probe = await this.sonar.resolveProbe({
@@ -541,12 +547,18 @@ export class CollectionResolutionService {
       return this.mapRefreshResult(resolutionId, sealedCommand, result);
     }
 
+    const selectionStale = deepCloneFreeze({
+      reason: freshness.stale_reason ?? "deployment_changed",
+      previous_candidate_snapshot_digest: current.candidate_snapshot_digest,
+      current_candidate_snapshot_digest: nextDigest,
+    });
     const result = await this.store.refreshCas({
       resolution_id: resolutionId,
       expected_confirmation_version: sealedCommand.expected_confirmation_version,
       command: sealedCommand,
       command_digest: refreshCommandDigest,
       accepted_digest: acceptedRefreshDigest,
+      selection_stale: selectionStale,
       subject_id: sealedScope.subject_id,
       patch: {
         candidate_snapshot: nextSnapshot,
@@ -559,14 +571,8 @@ export class CollectionResolutionService {
       now_ms: nowMs,
     });
 
-    // Persist the refreshed unconfirmed snapshot, then fail closed with typed stale.
-    this.mapRefreshResult(resolutionId, sealedCommand, result);
-    throw new SelectionStaleError({
-      resolution_id: resolutionId,
-      reason: freshness.stale_reason ?? "deployment_changed",
-      previous_candidate_snapshot_digest: current.candidate_snapshot_digest,
-      current_candidate_snapshot_digest: nextDigest,
-    });
+    // Persist and replay the exact externally observed stale outcome.
+    return this.mapRefreshResult(resolutionId, sealedCommand, result);
   }
 
   /**
@@ -642,10 +648,19 @@ export class CollectionResolutionService {
     resolutionId: string,
     command: ResolutionRefreshCommand,
     result:
-      | { readonly kind: "refreshed"; readonly record: ConfirmedResolutionRecord }
-      | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
+      | {
+          readonly kind: "refreshed";
+          readonly record: ConfirmedResolutionRecord;
+          readonly selection_stale?: ResolutionSelectionStaleOutcome;
+        }
+      | {
+          readonly kind: "replay";
+          readonly record: ConfirmedResolutionRecord;
+          readonly selection_stale?: ResolutionSelectionStaleOutcome;
+        }
       | { readonly kind: "conflict" }
       | { readonly kind: "version_conflict"; readonly record: ConfirmedResolutionRecord }
+      | { readonly kind: "subject_mismatch" }
       | { readonly kind: "not_found" },
   ): ResolutionPublicProjection {
     if (result.kind === "not_found") {
@@ -658,11 +673,24 @@ export class CollectionResolutionService {
         reason: "command_mismatch",
       });
     }
+    if (result.kind === "subject_mismatch") {
+      throw new AuthorizationScopeMismatchError({ reason: "cross_subject_replay" });
+    }
     if (result.kind === "version_conflict") {
       throw new ConfirmationVersionConflictError({
         resolution_id: resolutionId,
         expected_confirmation_version: command.expected_confirmation_version,
         current_confirmation_version: result.record.confirmation_version,
+      });
+    }
+    if (result.selection_stale !== undefined) {
+      throw new SelectionStaleError({
+        resolution_id: resolutionId,
+        reason: result.selection_stale.reason,
+        previous_candidate_snapshot_digest:
+          result.selection_stale.previous_candidate_snapshot_digest,
+        current_candidate_snapshot_digest:
+          result.selection_stale.current_candidate_snapshot_digest,
       });
     }
     return sealProjection(result.record);
