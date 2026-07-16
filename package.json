@@ -6,6 +6,7 @@
   "scripts": {
     "prepare": "./scripts/prepare-effect.sh",
     "build:hounfour": "scripts/rebuild-hounfour-dist.sh",
+    "prepare": "./scripts/prepare-effect.sh",
     "postinstall": "scripts/rebuild-hounfour-dist.sh",
     "lint": "oxlint"
   },

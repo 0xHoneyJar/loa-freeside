@@ -96,6 +96,7 @@ export interface ResolutionStore {
     | { readonly kind: "created"; readonly record: ConfirmedResolutionRecord }
     | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
     | { readonly kind: "conflict" }
+    | { readonly kind: "resolution_id_conflict" }
   >;
 
   /**
@@ -244,6 +245,7 @@ export class InMemoryResolutionStore implements ResolutionStore {
     | { readonly kind: "created"; readonly record: ConfirmedResolutionRecord }
     | { readonly kind: "replay"; readonly record: ConfirmedResolutionRecord }
     | { readonly kind: "conflict" }
+    | { readonly kind: "resolution_id_conflict" }
   > {
     await this.pruneIdempotency(input.now_ms);
     const key = idempotencyMapKey(
@@ -257,6 +259,12 @@ export class InMemoryResolutionStore implements ResolutionStore {
         return { kind: "conflict" };
       }
       return replayResult(existing);
+    }
+
+    // A resolution_id is an insert-only primary key. Never let Map#set turn a
+    // generator collision into silent replacement of another session's truth.
+    if (this.records.has(input.record.resolution_id)) {
+      return { kind: "resolution_id_conflict" };
     }
 
     const sealed = sealRecord(input.record);

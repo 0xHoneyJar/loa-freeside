@@ -15,6 +15,7 @@ import {
   AuthorizationScopeMismatchError,
   CapabilityViewStaleError,
   ConcurrentConfirmationError,
+  ContractIntegrityError,
   digestCandidateSnapshot,
   IdempotencyConflictError,
   ImmutableRequestMismatchError,
@@ -187,6 +188,111 @@ const confirmFirst = async (
 };
 
 describe("CR-006 Ordering resolution service", () => {
+  it("strict-decodes Sonar candidate, diagnostics, and registry output before create persistence", async () => {
+    const candidateCase = makeService();
+    Reflect.set(candidateCase.sonar.nextCandidates[0]!, "recognition", "invented");
+    await expect(candidateCase.service.create(createCommand, scope)).rejects.toThrow();
+    expect(await candidateCase.store.get("res_test_1")).toBeUndefined();
+
+    const diagnosticsCase = makeService();
+    Reflect.set(diagnosticsCase.sonar.nextDiagnostics, "unexpected", true);
+    await expect(diagnosticsCase.service.create(createCommand, scope)).rejects.toThrow();
+    expect(await diagnosticsCase.store.get("res_test_1")).toBeUndefined();
+
+    const registryCase = makeService();
+    Reflect.set(registryCase.sonar.nextRegistry, "unexpected", true);
+    await expect(registryCase.service.create(createCommand, scope)).rejects.toThrow();
+    expect(await registryCase.store.get("res_test_1")).toBeUndefined();
+  });
+
+  it("strict-decodes refreshed probe output before replacing persisted truth", async () => {
+    const { service, store, sonar } = makeService();
+    const created = await service.create(createCommand, scope);
+    const before = await store.get(created.resolution_id);
+
+    Reflect.set(sonar.nextCandidates[0]!, "index_status", "invented");
+    await expect(
+      service.refresh(
+        created.resolution_id,
+        {
+          schema_version: 1,
+          expected_confirmation_version: 0,
+          idempotency_key: "refresh-invalid-candidate",
+        },
+        scope,
+      ),
+    ).rejects.toThrow();
+
+    expect((await store.get(created.resolution_id))?.candidate_snapshot_digest).toEqual(
+      before?.candidate_snapshot_digest,
+    );
+
+    sonar.nextCandidates = structuredClone(evmSnapshot.candidates);
+    Reflect.set(sonar.nextRegistry, "unexpected", true);
+    await expect(
+      service.refresh(
+        created.resolution_id,
+        {
+          schema_version: 1,
+          expected_confirmation_version: 0,
+          idempotency_key: "refresh-invalid-registry",
+        },
+        scope,
+      ),
+    ).rejects.toThrow();
+
+    expect((await store.get(created.resolution_id))?.candidate_snapshot_digest).toEqual(
+      before?.candidate_snapshot_digest,
+    );
+  });
+
+  it("retries a generated resolution id collision without replacing the existing session", async () => {
+    const store = new InMemoryResolutionStore();
+    const sonar = new RecordingSonar();
+    const generatedIds = ["res_collision", "res_collision", "res_recovered"];
+    let nextId = 0;
+    const service = new CollectionResolutionService({
+      store,
+      sonar,
+      ids: {
+        nextId: () => generatedIds[nextId++] ?? "res_fallback",
+      },
+    });
+
+    const first = await service.create(createCommand, scope);
+    const second = await service.create(
+      { ...createCommand, idempotency_key: "create-after-id-collision" },
+      scope,
+    );
+
+    expect(first.resolution_id).toBe("res_collision");
+    expect(second.resolution_id).toBe("res_recovered");
+    expect((await store.get(first.resolution_id))?.original_request).toEqual(
+      requestMaterialFromCreate(createCommand),
+    );
+    expect(await store.get(second.resolution_id)).toBeDefined();
+  });
+
+  it("fails with a typed integrity error when unique resolution id allocation is exhausted", async () => {
+    const store = new InMemoryResolutionStore();
+    const service = new CollectionResolutionService({
+      store,
+      sonar: new RecordingSonar(),
+      ids: { nextId: () => "res_never_unique" },
+    });
+
+    await service.create(createCommand, scope);
+    await expect(
+      service.create(
+        { ...createCommand, idempotency_key: "create-exhausted-id-allocation" },
+        scope,
+      ),
+    ).rejects.toBeInstanceOf(ContractIntegrityError);
+    expect((await store.get("res_never_unique"))?.original_request).toEqual(
+      requestMaterialFromCreate(createCommand),
+    );
+  });
+
   it("create replay returns the same resolution; conflicting body yields idempotency conflict", async () => {
     const { service } = makeService();
     const first = await service.create(createCommand, scope);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   ConfirmedResolutionRecord,
+  ResolutionCreateCommand,
   ResolutionRefreshCommand,
 } from "@freeside/collection-resolution-protocol";
 import { isDeepFrozen } from "@freeside/collection-resolution-protocol";
@@ -62,6 +63,63 @@ const baseRecord = (overrides: Partial<ConfirmedResolutionRecord> = {}): Confirm
   }) as ConfirmedResolutionRecord;
 
 describe("InMemoryResolutionStore CAS and idempotency", () => {
+  it("keeps resolution ids insert-only and does not poison retry idempotency", async () => {
+    const store = new InMemoryResolutionStore();
+    const first = await store.createAtomic({
+      record: baseRecord(),
+      command: {
+        schema_version: 1,
+        identifier: "0xabc",
+        environment: "mainnet",
+        report_type: "gate_leak",
+        report_version: "v1",
+        idempotency_key: "collision-first",
+      },
+      command_digest: "digest-collision-first",
+      now_ms: 1,
+    });
+    expect(first.kind).toBe("created");
+
+    const collisionCommand: ResolutionCreateCommand = {
+      schema_version: 1,
+      identifier: "0xdef",
+      environment: "mainnet",
+      report_type: "gate_leak",
+      report_version: "v1",
+      idempotency_key: "collision-second",
+    };
+    const collision = await store.createAtomic({
+      record: baseRecord({
+        original_request: {
+          ...baseRecord().original_request,
+          identifier: "0xdef",
+        },
+      }),
+      command: collisionCommand,
+      command_digest: "digest-collision-second",
+      now_ms: 2,
+    });
+    expect(collision.kind).toBe("resolution_id_conflict");
+    expect((await store.get("res_store_1"))?.original_request.identifier).toBe("0xabc");
+
+    const retry = await store.createAtomic({
+      record: baseRecord({
+        resolution_id: "res_store_2",
+        original_request: {
+          ...baseRecord().original_request,
+          identifier: "0xdef",
+        },
+      }),
+      command: collisionCommand,
+      command_digest: "digest-collision-second",
+      now_ms: 3,
+    });
+    expect(retry.kind).toBe("created");
+    expect(retry.kind === "created" ? retry.record.resolution_id : undefined).toBe(
+      "res_store_2",
+    );
+  });
+
   it("confirm CAS rejects stale expected versions and retains expires_at", async () => {
     const store = new InMemoryResolutionStore();
     await store.createAtomic({

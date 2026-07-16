@@ -13,14 +13,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Cause, Effect, Exit } from "effect";
 import { canonicalize } from "@freeside/collection-protocol";
-import type {
-  CapabilityRegistryVersion,
-  CollectionCandidate,
+import {
+  decodeCapabilityRegistryVersion,
+  type CapabilityRegistryVersion,
+  type CollectionCandidate,
 } from "@freeside/collection-protocol";
 import {
   AuthorizationScopeMismatchError,
   ConcurrentConfirmationError,
   ConfirmationVersionConflictError,
+  ContractIntegrityError,
   IdempotencyConflictError,
   ImmutableRequestMismatchError,
   OrderBindingRejectedError,
@@ -32,6 +34,7 @@ import {
   assertNoRawCandidateOrderFields,
   compareCandidateFreshness,
   decodeAuthorizationScope,
+  decodeCandidateSnapshot,
   decodeLocalCapabilitySnapshot,
   decodeOrderResolutionBinding,
   decodeResolutionConfirmCommand,
@@ -116,6 +119,8 @@ const defaultClock: ResolutionServiceClock = {
 const defaultIds: ResolutionIdGenerator = {
   nextId: () => randomUUID(),
 };
+
+const MAX_RESOLUTION_ID_ATTEMPTS = 3;
 
 /**
  * Exact-command fingerprint over strict-decoded, RFC-8785-canonical material.
@@ -247,45 +252,71 @@ export class CollectionResolutionService {
       report_version: originalRequest.report_version,
     });
 
-    // Never store Sonar object references — deep-clone probe outputs at ingress.
-    const snapshot: CandidateSnapshot = deepCloneFreeze({
-      schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
-      candidates: [...probe.candidates],
-      diagnostics: probe.diagnostics ?? emptyDiagnostics(),
-    });
+    // Sonar is an external runtime boundary despite the compile-time port type.
+    // Clone first, then strict-decode every persisted field before digesting it.
+    const snapshot = deepCloneFreeze(
+      await runEffect(
+        decodeCandidateSnapshot(
+          deepCloneFreeze({
+            schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
+            candidates: [...probe.candidates],
+            diagnostics: probe.diagnostics ?? emptyDiagnostics(),
+          }),
+        ),
+      ),
+    );
+    const capabilitySnapshot = deepCloneFreeze(
+      await runEffect(
+        decodeCapabilityRegistryVersion(
+          deepCloneFreeze(probe.capability_snapshot_version),
+        ),
+      ),
+    );
     const snapshotDigest = await runEffect(digestCandidateSnapshot(snapshot));
     const nowIso = new Date(nowMs).toISOString();
-    const record: ConfirmedResolutionRecord = deepCloneFreeze({
-      schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
-      resolution_id: this.ids.nextId(),
-      requester_subject: sealedScope.subject_id,
-      authorization_scope: sealedScope,
-      original_request: originalRequest,
-      request_digest: requestDigest,
-      capability_snapshot_version: deepCloneFreeze(probe.capability_snapshot_version),
-      candidate_snapshot: snapshot,
-      candidate_snapshot_digest: snapshotDigest,
-      confirmation_version: 0,
-      expires_at: expiresAtFrom(nowMs, RESOLUTION_TTL_MS),
-      created_at: nowIso,
-      updated_at: nowIso,
-    });
 
-    const result = await this.store.createAtomic({
-      record,
-      command: sealedCommand,
-      command_digest: createCommandDigest,
-      now_ms: nowMs,
-    });
-
-    if (result.kind === "conflict") {
-      throw new IdempotencyConflictError({
-        operation: "create",
-        idempotency_key: sealedCommand.idempotency_key,
-        reason: "command_mismatch",
+    for (let attempt = 0; attempt < MAX_RESOLUTION_ID_ATTEMPTS; attempt += 1) {
+      const record: ConfirmedResolutionRecord = deepCloneFreeze({
+        schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
+        resolution_id: this.ids.nextId(),
+        requester_subject: sealedScope.subject_id,
+        authorization_scope: sealedScope,
+        original_request: originalRequest,
+        request_digest: requestDigest,
+        capability_snapshot_version: capabilitySnapshot,
+        candidate_snapshot: snapshot,
+        candidate_snapshot_digest: snapshotDigest,
+        confirmation_version: 0,
+        expires_at: expiresAtFrom(nowMs, RESOLUTION_TTL_MS),
+        created_at: nowIso,
+        updated_at: nowIso,
       });
+
+      // Allocation retries are intentionally sequential: each attempt must
+      // observe the store result before generating the next candidate id.
+      // eslint-disable-next-line no-await-in-loop
+      const result = await this.store.createAtomic({
+        record,
+        command: sealedCommand,
+        command_digest: createCommandDigest,
+        now_ms: nowMs,
+      });
+
+      if (result.kind === "resolution_id_conflict") continue;
+      if (result.kind === "conflict") {
+        throw new IdempotencyConflictError({
+          operation: "create",
+          idempotency_key: sealedCommand.idempotency_key,
+          reason: "command_mismatch",
+        });
+      }
+      return sealProjection(result.record);
     }
-    return sealProjection(result.record);
+
+    throw new ContractIntegrityError({
+      contract: "ResolutionStore.createAtomic",
+      reason: `failed to allocate a unique resolution_id after ${MAX_RESOLUTION_ID_ATTEMPTS} attempts`,
+    });
   }
 
   async confirm(
@@ -480,13 +511,25 @@ export class CollectionResolutionService {
       report_version: effectiveRequest.report_version,
     });
 
-    const nextSnapshot: CandidateSnapshot = deepCloneFreeze({
-      schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
-      candidates: [...probe.candidates],
-      diagnostics: probe.diagnostics ?? emptyDiagnostics(),
-    });
+    const nextSnapshot = deepCloneFreeze(
+      await runEffect(
+        decodeCandidateSnapshot(
+          deepCloneFreeze({
+            schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
+            candidates: [...probe.candidates],
+            diagnostics: probe.diagnostics ?? emptyDiagnostics(),
+          }),
+        ),
+      ),
+    );
     const nextDigest = await runEffect(digestCandidateSnapshot(nextSnapshot));
-    const capabilitySnapshot = deepCloneFreeze(probe.capability_snapshot_version);
+    const capabilitySnapshot = deepCloneFreeze(
+      await runEffect(
+        decodeCapabilityRegistryVersion(
+          deepCloneFreeze(probe.capability_snapshot_version),
+        ),
+      ),
+    );
     const freshness = await runEffect(
       compareCandidateFreshness(
         current.candidate_snapshot,
