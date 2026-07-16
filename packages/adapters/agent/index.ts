@@ -104,6 +104,13 @@ export { LoaFinnClient, LoaFinnError, type JwtMinter, type LoaFinnClientDeps } f
 // Budget Manager
 export {
   BudgetManager,
+  budgetCommittedKey,
+  budgetReservedKey,
+  budgetLimitKey,
+  budgetReservationKey,
+  budgetReservationPrefix,
+  budgetExpiryKey,
+  budgetFinalizedKey,
   parseBudgetResult,
   parseFinalizeResult,
   parseReaperResult,

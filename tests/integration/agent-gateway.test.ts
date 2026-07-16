@@ -17,13 +17,20 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { LoaFinnStub } from '../stubs/loa-finn-stub.js';
 import type { Redis } from 'ioredis';
-import { BudgetManager, getCurrentMonth } from '../../packages/adapters/agent/budget-manager.js';
+import {
+  BudgetManager,
+  budgetFinalizedKey,
+  budgetLimitKey,
+  budgetReservationKey,
+  getCurrentMonth,
+} from '../../packages/adapters/agent/budget-manager.js';
 import { AgentRateLimiter, TIER_LIMITS } from '../../packages/adapters/agent/agent-rate-limiter.js';
 import {
   AgentGateway,
+  AgentGatewayError,
   type ReconciliationQueue,
 } from '../../packages/adapters/agent/agent-gateway.js';
-import { LoaFinnClient } from '../../packages/adapters/agent/loa-finn-client.js';
+import { LoaFinnClient, LoaFinnError } from '../../packages/adapters/agent/loa-finn-client.js';
 import { JwtService, type KeyLoader, type PreviousKeyConfig } from '../../packages/adapters/agent/jwt-service.js';
 import { TierAccessMapper, DEFAULT_TIER_MAP } from '../../packages/adapters/agent/tier-access-mapper.js';
 import type { AgentInvokeRequest, AgentStreamEvent } from '../../packages/core/ports/agent-gateway.js';
@@ -348,6 +355,52 @@ describe('Budget Concurrent', () => {
 // --------------------------------------------------------------------------
 
 describe('SSE Streaming Proxy', () => {
+  function createStreamingGateway(reconciliationQueue?: ReconciliationQueue): AgentGateway {
+    return new AgentGateway({
+      budgetManager: new BudgetManager(redis, mockLogger),
+      rateLimiter: new AgentRateLimiter(redis, mockLogger),
+      loaFinnClient: new LoaFinnClient({
+        config: {
+          baseUrl: stub.getBaseUrl(),
+          timeoutMs: 5_000,
+          circuitBreakerThreshold: 5,
+          circuitBreakerResetMs: 30_000,
+        },
+        logger: mockLogger,
+        mintJwt: async () => 'test-jwt',
+      }),
+      tierMapper: new TierAccessMapper(DEFAULT_TIER_MAP),
+      redis,
+      logger: mockLogger,
+      reconciliationQueue,
+    });
+  }
+
+  function createStreamRequest(params: {
+    communityId: string;
+    userId: string;
+    idempotencyKey: string;
+    traceId: string;
+  }): AgentInvokeRequest {
+    return {
+      context: {
+        tenantId: params.communityId,
+        userId: params.userId,
+        nftId: `nft-${params.idempotencyKey}`,
+        tier: 4,
+        accessLevel: 'pro',
+        allowedModelAliases: ['cheap', 'fast-code', 'reviewer'],
+        platform: 'discord',
+        channelId: `ch-${params.idempotencyKey}`,
+        idempotencyKey: params.idempotencyKey,
+        traceId: params.traceId,
+      },
+      agent: 'test',
+      messages: [{ role: 'user', content: 'hi' }],
+      modelAlias: 'cheap',
+    };
+  }
+
   it('events forwarded correctly, usage triggers finalization', async () => {
     stub.setStreamBehavior({
       events: [{ text: 'Hello ' }, { text: 'world!' }],
@@ -381,7 +434,7 @@ describe('SSE Streaming Proxy', () => {
     const userId = 'user-stream-drop';
     const idempotencyKey = 'idem-stream-drop';
     const traceId = 'trace-stream-drop';
-    await redis.set(`agent:budget:limit:${communityId}`, '1000');
+    await redis.set(budgetLimitKey(communityId), '1000');
 
     const reconciliationCalls: Array<{
       name: Parameters<ReconciliationQueue['add']>[0];
@@ -393,42 +446,13 @@ describe('SSE Streaming Proxy', () => {
         reconciliationCalls.push({ name, data, options });
       },
     };
-    const gateway = new AgentGateway({
-      budgetManager: new BudgetManager(redis, mockLogger),
-      rateLimiter: new AgentRateLimiter(redis, mockLogger),
-      loaFinnClient: new LoaFinnClient({
-        config: {
-          baseUrl: stub.getBaseUrl(),
-          timeoutMs: 5_000,
-          circuitBreakerThreshold: 5,
-          circuitBreakerResetMs: 30_000,
-        },
-        logger: mockLogger,
-        mintJwt: async () => 'test-jwt',
-      }),
-      tierMapper: new TierAccessMapper(DEFAULT_TIER_MAP),
-      redis,
-      logger: mockLogger,
-      reconciliationQueue,
+    const gateway = createStreamingGateway(reconciliationQueue);
+    const request = createStreamRequest({
+      communityId,
+      userId,
+      idempotencyKey,
+      traceId,
     });
-
-    const request: AgentInvokeRequest = {
-      context: {
-        tenantId: communityId,
-        userId,
-        nftId: 'nft-stream-drop',
-        tier: 4,
-        accessLevel: 'pro',
-        allowedModelAliases: ['cheap', 'fast-code', 'reviewer'],
-        platform: 'discord',
-        channelId: 'ch-stream-drop',
-        idempotencyKey,
-        traceId,
-      },
-      agent: 'test',
-      messages: [{ role: 'user', content: 'hi' }],
-      modelAlias: 'cheap',
-    };
 
     const events: AgentStreamEvent[] = [];
     let streamError: unknown;
@@ -445,8 +469,15 @@ describe('SSE Streaming Proxy', () => {
       { type: 'content', data: { text: 'partial ' } },
       { type: 'content', data: { text: 'response' } },
     ]);
-    expect(streamError).toBeInstanceOf(TypeError);
-    expect(streamError).toMatchObject({ message: 'terminated' });
+    expect(streamError).toBeInstanceOf(AgentGatewayError);
+    expect(streamError).toMatchObject({
+      code: 'STREAM_INTERRUPTED',
+      statusCode: 502,
+    });
+    if (!(streamError instanceof AgentGatewayError)) {
+      throw new Error('Expected AgentGatewayError');
+    }
+    expect(streamError.cause).toBeInstanceOf(TypeError);
     expect(reconciliationCalls).toHaveLength(1);
     expect(reconciliationCalls[0]).toEqual({
       name: 'stream-reconcile',
@@ -462,6 +493,50 @@ describe('SSE Streaming Proxy', () => {
         attempts: 3,
         backoff: { type: 'exponential', delay: 10_000 },
       },
+    });
+
+    const pendingReservation = await redis.hgetall(
+      budgetReservationKey(communityId, userId, idempotencyKey),
+    );
+    expect(pendingReservation).toMatchObject({
+      community_id: communityId,
+      user_id: userId,
+      idempotency_key: idempotencyKey,
+      model_alias: 'cheap',
+    });
+    expect(
+      await redis.exists(budgetFinalizedKey(communityId, userId, idempotencyKey)),
+    ).toBe(0);
+  });
+
+  it('preserves loa-finn domain errors for HTTP failures', async () => {
+    stub.setStreamBehavior({
+      events: [],
+      usage: { promptTokens: 0, completionTokens: 0, costUsd: 0 },
+      statusCode: 503,
+    });
+
+    const request = createStreamRequest({
+      communityId: 'comm-stream-http-error',
+      userId: 'user-stream-http-error',
+      idempotencyKey: 'idem-stream-http-error',
+      traceId: 'trace-stream-http-error',
+    });
+    await redis.set(budgetLimitKey(request.context.tenantId), '1000');
+
+    let streamError: unknown;
+    try {
+      for await (const _event of createStreamingGateway().stream(request)) {
+        // A non-2xx response must fail before any stream event is produced.
+      }
+    } catch (error) {
+      streamError = error;
+    }
+
+    expect(streamError).toBeInstanceOf(LoaFinnError);
+    expect(streamError).toMatchObject({
+      code: 'UPSTREAM_ERROR',
+      statusCode: 503,
     });
   });
 });

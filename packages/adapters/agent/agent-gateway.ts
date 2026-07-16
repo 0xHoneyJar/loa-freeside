@@ -27,7 +27,12 @@ import type { AgentRateLimiter } from './agent-rate-limiter.js';
 import type { LoaFinnClient } from './loa-finn-client.js';
 import type { TierAccessMapper } from './tier-access-mapper.js';
 import type { StreamReconciliationJob } from './stream-reconciliation-worker.js';
-import { getCurrentMonth } from './budget-manager.js';
+import {
+  budgetCommittedKey,
+  budgetLimitKey,
+  budgetReservedKey,
+  getCurrentMonth,
+} from './budget-manager.js';
 import { BUDGET_WARNING_THRESHOLD } from './config.js';
 import { resolvePoolId, ALIAS_TO_POOL, POOL_PROVIDER_HINT } from './pool-mapping.js';
 import type { PoolId } from './pool-mapping.js';
@@ -533,6 +538,8 @@ export class AgentGateway implements IAgentGateway {
     // 6. Stream from loa-finn with finalize-once semantics
     //    Pass downstream signal for abort propagation (SDD §4.7)
     let finalized = false;
+    let streamFailed = false;
+    let streamFailure: unknown;
 
     try {
       for await (const event of this.loaFinn.stream(request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
@@ -560,6 +567,9 @@ export class AgentGateway implements IAgentGateway {
 
         yield event;
       }
+    } catch (error) {
+      streamFailed = true;
+      streamFailure = error;
     } finally {
       // Lifecycle: → FAILED if not already terminal (abort/error path)
       if (!lifecycle.isTerminal()) {
@@ -570,6 +580,20 @@ export class AgentGateway implements IAgentGateway {
       if (!finalized) {
         await this.scheduleReconciliation(context, log);
       }
+    }
+
+    if (streamFailed) {
+      if (!finalized && isStreamTransportFailure(streamFailure)) {
+        throw new AgentGatewayError(
+          'STREAM_INTERRUPTED',
+          'Agent stream was interrupted before usage was finalized',
+          502,
+          undefined,
+          { cause: streamFailure },
+        );
+      }
+
+      throw streamFailure;
     }
   }
 
@@ -592,9 +616,9 @@ export class AgentGateway implements IAgentGateway {
   async getBudgetStatus(communityId: string): Promise<BudgetStatus> {
     const month = getCurrentMonth();
     const [committedStr, reservedStr, limitStr] = await Promise.all([
-      this.redis.get(`agent:budget:committed:${communityId}:${month}`),
-      this.redis.get(`agent:budget:reserved:${communityId}:${month}`),
-      this.redis.get(`agent:budget:limit:${communityId}`),
+      this.redis.get(budgetCommittedKey(communityId, month)),
+      this.redis.get(budgetReservedKey(communityId, month)),
+      this.redis.get(budgetLimitKey(communityId)),
     ]);
 
     const committed = safeInt(committedStr);
@@ -829,6 +853,12 @@ function isNonRetryable(err: Error): boolean {
   return typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500;
 }
 
+function isStreamTransportFailure(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  return error instanceof DOMException
+    && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
 // --------------------------------------------------------------------------
 // Gateway Error
 // --------------------------------------------------------------------------
@@ -839,8 +869,9 @@ export class AgentGatewayError extends Error {
     message: string,
     public readonly statusCode: number,
     public readonly details?: Record<string, unknown>,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'AgentGatewayError';
   }
 }
