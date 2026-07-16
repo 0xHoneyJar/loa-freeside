@@ -157,7 +157,12 @@ export {
 export { computeReqHash, verifyReqHash } from '@0xhoneyjar/loa-hounfour';
 
 // Agent Gateway Facade
-export { AgentGateway, AgentGatewayError, type AgentGatewayDeps } from './agent-gateway.js';
+export {
+  AgentGateway,
+  AgentGatewayError,
+  type AgentGatewayDeps,
+  type ReconciliationQueue,
+} from './agent-gateway.js';
 
 // Auth Middleware
 export {

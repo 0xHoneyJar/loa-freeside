@@ -12,7 +12,6 @@
 
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import type { Queue } from 'bullmq';
 import type {
   IAgentGateway,
   AgentInvokeRequest,
@@ -45,6 +44,21 @@ import { TokenEstimator } from './token-estimator.js';
 // Types
 // --------------------------------------------------------------------------
 
+export interface ReconciliationQueue {
+  add(
+    name: 'stream-reconcile',
+    data: StreamReconciliationJob,
+    options: {
+      delay: number;
+      attempts: number;
+      backoff: {
+        type: 'exponential';
+        delay: number;
+      };
+    },
+  ): Promise<unknown>;
+}
+
 export interface AgentGatewayDeps {
   budgetManager: BudgetManager;
   rateLimiter: AgentRateLimiter;
@@ -52,7 +66,7 @@ export interface AgentGatewayDeps {
   tierMapper: TierAccessMapper;
   redis: Redis;
   logger: Logger;
-  reconciliationQueue?: Queue<StreamReconciliationJob>;
+  reconciliationQueue?: ReconciliationQueue;
   /** Whether ensemble orchestration is enabled (ENSEMBLE_ENABLED env var) */
   ensembleEnabled?: boolean;
   /** Whether BYOK is enabled (BYOK_ENABLED env var) */
@@ -76,7 +90,7 @@ export class AgentGateway implements IAgentGateway {
   private readonly tierMapper: TierAccessMapper;
   private readonly redis: Redis;
   private readonly logger: Logger;
-  private readonly reconciliationQueue?: Queue<StreamReconciliationJob>;
+  private readonly reconciliationQueue?: ReconciliationQueue;
   private readonly ensembleMapper = new EnsembleMapper();
   private readonly ensembleEnabled: boolean;
   private readonly byokEnabled: boolean;
