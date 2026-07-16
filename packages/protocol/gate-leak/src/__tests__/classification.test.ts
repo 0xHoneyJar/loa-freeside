@@ -112,7 +112,9 @@ describe("gate_leak_compute.v1 golden classification", () => {
   });
 
   it("below 80% definitive coverage the actionable band is structurally suppressed", () => {
-    const measure = computeGateLeakMeasure(golden.expected_rows, golden.excluded_bot_count);
+    const measure = expectEffectSuccess(
+      computeGateLeakMeasure(golden.expected_rows, golden.excluded_bot_count),
+    );
     expect(measure).toStrictEqual(golden.expected_measure);
     expect(measure.presentation).toBe("insufficient_coverage");
     expect(Object.keys(measure)).not.toContain("actionable_leak_band");
@@ -124,7 +126,9 @@ describe("gate_leak_compute.v1 golden classification", () => {
       classifyGateLeakSubjects(actionable.subjects, actionable.selected_deployment_ids),
     );
     expect(rows).toStrictEqual(actionable.expected_rows);
-    const measure = computeGateLeakMeasure(rows, actionable.excluded_bot_count);
+    const measure = expectEffectSuccess(
+      computeGateLeakMeasure(rows, actionable.excluded_bot_count),
+    );
     expect(measure).toStrictEqual(actionable.expected_measure);
     if (measure.presentation !== "actionable") throw new Error("expected actionable");
     expect(measure.coverage_band_floor_percent).toBe(90);
@@ -165,13 +169,13 @@ describe("gate_leak_compute.v1 golden classification", () => {
       reason_code: "identity_link_missing",
       compared_wallets: [],
     };
-    const measure = computeGateLeakMeasure(adjusted, 0);
+    const measure = expectEffectSuccess(computeGateLeakMeasure(adjusted, 0));
     if (measure.presentation !== "actionable") throw new Error("expected actionable");
     expect(measure.coverage_band_floor_percent).toBe(80);
   });
 
   it("an empty cohort presents insufficient coverage with the 0 band", () => {
-    const measure = computeGateLeakMeasure([], 3);
+    const measure = expectEffectSuccess(computeGateLeakMeasure([], 3));
     expect(measure.presentation).toBe("insufficient_coverage");
     expect(measure.cohort_band).toBe("0");
     expect(measure.excluded_bot_count).toBe(3);
@@ -213,6 +217,66 @@ describe("gate_leak_compute.v1 golden classification", () => {
         readFixture("malformed/measure-actionable-below-threshold.invalid.json"),
       ),
       "ParseError",
+    );
+  });
+
+  it("refuses invalid excluded-bot counts before returning a measure", () => {
+    expectEffectFailureTag(
+      computeGateLeakMeasure(golden.expected_rows, -1),
+      "ParseError",
+    );
+    expectEffectFailureTag(
+      computeGateLeakMeasure(golden.expected_rows, 1.5),
+      "ParseError",
+    );
+  });
+
+  it("refuses duplicate subject identities before they can inflate disclosure bands", () => {
+    const [row] = golden.expected_rows;
+    if (row === undefined) throw new Error("expected a golden row");
+    expectEffectFailureTag(
+      computeGateLeakMeasure([row, row], golden.excluded_bot_count),
+      "DuplicateSubjectIdentityError",
+    );
+    const [subject] = golden.subjects;
+    if (subject === undefined) throw new Error("expected a golden subject");
+    expectEffectFailureTag(
+      classifyGateLeakSubjects(
+        [subject, subject],
+        golden.selected_deployment_ids,
+      ),
+      "DuplicateSubjectIdentityError",
+    );
+  });
+
+  it("refuses duplicate deployment evidence before map construction can make order semantic", () => {
+    const subject = golden.subjects.find(
+      (candidate) => candidate.identity.kind === "linked",
+    );
+    if (subject === undefined || subject.identity.kind !== "linked") {
+      throw new Error("expected linked evidence");
+    }
+    const [wallet] = subject.identity.wallets;
+    const [deployment] = wallet?.deployments ?? [];
+    if (wallet === undefined || deployment === undefined) {
+      throw new Error("expected wallet deployment evidence");
+    }
+    const duplicate: SubjectClassificationInput = {
+      ...subject,
+      identity: {
+        kind: "linked",
+        wallets: [
+          {
+            ...wallet,
+            deployments: [deployment, deployment],
+          },
+          ...subject.identity.wallets.slice(1),
+        ],
+      },
+    };
+    expectEffectFailureTag(
+      classifyGateLeakSubject(duplicate, golden.selected_deployment_ids),
+      "DuplicateWalletDeploymentError",
     );
   });
 

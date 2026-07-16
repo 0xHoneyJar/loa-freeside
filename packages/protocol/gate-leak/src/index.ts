@@ -210,6 +210,8 @@ export {
   LinkedWalletEvidence,
   SubjectIdentityEvidence,
   SubjectClassificationInput,
+  DuplicateWalletDeploymentError,
+  DuplicateSubjectIdentityError,
   decodeSubjectClassificationInput,
   classifyGateLeakSubject,
   classifyGateLeakSubjects,

@@ -8,7 +8,7 @@ import {
   VersionedDigest,
   digestVersioned,
 } from "@freeside/collection-protocol";
-import { Effect, type ParseResult, Schema } from "effect";
+import { Data, Effect, type ParseResult, Schema } from "effect";
 import {
   DISCORD_CAPTURE_POLICY_V1,
   GATE_LEAK_COVERAGE_POLICY_V1,
@@ -162,6 +162,20 @@ export type SubjectClassificationInput = Schema.Schema.Type<
   typeof SubjectClassificationInput
 >;
 
+export class DuplicateWalletDeploymentError extends Data.TaggedError(
+  "DuplicateWalletDeploymentError",
+)<{
+  readonly wallet_address: string;
+  readonly deployment_id: string;
+}> {}
+
+export class DuplicateSubjectIdentityError extends Data.TaggedError(
+  "DuplicateSubjectIdentityError",
+)<{
+  readonly discord_user_id: string;
+  readonly role_id: string;
+}> {}
+
 export const decodeSubjectClassificationInput = Schema.decodeUnknown(
   SubjectClassificationInput,
   strictOptions,
@@ -172,6 +186,52 @@ const compareStrings = (left: string, right: string): number => {
   if (left > right) return 1;
   return 0;
 };
+
+const validateWalletDeploymentUniqueness = (
+  subject: SubjectClassificationInput,
+): Effect.Effect<SubjectClassificationInput, DuplicateWalletDeploymentError> =>
+  Effect.gen(function* () {
+    if (subject.identity.kind !== "linked") return subject;
+    for (const wallet of subject.identity.wallets) {
+      const seen = new Set<string>();
+      for (const deployment of wallet.deployments) {
+        const deploymentId = deployment.deployment_id.digest;
+        if (seen.has(deploymentId)) {
+          return yield* Effect.fail(
+            new DuplicateWalletDeploymentError({
+              wallet_address: wallet.address,
+              deployment_id: deploymentId,
+            }),
+          );
+        }
+        seen.add(deploymentId);
+      }
+    }
+    return subject;
+  });
+
+const validateSubjectIdentityUniqueness = <Subject extends {
+  readonly discord_user_id: string;
+  readonly role_id: string;
+}>(
+  subjects: ReadonlyArray<Subject>,
+): Effect.Effect<ReadonlyArray<Subject>, DuplicateSubjectIdentityError> =>
+  Effect.gen(function* () {
+    const seen = new Set<string>();
+    for (const subject of subjects) {
+      const identity = `${subject.discord_user_id}\u0000${subject.role_id}`;
+      if (seen.has(identity)) {
+        return yield* Effect.fail(
+          new DuplicateSubjectIdentityError({
+            discord_user_id: subject.discord_user_id,
+            role_id: subject.role_id,
+          }),
+        );
+      }
+      seen.add(identity);
+    }
+    return subjects;
+  });
 
 /**
  * Classification core over an ALREADY-VALIDATED non-empty selection. Kept
@@ -289,10 +349,18 @@ export const classifyGateLeakSubject = (
   selectedDeploymentIds: ReadonlyArray<VersionedDigest>,
 ): Effect.Effect<
   GateLeakRow,
-  EmptyDeploymentSelectionError | InvalidDeploymentSetMemberError
+  | EmptyDeploymentSelectionError
+  | InvalidDeploymentSetMemberError
+  | DuplicateWalletDeploymentError
 > =>
   validateSelectedDeploymentSet(selectedDeploymentIds).pipe(
-    Effect.map((validated) => classifyAgainstValidatedSelection(subject, validated)),
+    Effect.flatMap((validated) =>
+      validateWalletDeploymentUniqueness(subject).pipe(
+        Effect.map((verifiedSubject) =>
+          classifyAgainstValidatedSelection(verifiedSubject, validated),
+        ),
+      ),
+    ),
   );
 
 export const classifyGateLeakSubjects = (
@@ -300,15 +368,27 @@ export const classifyGateLeakSubjects = (
   selectedDeploymentIds: ReadonlyArray<VersionedDigest>,
 ): Effect.Effect<
   ReadonlyArray<GateLeakRow>,
-  EmptyDeploymentSelectionError | InvalidDeploymentSetMemberError
+  | EmptyDeploymentSelectionError
+  | InvalidDeploymentSetMemberError
+  | DuplicateWalletDeploymentError
+  | DuplicateSubjectIdentityError
 > =>
   validateSelectedDeploymentSet(selectedDeploymentIds).pipe(
-    Effect.map((validated) =>
-      subjects
-        .map((subject) => classifyAgainstValidatedSelection(subject, validated))
-        .toSorted((left, right) =>
-          compareStrings(left.discord_user_id, right.discord_user_id),
+    Effect.flatMap((validated) =>
+      validateSubjectIdentityUniqueness(subjects).pipe(
+        Effect.flatMap((verifiedSubjects) =>
+          Effect.forEach(verifiedSubjects, validateWalletDeploymentUniqueness),
         ),
+        Effect.map((verifiedSubjects) =>
+          verifiedSubjects
+            .map((subject) => classifyAgainstValidatedSelection(subject, validated))
+            .toSorted(
+              (left, right) =>
+                compareStrings(left.discord_user_id, right.discord_user_id) ||
+                compareStrings(left.role_id, right.role_id),
+            ),
+        ),
+      ),
     ),
   );
 
@@ -390,40 +470,48 @@ export const decodeGateLeakMeasure = Schema.decodeUnknown(GateLeakMeasure, stric
 export const computeGateLeakMeasure = (
   rows: ReadonlyArray<GateLeakRow>,
   excludedBotCount: number,
-): GateLeakMeasure => {
-  const cohortSize = rows.length;
-  const eligible = rows.filter((row) => row.eligibility_state === "eligible").length;
-  const provenIneligible = rows.filter(
-    (row) => row.eligibility_state === "proven_ineligible",
-  ).length;
-  const indeterminate = cohortSize - eligible - provenIneligible;
-  const definitive = eligible + provenIneligible;
+): Effect.Effect<
+  GateLeakMeasure,
+  ParseResult.ParseError | DuplicateSubjectIdentityError
+> =>
+  Effect.gen(function* () {
+    const verifiedExcludedBotCount = yield* Schema.decodeUnknown(NonNegativeInt)(
+      excludedBotCount,
+    );
+    yield* validateSubjectIdentityUniqueness(rows);
+    const cohortSize = rows.length;
+    const eligible = rows.filter((row) => row.eligibility_state === "eligible").length;
+    const provenIneligible = rows.filter(
+      (row) => row.eligibility_state === "proven_ineligible",
+    ).length;
+    const indeterminate = cohortSize - eligible - provenIneligible;
+    const definitive = eligible + provenIneligible;
 
-  if (meetsCoverageThreshold(definitive, cohortSize)) {
-    const floorPercent = coverageBandFloorPercent(definitive, cohortSize);
-    const coverageBand: 80 | 90 | 100 =
-      floorPercent >= 100 ? 100 : floorPercent >= 90 ? 90 : 80;
+    if (meetsCoverageThreshold(definitive, cohortSize)) {
+      const floorPercent = coverageBandFloorPercent(definitive, cohortSize);
+      const coverageBand: 80 | 90 | 100 =
+        floorPercent >= 100 ? 100 : floorPercent >= 90 ? 90 : 80;
+      return {
+        schema_version: 1,
+        presentation: "actionable",
+        coverage_policy_version: GATE_LEAK_COVERAGE_POLICY_V1.version,
+        actionable_leak_band: disclosureBand(provenIneligible),
+        coverage_band_floor_percent: coverageBand,
+        cohort_band: disclosureBand(cohortSize),
+        indeterminate_band: disclosureBand(indeterminate),
+        excluded_bot_count: verifiedExcludedBotCount,
+      };
+    }
     return {
       schema_version: 1,
-      presentation: "actionable",
+      presentation: "insufficient_coverage",
       coverage_policy_version: GATE_LEAK_COVERAGE_POLICY_V1.version,
-      actionable_leak_band: disclosureBand(provenIneligible),
-      coverage_band_floor_percent: coverageBand,
+      reason_code: "insufficient_coverage",
       cohort_band: disclosureBand(cohortSize),
       indeterminate_band: disclosureBand(indeterminate),
-      excluded_bot_count: excludedBotCount,
+      excluded_bot_count: verifiedExcludedBotCount,
     };
-  }
-  return {
-    schema_version: 1,
-    presentation: "insufficient_coverage",
-    coverage_policy_version: GATE_LEAK_COVERAGE_POLICY_V1.version,
-    reason_code: "insufficient_coverage",
-    cohort_band: disclosureBand(cohortSize),
-    indeterminate_band: disclosureBand(indeterminate),
-    excluded_bot_count: excludedBotCount,
-  };
-};
+  });
 
 /* ------------------------------------------------------------------------ */
 /* Compute input digest                                                      */

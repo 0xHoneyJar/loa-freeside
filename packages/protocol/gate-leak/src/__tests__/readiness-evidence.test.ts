@@ -56,6 +56,7 @@ import type {
   OwnershipIndexEvidence,
   VerifiedDeploymentNetworkMap,
 } from "../index.js";
+import { deploymentReferenceSetsEqual } from "../readiness.js";
 import {
   expectEffectFailureTag,
   expectEffectSuccess,
@@ -464,10 +465,46 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
     ).toStrictEqual(["empty_deployment_selection"]);
   });
 
+  it("compares deployment evidence as a logical set, independent of source order", () => {
+    const secondDeployment = expectEffectSuccess(
+      makeCollectionDeploymentRef({
+        schema_version: 1,
+        network: {
+          schema_version: 1,
+          network_namespace: "eip155",
+          network_reference: "1",
+        },
+        address: "0x2222222222222222222222222222222222222222",
+      }),
+    );
+    expect(
+      deploymentReferenceSetsEqual(
+        [miberaDeployment, secondDeployment],
+        [secondDeployment, miberaDeployment],
+      ),
+    ).toBe(true);
+  });
+
   it("a missing consent-purpose policy is a named admission gap", () => {
     expect(
       refusalReasons({ ...readyContext(), consent_purpose_policy: undefined }),
     ).toContain("purpose_policy_missing");
+  });
+
+  it("binds the Discord resume sequence as well as the gateway epoch", () => {
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        discord: {
+          ...discordEvidence,
+          attestation: {
+            ...discordEvidence.attestation,
+            gateway_resume_sequence:
+              discordEvidence.attestation.gateway_resume_sequence + 1,
+          },
+        },
+      }),
+    ).toContain("compute_input_binding_mismatch");
   });
 
   it("readiness cannot be asserted: an unratified aggregate refuses even when every other envelope is presented", () => {

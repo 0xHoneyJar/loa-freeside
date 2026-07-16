@@ -502,7 +502,7 @@ assert(
   "coverage gaps are explicit indeterminate reasons",
 );
 
-const measure = computeGateLeakMeasure(rows, 1);
+const measure = run(computeGateLeakMeasure(rows, 1));
 // 2 definitive of 6 (33%) -> below the 80% threshold: actionable band suppressed.
 assert(
   measure.presentation === "insufficient_coverage" &&
@@ -579,7 +579,7 @@ for (let index = 0; index < 10; index += 1) {
 const actionableRows = run(
   classifyGateLeakSubjects(actionableSubjects, [miberaDeployment.deployment_id]),
 );
-const actionableMeasure = computeGateLeakMeasure(actionableRows, 0);
+const actionableMeasure = run(computeGateLeakMeasure(actionableRows, 0));
 // 9 definitive of 10 (90%): actionable, floor band 90, leak band 1-9.
 assert(
   actionableMeasure.presentation === "actionable" &&

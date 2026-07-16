@@ -145,18 +145,35 @@ const sortedSetsEqual = (
 ): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
-const deploymentRefDigestsEqual = (
+const compareDeploymentIds = (
+  first: CollectionDeploymentRef,
+  second: CollectionDeploymentRef,
+): number => {
+  if (first.deployment_id.digest < second.deployment_id.digest) return -1;
+  if (first.deployment_id.digest > second.deployment_id.digest) return 1;
+  return 0;
+};
+
+/** Order-insensitive equality for already integrity-verified deployment sets. */
+export const deploymentReferenceSetsEqual = (
   left: ReadonlyArray<CollectionDeploymentRef>,
   right: ReadonlyArray<CollectionDeploymentRef>,
-): boolean =>
-  left.length === right.length &&
-  left.every(
-    (deployment, index) =>
-      right[index] !== undefined &&
-      digestsEqual(deployment.deployment_id, right[index]!.deployment_id) &&
-      deployment.network.network_namespace === right[index]!.network.network_namespace &&
-      deployment.network.network_reference === right[index]!.network.network_reference,
+): boolean => {
+  const sortedLeft = left.toSorted(compareDeploymentIds);
+  const sortedRight = right.toSorted(compareDeploymentIds);
+  return (
+    sortedLeft.length === sortedRight.length &&
+    sortedLeft.every(
+      (deployment, index) =>
+        sortedRight[index] !== undefined &&
+        digestsEqual(deployment.deployment_id, sortedRight[index]!.deployment_id) &&
+        deployment.network.network_namespace ===
+          sortedRight[index]!.network.network_namespace &&
+        deployment.network.network_reference ===
+          sortedRight[index]!.network.network_reference,
+    )
   );
+};
 
 type MappingAggregateReadinessVerification =
   | { readonly verified: true; readonly aggregate: GateMappingAggregate }
@@ -272,7 +289,7 @@ export const evaluateGateLeakReadiness = (
       collectionIdentity.deployments,
       decodeCollectionDeploymentRef,
     );
-    if (!deploymentRefDigestsEqual(verifiedIdentityDeployments, verifiedSelected)) {
+    if (!deploymentReferenceSetsEqual(verifiedIdentityDeployments, verifiedSelected)) {
       reasons.add("evidence_scope_mismatch");
     }
     const identityCovered = new Set(
@@ -382,7 +399,11 @@ export const evaluateGateLeakReadiness = (
         reasons.add("evidence_scope_mismatch");
       }
     }
-    if (discord.attestation.gateway_epoch !== context.pins.gateway_epoch) {
+    if (
+      discord.attestation.gateway_epoch !== context.pins.gateway_epoch ||
+      String(discord.attestation.gateway_resume_sequence) !==
+        context.pins.gateway_sequence
+    ) {
       reasons.add("compute_input_binding_mismatch");
     }
     const captureVerdict = evaluateCaptureCompleteness(discord.attestation);
