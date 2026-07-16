@@ -71,7 +71,13 @@ export SOURCE_COMMIT
 # cannot delete the prior artifact under comparison.
 PACK_ROOT="${TMPDIR:-/tmp}/collection-protocol-compat-$$"
 mkdir -p "$PACK_ROOT"
-trap 'rm -rf "$PACK_ROOT"' EXIT
+PACK_JS=""
+restore_pack_js() {
+  if [[ -n "${PACK_JS:-}" && -f "$PACK_ROOT/pack.js.bak" ]]; then
+    mv "$PACK_ROOT/pack.js.bak" "$PACK_JS"
+  fi
+}
+trap 'restore_pack_js; rm -rf "$PACK_ROOT"' EXIT
 
 echo "$TAG isolated pack epoch A (clean checkout-equivalent staging)"
 OUT_A="$PACK_ROOT/epoch-a"
@@ -144,7 +150,7 @@ export const packArtifact = () => {
 };
 EOF
 pnpm run pack:artifact -- --out "$POISON_OUT" --source-commit "$SOURCE_COMMIT"
-mv "$PACK_ROOT/pack.js.bak" "$PACK_JS"
+restore_pack_js
 POISON_TGZ="$(ls "$POISON_OUT"/*.tgz)"
 POISON_SHA="$(shasum -a 256 "$POISON_TGZ" | awk '{print $1}')"
 if [[ "$POISON_SHA" != "$SHA_A" ]]; then

@@ -103,6 +103,25 @@ const parseOctal = (buf: Buffer): number => {
   return Number.parseInt(raw, 8);
 };
 
+const assertTarHeaderChecksum = (header: Buffer): void => {
+  const expected = parseOctal(header.subarray(148, 156));
+  let unsigned = 0;
+  let signed = 0;
+  for (let index = 0; index < header.byteLength; index += 1) {
+    const raw = index >= 148 && index < 156 ? 0x20 : (header[index] ?? 0);
+    unsigned += raw;
+    signed += raw > 0x7f ? raw - 0x100 : raw;
+  }
+  if (expected !== unsigned && expected !== signed) {
+    throw new ArtifactArchiveMismatch({
+      field: "checksum",
+      expected: `${unsigned} (unsigned) or ${signed} (signed)`,
+      actual: String(expected),
+      reason: "malformed tar: header checksum mismatch",
+    });
+  }
+};
+
 const readCString = (buf: Buffer, label: string): string => {
   const nul = buf.indexOf(0);
   return decodeUtf8Strict(nul === -1 ? buf : buf.subarray(0, nul), label);
@@ -239,9 +258,11 @@ const mergePaxOverrides = (
 /**
  * List members of a gzip-compressed ustar/pax tarball without extracting.
  *
- * Effective `name` / `linkname` bind PAX global (`g`) and per-file (`x`)
- * `path`/`linkpath` overrides — and GNU longname/longlink (`L`/`K`) when
- * present — to the following ordinary member the way extraction tools do.
+ * Effective `name` / `linkname` bind per-file PAX (`x`) `path`/`linkpath`
+ * overrides — and GNU longname/longlink (`L`/`K`) when present — to the
+ * following ordinary member the way extraction tools do. Global PAX (`g`)
+ * `path`/`linkpath` is unsupported and rejected at its header because applying
+ * a single path to every later member is ambiguous and unsafe.
  * Mixed per-file PAX path/linkpath with GNU longname/longlink (any order), or
  * global PAX path/linkpath combined with GNU longname/longlink for the same
  * member, is rejected: extraction tools disagree on precedence, so the harness
@@ -300,6 +321,7 @@ export const listTarGzipMembers = (
     if (header.every((byte) => byte === 0)) {
       break;
     }
+    assertTarHeaderChecksum(header);
 
     const nameField = readCString(header.subarray(0, 100), "tar name");
     const size = parseOctal(header.subarray(124, 136));
@@ -324,9 +346,16 @@ export const listTarGzipMembers = (
       // Global extended header applies to all subsequent members.
       assertNoDanglingExtended("global PAX header");
       const records = parsePaxExtendedHeader(payload);
+      const overrides = overridesFromPax(records);
+      if (overrides.path !== undefined || overrides.linkpath !== undefined) {
+        throw new ArtifactArchiveMismatch({
+          reason:
+            "unsupported tar: global PAX path/linkpath overrides are not accepted",
+        });
+      }
       globalOverrides = mergePaxOverrides(
         globalOverrides,
-        overridesFromPax(records),
+        overrides,
       );
       continue;
     }

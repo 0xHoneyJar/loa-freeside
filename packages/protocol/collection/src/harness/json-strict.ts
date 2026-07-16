@@ -92,6 +92,9 @@ const parseString = (state: ParseState): string => {
       }
       continue;
     }
+    if (ch.charCodeAt(0) < 0x20) {
+      failInvalid("unescaped control character in string");
+    }
     out += ch;
   }
 };
@@ -232,7 +235,12 @@ const parseObject = (state: ParseState, path: string): Record<string, unknown> =
       failInvalid("expected colon after object key");
     }
     const childPath = path === "" ? key : `${path}.${key}`;
-    object[key] = parseValue(state, childPath);
+    Object.defineProperty(object, key, {
+      value: parseValue(state, childPath),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
     skipWhitespace(state);
     const ch = advance(state);
     if (ch === "}") {

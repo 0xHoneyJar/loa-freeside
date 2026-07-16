@@ -7,6 +7,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   COLLECTION_PROTOCOL_SCHEMA_MAJOR,
@@ -24,6 +25,7 @@ import {
   ArtifactFixtureDigestMismatch,
   ArtifactArchiveMismatch,
   DuplicateJsonKey,
+  InvalidJsonDocument,
   assertReachableSourceCommit,
   SourceCommitError,
   sha256Hex,
@@ -56,6 +58,29 @@ const readManifest = (path: string) =>
   };
 
 describe("CR-005 artifact harness", () => {
+  it("parses reserved object keys as inert own data properties", () => {
+    const parsed = parseJsonStrict(
+      '{"__proto__":{"polluted":true},"constructor":"data"}',
+    ) as Record<string, unknown>;
+
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(parsed, "__proto__")).toBe(true);
+    expect(parsed.__proto__).toEqual({ polluted: true });
+    expect(parsed.constructor).toBe("data");
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+
+  it("rejects raw JSON control characters while accepting escaped forms", () => {
+    for (let codePoint = 0; codePoint < 0x20; codePoint += 1) {
+      const raw = `{"value":"${String.fromCharCode(codePoint)}"}`;
+      expect(() => parseJsonStrict(raw)).toThrow(InvalidJsonDocument);
+    }
+
+    expect(parseJsonStrict('{"value":"\\u0000\\n\\t"}')).toEqual({
+      value: "\u0000\n\t",
+    });
+  });
+
   it(
     "packs reproducible artifacts across two isolated clean build epochs",
     () => {
@@ -539,6 +564,13 @@ describe("CR-005 artifact harness", () => {
     });
     const manifest = readManifest(packed.manifestPath);
     const manifestText = readFileSync(packed.manifestPath, "utf8");
+    const corruptChecksum = join(out, "corrupt-header-checksum.tgz");
+    const corruptTar = gunzipSync(readFileSync(packed.tarballPath));
+    corruptTar[0] = (corruptTar[0] ?? 0) ^ 0x01;
+    writeFileSync(corruptChecksum, gzipSync(corruptTar));
+    expect(() => listTarGzipMembers(corruptChecksum)).toThrow(
+      ArtifactArchiveMismatch,
+    );
 
     const buildEvil = (mode: string): string => {
       const dest = join(out, `${mode}.tgz`);
