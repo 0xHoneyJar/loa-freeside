@@ -555,6 +555,8 @@ G1B-3, and every T2 release claim that depends on them.
 
 Run these commands from the repository root. They inspect the immutable audited
 tree directly, so the result does not depend on the caller's checked-out branch.
+Prerequisites are Git, a POSIX shell/coreutils, and `ripgrep` (`rg`) on `PATH`;
+the two test-inventory filters intentionally use `rg`.
 
 ```bash
 BASE=3782fd47e8a20cdaf6325621962bd0443e6781b8
@@ -619,3 +621,9 @@ artifact_manifest        0
 25
 2210
 ```
+
+This transcript is author-recorded advisory context, not an immutable CI or
+signed gate artifact. It cannot close U-1 through U-16 or support merge or
+production authorization. Any formal closure decision must reference a
+commit-bound CI run, immutable verification log, or signed gate artifact that
+reruns the commands above against the named base.
