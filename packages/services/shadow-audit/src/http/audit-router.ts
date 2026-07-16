@@ -34,6 +34,7 @@ import {
   PublicGateLeakContractAddressSchema,
   REFUSAL_HTTP_STATUS,
   projectPublicJourney,
+  type AttentionKind,
   type CohortCount,
   type Cta,
   type DriftReport,
@@ -60,6 +61,7 @@ import {
 } from '../association-verifier.js';
 import type { RateLimiter } from '../rate-limiter.js';
 import {
+  CtaInteractionSchema,
   isRunWithinWindow,
   ReactionSchema,
   type EventStore,
@@ -298,6 +300,27 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       access_started_at: AccessStartedAtDateSchema,
     })
     .strict();
+  // Public interaction contract (FR-11): a bounded, discrete demand signal against an existing run.
+  // `.strict()` on each arm STRUCTURALLY rejects any wallet / email / IP / free-text / role / holding /
+  // caller-supplied `subject` / `placed_by` — the only fields are the capability token and one bounded enum.
+  // `feedback` carries the "does this match?" reaction; `enhance_intent` carries the willingness-to-advance
+  // CTA target (finally wiring the previously-unused CtaInteractionSchema).
+  const InteractionBodySchema = z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal('feedback'),
+        journey_token: z.string().min(1).max(128),
+        reaction: ReactionSchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('enhance_intent'),
+        journey_token: z.string().min(1).max(128),
+        target: CtaInteractionSchema,
+      })
+      .strict(),
+  ]);
 
   const publicSubject = (chain: string, contract: string) => ({
     chain_id: chain,
@@ -439,20 +462,23 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
   };
 
+  // Widened to the full AttentionKind: automatic lifecycle kinds are recorded by the journey
+  // registration path; the two INTERACTION kinds (`feedback`, `enhance_intent`) are recorded by the
+  // public interaction route below. Returns the append idempotency flag so callers that must react to
+  // a first-seen vs replay (the interaction route) can, while the fire-and-forget lifecycle callers ignore it.
   const attention = async (
     subject: ReturnType<typeof publicSubject>,
     journeyToken: string,
-    kind: 'submitted' | 'delivered_e1' | 'needs_input' | 'refused',
+    kind: AttentionKind,
     now: number,
-  ): Promise<void> => {
-    await deps.eventStore.appendAttention({
+  ): Promise<{ created: boolean }> =>
+    deps.eventStore.appendAttention({
       subject_chain_id: subject.chain_id,
       subject_contract_address: subject.contract_address,
       journey_token: journeyToken,
       kind,
       ts: new Date(now).toISOString(),
     });
-  };
 
   const registerPublicJourney = async (args: {
     runId: string;
@@ -1040,6 +1066,64 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     } catch {
       return c.json({ run_id: c.req.param('runId'), status: { state: 'unavailable' } }, 503);
     }
+  });
+
+  // ---- POST /v1/access-risk/:runId/interaction — public demand signal (FR-11 · G-7) -----------------
+  // A login-less caller holding the run's (run_id + server-issued journey_token) capability records a
+  // bounded `feedback` or `enhance_intent` demand signal. The subject AND the `public-gate-leak` run mode
+  // are DERIVED from the durable run, never accepted from the caller. This is deliberately DISTINCT from
+  // POST /v1/audit/reaction, which is the INTERNAL `dogfood-full` reaction bound via getRun — that route is
+  // left untouched. The two interaction kinds are the ones the router's lifecycle path never emits.
+  app.post('/v1/access-risk/:runId/interaction', async (c) => {
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    const parsed = InteractionBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      // Deliberately omit zod `issues` on this PUBLIC surface: a bad `reaction`/`target` enum value would
+      // otherwise be echoed straight back to the caller. The contract is tiny + documented, so callers lose
+      // nothing actionable. (The older sibling public routes still echo issues — a follow-up consistency pass.)
+      return c.json({ error: 'invalid interaction input' }, 400);
+    }
+
+    const now = deps.now();
+    // A non-public / unknown run_id is not in the public journey store (dogfood runs live only in getRun),
+    // so this lookup IS the "non-public runs fail-closed" gate — nothing else needs to check the mode.
+    const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
+    if (!run) return c.json({ error: 'journey not found' }, 404);
+    // Capability: the journey_token must match the run's server-issued token. Answer 404 (not 403) on a
+    // mismatch so a caller without the capability gets no existence oracle for the run_id.
+    if (run.journey_token !== parsed.data.journey_token) {
+      return c.json({ error: 'journey not found' }, 404);
+    }
+    // Same lifecycle window as reaction/contact (IMP-007): an expired run accepts no new demand.
+    if (!isRunWithinWindow(run, now, runWindow)) {
+      return c.json({ error: 'unknown or expired run_id' }, 404);
+    }
+
+    // Idempotency anchor is (journey_token, kind): a repeated interaction cannot inflate demand. The bounded
+    // VALUE row is written ONLY on first-seen, so a retry adds neither a second attention event nor a second
+    // aggregate RunEvent. Attention is written FIRST so the weakest-link proof (the demand event bound to the
+    // run's subject + capability) is the durable half if a write is interrupted mid-way.
+    const kind: AttentionKind = parsed.data.kind;
+    const { created } = await attention(run.subject, run.journey_token, kind, now);
+    if (created) {
+      await deps.eventStore.appendRunEvent({
+        run_id: run.run_id,
+        // The run's OWN mode — NOT `dogfood-full`. This is what makes the persisted value a public
+        // Gate Leak feedback/enhance-intent event rather than an internal dogfood reaction.
+        mode: 'public-gate-leak',
+        inputs_hash: run.inputs_hash,
+        stale_set_size: 0,
+        reruns: 0,
+        ...(parsed.data.kind === 'feedback'
+          ? { reaction: parsed.data.reaction }
+          : { cta_interaction: parsed.data.target }),
+        ts: new Date(now).toISOString(),
+      });
+    }
+    return c.json({ ok: true, deduplicated: !created });
   });
 
   // ---- GET /v1/audit — anonymous aggregate -------------------------------

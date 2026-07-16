@@ -244,6 +244,35 @@ describe('PostgresEventStore round-trip (real SQL)', () => {
     expect(await conn.store.appendAttention({ ...event, journey_token: 'journey_attention_2' })).toEqual({ created: true });
   });
 
+  it('persists the interaction attention kinds (feedback + enhance_intent) through real SQL (FR-11)', async () => {
+    const base = {
+      subject_chain_id: '80094',
+      subject_contract_address: `0x${'f'.repeat(40)}`,
+      ts: '2026-07-15T12:00:00.000Z',
+    };
+    // The `kind` CHECK admits both interaction kinds — a rejecting constraint would THROW here, not return
+    // created:true. This is the durable half of the seam the InMemory double cannot prove.
+    expect(await conn.store.appendAttention({ ...base, journey_token: 'journey_fb', kind: 'feedback' as const })).toEqual({ created: true });
+    expect(await conn.store.appendAttention({ ...base, journey_token: 'journey_ei', kind: 'enhance_intent' as const })).toEqual({ created: true });
+    // Idempotency is enforced at the DURABLE layer: the replay conflicts with the PERSISTED row, not a map.
+    expect(await conn.store.appendAttention({ ...base, journey_token: 'journey_fb', kind: 'feedback' as const })).toEqual({ created: false });
+
+    // Read the row back through raw SQL: a public feedback attention event bound to the subject survived
+    // serialization — the weakest-link proof at the durable layer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sql = (conn.store as any).sql;
+    const rows = await sql`
+      SELECT subject_chain_id, subject_contract_address, kind
+      FROM gate_leak_attention WHERE journey_token = 'journey_fb'
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      subject_chain_id: '80094',
+      subject_contract_address: `0x${'f'.repeat(40)}`,
+      kind: 'feedback',
+    });
+  });
+
   it('widens an already-existing NAMED narrow mode CHECK', async () => {
     // Regression: initialize() previously excluded the named constraint from its drop loop,
     // then saw the name existed and left the old dogfood-only CHECK in place.

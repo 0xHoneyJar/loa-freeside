@@ -388,6 +388,17 @@ export class InMemoryEventStore implements EventStore {
       attention: this.attention.size,
     };
   }
+
+  /** Test/inspection helper — attention events, optionally scoped to one journey. Member-free by schema. */
+  attentionList(journeyToken?: string): AttentionEvent[] {
+    const all = [...this.attention.values()];
+    return journeyToken ? all.filter((event) => event.journey_token === journeyToken) : all;
+  }
+
+  /** Test/inspection helper — run events, optionally scoped to one run. */
+  runEventList(runId?: string): RunEvent[] {
+    return runId ? this.runEvents.filter((event) => event.run_id === runId) : [...this.runEvents];
+  }
 }
 
 /**

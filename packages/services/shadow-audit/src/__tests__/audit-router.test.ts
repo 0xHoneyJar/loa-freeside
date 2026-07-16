@@ -681,3 +681,177 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     }
   });
 });
+
+describe('POST /v1/access-risk/:runId/interaction — public demand signal (FR-11 · G-7)', () => {
+  const registry =
+    (m: Record<string, { collection: string; standard: 'erc721' | 'erc1155'; access_started_at?: string }>) =>
+    ({ chain, contract }: { chain: string; contract: string }) =>
+      m[`${chain}/${contract}`.toLowerCase()];
+  // A registry that DELIVERS an E1 for CONTRACT, so a submit registers a durable public run to interact with.
+  const interactionDeps = (eventStore: InMemoryEventStore, over: Partial<AuditRouterDeps> = {}) =>
+    makeDeps({
+      eventStore,
+      collectionRegistry: registry({
+        [`1/${CONTRACT}`]: { collection: 'thj', standard: 'erc721', access_started_at: '2026-06-22' },
+      }),
+      ...over,
+    });
+
+  // Register a delivered public run and hand back its (run_id + journey_token) capability pair.
+  async function registerRun(app: ReturnType<typeof createAuditRouter>) {
+    const res = await post(app, '/v1/access-risk', { chain: '1', contract: CONTRACT });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    return { run_id: body.journey.run_id as string, journey_token: body.journey.journey_token as string };
+  }
+
+  it('records a public-gate-leak feedback attention event + value bound to the run subject + capability', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(interactionDeps(eventStore));
+    const { run_id, journey_token } = await registerRun(app);
+
+    const res = await post(app, `/v1/access-risk/${run_id}/interaction`, {
+      kind: 'feedback',
+      journey_token,
+      reaction: 'worse',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, deduplicated: false });
+
+    // WEAKEST-LINK: the durable event is a `feedback` attention kind bound to the run's CANONICAL subject
+    // + THIS journey's capability — not merely a 200. The subject came from the run, never the caller.
+    const feedback = eventStore.attentionList(journey_token).find((e) => e.kind === 'feedback');
+    expect(feedback).toMatchObject({
+      kind: 'feedback',
+      subject_chain_id: '1',
+      subject_contract_address: CONTRACT.toLowerCase(),
+      journey_token,
+    });
+    // ...and the bounded VALUE is persisted under the run's OWN public-gate-leak mode (never dogfood-full).
+    const valueEvent = eventStore.runEventList(run_id).find((e) => e.reaction === 'worse');
+    expect(valueEvent).toMatchObject({ mode: 'public-gate-leak', reaction: 'worse' });
+    expect(valueEvent?.cta_interaction).toBeUndefined(); // feedback carries no CTA target
+  });
+
+  it('records enhance_intent as a distinct attention kind carrying the CTA target', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(interactionDeps(eventStore));
+    const { run_id, journey_token } = await registerRun(app);
+
+    const res = await post(app, `/v1/access-risk/${run_id}/interaction`, {
+      kind: 'enhance_intent',
+      journey_token,
+      target: 'conversation',
+    });
+    expect(res.status).toBe(200);
+    const enhance = eventStore.attentionList(journey_token).find((e) => e.kind === 'enhance_intent');
+    expect(enhance).toMatchObject({
+      kind: 'enhance_intent',
+      subject_chain_id: '1',
+      subject_contract_address: CONTRACT.toLowerCase(),
+      journey_token,
+    });
+    const valueEvent = eventStore.runEventList(run_id).find((e) => e.cta_interaction === 'conversation');
+    expect(valueEvent).toMatchObject({ mode: 'public-gate-leak', cta_interaction: 'conversation' });
+  });
+
+  it('is idempotent per (journey_token, kind): a retry inflates neither demand nor the aggregate', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(interactionDeps(eventStore));
+    const { run_id, journey_token } = await registerRun(app);
+
+    const first = await post(app, `/v1/access-risk/${run_id}/interaction`, {
+      kind: 'feedback',
+      journey_token,
+      reaction: 'worse',
+    });
+    expect(await first.json()).toEqual({ ok: true, deduplicated: false });
+    const feedbackAttentionAfterFirst = eventStore.attentionList(journey_token).filter((e) => e.kind === 'feedback').length;
+    const feedbackValueRowsAfterFirst = eventStore.runEventList(run_id).filter((e) => e.reaction).length;
+
+    // Retry the SAME (token, kind) with a DIFFERENT value: a no-op, not an error and not a second row.
+    const retry = await post(app, `/v1/access-risk/${run_id}/interaction`, {
+      kind: 'feedback',
+      journey_token,
+      reaction: 'surprised',
+    });
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({ ok: true, deduplicated: true });
+    expect(eventStore.attentionList(journey_token).filter((e) => e.kind === 'feedback').length).toBe(feedbackAttentionAfterFirst);
+    expect(eventStore.runEventList(run_id).filter((e) => e.reaction).length).toBe(feedbackValueRowsAfterFirst);
+    // First value wins; the retry's differing value is dropped (the "counts once" contract).
+    expect(eventStore.runEventList(run_id).find((e) => e.reaction)?.reaction).toBe('worse');
+  });
+
+  it('fails closed on malformed body, unknown/non-public run, and mismatched capability token', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(interactionDeps(eventStore));
+    const { run_id, journey_token } = await registerRun(app);
+
+    // malformed / missing value / out-of-enum / unknown kind / smuggled member field (.strict()) → 400
+    for (const bad of [
+      null,
+      { kind: 'feedback', journey_token }, // missing reaction
+      { kind: 'feedback', journey_token, reaction: 'nope' }, // reaction out of enum
+      { kind: 'love', journey_token, reaction: 'worse' }, // unknown discriminant
+      { kind: 'feedback', journey_token, reaction: 'worse', wallet: R1 }, // .strict() rejects the extra field
+      { kind: 'feedback', journey_token, reaction: 'worse', subject: { chain_id: '1' } }, // no caller-supplied subject
+      { kind: 'feedback', journey_token, reaction: 'worse', placed_by: 'attacker' }, // no caller-supplied placed_by
+    ]) {
+      expect((await post(app, `/v1/access-risk/${run_id}/interaction`, bad)).status).toBe(400);
+    }
+
+    // The public 400 must not REFLECT caller-controlled content (no zod `issues` echo of the bad value).
+    const reflecting = await post(app, `/v1/access-risk/${run_id}/interaction`, {
+      kind: 'feedback',
+      journey_token,
+      reaction: 'leak-me@example.com',
+    });
+    expect(reflecting.status).toBe(400);
+    expect(JSON.stringify(await reflecting.json())).not.toContain('leak-me@example.com');
+
+    // unknown run_id → 404 (a non-public run is absent from the public journey store — fail-closed)
+    expect(
+      (await post(app, `/v1/access-risk/does-not-exist/interaction`, { kind: 'feedback', journey_token, reaction: 'worse' })).status,
+    ).toBe(404);
+
+    // an INTERNAL dogfood run_id is NOT interactable on this public route (non-public fail-closed)
+    const dogfood = createAuditRouter(makeDeps({ eventStore }));
+    const { run_id: dogfoodRunId } = (await (await dogfood.request(GET_URL)).json()) as any;
+    expect(
+      (await post(app, `/v1/access-risk/${dogfoodRunId}/interaction`, { kind: 'feedback', journey_token, reaction: 'worse' })).status,
+    ).toBe(404);
+
+    // mismatched capability token → 404 (no existence oracle for a caller without the capability)
+    expect(
+      (await post(app, `/v1/access-risk/${run_id}/interaction`, { kind: 'feedback', journey_token: 'not-the-token', reaction: 'worse' })).status,
+    ).toBe(404);
+
+    // NO durable interaction was written by any rejection.
+    expect(eventStore.attentionList(journey_token).some((e) => e.kind === 'feedback')).toBe(false);
+  });
+
+  it('rejects an interaction against an expired run (outside the 24h lifecycle window)', async () => {
+    const eventStore = new InMemoryEventStore();
+    let clock = NOW_MS;
+    const app = createAuditRouter(interactionDeps(eventStore, { now: () => clock }));
+    const { run_id, journey_token } = await registerRun(app);
+    clock = NOW_MS + 86_400_000 + 1; // one ms past the 24h window
+    const res = await post(app, `/v1/access-risk/${run_id}/interaction`, {
+      kind: 'feedback',
+      journey_token,
+      reaction: 'worse',
+    });
+    expect(res.status).toBe(404);
+    expect(eventStore.attentionList(journey_token).some((e) => e.kind === 'feedback')).toBe(false);
+  });
+
+  it('leaves the internal dogfood reaction bound to dogfood-full (unchanged)', async () => {
+    const eventStore = new InMemoryEventStore();
+    const app = createAuditRouter(makeDeps({ eventStore }));
+    const { run_id } = (await (await app.request(GET_URL)).json()) as any;
+    expect((await post(app, '/v1/audit/reaction', { run_id, reaction: 'expected' })).status).toBe(200);
+    const dogfoodReaction = eventStore.runEventList(run_id).find((e) => e.reaction === 'expected');
+    expect(dogfoodReaction?.mode).toBe('dogfood-full');
+  });
+});

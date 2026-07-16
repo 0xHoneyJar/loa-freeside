@@ -198,6 +198,57 @@ const AttentionEvent = z.object({
 
 ---
 
+### 2.7 Public interaction transport (FR-11 · G-7) — *amendment 2026-07-15*
+
+**Problem** [grounding, this cycle]: `AttentionKindSchema` (`public-journey.ts`) admits `enhance_intent` +
+`feedback`, and `gate_leak_attention.kind`'s CHECK already lists both — but the router's local `attention()`
+helper only accepts the four *automatic* lifecycle kinds, so **no route ever emits `enhance_intent`/`feedback`**.
+The only public reaction transport, `POST /v1/audit/reaction`, hard-codes `mode: 'dogfood-full'` and binds via
+`getRun` (the internal dogfood store), so it is **not** a public Gate Leak feedback channel. `CtaInteractionSchema`
+(`event-store.ts`) is defined-but-unused. This section closes that seam **without** widening the EventStore port
+or the schemas — every durable primitive already exists.
+
+**Route:** `POST /v1/access-risk/:runId/interaction` (sibling of the existing `:runId/resume` + `:runId` poll).
+
+**Request contract** (`.strict()` discriminated union; reuses existing service enums, no new payload fields):
+```ts
+// feedback  → the bounded "does this match?" reaction (worse|expected|surprised)
+// enhance_intent → the bounded willingness-to-advance CTA target (product|conversation)
+z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('feedback'),       journey_token: z.string().min(1).max(128), reaction: ReactionSchema }).strict(),
+  z.object({ kind: z.literal('enhance_intent'), journey_token: z.string().min(1).max(128), target:   CtaInteractionSchema }).strict(),
+])
+```
+The `subject` and `run mode` are **derived from the durable run**, never accepted from the caller — the body has
+no `subject`/`placed_by`/`chain`/`contract`, and `.strict()` structurally rejects any smuggled member/PII field.
+
+**Capability + fail-closed order** (each step is a pinned known-bad regression input):
+1. Rate-limit via the teaser limiter (shared with the other public routes).
+2. Parse body → `400` on malformed / unknown discriminant / extra field.
+3. `getPublicGateLeakJourney(runId)` → `404` if absent (a non-public / unknown `run_id` is not in this store — this
+   is what makes "non-public runs fail-closed" structural, since dogfood runs live only in `getRun`).
+4. `journey.journey_token === body.journey_token` → `404` on mismatch (no existence oracle for a caller without
+   the capability).
+5. `isRunWithinWindow(journey, now, runWindow)` → `404` when expired (same 24h window as reaction/contact).
+
+**Durable writes** (both already on the `EventStore` port; **no port change**):
+- `appendAttention({ subject: journey.subject, journey_token, kind, ts })` — the demand/proof event. Idempotent on
+  `(journey_token, kind)`; returns `{ created }`.
+- **Only when `created === true`**, `appendRunEvent({ run_id, mode: 'public-gate-leak', inputs_hash: journey.inputs_hash,
+  reaction? | cta_interaction?, stale_set_size: 0, reruns: 0, ts })` — persists the bounded value under the run's
+  **own** `public-gate-leak` mode (contrast the `dogfood-full` reaction handler).
+
+**Retry semantics (explicit + tested):** attention idempotency is the anchor. A repeat interaction of the same
+`(journey_token, kind)` returns `created=false` → the route writes **no** second `RunEvent` and replies `200
+{ ok:true, deduplicated:true }` — a journey cannot inflate demand (or the aggregate) by retrying, and a differing
+later value is a no-op, not an error (mirrors the `AttentionEvent` "counts once" contract, R-4). Attention is
+written before the value row so the weakest-link proof (the demand event) is the durable half if a write is
+interrupted.
+
+**Untouched:** `POST /v1/audit/reaction` + `/v1/audit/contact` keep their `dogfood-full` behavior verbatim.
+
+---
+
 ## 3. Data Model & Migrations (FR-1, FR-10)
 
 New forward migration `packages/services/shadow-audit/sql/0002_public_gate_leak.sql` (additive; never alters the
@@ -220,7 +271,8 @@ All CHECK constraints mirror the Zod enums (single source of wire truth, matchin
 | Method | Path | Building | Change |
 |--------|------|----------|--------|
 | GET/POST | public gate-leak entry (reuse/extend `/v1/access-risk` + a POST variant for `access_started_at` resume) | shadow-audit | Register run (FR-3); return typed `needs_input` (FR-4). Existing k-anon/cache/budget/refusal invariants unchanged. |
-| POST | `/v1/audit/reaction`, `/v1/audit/contact` | shadow-audit | **No change** — now resolve because the public run is registered (FR-3). |
+| POST | `/v1/audit/reaction`, `/v1/audit/contact` | shadow-audit | **No change** — now resolve because the public run is registered (FR-3). Keep `dogfood-full` mode. |
+| POST | `/v1/access-risk/:runId/interaction` | shadow-audit | **New, minimal (FR-11 · amendment).** Capability = `run_id` + `journey_token`; strict `feedback`/`enhance_intent` union; derives subject + `public-gate-leak` mode from the durable run; appends `AttentionKind` + bounded value; fail-closed. |
 | POST | ordering intake for `gate-leak` product | ordering | New preset (FR-5); anonymous-friendly; `.strict()`. |
 | GET | internal poll for public journey projection | shadow-audit | New, minimal (FR-7); NOT the dashboard BFF. |
 

@@ -75,6 +75,26 @@ corrupting immutable inputs.
 
 ---
 
+## Sprint 4 — Public Interaction Transport (G-7, FR-11) — *amendment 2026-07-15*
+
+**Goal:** close the missing public interaction seam — a login-less caller holding a run's `run_id` + `journey_token`
+capability can durably register a bounded `feedback` or `enhance_intent` demand signal. No EventStore/port/schema
+change: the `AttentionKind` enum, the `gate_leak_attention` CHECK (already lists both kinds), `ReactionSchema`, and
+the unused `CtaInteractionSchema` all pre-exist. Pure router seam + contract + tests. `dogfood-full` reaction/contact
+stay byte-identical.
+
+| Task | Acceptance criteria | Traces |
+|------|---------------------|--------|
+| S4-T1 | Add `POST /v1/access-risk/:runId/interaction` with a `.strict()` discriminated-union body (`feedback`→`ReactionSchema`, `enhance_intent`→`CtaInteractionSchema`) + `journey_token`. Widen the router's local `attention()` helper to the full `AttentionKind`. **Test:** valid `feedback` → 200, a durable `gate_leak_attention` row `kind=feedback` bound to the run's subject + a `public-gate-leak` `RunEvent` carrying `reaction`; valid `enhance_intent` → `kind=enhance_intent` + `cta_interaction`. | FR-11, G-7 |
+| S4-T2 | Capability + fail-closed: reject missing/malformed body (400), unknown/non-public `run_id` (404), mismatched `journey_token` (404, no oracle), expired run outside the window (404). **Test:** one known-bad regression input per rejection; a dogfood-only `run_id` 404s here (non-public fail-closed). | FR-11, G-7, R-2 |
+| S4-T3 | Privacy + retry: body `.strict()` rejects wallet/email/IP/free-text/role/holding/`subject`/`placed_by` (known-bad payload); retry of the same `(journey_token, kind)` is idempotent (200 `deduplicated:true`, no second attention row, no second `RunEvent`); the value row is written only on first-seen. **Postgres round-trip test:** `appendAttention(kind=feedback)` persists + re-reads through the real adapter (PGlite), not the in-memory double. Confirm `/v1/audit/reaction` + `/contact` behavior unchanged. | FR-11, G-7, R-2, R-4 |
+
+**Gate:** interaction 200-path proves a `public-gate-leak` `feedback`/`enhance_intent` attention event bound to the
+correct subject + capability (weakest-link); every rejection + the privacy/retry invariants pinned by a known-bad
+test; dogfood reaction/contact regression green.
+
+---
+
 ## Cross-Sprint Definition of Done
 
 - All G-1..G-6 acceptance metrics (PRD §2) demonstrably met by a runnable test.
