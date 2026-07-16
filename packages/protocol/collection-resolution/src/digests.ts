@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, ParseResult } from "effect";
 import type {
   CanonicalEncodingError,
   DigestComputationError,
@@ -15,7 +15,10 @@ import { RESOLUTION_DIGEST_DOMAINS } from "./version.js";
 export const digestResolutionRequest = (
   command: ResolutionCreateCommand,
   scope: AuthorizationScope,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(RESOLUTION_DIGEST_DOMAINS.request, 1, {
     identifier: command.identifier,
     environment: command.environment,
@@ -28,13 +31,19 @@ export const digestResolutionRequest = (
 
 export const digestCandidateSnapshot = (
   snapshot: CandidateSnapshot,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(RESOLUTION_DIGEST_DOMAINS.candidate_snapshot, 1, snapshot);
 
 export const digestSelection = (
   selectedDeploymentIds: ReadonlyArray<VersionedDigest>,
   selectedCollectionId: VersionedDigest | undefined,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(RESOLUTION_DIGEST_DOMAINS.selection, 1, {
     selected_deployment_ids: selectedDeploymentIds,
     selected_collection_id: selectedCollectionId ?? null,

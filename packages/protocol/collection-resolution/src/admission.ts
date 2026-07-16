@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, ParseResult } from "effect";
 import type {
   CanonicalEncodingError,
   DigestComputationError,
@@ -107,6 +107,7 @@ export const evaluateAdmissionCompatibility = (
   AdmissionDecision,
   | SelectionStaleError
   | CapabilityViewStaleError
+  | ParseResult.ParseError
   | CanonicalEncodingError
   | DigestComputationError
 > =>

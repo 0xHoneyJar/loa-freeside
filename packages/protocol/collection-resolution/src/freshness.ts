@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, ParseResult } from "effect";
 import type {
   CanonicalEncodingError,
   CollectionCandidate,
@@ -53,7 +53,10 @@ const selectionRelevantCandidate = (candidate: CollectionCandidate): unknown => 
 
 export const digestSelectionRelevant = (
   snapshot: CandidateSnapshot,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(
     RESOLUTION_DIGEST_DOMAINS.selection_relevant,
     1,
@@ -160,7 +163,10 @@ export const compareCandidateFreshness = (
   previousDigest: VersionedDigest,
   current: CandidateSnapshot,
   currentDigest: VersionedDigest,
-): Effect.Effect<FreshnessComparison, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  FreshnessComparison,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   Effect.all([digestSelectionRelevant(previous), digestSelectionRelevant(current)]).pipe(
     Effect.map(([previousRelevant, currentRelevant]) => {
       const byteEquivalent = digestsEqual(previousDigest, currentDigest);
