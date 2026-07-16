@@ -437,6 +437,17 @@ const refusalReasons = (
   return verdict.reason_codes;
 };
 
+const recipeWithOwnershipPartialPolicy = (
+  partialPolicy: GateLeakRecipeRequirement["partial_policy"],
+): GateLeakRecipe => ({
+  ...GATE_LEAK_RECIPE_V1,
+  requirements: GATE_LEAK_RECIPE_V1.requirements.map((requirement) =>
+    requirement.capability === "ownership_index.v1"
+      ? { ...requirement, partial_policy: partialPolicy }
+      : requirement,
+  ),
+});
+
 describe("recipe readiness proves all six capabilities from evidence", () => {
   it("is ready with a pinned mapping version, honest as-of interval, and a SERVER-recomputed compute-input digest", () => {
     const verdict = evaluate(readyContext());
@@ -649,27 +660,6 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
   it("a recipe that permits partial coverage must disclose the exact gap", () => {
     const [entry] = ownershipEvidence.coverage;
     if (entry === undefined) throw new Error("expected coverage entry");
-    const disclosingOwnership: GateLeakRecipeRequirement = {
-      capability: "ownership_index.v1",
-      minimum_adapter_version: "v1",
-      deployment_coverage: "selected_deployment_set",
-      freshness: {
-        kind: "ownership_finality_max_source_age",
-        policy_version: "ownership-freshness.v1",
-        max_source_age_seconds: 300,
-        supported_finality_policies: OWNERSHIP_FINALITY_POLICY_VERSIONS_V1,
-        description:
-          "continuous_latest within the closed per-deployment finality attestation contract and max-source-age policy",
-      },
-      partial_policy: "disclose",
-    };
-    const disclosingRecipe: GateLeakRecipe = {
-      ...GATE_LEAK_RECIPE_V1,
-      readiness_policy_version: GATE_LEAK_RECIPE_V1.readiness_policy_version,
-      requirements: GATE_LEAK_RECIPE_V1.requirements.map((requirement) =>
-        requirement.capability === "ownership_index.v1" ? disclosingOwnership : requirement,
-      ),
-    };
     const verdict = evaluate(
       {
         ...readyContext(),
@@ -678,13 +668,42 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
           coverage: [{ ...entry, completeness: "partial" }],
         },
       },
-      disclosingRecipe,
+      recipeWithOwnershipPartialPolicy("disclose"),
     );
     if (!verdict.ready) throw new Error(`expected disclosed-partial readiness: ${JSON.stringify(verdict)}`);
     expect(verdict.disclosed_coverage_gap).toStrictEqual({
       partial_policy: "disclose",
       missing_deployment_ids: [miberaDeployment.deployment_id.digest],
     });
+  });
+
+  it("applies reject, disclose, and allow consistently when finality is missing", () => {
+    const policies: ReadonlyArray<GateLeakRecipeRequirement["partial_policy"]> = [
+      "reject",
+      "disclose",
+      "allow",
+    ];
+    for (const policy of policies) {
+      const verdict = evaluate(
+        {
+          ...readyContext(),
+          ownership: { ...ownershipEvidence, finality_attestations: [] },
+        },
+        recipeWithOwnershipPartialPolicy(policy),
+      );
+      if (policy === "reject") {
+        if (verdict.ready) throw new Error("reject must fail closed");
+        expect(verdict.reason_codes).toContain("partial_deployment_coverage");
+        continue;
+      }
+      if (!verdict.ready) {
+        throw new Error(`expected ${policy} readiness: ${JSON.stringify(verdict)}`);
+      }
+      expect(verdict.disclosed_coverage_gap).toStrictEqual({
+        partial_policy: policy,
+        missing_deployment_ids: [miberaDeployment.deployment_id.digest],
+      });
+    }
   });
 
   it("a Discord snapshot for different roles, guild, or mapping version cannot satisfy this order", () => {
@@ -724,6 +743,15 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
         },
       }),
     ).toContain("capture_contention");
+  });
+
+  it("binds a 1,000-subject identity cohort to the pinned Discord non-bot member count", () => {
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        discord: { ...discordEvidence, member_count: 10 },
+      }),
+    ).toContain("compute_input_binding_mismatch");
   });
 
   it("identity-link evidence scoped to another community or with mismatched consent policy refuses", () => {

@@ -10,6 +10,7 @@ tests/fixtures/*_license.json
 
 # Dependencies
 node_modules/
+.repos/effect
 .pnp
 .pnp.js
 

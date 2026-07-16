@@ -4,6 +4,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "prepare": "./scripts/prepare-effect.sh",
     "build:hounfour": "scripts/rebuild-hounfour-dist.sh",
     "postinstall": "scripts/rebuild-hounfour-dist.sh",
     "lint": "oxlint"

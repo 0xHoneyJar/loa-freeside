@@ -321,9 +321,20 @@ export const evaluateGateLeakReadiness = (
         .filter((entry) => entry.completeness === "complete")
         .map((entry) => entry.deployment_id.digest),
     );
-    const missingOwnership = selectedDigests.filter(
+    const missingCompleteCoverage = selectedDigests.filter(
       (digest) => !ownershipCovered.has(digest),
     );
+    const attestedDeploymentIds = ownership.finality_attestations.map(
+      (attestation) => attestation.deployment_ref.deployment_id.digest,
+    );
+    const attestedDeploymentSet = new Set(attestedDeploymentIds);
+    const missingFinality = selectedDigests.filter(
+      (digest) => !attestedDeploymentSet.has(digest),
+    );
+    const missingOwnership = [
+      ...new Set([...missingCompleteCoverage, ...missingFinality]),
+    ].toSorted();
+    const missingOwnershipSet = new Set(missingOwnership);
     const ownershipPolicy = ownershipRequirement?.partial_policy ?? "reject";
     if (missingOwnership.length > 0 && ownershipPolicy === "reject") {
       reasons.add("partial_deployment_coverage");
@@ -352,16 +363,51 @@ export const evaluateGateLeakReadiness = (
           ),
         ),
     );
-    if (attestationIntegrity.some((result) => !result.ok)) {
+    const selectedDigestSet = new Set(selectedDigests);
+    const hasUnexpectedAttestation = attestedDeploymentIds.some(
+      (digest) => !selectedDigestSet.has(digest),
+    );
+    const hasDuplicateAttestation =
+      new Set(attestedDeploymentIds).size !== attestedDeploymentIds.length;
+    if (
+      attestationIntegrity.some((result) => !result.ok) ||
+      hasUnexpectedAttestation ||
+      hasDuplicateAttestation
+    ) {
       reasons.add("ownership_finality_unproven");
     } else {
-      const finalityProof = evaluateOwnershipFinalityProof(
-        ownership,
-        selectedNetworkMap,
-        supportedFinality,
-      );
-      if (!finalityProof.proven) {
-        reasons.add(finalityProof.reason_code);
+      const proofDeploymentNetworks =
+        ownershipPolicy === "reject"
+          ? selectedNetworkMap
+          : new Map(
+              [...selectedNetworkMap].filter(
+                ([deploymentId]) => !missingOwnershipSet.has(deploymentId),
+              ),
+            );
+      const proofOwnership =
+        ownershipPolicy === "reject"
+          ? ownership
+          : {
+              ...ownership,
+              coverage: ownership.coverage.filter(
+                (entry) => !missingOwnershipSet.has(entry.deployment_id.digest),
+              ),
+              finality_attestations: ownership.finality_attestations.filter(
+                (attestation) =>
+                  !missingOwnershipSet.has(
+                    attestation.deployment_ref.deployment_id.digest,
+                  ),
+              ),
+            };
+      if (proofDeploymentNetworks.size > 0) {
+        const finalityProof = evaluateOwnershipFinalityProof(
+          proofOwnership,
+          proofDeploymentNetworks,
+          supportedFinality,
+        );
+        if (!finalityProof.proven) {
+          reasons.add(finalityProof.reason_code);
+        }
       }
     }
 
@@ -501,6 +547,7 @@ export const evaluateGateLeakReadiness = (
       ) &&
       digestsEqual(computeInput.cohort.subject_set_digest, identityLinks.subject_set_digest) &&
       computeInput.cohort.cardinality === identityLinks.cohort_cardinality &&
+      identityLinks.cohort_cardinality === discord.member_count &&
       computeInput.cohort.source_role_snapshot_id === discord.snapshot_id &&
       computeInput.readiness_policy_version === recipe.readiness_policy_version &&
       computeInput.consent_policy_version === identityLinks.consent.policy_version;

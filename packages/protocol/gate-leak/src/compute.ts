@@ -219,8 +219,10 @@ const validateSubjectIdentityUniqueness = <Subject extends {
   Effect.gen(function* () {
     const seen = new Set<string>();
     for (const subject of subjects) {
-      const identity = `${subject.discord_user_id}\u0000${subject.role_id}`;
-      if (seen.has(identity)) {
+      // The cohort is a set of Discord subjects, not subject/role edges. A
+      // member holding two mapped roles still contributes exactly one row to
+      // the denominator and disclosure bands.
+      if (seen.has(subject.discord_user_id)) {
         return yield* Effect.fail(
           new DuplicateSubjectIdentityError({
             discord_user_id: subject.discord_user_id,
@@ -228,7 +230,7 @@ const validateSubjectIdentityUniqueness = <Subject extends {
           }),
         );
       }
-      seen.add(identity);
+      seen.add(subject.discord_user_id);
     }
     return subjects;
   });

@@ -247,6 +247,27 @@ describe("gate_leak_compute.v1 golden classification", () => {
       ),
       "DuplicateSubjectIdentityError",
     );
+
+    const overlappingRoleSubject: SubjectClassificationInput = {
+      ...subject,
+      role_id: "300000000000000099",
+    };
+    expectEffectFailureTag(
+      classifyGateLeakSubjects(
+        [subject, overlappingRoleSubject],
+        golden.selected_deployment_ids,
+      ),
+      "DuplicateSubjectIdentityError",
+    );
+
+    const overlappingRoleRow: GateLeakRow = {
+      ...row,
+      role_id: "300000000000000099",
+    };
+    expectEffectFailureTag(
+      computeGateLeakMeasure([row, overlappingRoleRow], golden.excluded_bot_count),
+      "DuplicateSubjectIdentityError",
+    );
   });
 
   it("refuses duplicate deployment evidence before map construction can make order semantic", () => {

@@ -757,7 +757,9 @@ export const DiscordRoleSnapshotEvidence = Schema.Struct({
   role_ids: RoleIdSet,
   mapping_version_id: MappingVersionIdDigest,
   mapping_config_digest: MappingConfigDigest,
+  /** Distinct non-bot members in the union of the pinned mapped roles. */
   member_count: NonNegativeInt,
+  /** Bots excluded upstream from member_count and the subject cohort. */
   excluded_bot_count: NonNegativeInt,
   attestation: DiscordCaptureAttestation,
   evidence_digest: GateLeakEvidenceDigest,
