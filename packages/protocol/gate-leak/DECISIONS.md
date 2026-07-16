@@ -10,8 +10,9 @@ explicitly.
 
 `packages/protocol/gate-leak`, sibling of the CR-001 package, standalone pnpm
 package following the identical build/test conventions. It depends on
-`@freeside/collection-protocol` (`file:../collection` until CR-005 ratifies
-distribution) and re-uses its scalars, canonical encoder, digest envelope,
+`@freeside/collection-protocol` through its published `^1.0.0` contract (with
+a package-local pnpm override for monorepo development) and re-uses its scalars,
+canonical encoder, digest envelope,
 `CollectionWorkKeyMaterial`, and `CapabilityRegistryVersion`. Nothing in
 CR-001 imports this package; the direction can never invert.
 

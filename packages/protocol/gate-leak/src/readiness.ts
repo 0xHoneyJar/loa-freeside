@@ -40,7 +40,11 @@ import {
   verifyOwnershipFinalityAttestationIntegrity,
 } from "./evidence.js";
 import type { GateMappingAggregate, GateMappingVersion } from "./mapping.js";
-import { decodeGateMappingAggregate, mappingSatisfiesReadiness } from "./mapping.js";
+import {
+  decodeGateMappingAggregate,
+  mappingPermitsIdentityReveal,
+  mappingSatisfiesReadiness,
+} from "./mapping.js";
 import type { GateLeakOrderReasonCode } from "./reason-codes.js";
 import { orderGateLeakOrderReasonCodes } from "./reason-codes.js";
 import type { CommunityRef, DiscordSnowflake, IsoTimestamp } from "./scalars.js";
@@ -265,6 +269,10 @@ export const evaluateGateLeakReadiness = (
       reasons.add(mappingVerdict.reason_code);
     } else {
       mappingVersion = mappingVerdict.version;
+      const revealVerdict = mappingPermitsIdentityReveal(mappingVersion);
+      if (!revealVerdict.revealable) {
+        reasons.add(revealVerdict.reason_code);
+      }
       if (!digestsEqual(mappingVersion.deployment_set_digest, selectedSetDigest)) {
         reasons.add("evidence_scope_mismatch");
       }

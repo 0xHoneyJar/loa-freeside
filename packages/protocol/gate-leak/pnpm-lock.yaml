@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@freeside/collection-protocol': file:../collection
+
 importers:
 
   .:

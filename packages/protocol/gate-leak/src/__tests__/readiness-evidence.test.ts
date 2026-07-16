@@ -534,6 +534,59 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
     ).toContain("gate_mapping_not_ratified");
   });
 
+  it("an otherwise-valid active mapping with pending identity reveal refuses disclosure", () => {
+    const pendingRatified = expectEffectSuccess(
+      ratifyGateMapping(
+        miberaSeed,
+        {
+          ...miberaCommand,
+          identity_reveal_basis: { schema_version: 1, kind: "pending" },
+          idempotency_key: "mibera-ratify-pending-reveal-0001",
+        },
+        {
+          schema_version: 1,
+          policy_version: GATE_LEAK_CHURN_POLICY_V1.version,
+          community_ref: miberaCommand.community_ref,
+          version_effective_times: [],
+        },
+      ),
+    );
+    const pendingVersion = pendingRatified.version;
+    const pendingDiscord = expectEffectSuccess(
+      decodeDiscordRoleSnapshotEvidence({
+        ...discordEvidence,
+        mapping_version_id: pendingVersion.mapping_version_id,
+        mapping_config_digest: pendingVersion.config_digest,
+      }),
+    );
+    const pendingPins = expectEffectSuccess(
+      decodeComputeAttemptPins({
+        ...pins,
+        mapping_version_id: pendingVersion.mapping_version_id,
+      }),
+    );
+    const pendingComputeInput = expectEffectSuccess(
+      decodeGateLeakComputeInput({
+        ...computeInput,
+        mapping_version_id: pendingVersion.mapping_version_id,
+        rule_digest: pendingVersion.rule_digest,
+        discord_snapshot_id: pendingDiscord.snapshot_id,
+        discord_evidence_digest: pendingDiscord.evidence_digest,
+        pins: pendingPins,
+      }),
+    );
+
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        mapping_aggregate: pendingRatified.aggregate,
+        discord: pendingDiscord,
+        pins: pendingPins,
+        compute_input: pendingComputeInput,
+      }),
+    ).toStrictEqual(["identity_reveal_not_authorized"]);
+  });
+
   it("two-active adversarial probe: a malformed aggregate refuses; readiness never chooses an oldest active mapping", () => {
     const active = miberaAggregate.versions[0];
     if (active === undefined) throw new Error("expected active version");
