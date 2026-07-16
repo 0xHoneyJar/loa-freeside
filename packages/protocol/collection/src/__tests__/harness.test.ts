@@ -800,6 +800,117 @@ finally:
       return dest;
     };
 
+    const buildPaxSizeSmuggle = (globalHeader = false): string => {
+      const dest = join(
+        out,
+        globalHeader
+          ? "global_pax_size_hidden_symlink.tgz"
+          : "pax_size_hidden_symlink.tgz",
+      );
+      execFileSync(
+        "python3",
+        ["-", packed.tarballPath, dest, globalHeader ? "g" : "x"],
+        {
+          encoding: "utf8",
+          input: `
+import gzip, sys, tarfile
+
+src, dest, pax_type = sys.argv[1], sys.argv[2], sys.argv[3]
+raw = gzip.decompress(open(src, "rb").read())
+
+def parse_octal(field):
+    text = field.split(b"\\x00", 1)[0].strip() or b"0"
+    return int(text, 8)
+
+def padded(size):
+    return ((size + 511) // 512) * 512
+
+def pax_record(key, value):
+    body = f"{key}={value}\\n".encode("utf-8")
+    length = len(body)
+    while True:
+        prefix = f"{length} ".encode("ascii")
+        total = len(prefix) + len(body)
+        if total == length:
+            return prefix + body
+        length = total
+
+def pad(payload):
+    return payload + (b"\\x00" * (padded(len(payload)) - len(payload)))
+
+def header(name, typeflag, size=0, linkname=""):
+    info = tarfile.TarInfo(name=name)
+    info.type = typeflag
+    info.size = size
+    info.linkname = linkname
+    info.mode = 0o644
+    info.uid = 0
+    info.gid = 0
+    info.uname = "root"
+    info.gname = "root"
+    info.mtime = 0
+    return info.tobuf(format=tarfile.USTAR_FORMAT)
+
+def replace_size(source_header, size):
+    result = bytearray(source_header)
+    size_field = f"{size:011o}\\0".encode("ascii")
+    if len(size_field) != 12:
+        raise SystemExit("test fixture size does not fit the ustar size field")
+    result[124:136] = size_field
+    result[148:156] = b"        "
+    checksum = sum(result)
+    checksum_field = f"{checksum:06o}\\0 ".encode("ascii")
+    if len(checksum_field) != 8:
+        raise SystemExit("test fixture checksum does not fit the ustar field")
+    result[148:156] = checksum_field
+    return bytes(result)
+
+parts = []
+offset = 0
+replaced = False
+while offset + 512 <= len(raw):
+    member_header = raw[offset:offset + 512]
+    if member_header == b"\\x00" * 512:
+        parts.append(raw[offset:])
+        break
+    name = member_header[0:100].split(b"\\x00", 1)[0].decode("utf-8")
+    size = parse_octal(member_header[124:136])
+    member_end = offset + 512 + padded(size)
+    if name == "package/package.json" and not replaced:
+        pax = pax_record("size", str(size))
+        pax_header_type = tarfile.XGLTYPE if pax_type == "g" else tarfile.XHDTYPE
+        parts.append(header("././@PaxHeader", pax_header_type, len(pax)))
+        parts.append(pad(pax))
+        # Preflight trusts this inflated ustar size and skips the next 512-byte
+        # block. GNU tar honors the PAX size and interprets that block as a
+        # symlink header instead.
+        parts.append(replace_size(member_header, size + 512))
+        parts.append(raw[offset + 512:member_end])
+        parts.append(
+            header(
+                "package/hidden-link",
+                tarfile.SYMTYPE,
+                linkname="package.json",
+            )
+        )
+        replaced = True
+    else:
+        parts.append(raw[offset:member_end])
+    offset = member_end
+
+if not replaced:
+    raise SystemExit("package/package.json not found in source archive")
+
+with open(dest, "wb") as stream:
+    with gzip.GzipFile(fileobj=stream, mode="wb", mtime=0) as output:
+        output.write(b"".join(parts))
+`,
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+      return dest;
+    };
+
     const cases = [
       "undeclared_root",
       "abs_symlink",
@@ -845,6 +956,41 @@ finally:
     ).toBeInstanceOf(ArtifactArchiveMismatch);
     expect(
       expectEffectFailure(preflightArchiveMembers(gnuEvil, manifest.files)),
+    ).toBeInstanceOf(ArtifactArchiveMismatch);
+
+    const paxSizeSmuggle = buildPaxSizeSmuggle();
+    const extractorMembers = execFileSync("tar", ["-tzf", paxSizeSmuggle], {
+      encoding: "utf8",
+    }).trim().split("\n");
+    expect(extractorMembers).toContain("package/hidden-link");
+    expect(() => listTarGzipMembers(paxSizeSmuggle)).toThrow(
+      ArtifactArchiveMismatch,
+    );
+    expect(
+      expectEffectFailure(
+        preflightArchiveMembers(paxSizeSmuggle, manifest.files),
+      ),
+    ).toBeInstanceOf(ArtifactArchiveMismatch);
+    expect(
+      expectEffectFailure(
+        verifyArtifact({
+          tarballPath: paxSizeSmuggle,
+          manifest: {
+            ...manifest,
+            artifact_sha256: sha256Hex(readFileSync(paxSizeSmuggle)),
+          },
+        }),
+      ),
+    ).toBeInstanceOf(ArtifactArchiveMismatch);
+
+    const globalPaxSizeSmuggle = buildPaxSizeSmuggle(true);
+    expect(() => listTarGzipMembers(globalPaxSizeSmuggle)).toThrow(
+      ArtifactArchiveMismatch,
+    );
+    expect(
+      expectEffectFailure(
+        preflightArchiveMembers(globalPaxSizeSmuggle, manifest.files),
+      ),
     ).toBeInstanceOf(ArtifactArchiveMismatch);
 
     // Exact PAX path-override probe: raw ustar package/package.json -> UNDECLARED.

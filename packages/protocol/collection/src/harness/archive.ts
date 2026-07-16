@@ -236,6 +236,35 @@ type PaxOverrides = {
   linkpath?: string;
 };
 
+const paxRecordChangesMemberLayout = (key: string): boolean =>
+  key === "size" ||
+  key === "GNU.sparse" ||
+  key.startsWith("GNU.sparse.") ||
+  key === "SCHILY.realsize" ||
+  key === "SCHILY.filetype";
+
+/**
+ * Refuse PAX records that make the extractor advance or materialize a member
+ * differently from this preflight parser. In particular, a PAX `size` can
+ * make the raw ustar size cover an embedded header that `tar` still extracts.
+ * Sparse and SCHILY type/size extensions have the same parser-dependent risk.
+ * This check applies equally to per-file and persistent global PAX records.
+ */
+const assertNoLayoutAffectingPaxRecords = (
+  records: ReadonlyMap<string, string>,
+  scope: "global" | "per-file",
+): void => {
+  for (const key of records.keys()) {
+    if (paxRecordChangesMemberLayout(key)) {
+      throw new ArtifactArchiveMismatch({
+        field: key,
+        reason:
+          `unsupported tar: ${scope} PAX record ${key} can change member layout or type`,
+      });
+    }
+  }
+};
+
 const overridesFromPax = (records: ReadonlyMap<string, string>): PaxOverrides => {
   const overrides: PaxOverrides = {};
   if (records.has("path")) {
@@ -346,6 +375,7 @@ export const listTarGzipMembers = (
       // Global extended header applies to all subsequent members.
       assertNoDanglingExtended("global PAX header");
       const records = parsePaxExtendedHeader(payload);
+      assertNoLayoutAffectingPaxRecords(records, "global");
       const overrides = overridesFromPax(records);
       if (overrides.path !== undefined || overrides.linkpath !== undefined) {
         throw new ArtifactArchiveMismatch({
@@ -367,7 +397,9 @@ export const listTarGzipMembers = (
             "malformed tar: conflicting consecutive per-file PAX extended headers",
         });
       }
-      const local = overridesFromPax(parsePaxExtendedHeader(payload));
+      const records = parsePaxExtendedHeader(payload);
+      assertNoLayoutAffectingPaxRecords(records, "per-file");
+      const local = overridesFromPax(records);
       assertNoMixedPathMetadata(local.path, pendingGnuLongName);
       assertNoMixedLinkMetadata(local.linkpath, pendingGnuLongLink);
       pendingLocalOverrides = local;

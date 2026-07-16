@@ -8,6 +8,7 @@
     "build:hounfour": "scripts/rebuild-hounfour-dist.sh",
     "prepare": "./scripts/prepare-effect.sh",
     "postinstall": "scripts/rebuild-hounfour-dist.sh",
+    "prepare": "./scripts/prepare-effect.sh",
     "lint": "oxlint"
   },
   "devDependencies": {
