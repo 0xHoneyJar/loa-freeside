@@ -198,7 +198,7 @@ const AttentionEvent = z.object({
 
 ---
 
-### 2.7 Public interaction transport (FR-11 · G-7) — *amendment 2026-07-15*
+### 2.7 Public interaction transport + lifecycle-wide capability contract (FR-11 · G-7) — *amendment 2026-07-15, revised 2026-07-16*
 
 **Problem** [grounding, this cycle]: `AttentionKindSchema` (`public-journey.ts`) admits `enhance_intent` +
 `feedback`, and `gate_leak_attention.kind`'s CHECK already lists both — but the router's local `attention()`
@@ -207,6 +207,24 @@ The only public reaction transport, `POST /v1/audit/reaction`, hard-codes `mode:
 `getRun` (the internal dogfood store), so it is **not** a public Gate Leak feedback channel. `CtaInteractionSchema`
 (`event-store.ts`) is defined-but-unused. This section closes that seam **without** widening the EventStore port
 or the schemas — every durable primitive already exists.
+
+**Lifecycle-wide capability contract (revised 2026-07-16):** `run_id` is the *public address* — embeddable in
+a URL, QR code, or referrer log without privilege escalation (it is the 122-bit random identifier returned to
+anyone who submits). `journey_token` is the *authentication credential* — server-issued at submit, opaque,
+required to authenticate every subsequent sub-route. The two together form the capability; neither alone is
+sufficient.
+
+| Sub-route | Authentication | Missing/mismatch |
+|---|---|---|
+| `POST /v1/access-risk` (submit) | none — anonymous entry point | — |
+| `GET /v1/access-risk/:runId` (poll) | `?journey_token=` query param | `404` (no oracle) |
+| `POST /v1/access-risk/:runId/resume` | `journey_token` in strict body | `404` (no oracle) |
+| `POST /v1/access-risk/:runId/interaction` | `journey_token` in strict body | `404` (no oracle) |
+
+On a successful poll, the full `PublicJourneyProjection` (including `journey_token`) is returned so the client
+can re-confirm its held credential. The Ordering orchestrator stores the full projection and passes
+`priorJourney.data.journey_token` to `GateLeakPort.resume`; `HttpGateLeakPort` forwards it as `journey_token`
+in the body. The dashboard BFF never exposes the token to the end-user directly.
 
 **Route:** `POST /v1/access-risk/:runId/interaction` (sibling of the existing `:runId/resume` + `:runId` poll).
 
@@ -274,7 +292,7 @@ All CHECK constraints mirror the Zod enums (single source of wire truth, matchin
 | POST | `/v1/audit/reaction`, `/v1/audit/contact` | shadow-audit | **No change** — now resolve because the public run is registered (FR-3). Keep `dogfood-full` mode. |
 | POST | `/v1/access-risk/:runId/interaction` | shadow-audit | **New, minimal (FR-11 · amendment).** Capability = `run_id` + `journey_token`; strict `feedback`/`enhance_intent` union; derives subject + `public-gate-leak` mode from the durable run; appends `AttentionKind` + bounded value; fail-closed. |
 | POST | ordering intake for `gate-leak` product | ordering | New preset (FR-5); anonymous-friendly; `.strict()`. |
-| GET | internal poll for public journey projection | shadow-audit | New, minimal (FR-7); NOT the dashboard BFF. |
+| GET | `/v1/access-risk/:runId?journey_token=` (poll) | shadow-audit | Authenticated status poll (FR-7). `journey_token` required as query param; missing/mismatch → `404`. Returns full `PublicJourneyProjection` (including token) on success. NOT the dashboard BFF. |
 
 **Wire-status discipline:** `needs_input` gets a stable status via the refusal enum + `REFUSAL_HTTP_STATUS`
 map extension (or a sibling typed-state map). No raw ad-hoc HTTP codes.
@@ -292,7 +310,8 @@ map extension (or a sibling typed-state map). No raw ad-hoc HTTP codes.
   registration/attention layer never re-publishes an exact sub-k denominator.
 - **Anti-abuse:** reuse the existing per-IP (best-effort) + cache + identity-independent **global budget**
   [grounding §A]; the durable registration adds a per-subject idempotency key so abuse cannot inflate expensive
-  work. Public paths stay unauthenticated (FR: value precedes signup).
+  work. The **submit** path is unauthenticated (FR: value precedes signup); subsequent sub-routes (poll, resume,
+  interaction) are authenticated by the server-issued `journey_token` — see the capability contract in §2.7.
 - **Fail closed (R-5):** durable-upstream-down → `unavailable`, never an in-memory masquerade.
 
 ---

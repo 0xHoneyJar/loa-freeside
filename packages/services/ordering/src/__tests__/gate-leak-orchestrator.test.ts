@@ -51,7 +51,7 @@ class FakeIndex implements GateLeakIndexPort {
 /** Mirrors the Shadow adapter's subject/input cache while retaining separate journey tokens. */
 class CachingGateLeak implements GateLeakPort {
   readonly submissions: GateLeakSubmission[] = [];
-  readonly resumes: Array<{ runId: string; accessStartedAt: string }> = [];
+  readonly resumes: Array<{ runId: string; accessStartedAt: string; journeyToken: string }> = [];
   readonly runTokens = new Map<string, string>();
   readonly cache = new Set<string>();
   computeCalls = 0;
@@ -75,11 +75,11 @@ class CachingGateLeak implements GateLeakPort {
     return this.deliver(runId, journeyToken, input.chain, input.contract, input.access_started_at);
   }
 
-  async resume(runId: string, accessStartedAt: string): Promise<GateLeakSubmissionResult> {
-    this.resumes.push({ runId, accessStartedAt });
-    const journeyToken = this.runTokens.get(runId);
-    if (!journeyToken) throw new Error('unknown fake journey');
-    return this.deliver(runId, journeyToken, '1', CONTRACT, accessStartedAt);
+  async resume(runId: string, accessStartedAt: string, journeyToken: string): Promise<GateLeakSubmissionResult> {
+    this.resumes.push({ runId, accessStartedAt, journeyToken });
+    const tokenFromStore = this.runTokens.get(runId);
+    if (!tokenFromStore) throw new Error('unknown fake journey');
+    return this.deliver(runId, tokenFromStore, '1', CONTRACT, accessStartedAt);
   }
 
   private deliver(
@@ -227,7 +227,11 @@ describe('GateLeakOrchestrator', () => {
     });
     expect(resumed.status).toBe(200);
     expect((await resumed.json()) as unknown).toMatchObject({ state: 'fulfilled' });
-    expect(gateLeak.resumes).toEqual([{ runId: upstreamRunId, accessStartedAt: '2026-06-22' }]);
+    // The orchestrator MUST pass the server-issued journey_token — the shadow-audit resume gate requires it.
+    expect(gateLeak.resumes).toHaveLength(1);
+    expect(gateLeak.resumes[0]).toMatchObject({ runId: upstreamRunId, accessStartedAt: '2026-06-22' });
+    expect(typeof gateLeak.resumes[0]?.journeyToken).toBe('string');
+    expect(gateLeak.resumes[0]?.journeyToken.length).toBeGreaterThan(0);
     const completed = await store.get(orderId);
     expect(completed?.inputs).toEqual(original?.inputs);
     expect(completed?.inputs_digest).toBe(original?.inputs_digest);

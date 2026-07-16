@@ -1,38 +1,54 @@
 {
-  "plan_id": "plan-collections-sot",
+  "plan_id": "plan-gate-leak-895e6d6c",
   "target": "sprint-plan",
-  "state": "JACKED_OUT",
+  "state": "COMPLETED",
+  "base_branch": "feat/shadow-audit-mvp",
+  "options": {
+    "from": 0,
+    "to": 3,
+    "max_cycles": 20,
+    "bridge_depth": 3,
+    "allow_high": true,
+    "models": [
+      "codex-headless",
+      "claude-headless",
+      "grok-headless"
+    ]
+  },
   "sprints": {
-    "total": 3,
-    "completed": 3,
+    "total": 4,
+    "completed": 4,
     "current": null,
     "list": [
       {
+        "id": "sprint-0",
+        "status": "completed",
+        "cycles": 0,
+        "bead": "arrakis-gate-leak-epic-2pst6.1"
+      },
+      {
         "id": "sprint-1",
         "status": "completed",
-        "cycles": 1,
-        "note": "S1-T1 identity + S1-T2 entity done; S1-T3 store next"
+        "bead": "arrakis-gate-leak-epic-2pst6.2"
       },
       {
         "id": "sprint-2",
-        "status": "completed"
+        "status": "completed",
+        "bead": "arrakis-gate-leak-epic-2pst6.3"
       },
       {
         "id": "sprint-3",
-        "status": "completed"
+        "status": "completed",
+        "bead": "arrakis-gate-leak-epic-2pst6.4"
       }
     ]
   },
-  "options": {
-    "from": 1,
-    "to": 3,
-    "max_cycles": 20
-  },
-  "base": "merged cycle/sandwich-line (#429 spine) \u2014 building on real committed spine",
   "metrics": {
-    "total_cycles": 1,
-    "total_files_changed": 5,
-    "fagan_s1": "1 HIGH + 2 MEDIUM fixed",
-    "tests": "protocol 37 + shadow-mode 91 + shadow-audit 167 = 295 green, 0 tc errors"
+    "total_cycles": 0,
+    "total_files_changed": 58
+  },
+  "timestamps": {
+    "started": "2026-07-15T22:03:59Z",
+    "completed": "2026-07-15T23:59:56Z"
   }
 }

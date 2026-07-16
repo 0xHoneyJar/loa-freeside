@@ -1,93 +1,75 @@
-# Sprint 4 — Public Interaction Transport (implementation report)
+# Implementation Report — Order System, Sprint 4 (provenance + security hardening)
 
-**Traces:** PRD G-7 / FR-11 · SDD §2.7 · sprint.md Sprint 4 (S4-T1..T3) · bead `arrakis-up74v`
-**Branch:** `feat/public-gate-leak-lifecycle` (stacked draft PR #470 → `feat/shadow-audit-mvp`)
+**Branch**: `cycle/shadow-audit-runtime-ordering` · **Run**: autonomous (goal: finish all sprints) · local-only.
+**Domain (ADR-007)**: `platform` only. Traces to `sprint.md` Sprint 4 + SDD §9, §13 H-5/H-6/M-8.
 
 ## Executive Summary
-
-Closed the missing public interaction seam. Before this sprint, `AttentionKindSchema` admitted
-`enhance_intent` + `feedback` and the `gate_leak_attention.kind` CHECK already listed both, but **no route
-ever emitted them** — the router's local `attention()` helper accepted only the four automatic lifecycle
-kinds, and the sole public reaction transport (`POST /v1/audit/reaction`) hard-codes `mode: 'dogfood-full'`
-and binds via `getRun` (the internal dogfood store). `CtaInteractionSchema` was defined-but-unused.
-
-The fix is a single new route, `POST /v1/access-risk/:runId/interaction`, that lets a login-less caller
-holding the run's `run_id` + `journey_token` capability record a bounded `feedback` (reaction enum) or
-`enhance_intent` (CTA-target enum) demand signal. Subject and `public-gate-leak` mode are derived from the
-durable run, never the caller. **No EventStore port, schema, or SQL migration change** — every durable
-primitive pre-existed.
+Built the platform hardening: canonical signed order (H-5), intake authn/authz + replay protection (H-6),
+and the private signed ops channel (M-8). S4-T4 (authed full migration-delta) is **blocked** on PR #395 +
+main's frozen Unit Tests gate and is deferred. **Gate: tsc clean · 54 tests pass (+11).**
 
 ## AC Verification
 
-### S4-T1 — route + contract + attention widening
-> "Add `POST /v1/access-risk/:runId/interaction` with a `.strict()` discriminated-union body
-> (`feedback`→`ReactionSchema`, `enhance_intent`→`CtaInteractionSchema`) + `journey_token`. Widen the
-> router's local `attention()` helper to the full `AttentionKind`. Test: valid `feedback` → 200, a durable
-> `gate_leak_attention` row `kind=feedback` bound to the run's subject + a `public-gate-leak` `RunEvent`
-> carrying `reaction`; valid `enhance_intent` → `kind=enhance_intent` + `cta_interaction`."
+### S4-T1 — canonical signed order (H-5)
+> "the signed envelope carries the full canonical order; verification fails on any field tamper"
 
-**✓ Met.**
-- `InteractionBodySchema` (strict discriminated union): `packages/services/shadow-audit/src/http/audit-router.ts:308`; route `POST /v1/access-risk/:runId/interaction`: `:1077-1124`.
-- `attention()` helper widened to `AttentionKind`, returns `{ created }`: `audit-router.ts:469`.
-- Test (feedback → durable attention row bound to subject + `public-gate-leak` RunEvent with `reaction`):
-  `packages/services/shadow-audit/src/__tests__/audit-router.test.ts:708`.
-- Test (enhance_intent → `kind=enhance_intent` + `cta_interaction`): `audit-router.test.ts:736`.
+**✓ Met.** `src/order-signer.ts` — `signOrder`/`verifyOrder`: ed25519 over `jcsCanonicalize(order)` where the
+canonical order is the FULL payload (validated inputs + `schema_version` + `preset_version` +
+`audit_request_digest`), not just an inputs digest. Tested: `src/__tests__/order-signer.test.ts` — sign→verify
+true; tamper of a deep input, the bound AuditRequest digest, or the preset version each → verify **false**;
+wrong key → false.
 
-### S4-T2 — capability + fail-closed
-> "Capability + fail-closed: reject missing/malformed body (400), unknown/non-public `run_id` (404),
-> mismatched `journey_token` (404, no oracle), expired run outside the window (404). Test: one known-bad
-> regression input per rejection; a dogfood-only `run_id` 404s here (non-public fail-closed)."
+### S4-T2 — intake authn/authz (H-6)
+> "unauthenticated/replayed order → rejected + logged"
 
-**✓ Met.**
-- 400 on malformed/unknown-discriminant: `audit-router.ts:1082-1083`; 404 on unknown/non-public run
-  (via `getPublicGateLeakJourney`): `:1090-1091`; 404 on token mismatch (no oracle): `:1094-1096`; 404 on
-  expired window (`isRunWithinWindow`): `:1098-1100`.
-- Tests (one known-bad input per rejection incl. a real dogfood run_id → 404): `audit-router.test.ts:786`.
-- Test (expired run outside 24h window → 404): `audit-router.test.ts:824`.
+**✓ Met.** `src/intake-auth.ts` `requireOperatorAuth` middleware: requires operator identity + credential
+(injected `authenticate`), authz (`authorize`), timestamp freshness (`maxSkewMs`), and nonce replay
+protection (`NonceStore`); writes an intake audit entry for EVERY attempt. Tested: `src/__tests__/intake-auth.test.ts`
+— 200 authed; 401 missing headers / bad credential / stale timestamp / replayed nonce; 403 unauthorized;
+audit log captures accepted + rejected.
 
-### S4-T3 — privacy + retry + Postgres round-trip + dogfood untouched
-> "Privacy + retry: body `.strict()` rejects wallet/email/IP/free-text/role/holding/`subject`/`placed_by`
-> (known-bad payload); retry of the same `(journey_token, kind)` is idempotent (200 `deduplicated:true`, no
-> second attention row, no second `RunEvent`); the value row is written only on first-seen. Postgres
-> round-trip test: `appendAttention(kind=feedback)` persists + re-reads through the real adapter (PGlite),
-> not the in-memory double. Confirm `/v1/audit/reaction` + `/contact` behavior unchanged."
+### S4-T3 — private signed ops channel (M-8)
+> "a refusal emits sanitized public + full private event"
 
-**✓ Met.**
-- `.strict()` arms reject smuggled `wallet` / caller-supplied `subject`: known-bad inputs in
-  `audit-router.test.ts:793-799`.
-- Idempotent retry (200 `deduplicated:true`, no second attention row, no second value RunEvent, first value
-  wins): route logic `audit-router.ts:1106-1122`; test `audit-router.test.ts:758`.
-- Value row written only on first-seen (gated on attention `created`): `audit-router.ts:1108-1121`.
-- Postgres real-SQL round-trip (feedback + enhance_intent persist through PGlite; kind CHECK admits both;
-  row re-read bound to subject): `packages/services/shadow-audit/src/__tests__/event-store-postgres.test.ts:247`.
-- Dogfood reaction unchanged (still `mode: 'dogfood-full'`): route untouched at `audit-router.ts:1229`;
-  regression test `audit-router.test.ts:839`.
+**✓ Met.** `src/private-ops.ts` `PrivateOpsPublisher` + orchestrator wiring (`opsChannel` dep). On a refusal
+the orchestrator emits the sanitized public `failed.v1` AND the FULL raw cause + correlation id privately.
+Tested: `src/__tests__/private-ops.test.ts` — public refusal reason is sanitized (no `INTERNAL` leak), the
+private ops event carries the raw reason + `correlation_id`; without an ops channel, only the public event
+fires (back-compat).
 
-## Weakest-link proof
+### S4-T4 — authed full migration-delta + shareable export
+> "order with `auth` → full delta + shareable export; gated until #395 lands"
 
-Per the mandate, a 200 is not the claim. The 200-path test reads the durable store back and asserts the
-written event is a `feedback` (or `enhance_intent`) attention event with `subject_chain_id`/
-`subject_contract_address` taken from the registered run and `journey_token` equal to the capability, plus a
-`public-gate-leak` (never `dogfood-full`) `RunEvent` carrying the bounded value. The Postgres test proves the
-same kinds survive real SQL. See `audit-router.test.ts:708` + `event-store-postgres.test.ts:247`.
+**⏸ [ACCEPTED-DEFERRED — BLOCKED].** Explicitly gated on PR #395 (the wedge's authed migration-delta) +
+main's frozen Unit Tests gate (`arrakis-yp7q`/PR #310). Not built this run. Bead `arrakis-pttv` left open;
+NOTES.md Decision Log entry filed. The pieces it builds on are ready: the order signer (H-5) binds the
+authed order, and `includeRecords` already toggles anon vs authed in the ACL — the delta wiring lands once #395 is in.
 
-## Testing Summary
+## Tasks Completed
+| Task | Files | Status |
+|------|-------|--------|
+| S4-T1 | `src/order-signer.ts` (+test) | platform — ed25519/JCS full-order signing |
+| S4-T2 | `src/intake-auth.ts` (+test) | platform — auth + authz + nonce/timestamp + audit log |
+| S4-T3 | `src/private-ops.ts` (+test), `src/orchestrator.ts` (opsChannel) | platform — M-8 public/private split |
+| S4-T4 | — | BLOCKED on PR #395 + frozen gate (deferred) |
 
-| Suite | Result |
-|---|---|
-| shadow-audit service (`pnpm test`) | 337 passed, 1 skipped (was 330) — +6 router interaction + +1 Postgres |
-| shadow-audit protocol | 90 passed |
-| ordering service | 202 passed |
-| ordering protocol | 26 passed |
-| **Total** | **655 passed, 1 skipped** |
-| Typecheck (all four packages) | pass |
+## Technical Highlights
+- **Whole-payload signing (H-5):** signing `jcsCanonicalize(fullOrder)` means tampering ANY field (incl. the
+  bound AuditRequest digest) invalidates the signature — the R-1 money/ops guarantee, not just an inputs hash.
+- **Replay defense (H-6):** nonce store + timestamp skew window; every attempt audited (the credential itself never logged).
+- **M-8 split:** the public topic stays sanitized; the full cause goes to a private correlated channel — additive (`opsChannel` optional → S1 tests unchanged).
 
-Run: `cd packages/services/shadow-audit && pnpm typecheck && pnpm test`.
+## Known Limitations
+- Keys (H-5) / credential verifier (H-6) / nonce store / ops publisher are injected ports; concrete cluster
+  key-management (Legba/gaib), a shared TTL nonce store (Redis), and the signed private subject wire at deploy.
+- S4-T4 blocked (above).
 
-## Known limitations / scope held
+## Review status
+Independent cross-model review still unavailable (OpenAI quota + codex dispatch). Self-review + adversarial
+tests: signer tamper-rejection (4), auth rejection paths (6), M-8 sanitization (2). Security: ed25519 via
+node:crypto; credentials never logged; sanitized public refusal verified to not leak raw cause.
 
-- No frontend/BFF, payment/x402, credits, CRM, member-graph, or Effect-TS (Non-Goals §5 intact).
-- The bounded VALUE row (reaction/cta_interaction) is best-effort: written only on first-seen attention, so
-  a crash between the attention write and the value write leaves the demand signal (the important half)
-  durable and drops only the secondary value — deliberate ordering, documented at `audit-router.ts:1105-1108`.
-- Deployment + base-branch gaps are unchanged by this sprint (see PR body).
+## Verification Steps
+```bash
+cd packages/services/ordering && pnpm test && pnpm typecheck   # 54 pass, clean
+```

@@ -236,7 +236,11 @@ export function buildAuditApp(
         c.req.path === '/healthz' ||
         c.req.path === '/v1/role-snapshot' ||
         c.req.path === '/v1/access-risk' ||
-        /^\/v1\/access-risk\/[^/]+(?:\/resume)?$/.test(c.req.path) ||
+        // The public gate-leak sub-routes (:runId poll, /resume, /interaction) are all part of the same
+        // login-less lead-magnet lifecycle and MUST stay exempt — omitting /interaction 401s the public
+        // demand signal (FR-11) before it reaches the handler, making the route dead-on-arrival in the
+        // apiKey posture (FAGAN HIGH-2).
+        /^\/v1\/access-risk\/[^/]+(?:\/resume|\/interaction)?$/.test(c.req.path) ||
         /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)
       )
         return next();

@@ -21,7 +21,8 @@ export interface GateLeakSubmissionResult {
 
 export interface GateLeakPort {
   submit(input: GateLeakSubmission): Promise<GateLeakSubmissionResult>;
-  resume(runId: string, accessStartedAt: string): Promise<GateLeakSubmissionResult>;
+  /** The server-issued journey_token is required; the shadow-audit service rejects resumes without it. */
+  resume(runId: string, accessStartedAt: string, journeyToken: string): Promise<GateLeakSubmissionResult>;
 }
 
 export interface GateLeakIndexPort {
@@ -61,13 +62,13 @@ export class HttpGateLeakPort implements GateLeakPort {
     return this.parseResponse(response);
   }
 
-  async resume(runId: string, accessStartedAt: string): Promise<GateLeakSubmissionResult> {
+  async resume(runId: string, accessStartedAt: string, journeyToken: string): Promise<GateLeakSubmissionResult> {
     const response = await this.fetchFn(
       `${trimBase(this.baseUrl)}/v1/access-risk/${encodeURIComponent(runId)}/resume`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ access_started_at: accessStartedAt }),
+        body: JSON.stringify({ access_started_at: accessStartedAt, journey_token: journeyToken }),
       },
     );
     return this.parseResponse(response);

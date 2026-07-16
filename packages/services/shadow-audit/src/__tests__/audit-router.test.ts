@@ -423,6 +423,7 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
 
     const resumed = await post(app, `/v1/access-risk/${firstBody.journey.run_id}/resume`, {
       access_started_at: '2026-06-22',
+      journey_token: firstBody.journey.journey_token,
     });
     expect(resumed.status).toBe(200);
     const resumedBody = (await resumed.json()) as any;
@@ -437,7 +438,7 @@ describe('POST /v1/access-risk — typed resumable public journey (G-3, G-5)', (
     expect(runAfter?.current_outcome).toBe('delivered_e1');
     expect(runAfter?.supplied_access_started_at).toBe('2026-06-22');
 
-    const poll = await app.request(`/v1/access-risk/${firstBody.journey.run_id}`);
+    const poll = await app.request(`/v1/access-risk/${firstBody.journey.run_id}?journey_token=${encodeURIComponent(firstBody.journey.journey_token)}`);
     expect(poll.status).toBe(200);
     expect(((await poll.json()) as any).journey.status).toEqual({ state: 'delivered_e1' });
   });
@@ -853,5 +854,70 @@ describe('POST /v1/access-risk/:runId/interaction — public demand signal (FR-1
     expect((await post(app, '/v1/audit/reaction', { run_id, reaction: 'expected' })).status).toBe(200);
     const dogfoodReaction = eventStore.runEventList(run_id).find((e) => e.reaction === 'expected');
     expect(dogfoodReaction?.mode).toBe('dogfood-full');
+  });
+
+  // Lifecycle-wide capability contract (FAGAN HIGH-1 closed): run_id is the public address (can live
+  // in a URL/QR); journey_token is the authentication credential required by ALL public sub-routes.
+  // The poll, the resume, and the interaction route all gate on it — a bare run_id holder cannot
+  // observe state, resume, or record a demand signal.
+  describe('lifecycle-wide capability contract — all sub-routes gate on journey_token (FAGAN HIGH-1)', () => {
+    it('poll: bare run_id without journey_token → 404 (no existence oracle)', async () => {
+      const eventStore = new InMemoryEventStore();
+      const app = createAuditRouter(interactionDeps(eventStore));
+      const { run_id } = await registerRun(app);
+      const poll = await app.request(`/v1/access-risk/${run_id}`);
+      expect(poll.status).toBe(404);
+    });
+
+    it('poll: mismatched journey_token → 404', async () => {
+      const eventStore = new InMemoryEventStore();
+      const app = createAuditRouter(interactionDeps(eventStore));
+      const { run_id } = await registerRun(app);
+      const poll = await app.request(`/v1/access-risk/${run_id}?journey_token=wrong-token`);
+      expect(poll.status).toBe(404);
+    });
+
+    it('poll: matching journey_token → 200 with full projection (including journey_token)', async () => {
+      const eventStore = new InMemoryEventStore();
+      const app = createAuditRouter(interactionDeps(eventStore));
+      const { run_id, journey_token } = await registerRun(app);
+      const poll = await app.request(`/v1/access-risk/${run_id}?journey_token=${encodeURIComponent(journey_token)}`);
+      expect(poll.status).toBe(200);
+      const body = (await poll.json()) as any;
+      expect(body.journey.run_id).toBe(run_id);
+      expect(body.journey.journey_token).toBe(journey_token);
+      expect(body.journey.status).toBeDefined();
+    });
+
+    it('resume: bare run_id without journey_token → 400 (schema)', async () => {
+      const eventStore = new InMemoryEventStore();
+      const app = createAuditRouter(interactionDeps(eventStore));
+      const { run_id } = await registerRun(app);
+      const res = await post(app, `/v1/access-risk/${run_id}/resume`, { access_started_at: '2026-06-22' });
+      expect(res.status).toBe(400);
+    });
+
+    it('resume: mismatched journey_token → 404', async () => {
+      const eventStore = new InMemoryEventStore();
+      // needs_input fixture: no access_started_at in the registry so the run stays in needs_input state
+      const needsInputDeps = makeDeps({
+        eventStore,
+        collectionRegistry: (({ chain, contract }: { chain: string; contract: string }) =>
+          `${chain}/${contract}`.toLowerCase() === `1/${CONTRACT}`.toLowerCase()
+            ? { collection: 'thj', standard: 'erc721' as const }
+            : undefined),
+      });
+      const app = createAuditRouter(needsInputDeps);
+      // Submit without access_started_at so outcome is needs_input
+      const submitRes = await post(app, '/v1/access-risk', { chain: '1', contract: CONTRACT });
+      const submitBody = (await submitRes.json()) as any;
+      if (submitBody.journey?.status?.state !== 'needs_input') return; // skip if env delivers directly
+      const run_id = submitBody.journey.run_id as string;
+      const res = await post(app, `/v1/access-risk/${run_id}/resume`, {
+        access_started_at: '2026-06-22',
+        journey_token: 'wrong-token',
+      });
+      expect(res.status).toBe(404);
+    });
   });
 });

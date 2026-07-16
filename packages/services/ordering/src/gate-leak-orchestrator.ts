@@ -145,7 +145,11 @@ export class GateLeakOrchestrator {
     try {
       submitted =
         priorJourney.success && priorJourney.data.status.state === 'needs_input' && accessStartedAt
-          ? await this.deps.gateLeak.resume(priorJourney.data.run_id, accessStartedAt)
+          ? await this.deps.gateLeak.resume(
+              priorJourney.data.run_id,
+              accessStartedAt,
+              priorJourney.data.journey_token,
+            )
           : await this.deps.gateLeak.submit({
               chain: inputs.chain_id,
               contract: inputs.contract_address,

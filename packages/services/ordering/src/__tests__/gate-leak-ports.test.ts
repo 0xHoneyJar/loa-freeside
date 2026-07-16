@@ -25,9 +25,13 @@ describe('HttpGateLeakPort', () => {
 
     const first = await port.submit({ chain: '1', contract: CONTRACT });
     expect(first.journey.status).toEqual({ state: 'needs_input', required_input: 'access_started_at' });
-    const resumed = await port.resume('gate_run', '2026-06-22');
+    const resumed = await port.resume('gate_run', '2026-06-22', 'journey-1');
     expect(resumed.journey.status).toEqual({ state: 'delivered_e1' });
     expect(fetchFn.mock.calls[1]?.[0]).toBe('https://shadow.test/v1/access-risk/gate_run/resume');
+    // The journey_token must be forwarded to the shadow-audit service — it now gates resume.
+    const resumeBody = JSON.parse((fetchFn.mock.calls[1]?.[1]?.body as string) ?? '{}');
+    expect(resumeBody.journey_token).toBe('journey-1');
+    expect(resumeBody.access_started_at).toBe('2026-06-22');
   });
 });
 

@@ -298,6 +298,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const ResumeGateLeakBodySchema = z
     .object({
       access_started_at: AccessStartedAtDateSchema,
+      // The server-issued capability token required to authenticate the resume request (lifecycle-wide
+      // capability contract: run_id is public address, journey_token is the authentication credential).
+      journey_token: z.string().min(1).max(128),
     })
     .strict();
   // Public interaction contract (FR-11): a bounded, discrete demand signal against an existing run.
@@ -983,6 +986,11 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
     const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
     if (!run) return c.json({ error: 'journey not found' }, 404);
+    // Lifecycle-wide capability contract: journey_token is the authentication credential for all
+    // public gate-leak sub-routes. Answer 404 (not 403) on mismatch — no existence oracle.
+    if (run.journey_token !== parsed.data.journey_token) {
+      return c.json({ error: 'journey not found' }, 404);
+    }
     if (run.current_outcome !== 'needs_input' && run.current_outcome !== 'computing') {
       const journey = projectPublicJourney({
         run_id: run.run_id,
@@ -1050,11 +1058,19 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     });
   });
 
-  // Minimal internal/public poll. The dashboard BFF remains a later medium-specific projection.
+  // Authenticated status poll. The caller must supply the server-issued journey_token as a query
+  // parameter — this is the lifecycle-wide capability contract: run_id is the public address
+  // (embeddable in a URL/QR), journey_token is the authentication credential. A missing or
+  // mismatched token returns 404 with no existence oracle, identical to an unknown run_id.
+  // On success the full PublicJourneyProjection (including journey_token) is returned so the
+  // caller can refresh their held capability without a new submission.
   app.get('/v1/access-risk/:runId', async (c) => {
     try {
+      const journeyToken = c.req.query('journey_token');
+      if (!journeyToken) return c.json({ error: 'journey not found' }, 404);
       const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
       if (!run) return c.json({ error: 'journey not found' }, 404);
+      if (run.journey_token !== journeyToken) return c.json({ error: 'journey not found' }, 404);
       const journey = projectPublicJourney({
         run_id: run.run_id,
         journey_token: run.journey_token,

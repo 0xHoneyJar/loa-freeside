@@ -191,6 +191,39 @@ describe('buildAuditApp — the deployment composition root', () => {
     ).toBe(401);
   });
 
+  it('exempts all public gate-leak sub-routes from the X-API-Key gate (FAGAN HIGH-2)', async () => {
+    // All three sub-routes (:runId poll, /resume, /interaction) are part of the login-less lead-magnet
+    // lifecycle: with an API key configured they MUST reach their own handlers without X-API-Key.
+    // A nonexistent/token-mismatched run returning 404 (not 401) proves the request passed the exemption.
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
+
+    // /interaction: unknown run → 404 in handler, not 401 at middleware
+    const interaction = await app.request('/v1/access-risk/gate_nonexistent/interaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'feedback', journey_token: 'x', reaction: 'worse' }),
+    });
+    expect(interaction.status).not.toBe(401);
+    expect(interaction.status).toBe(404);
+
+    // /resume: unknown run → 404 in handler
+    const resume = await app.request('/v1/access-risk/gate_nonexistent/resume', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ access_started_at: '2026-06-22', journey_token: 'x' }),
+    });
+    expect(resume.status).not.toBe(401);
+    expect(resume.status).toBe(404);
+
+    // poll (GET): missing journey_token → 404 in handler (no token = no oracle)
+    const poll = await app.request('/v1/access-risk/gate_nonexistent');
+    expect(poll.status).not.toBe(401);
+    expect(poll.status).toBe(404);
+
+    // Contrast: a genuinely gated route still 401s without the key.
+    expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
+  });
+
   it('the authed POST named-output is fail-closed (V2 not wired) → 401', async () => {
     const app = buildAuditApp(ownership, baseConfig(), collections);
     const res = await app.request('/v1/audit', {
