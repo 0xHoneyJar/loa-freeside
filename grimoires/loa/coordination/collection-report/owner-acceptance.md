@@ -555,8 +555,9 @@ G1B-3, and every T2 release claim that depends on them.
 
 Run these commands from the repository root. They inspect the immutable audited
 tree directly, so the result does not depend on the caller's checked-out branch.
-Prerequisites are Git, a POSIX shell/coreutils, and `ripgrep` (`rg`) on `PATH`;
-the two test-inventory filters intentionally use `rg`.
+Prerequisites are Git, a POSIX shell with the standard `wc`, `tr`, and `awk`
+utilities, and `ripgrep` (`rg`) on `PATH`; the two test-inventory filters
+intentionally use `rg`.
 
 ```bash
 BASE=3782fd47e8a20cdaf6325621962bd0443e6781b8
@@ -592,16 +593,13 @@ git ls-tree -r --name-only "$BASE" \
   | rg '\.(test|spec)\.ts$' \
   | wc -l
 
-total=0
-while IFS= read -r file; do
-  lines="$(git show "$BASE:$file" | wc -l | tr -d ' ')"
-  total=$((total + lines))
-done < <(
-  git ls-tree -r --name-only "$BASE" \
-    packages/services/shadow-audit/src/__tests__ \
-    | rg '\.(test|spec)\.ts$'
-)
-printf '%s\n' "$total"
+git ls-tree -r --name-only "$BASE" \
+  packages/services/shadow-audit/src/__tests__ \
+  | rg '\.(test|spec)\.ts$' \
+  | while IFS= read -r file; do
+      git show "$BASE:$file" | wc -l | tr -d ' '
+    done \
+  | awk '{ total += $1 } END { print total + 0 }'
 ```
 
 Observed output on 2026-07-16:
