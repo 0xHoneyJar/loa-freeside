@@ -974,11 +974,13 @@ with gzip.open(dest, "wb") as f:
 
     const mixedPath = buildMixedPath();
     const mixedLink = buildMixedLink();
-    // bsdtar still extracts via GNU precedence — prove the tool/parser split exists.
+    // Extractors disagree on mixed GNU/PAX precedence (bsdtar chooses GNU;
+    // GNU tar chooses PAX). The harness must reject the ambiguity before
+    // either tool gets to make that platform-specific choice.
     const listedByTar = execFileSync("tar", ["-tzf", mixedPath], {
       encoding: "utf8",
     }).trim();
-    expect(listedByTar).toBe("package/gnu-evil.txt");
+    expect(["package/gnu-evil.txt", "package/pax-safe.txt"]).toContain(listedByTar);
     expect(() => listTarGzipMembers(mixedPath)).toThrow(ArtifactArchiveMismatch);
     expect(() => listTarGzipMembers(mixedLink)).toThrow(ArtifactArchiveMismatch);
     expect(
