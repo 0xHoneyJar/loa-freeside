@@ -405,7 +405,23 @@ const DeploymentIdSet = Schema.Array(VersionedDigest).pipe(
   ),
 );
 
-const EvidenceDigestSet = Schema.Array(VersionedDigest).pipe(
+const ProvenanceDigest = VersionedDigest.pipe(
+  Schema.filter(
+    (value) =>
+      versionedDigestHasDomain(value, DIGEST_DOMAINS.provenance) ||
+      "evidence_digest must use the collection.provenance v1 digest domain",
+  ),
+);
+
+const EvidenceDigest = VersionedDigest.pipe(
+  Schema.filter(
+    (value) =>
+      versionedDigestHasDomain(value, DIGEST_DOMAINS.evidence) ||
+      "report evidence_digests must use the collection.evidence v1 digest domain",
+  ),
+);
+
+const EvidenceDigestSet = Schema.Array(EvidenceDigest).pipe(
   Schema.filter((items) => items.length > 0 || "evidence_digests must be non-empty"),
   Schema.filter(
     (items) =>
@@ -426,7 +442,7 @@ export type CollectionWorkKeyMaterial = Schema.Schema.Type<typeof CollectionWork
 
 export const CollectionEvidenceReference = Schema.Struct({
   schema_version: SchemaVersion,
-  evidence_digest: VersionedDigest,
+  evidence_digest: ProvenanceDigest,
   deployment_ids: DeploymentIdSet,
   finality_policies: FinalityPolicySet,
 }).annotations({ identifier: "CollectionEvidenceReference" });
@@ -655,16 +671,36 @@ export const decodeCollectionEvidenceReference = decodeEvidenceStruct;
 export const decodeCollectionCacheKeyMaterial = decodeCacheKeyStruct;
 export const decodeCollectionReportInput = decodeReportInputStruct;
 
-export const digestCollectionCandidate = (candidate: CollectionCandidate) =>
-  digestVersioned(DIGEST_DOMAINS.candidate, 1, candidate);
-export const digestCollectionWorkKey = (material: CollectionWorkKeyMaterial) =>
-  digestVersioned(DIGEST_DOMAINS.work_key, 1, material);
-export const digestCollectionEvidence = (material: CollectionEvidenceReference) =>
-  digestVersioned(DIGEST_DOMAINS.evidence, 1, material);
-export const digestCollectionCacheKey = (material: CollectionCacheKeyMaterial) =>
-  digestVersioned(DIGEST_DOMAINS.cache_key, 1, material);
-export const digestCollectionReportInput = (material: CollectionReportInput) =>
-  digestVersioned(DIGEST_DOMAINS.report_input, 1, material);
+export const digestCollectionCandidate = (candidate: unknown) =>
+  decodeCollectionCandidate(candidate).pipe(
+    Effect.flatMap((decoded) =>
+      digestVersioned(DIGEST_DOMAINS.candidate, 1, decoded),
+    ),
+  );
+export const digestCollectionWorkKey = (material: unknown) =>
+  decodeCollectionWorkKeyMaterial(material).pipe(
+    Effect.flatMap((decoded) =>
+      digestVersioned(DIGEST_DOMAINS.work_key, 1, decoded),
+    ),
+  );
+export const digestCollectionEvidence = (material: unknown) =>
+  decodeCollectionEvidenceReference(material).pipe(
+    Effect.flatMap((decoded) =>
+      digestVersioned(DIGEST_DOMAINS.evidence, 1, decoded),
+    ),
+  );
+export const digestCollectionCacheKey = (material: unknown) =>
+  decodeCollectionCacheKeyMaterial(material).pipe(
+    Effect.flatMap((decoded) =>
+      digestVersioned(DIGEST_DOMAINS.cache_key, 1, decoded),
+    ),
+  );
+export const digestCollectionReportInput = (material: unknown) =>
+  decodeCollectionReportInput(material).pipe(
+    Effect.flatMap((decoded) =>
+      digestVersioned(DIGEST_DOMAINS.report_input, 1, decoded),
+    ),
+  );
 
 export const COLLECTION_CANONICAL_COLLECTION_RULES = Object.freeze({
   collection_id:

@@ -434,6 +434,9 @@ describe("finality-policy propagation", () => {
         finality_policies: candidate.finality_policies,
       }),
     );
+    const evidenceDigest = expectEffectSuccess(
+      digestCollectionEvidence(evidence),
+    );
     const report = expectEffectSuccess(
       decodeCollectionReportInput({
         schema_version: 1,
@@ -442,14 +445,14 @@ describe("finality-policy propagation", () => {
         collection_id: candidate.identity.collection_id,
         deployment_ids: deploymentIds,
         finality_policies: candidate.finality_policies,
-        evidence_digests: evidenceDigests,
+        evidence_digests: [evidenceDigest],
       }),
     );
 
     const digestSet = [
       expectEffectSuccess(digestCollectionCandidate(candidate)),
       expectEffectSuccess(digestCollectionWorkKey(work)),
-      expectEffectSuccess(digestCollectionEvidence(evidence)),
+      evidenceDigest,
       expectEffectSuccess(digestCollectionCacheKey(cache)),
       expectEffectSuccess(digestCollectionReportInput(report)),
     ];
@@ -485,5 +488,96 @@ describe("finality-policy propagation", () => {
     expect(expectEffectSuccess(digestCollectionWorkKey(changedWork))).not.toEqual(
       digestSet[1],
     );
+  });
+
+  it("rejects unrelated digest domains at evidence boundaries", () => {
+    const candidate: CollectionCandidate = expectEffectSuccess(
+      decodeCollectionCandidate(readFixture("evm-candidate.valid.json")),
+    );
+    const deploymentIds = candidate.identity.deployments.map(
+      (deployment) => deployment.deployment_id,
+    );
+    const provenanceDigest = candidate.provenance[0]?.evidence_digest;
+    expect(provenanceDigest).toBeDefined();
+    if (provenanceDigest === undefined) return;
+
+    expectEffectFailure(
+      decodeCollectionEvidenceReference({
+        schema_version: 1,
+        evidence_digest: {
+          ...provenanceDigest,
+          domain: DIGEST_DOMAINS.cache_key,
+        },
+        deployment_ids: deploymentIds,
+        finality_policies: candidate.finality_policies,
+      }),
+    );
+    expectEffectFailure(
+      decodeCollectionReportInput({
+        schema_version: 1,
+        report_type: "gate-leak",
+        report_version: "v1",
+        collection_id: candidate.identity.collection_id,
+        deployment_ids: deploymentIds,
+        finality_policies: candidate.finality_policies,
+        evidence_digests: [provenanceDigest],
+      }),
+    );
+  });
+
+  it("strict-decodes every public digest helper input before hashing", () => {
+    const candidate: CollectionCandidate = expectEffectSuccess(
+      decodeCollectionCandidate(readFixture("evm-candidate.valid.json")),
+    );
+    const deploymentIds = candidate.identity.deployments.map(
+      (deployment) => deployment.deployment_id,
+    );
+    const provenanceDigest = candidate.provenance[0]?.evidence_digest;
+    expect(provenanceDigest).toBeDefined();
+    if (provenanceDigest === undefined) return;
+
+    const work = expectEffectSuccess(
+      decodeCollectionWorkKeyMaterial({
+        schema_version: 1,
+        capability: "ownership_index",
+        capability_version: "v1",
+        collection_id: candidate.identity.collection_id,
+        deployment_ids: deploymentIds,
+        finality_policies: candidate.finality_policies,
+      }),
+    );
+    const evidence = expectEffectSuccess(
+      decodeCollectionEvidenceReference({
+        schema_version: 1,
+        evidence_digest: provenanceDigest,
+        deployment_ids: deploymentIds,
+        finality_policies: candidate.finality_policies,
+      }),
+    );
+    const cache = expectEffectSuccess(
+      decodeCollectionCacheKeyMaterial({
+        schema_version: 1,
+        cache_namespace: "collection-recognition",
+        deployment_ids: deploymentIds,
+        finality_policies: candidate.finality_policies,
+      }),
+    );
+    const report = expectEffectSuccess(
+      decodeCollectionReportInput({
+        schema_version: 1,
+        report_type: "gate-leak",
+        report_version: "v1",
+        collection_id: candidate.identity.collection_id,
+        deployment_ids: deploymentIds,
+        finality_policies: candidate.finality_policies,
+        evidence_digests: [expectEffectSuccess(digestCollectionEvidence(evidence))],
+      }),
+    );
+
+    expectEffectFailure(digestCollectionCandidate({ ...candidate, extra: true }));
+    expectEffectFailure(digestCollectionWorkKey({ ...work, extra: true }));
+    expectEffectFailure(digestCollectionEvidence({ ...evidence, extra: true }));
+    expectEffectFailure(digestCollectionCacheKey({ ...cache, extra: true }));
+    expectEffectFailure(digestCollectionReportInput({ ...report, extra: true }));
   });
 });
