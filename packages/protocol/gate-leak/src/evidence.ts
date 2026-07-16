@@ -532,7 +532,10 @@ export type OwnershipFinalityAttestationMaterial =
 
 export const computeOwnershipFinalityAttestationDigest = (
   material: OwnershipFinalityAttestationMaterial,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(GATE_LEAK_DIGEST_DOMAINS.ownership_finality, 1, material);
 
 const attestationMaterialOf = (

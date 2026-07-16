@@ -194,6 +194,7 @@ export const digestDeploymentSet = (
   | EmptyDeploymentSelectionError
   | InvalidDeploymentSetMemberError
   | DuplicateCanonicalSetMemberError
+  | ParseResult.ParseError
   | CanonicalEncodingError
   | DigestComputationError
 > =>

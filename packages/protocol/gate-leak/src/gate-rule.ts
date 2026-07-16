@@ -114,5 +114,5 @@ export const digestGateRule = (
   rule: GateRuleV1,
 ): Effect.Effect<
   VersionedDigest,
-  CanonicalEncodingError | DigestComputationError
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
 > => digestVersioned(GATE_LEAK_DIGEST_DOMAINS.gate_rule, 1, rule);

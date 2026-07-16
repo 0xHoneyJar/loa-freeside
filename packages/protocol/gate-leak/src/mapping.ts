@@ -400,7 +400,10 @@ export interface GateMappingConfigMaterial {
  */
 export const computeGateMappingConfigDigest = (
   material: GateMappingConfigMaterial,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(GATE_LEAK_DIGEST_DOMAINS.mapping_config, 1, {
     community_ref: material.community_ref,
     guild_ref: material.guild_ref,
@@ -418,7 +421,10 @@ const computeMappingVersionId = (material: {
   readonly provenance: RatifiedMappingProvenance;
   readonly ratifier_subject: string;
   readonly identity_reveal_basis: IdentityRevealBasis;
-}): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+}): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(GATE_LEAK_DIGEST_DOMAINS.mapping_version, 1, material);
 
 const digestsMatch = (left: VersionedDigest, right: VersionedDigest): boolean =>
@@ -496,7 +502,10 @@ export const verifyGateMappingVersionIntegrity = (
   version: GateMappingVersion,
 ): Effect.Effect<
   GateMappingVersion,
-  MappingIntegrityError | CanonicalEncodingError | DigestComputationError
+  | ParseResult.ParseError
+  | MappingIntegrityError
+  | CanonicalEncodingError
+  | DigestComputationError
 > =>
   Effect.gen(function* () {
     const mismatches: Array<
@@ -621,7 +630,10 @@ export const decodeRatifyGateMappingCommand = Schema.decodeUnknown(
  */
 export const computeGateMappingCommandDigest = (
   command: GateMappingCommandMaterial,
-): Effect.Effect<VersionedDigest, CanonicalEncodingError | DigestComputationError> =>
+): Effect.Effect<
+  VersionedDigest,
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
+> =>
   digestVersioned(GATE_LEAK_DIGEST_DOMAINS.mapping_command, 1, {
     schema_version: command.schema_version,
     community_ref: command.community_ref,
