@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "presentation": "actionable",
+  "coverage_policy_version": "gate-leak-coverage.v1",
+  "actionable_leak_band": "1-9",
+  "coverage_band_floor_percent": 70,
+  "cohort_band": "10-24",
+  "indeterminate_band": "1-9",
+  "excluded_bot_count": 0
+}

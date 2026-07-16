@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "discord_user_id": "400000000000000002",
+  "role_id": "300000000000000002",
+  "eligibility_state": "indeterminate",
+  "reason_code": "consent_unavailable",
+  "compared_wallets": [
+    "0x00000000000000000000000000000000000000a2"
+  ]
+}

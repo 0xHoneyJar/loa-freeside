@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "community_ref": "acme-club",
+  "guild_ref": "200000000000000002",
+  "collection_id": {
+    "algorithm": "sha-256",
+    "domain": "collection.identity",
+    "major_version": 1,
+    "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+  },
+  "role_ids": [
+    "300000000000000003",
+    "300000000000000002"
+  ],
+  "rule_digest": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.gate-rule",
+    "major_version": 1,
+    "digest": "610f88d32ae2e69750ee823347abd707d61712fb73b484b586b91c94562f27b5"
+  },
+  "disclosure_policy_version": "gate-leak-disclosure.v1",
+  "epoch_index": 0
+}

@@ -1,0 +1,935 @@
+[
+  {
+    "name": "ownership-base",
+    "input": {
+      "schema_version": 1,
+      "capability": "ownership_index.v1",
+      "scope_class": "global_deployment_set",
+      "privacy_class": "public_chain",
+      "source_identity": "sonar-ownership-adapter",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "collection": {
+        "schema_version": 1,
+        "capability": "ownership_index",
+        "capability_version": "v1",
+        "collection_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.identity",
+          "major_version": 1,
+          "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+        },
+        "deployment_ids": [
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+          },
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+          }
+        ],
+        "finality_policies": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "1"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          },
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "8453"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          }
+        ]
+      },
+      "evidence_boundary": {
+        "kind": "continuous_latest"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "d0ffd79ec10340a1e4a02b9f3796633dfa0df0f72a04e5b71c8f9c69a5a99986"
+    }
+  },
+  {
+    "name": "ownership-policy-bump",
+    "input": {
+      "schema_version": 1,
+      "capability": "ownership_index.v1",
+      "scope_class": "global_deployment_set",
+      "privacy_class": "public_chain",
+      "source_identity": "sonar-ownership-adapter",
+      "readiness_policy_version": "gate-leak-readiness.v2",
+      "adapter_version": "v1",
+      "collection": {
+        "schema_version": 1,
+        "capability": "ownership_index",
+        "capability_version": "v1",
+        "collection_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.identity",
+          "major_version": 1,
+          "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+        },
+        "deployment_ids": [
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+          },
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+          }
+        ],
+        "finality_policies": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "1"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          },
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "8453"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          }
+        ]
+      },
+      "evidence_boundary": {
+        "kind": "continuous_latest"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "25272be749a650d2f0b9a715aee9ef42f64650f1f8af55045ac4c1191f0e9b75"
+    }
+  },
+  {
+    "name": "ownership-adapter-bump",
+    "input": {
+      "schema_version": 1,
+      "capability": "ownership_index.v1",
+      "scope_class": "global_deployment_set",
+      "privacy_class": "public_chain",
+      "source_identity": "sonar-ownership-adapter",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v2",
+      "collection": {
+        "schema_version": 1,
+        "capability": "ownership_index",
+        "capability_version": "v1",
+        "collection_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.identity",
+          "major_version": 1,
+          "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+        },
+        "deployment_ids": [
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+          },
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+          }
+        ],
+        "finality_policies": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "1"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          },
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "8453"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          }
+        ]
+      },
+      "evidence_boundary": {
+        "kind": "continuous_latest"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "60ff01fbdcd9d6bcb93d40e52f0920a76940c41b103f5e8733cfba6fd3187340"
+    }
+  },
+  {
+    "name": "ownership-finality-bump",
+    "input": {
+      "schema_version": 1,
+      "capability": "ownership_index.v1",
+      "scope_class": "global_deployment_set",
+      "privacy_class": "public_chain",
+      "source_identity": "sonar-ownership-adapter",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "collection": {
+        "schema_version": 1,
+        "capability": "ownership_index",
+        "capability_version": "v1",
+        "collection_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.identity",
+          "major_version": 1,
+          "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+        },
+        "deployment_ids": [
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+          },
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+          }
+        ],
+        "finality_policies": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "1"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v2"
+          },
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "8453"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          }
+        ]
+      },
+      "evidence_boundary": {
+        "kind": "continuous_latest"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "84b961d5d525ab70a2c1c4742a69abaf84a74c28b89e30f5c62cdc6dbf695731"
+    }
+  },
+  {
+    "name": "ownership-single-deployment",
+    "input": {
+      "schema_version": 1,
+      "capability": "ownership_index.v1",
+      "scope_class": "global_deployment_set",
+      "privacy_class": "public_chain",
+      "source_identity": "sonar-ownership-adapter",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "collection": {
+        "schema_version": 1,
+        "capability": "ownership_index",
+        "capability_version": "v1",
+        "collection_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.identity",
+          "major_version": 1,
+          "digest": "8a673f97b406c0c85ff07c028d31bc5da070a11cc14682f3e3a2c2962bfeb8c3"
+        },
+        "deployment_ids": [
+          {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+          }
+        ],
+        "finality_policies": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "80094"
+            },
+            "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+          }
+        ]
+      },
+      "evidence_boundary": {
+        "kind": "continuous_latest"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "3d519ec0caddb00ed50b198dc2f445d04f666f18b13175956443c26c17cca906"
+    }
+  },
+  {
+    "name": "mapping-acme",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_mapping.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "collection_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.identity",
+        "major_version": 1,
+        "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+      },
+      "deployment_set_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.deployment-set",
+        "major_version": 1,
+        "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+      },
+      "evidence_boundary": {
+        "kind": "immutable_mapping_version",
+        "mapping_version_id": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.mapping-version",
+          "major_version": 1,
+          "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+        }
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "3b1dc1781ac63f0ea0b78e8d6fecc8b3f60c490a2b81270d7ee09e29f70427fe"
+    }
+  },
+  {
+    "name": "mapping-acme-other-guild",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_mapping.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000009",
+      "collection_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.identity",
+        "major_version": 1,
+        "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+      },
+      "deployment_set_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.deployment-set",
+        "major_version": 1,
+        "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+      },
+      "evidence_boundary": {
+        "kind": "immutable_mapping_version",
+        "mapping_version_id": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.mapping-version",
+          "major_version": 1,
+          "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+        }
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "81c4f10853ce3f13c11942650b5d040af85863a9ca0bae9f30a299db5672fc5e"
+    }
+  },
+  {
+    "name": "mapping-other-community",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_mapping.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club2",
+      "guild_ref": "200000000000000002",
+      "collection_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.identity",
+        "major_version": 1,
+        "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+      },
+      "deployment_set_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.deployment-set",
+        "major_version": 1,
+        "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+      },
+      "evidence_boundary": {
+        "kind": "immutable_mapping_version",
+        "mapping_version_id": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.mapping-version",
+          "major_version": 1,
+          "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+        }
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "0c13da78bd422f2c0bbd82a78184392867a97141482ce448239e260a8ce5bba8"
+    }
+  },
+  {
+    "name": "mapping-mibera-version",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_mapping.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "collection_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.identity",
+        "major_version": 1,
+        "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+      },
+      "deployment_set_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.deployment-set",
+        "major_version": 1,
+        "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+      },
+      "evidence_boundary": {
+        "kind": "immutable_mapping_version",
+        "mapping_version_id": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.mapping-version",
+          "major_version": 1,
+          "digest": "844d10e64636a364e62b6f0b1aeed7aa7b4bd2e6ceddf8be91a766a68f5ae67c"
+        }
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "ed5884febde43ba1f0f57d711d3349adfc31f88512963e5e75934688b74828f2"
+    }
+  },
+  {
+    "name": "mapping-boundary-a",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_mapping.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "team-a",
+      "guild_ref": "123456789012345678",
+      "collection_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.identity",
+        "major_version": 1,
+        "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+      },
+      "deployment_set_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.deployment-set",
+        "major_version": 1,
+        "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+      },
+      "evidence_boundary": {
+        "kind": "immutable_mapping_version",
+        "mapping_version_id": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.mapping-version",
+          "major_version": 1,
+          "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+        }
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "cb1f45dc8387f9bc81ec29baab5b81fe4b5d53d7ed6bd03ab1bff5f19d303978"
+    }
+  },
+  {
+    "name": "mapping-boundary-b",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_mapping.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "team-a1",
+      "guild_ref": "23456789012345678",
+      "collection_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.identity",
+        "major_version": 1,
+        "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+      },
+      "deployment_set_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.deployment-set",
+        "major_version": 1,
+        "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+      },
+      "evidence_boundary": {
+        "kind": "immutable_mapping_version",
+        "mapping_version_id": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.mapping-version",
+          "major_version": 1,
+          "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+        }
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "853ef0447e6fa17c172e77390e194ef3360a18fcd80a9eecddab2ab0e8188e8e"
+    }
+  },
+  {
+    "name": "discord-acquisition",
+    "input": {
+      "schema_version": 1,
+      "capability": "discord_role_snapshot.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "role_ids": [
+        "300000000000000002",
+        "300000000000000003"
+      ],
+      "mapping_version_id": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-version",
+        "major_version": 1,
+        "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+      },
+      "mapping_config_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-config",
+        "major_version": 1,
+        "digest": "28d6bcb42abcbb94bf902299797533e6ba10188527b167e720df154306014c64"
+      },
+      "evidence_boundary": {
+        "kind": "acquisition",
+        "capture_policy_version": "discord-capture.v1",
+        "authorization_epoch": 3,
+        "acquisition_generation": 1
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "a203d17a984a7e5befc2f6a376cf6d63f15f39251833da738d5a92bcbe84dd69"
+    }
+  },
+  {
+    "name": "discord-acquisition-epoch-bump",
+    "input": {
+      "schema_version": 1,
+      "capability": "discord_role_snapshot.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "role_ids": [
+        "300000000000000002",
+        "300000000000000003"
+      ],
+      "mapping_version_id": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-version",
+        "major_version": 1,
+        "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+      },
+      "mapping_config_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-config",
+        "major_version": 1,
+        "digest": "28d6bcb42abcbb94bf902299797533e6ba10188527b167e720df154306014c64"
+      },
+      "evidence_boundary": {
+        "kind": "acquisition",
+        "capture_policy_version": "discord-capture.v1",
+        "authorization_epoch": 4,
+        "acquisition_generation": 1
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "a841c51794c8f2639a2c4a117d36e43348d454a8ad7d07ee8ab4baacd09355e0"
+    }
+  },
+  {
+    "name": "discord-exact-snapshot",
+    "input": {
+      "schema_version": 1,
+      "capability": "discord_role_snapshot.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "role_ids": [
+        "300000000000000002",
+        "300000000000000003"
+      ],
+      "mapping_version_id": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-version",
+        "major_version": 1,
+        "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+      },
+      "mapping_config_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-config",
+        "major_version": 1,
+        "digest": "28d6bcb42abcbb94bf902299797533e6ba10188527b167e720df154306014c64"
+      },
+      "evidence_boundary": {
+        "kind": "exact_snapshot",
+        "snapshot_id": "role-snapshot-0001"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "9f4108e96a781c0c6c0d3bd43ba09f7df86b4db29d5827c885f45bd954fde347"
+    }
+  },
+  {
+    "name": "discord-acquisition-relinked-mapping",
+    "input": {
+      "schema_version": 1,
+      "capability": "discord_role_snapshot.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "role_ids": [
+        "300000000000000002",
+        "300000000000000003"
+      ],
+      "mapping_version_id": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-version",
+        "major_version": 1,
+        "digest": "59d1fdb72aac868bf44d42632feb35f5ab9041eced8a3d0aaf75ea14a5d1730e"
+      },
+      "mapping_config_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-config",
+        "major_version": 1,
+        "digest": "28d6bcb42abcbb94bf902299797533e6ba10188527b167e720df154306014c64"
+      },
+      "evidence_boundary": {
+        "kind": "acquisition",
+        "capture_policy_version": "discord-capture.v1",
+        "authorization_epoch": 3,
+        "acquisition_generation": 1
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "285689725a11cd36c44de6013efbdcf108529cd508ad5fde074a18aba9ed3eea"
+    }
+  },
+  {
+    "name": "discord-acquisition-other-config",
+    "input": {
+      "schema_version": 1,
+      "capability": "discord_role_snapshot.v1",
+      "scope_class": "community_guild",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "role_ids": [
+        "300000000000000001"
+      ],
+      "mapping_version_id": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-version",
+        "major_version": 1,
+        "digest": "844d10e64636a364e62b6f0b1aeed7aa7b4bd2e6ceddf8be91a766a68f5ae67c"
+      },
+      "mapping_config_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.mapping-config",
+        "major_version": 1,
+        "digest": "12560359e899fb75fb12866ee3fc191ee33c7561c8c9972d1f82d5917564f735"
+      },
+      "evidence_boundary": {
+        "kind": "acquisition",
+        "capture_policy_version": "discord-capture.v1",
+        "authorization_epoch": 3,
+        "acquisition_generation": 1
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "0b62c980ea972170cb9115bc583889b091e94a1524e5cc51498ce30134629aa5"
+    }
+  },
+  {
+    "name": "identity-base",
+    "input": {
+      "schema_version": 1,
+      "capability": "identity_link_snapshot.v1",
+      "scope_class": "community_subjects",
+      "privacy_class": "restricted_community",
+      "source_identity": "identity-api",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "consent_policy_version": "community-gate-audit.v1",
+      "cohort": {
+        "schema_version": 1,
+        "subject_set_digest": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.subject-cohort",
+          "major_version": 1,
+          "digest": "e1a4c196f78dd4acfcbd2c44e625992442541d862567785da05bb55f1ba8d764"
+        },
+        "cardinality": 2,
+        "inclusion_rule_version": "cohort-inclusion.v1",
+        "source_role_snapshot_id": "snapshot-0001",
+        "limit_policy_version": "subject-cohort-limit.v1"
+      },
+      "evidence_boundary": {
+        "kind": "exact_snapshot",
+        "snapshot_id": "link-snapshot-0001"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "1617571a9dae7fc27b75a4d64728462f034915406c870c4345298966080216ce"
+    }
+  },
+  {
+    "name": "identity-consent-bump",
+    "input": {
+      "schema_version": 1,
+      "capability": "identity_link_snapshot.v1",
+      "scope_class": "community_subjects",
+      "privacy_class": "restricted_community",
+      "source_identity": "identity-api",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "consent_policy_version": "community-gate-audit.v2",
+      "cohort": {
+        "schema_version": 1,
+        "subject_set_digest": {
+          "algorithm": "sha-256",
+          "domain": "gate-leak.subject-cohort",
+          "major_version": 1,
+          "digest": "e1a4c196f78dd4acfcbd2c44e625992442541d862567785da05bb55f1ba8d764"
+        },
+        "cardinality": 2,
+        "inclusion_rule_version": "cohort-inclusion.v1",
+        "source_role_snapshot_id": "snapshot-0001",
+        "limit_policy_version": "subject-cohort-limit.v1"
+      },
+      "evidence_boundary": {
+        "kind": "exact_snapshot",
+        "snapshot_id": "link-snapshot-0001"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "5dc54a5d0d054bdc8db88ad1841e44488700df2b22597933975f6805b6fc8e97"
+    }
+  },
+  {
+    "name": "compute-order-a",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_leak_compute.v1",
+      "scope_class": "order_result",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "result_scope": {
+        "kind": "order",
+        "order_id": "order-000a"
+      },
+      "compute_input_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.compute-input",
+        "major_version": 1,
+        "digest": "548ff6d932ad190bd1ccc82d4434100135ab649b585ccde1d9a8770553fb1c40"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "a1b58bdd07f2640754349a25b4615d9dcee60e2012c681272e64efc818c0abfb"
+    }
+  },
+  {
+    "name": "compute-order-b",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_leak_compute.v1",
+      "scope_class": "order_result",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "result_scope": {
+        "kind": "order",
+        "order_id": "order-000b"
+      },
+      "compute_input_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.compute-input",
+        "major_version": 1,
+        "digest": "548ff6d932ad190bd1ccc82d4434100135ab649b585ccde1d9a8770553fb1c40"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "68abad228a1365bf393d047ed53023d48c0e7094f2fb9e2d80c6907b0f3c86b7"
+    }
+  },
+  {
+    "name": "compute-result-cache",
+    "input": {
+      "schema_version": 1,
+      "capability": "gate_leak_compute.v1",
+      "scope_class": "order_result",
+      "privacy_class": "restricted_community",
+      "source_identity": "shadow-audit",
+      "readiness_policy_version": "gate-leak-readiness.v1",
+      "adapter_version": "v1",
+      "community_ref": "acme-club",
+      "guild_ref": "200000000000000002",
+      "result_scope": {
+        "kind": "result_cache"
+      },
+      "compute_input_digest": {
+        "algorithm": "sha-256",
+        "domain": "gate-leak.compute-input",
+        "major_version": 1,
+        "digest": "548ff6d932ad190bd1ccc82d4434100135ab649b585ccde1d9a8770553fb1c40"
+      }
+    },
+    "work_key_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.work-key",
+      "major_version": 1,
+      "digest": "1cf11bc3eeff1baba8b81b3280abe7fee1accd6cf54c49d1d65d8ec3e7296c91"
+    }
+  }
+]

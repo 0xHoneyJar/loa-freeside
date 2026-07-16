@@ -1,0 +1,282 @@
+{
+  "description": "Sprint CR-002 golden fixtures. Case 1: a role holder proven to no longer own (the only V1 leak). Case 2: a role holder with unavailable consent (indeterminate, never adverse). Case 3: an eligible holder WITHOUT the role — out of scope: absent from subjects, rows, and every denominator. Recorded-SHAPE stand-in with synthetic identifiers. Does NOT satisfy the external three-live-community G1 evidence gate; live operator-supplied exports remain the open external evidence.",
+  "selected_deployment_ids": [
+    {
+      "algorithm": "sha-256",
+      "domain": "collection.deployment",
+      "major_version": 1,
+      "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+    },
+    {
+      "algorithm": "sha-256",
+      "domain": "collection.deployment",
+      "major_version": 1,
+      "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+    }
+  ],
+  "subjects": [
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000007",
+      "role_id": "300000000000000002",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000a7",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              },
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+                },
+                "ownership": {
+                  "kind": "unavailable"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000001",
+      "role_id": "300000000000000002",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000a1",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              },
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              }
+            ]
+          },
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000b1",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              },
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000004",
+      "role_id": "300000000000000002",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000a4",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              },
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "2"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000002",
+      "role_id": "300000000000000002",
+      "identity": {
+        "kind": "consent_unavailable"
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000005",
+      "role_id": "300000000000000002",
+      "identity": {
+        "kind": "link_missing"
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000006",
+      "role_id": "300000000000000002",
+      "identity": {
+        "kind": "identity_unavailable"
+      }
+    }
+  ],
+  "excluded_bot_count": 1,
+  "out_of_scope_holders": [
+    {
+      "wallet": "0x00000000000000000000000000000000000000e3",
+      "holds": [
+        {
+          "deployment_id": {
+            "algorithm": "sha-256",
+            "domain": "collection.deployment",
+            "major_version": 1,
+            "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+          },
+          "balance": "5"
+        }
+      ],
+      "note": "Sprint golden case 3: eligible holder without the mapped role. Must never appear in rows, bands, or coverage denominators."
+    }
+  ],
+  "expected_rows": [
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000001",
+      "role_id": "300000000000000002",
+      "eligibility_state": "proven_ineligible",
+      "reason_code": "proven_zero_balance",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000a1",
+        "0x00000000000000000000000000000000000000b1"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000002",
+      "role_id": "300000000000000002",
+      "eligibility_state": "indeterminate",
+      "reason_code": "consent_unavailable",
+      "compared_wallets": []
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000004",
+      "role_id": "300000000000000002",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000a4"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000005",
+      "role_id": "300000000000000002",
+      "eligibility_state": "indeterminate",
+      "reason_code": "identity_link_missing",
+      "compared_wallets": []
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000006",
+      "role_id": "300000000000000002",
+      "eligibility_state": "indeterminate",
+      "reason_code": "identity_unavailable",
+      "compared_wallets": []
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "400000000000000007",
+      "role_id": "300000000000000002",
+      "eligibility_state": "indeterminate",
+      "reason_code": "ownership_evidence_unavailable",
+      "compared_wallets": []
+    }
+  ],
+  "expected_measure": {
+    "schema_version": 1,
+    "presentation": "insufficient_coverage",
+    "coverage_policy_version": "gate-leak-coverage.v1",
+    "reason_code": "insufficient_coverage",
+    "cohort_band": "1-9",
+    "indeterminate_band": "1-9",
+    "excluded_bot_count": 1
+  }
+}

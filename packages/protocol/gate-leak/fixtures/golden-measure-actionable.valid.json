@@ -1,0 +1,393 @@
+{
+  "description": "At 90% definitive coverage the actionable leak band appears with the rounded-down 10-point coverage band plus cohort/indeterminate disclosure bands. Recorded-SHAPE stand-in with synthetic identifiers. Does NOT satisfy the external three-live-community G1 evidence gate; live operator-supplied exports remain the open external evidence.",
+  "subjects": [
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000010",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000c0",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000011",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000c1",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000012",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000c2",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000013",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000c3",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000014",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000c4",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000015",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000c5",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000016",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000d6",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000017",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000d7",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000018",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "linked",
+        "wallets": [
+          {
+            "schema_version": 1,
+            "address": "0x00000000000000000000000000000000000000d8",
+            "deployments": [
+              {
+                "schema_version": 1,
+                "deployment_id": {
+                  "algorithm": "sha-256",
+                  "domain": "collection.deployment",
+                  "major_version": 1,
+                  "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+                },
+                "ownership": {
+                  "kind": "proven",
+                  "balance": "0"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000019",
+      "role_id": "300000000000000001",
+      "identity": {
+        "kind": "link_missing"
+      }
+    }
+  ],
+  "selected_deployment_ids": [
+    {
+      "algorithm": "sha-256",
+      "domain": "collection.deployment",
+      "major_version": 1,
+      "digest": "b97e19ef48ebe7fe7bfca24fc31c92b0a8dfaea6c2bfb9848d667f4c61a976db"
+    }
+  ],
+  "excluded_bot_count": 0,
+  "expected_rows": [
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000010",
+      "role_id": "300000000000000001",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000c0"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000011",
+      "role_id": "300000000000000001",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000c1"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000012",
+      "role_id": "300000000000000001",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000c2"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000013",
+      "role_id": "300000000000000001",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000c3"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000014",
+      "role_id": "300000000000000001",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000c4"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000015",
+      "role_id": "300000000000000001",
+      "eligibility_state": "eligible",
+      "reason_code": "eligible_balance_confirmed",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000c5"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000016",
+      "role_id": "300000000000000001",
+      "eligibility_state": "proven_ineligible",
+      "reason_code": "proven_zero_balance",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000d6"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000017",
+      "role_id": "300000000000000001",
+      "eligibility_state": "proven_ineligible",
+      "reason_code": "proven_zero_balance",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000d7"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000018",
+      "role_id": "300000000000000001",
+      "eligibility_state": "proven_ineligible",
+      "reason_code": "proven_zero_balance",
+      "compared_wallets": [
+        "0x00000000000000000000000000000000000000d8"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "discord_user_id": "410000000000000019",
+      "role_id": "300000000000000001",
+      "eligibility_state": "indeterminate",
+      "reason_code": "identity_link_missing",
+      "compared_wallets": []
+    }
+  ],
+  "expected_measure": {
+    "schema_version": 1,
+    "presentation": "actionable",
+    "coverage_policy_version": "gate-leak-coverage.v1",
+    "actionable_leak_band": "1-9",
+    "coverage_band_floor_percent": 90,
+    "cohort_band": "10-24",
+    "indeterminate_band": "1-9",
+    "excluded_bot_count": 0
+  }
+}

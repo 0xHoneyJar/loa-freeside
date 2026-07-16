@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "capability": "ownership_index.v1",
+  "scope_class": "global_deployment_set",
+  "privacy_class": "public_chain",
+  "source_identity": "sonar-ownership-adapter",
+  "readiness_policy_version": "gate-leak-readiness.v1",
+  "adapter_version": "v1",
+  "collection": {
+    "schema_version": 1,
+    "capability": "ownership_index",
+    "capability_version": "v1",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+    },
+    "deployment_ids": [
+      {
+        "algorithm": "sha-256",
+        "domain": "collection.deployment",
+        "major_version": 1,
+        "digest": "20e4daef6efbbf23525baf89ec4125ae8c56b03ebeaa2d28b733a5f300e5f357"
+      },
+      {
+        "algorithm": "sha-256",
+        "domain": "collection.deployment",
+        "major_version": 1,
+        "digest": "755de02eb8c52853a5b89e3749a7f6add06f5bd4e1dafca50f301d4933fb0d03"
+      }
+    ],
+    "finality_policies": [
+      {
+        "schema_version": 1,
+        "network": {
+          "schema_version": 1,
+          "network_namespace": "eip155",
+          "network_reference": "1"
+        },
+        "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+      },
+      {
+        "schema_version": 1,
+        "network": {
+          "schema_version": 1,
+          "network_namespace": "eip155",
+          "network_reference": "8453"
+        },
+        "finality_policy_version": "ownership-finality.eip155-finalized-block.v1"
+      }
+    ]
+  },
+  "evidence_boundary": {
+    "kind": "continuous_latest"
+  },
+  "community_ref": "smuggled-tenant"
+}
