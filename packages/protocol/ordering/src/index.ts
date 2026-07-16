@@ -28,6 +28,12 @@ export {
   type OrderRefusal,
   OrderFailedSchema,
   type OrderFailed,
+  ORDER_GATE_LEAK_JOIN_SUBJECT,
+  ORDER_GATE_LEAK_INPUT_SUBJECT,
+  GateLeakInputSuppliedSchema,
+  type GateLeakInputSupplied,
+  GateLeakCommunityJoinSchema,
+  type GateLeakCommunityJoin,
 } from './events.js';
 
 export {
@@ -39,11 +45,13 @@ export {
   AccessRiskAuditInputs,
   ACCESS_RISK_AUDIT_PRESET,
   CommunityOnboardingInputs,
+  GateLeakInputs,
   IngredientStatus,
   CommunityOnboardingIngredients,
   CommunityOnboardingOutput,
   INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
   COMMUNITY_ONBOARDING_PRESET,
+  GATE_LEAK_PRESET,
   PRESETS,
   resolvePreset,
 } from './preset.js';

@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AuditOutputSchema } from '@freeside/shadow-audit-protocol';
 import { buildAuditApp, configFromEnv, validateApiKeyEnv, type AuditServerConfig } from '../server.js';
+import { InMemoryEventStore } from '../event-store.js';
 import { makeBalanceWhaleSource } from '../whale-source.js';
 import { makeFileRoleSource } from '../role-source.js';
 import type { OwnershipSource, Balances } from '../audit-service.js';
@@ -190,6 +191,39 @@ describe('buildAuditApp — the deployment composition root', () => {
     ).toBe(401);
   });
 
+  it('exempts all public gate-leak sub-routes from the X-API-Key gate (FAGAN HIGH-2)', async () => {
+    // All three sub-routes (:runId poll, /resume, /interaction) are part of the login-less lead-magnet
+    // lifecycle: with an API key configured they MUST reach their own handlers without X-API-Key.
+    // A nonexistent/token-mismatched run returning 404 (not 401) proves the request passed the exemption.
+    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
+
+    // /interaction: unknown run → 404 in handler, not 401 at middleware
+    const interaction = await app.request('/v1/access-risk/gate_nonexistent/interaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'feedback', journey_token: 'x', reaction: 'worse' }),
+    });
+    expect(interaction.status).not.toBe(401);
+    expect(interaction.status).toBe(404);
+
+    // /resume: unknown run → 404 in handler
+    const resume = await app.request('/v1/access-risk/gate_nonexistent/resume', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ access_started_at: '2026-06-22', journey_token: 'x' }),
+    });
+    expect(resume.status).not.toBe(401);
+    expect(resume.status).toBe(404);
+
+    // poll (GET): missing journey_token → 404 in handler (no token = no oracle)
+    const poll = await app.request('/v1/access-risk/gate_nonexistent');
+    expect(poll.status).not.toBe(401);
+    expect(poll.status).toBe(404);
+
+    // Contrast: a genuinely gated route still 401s without the key.
+    expect((await app.request(`/v1/audit?${query('thj')}`)).status).toBe(401);
+  });
+
   it('the authed POST named-output is fail-closed (V2 not wired) → 401', async () => {
     const app = buildAuditApp(ownership, baseConfig(), collections);
     const res = await app.request('/v1/audit', {
@@ -368,3 +402,49 @@ describe('buildAuditApp — §12.3 correct key returns 200', () => {
     ).toBe(401);
   });
 });
+
+describe('event-store durability — fail loud, never an in-memory masquerade (G-1)', () => {
+  const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[Y, 1n]]));
+  const pgBase = {
+    OPERATED_COMMUNITIES: 'thj',
+    CTA_PRODUCT: 'p',
+    CTA_CONVERSATION: 'c',
+  };
+
+  it('configFromEnv refuses SHADOW_AUDIT_EVENT_STORE=postgres without DATABASE_URL', () => {
+    expect(() =>
+      configFromEnv({ ...pgBase, SHADOW_AUDIT_EVENT_STORE: 'postgres' } as NodeJS.ProcessEnv),
+    ).toThrow(/DATABASE_URL/);
+  });
+
+  it('configFromEnv accepts postgres with a URL and defaults to memory otherwise', () => {
+    expect(
+      configFromEnv({
+        ...pgBase,
+        SHADOW_AUDIT_EVENT_STORE: 'postgres',
+        DATABASE_URL: 'postgres://db/shadow',
+      } as NodeJS.ProcessEnv).eventStoreBackend,
+    ).toBe('postgres');
+    expect(configFromEnv(pgBase as NodeJS.ProcessEnv).eventStoreBackend).toBe('memory');
+  });
+
+  it('configFromEnv rejects an unknown event-store backend', () => {
+    expect(() =>
+      configFromEnv({ ...pgBase, SHADOW_AUDIT_EVENT_STORE: 'redis' } as NodeJS.ProcessEnv),
+    ).toThrow(/SHADOW_AUDIT_EVENT_STORE/);
+  });
+
+  it('buildAuditApp throws when postgres is required but no durable store is wired', () => {
+    expect(() =>
+      buildAuditApp(ownership, baseConfig({ eventStoreBackend: 'postgres' }), collections, {}),
+    ).toThrow(/requires an initialized Postgres event store/);
+  });
+
+  it('buildAuditApp accepts an injected durable store (and does not fall back silently)', () => {
+    expect(() =>
+      buildAuditApp(ownership, baseConfig({ eventStoreBackend: 'postgres' }), collections, {
+        eventStore: new InMemoryEventStore(),
+      }),
+    ).not.toThrow();
+  });
+})

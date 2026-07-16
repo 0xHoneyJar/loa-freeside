@@ -4,14 +4,19 @@ import { InMemoryOrderStore } from '../store.js';
 
 function harness() {
   const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
-  const app = createIntakeApp({ store, now: () => 1_700_000_000_000 });
+  const app = createIntakeApp({
+    store,
+    now: () => 1_700_000_000_000,
+    gateLeakEnabled: true,
+    gateLeakIntakeBudget: { limit: 1_000, windowMs: 60_000 },
+  });
   return { store, app };
 }
 
 const VALID_BODY = {
   product: 'access-risk-audit',
   placed_by: 'operator:test',
-  inputs: { chain: 'ethereum', contract: '0xCollection', snapshot_date: '2026-06-01', threshold: 1 },
+  inputs: { chain: '1', contract: '0x' + '2'.repeat(40), snapshot_date: '2026-06-01', threshold: 1 },
 };
 
 const VALID_COMMUNITY_BODY = {
@@ -23,6 +28,16 @@ const VALID_COMMUNITY_BODY = {
     contact_email: 'cm@example.com',
     community_name: 'Pythenians',
     source: 'dashboard_onboarding',
+  },
+};
+
+const VALID_GATE_LEAK_BODY = {
+  product: 'gate-leak',
+  placed_by: 'anonymous',
+  inputs: {
+    chain_id: '1',
+    contract_address: '0x1234567890123456789012345678901234567890',
+    source: 'public_gate_leak',
   },
 };
 
@@ -62,7 +77,7 @@ describe('order-intake POST /v1/orders', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       // snapshot_date is not YYYY-MM-DD → preset.inputSchema rejects
-      body: JSON.stringify({ ...VALID_BODY, inputs: { chain: 'ethereum', contract: '0xC', snapshot_date: 'yesterday' } }),
+      body: JSON.stringify({ ...VALID_BODY, inputs: { chain: '1', contract: '0x' + '2'.repeat(40), snapshot_date: 'yesterday' } }),
     });
     expect(res.status).toBe(400);
     expect(await store.pendingOutbox()).toHaveLength(0);
@@ -111,6 +126,65 @@ describe('order-intake POST /v1/orders', () => {
     });
     expect(res.status).toBe(400);
     expect(await store.pendingOutbox()).toHaveLength(0);
+  });
+
+  it('accepts anonymous gate-leak intake with no account, wallet, or contact field', async () => {
+    const { store, app } = harness();
+    const res = await app.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(VALID_GATE_LEAK_BODY),
+    });
+    expect(res.status).toBe(200);
+    const { order_id: orderId } = (await res.json()) as { order_id: string };
+    const record = await store.get(orderId);
+    expect(record?.product).toBe('gate-leak');
+    expect(record?.inputs).toEqual(VALID_GATE_LEAK_BODY.inputs);
+    expect(JSON.stringify(record)).not.toContain('contact_email');
+  });
+
+  it('refuses gate-leak before persistence when the production composition is incomplete', async () => {
+    const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+    const app = createIntakeApp({
+      store,
+      now: () => 1_700_000_000_000,
+      gateLeakEnabled: false,
+    });
+    const res = await app.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(VALID_GATE_LEAK_BODY),
+    });
+    expect(res.status).toBe(503);
+    expect(await store.pendingOutbox()).toHaveLength(0);
+  });
+
+  it('defaults gate-leak disabled and bounds enabled anonymous writes', async () => {
+    const disabledStore = new InMemoryOrderStore();
+    const disabled = createIntakeApp({ store: disabledStore, now: () => Date.UTC(2026, 6, 15) });
+    expect(
+      (await disabled.request('/v1/orders', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(VALID_GATE_LEAK_BODY),
+      })).status,
+    ).toBe(503);
+
+    const boundedStore = new InMemoryOrderStore();
+    const bounded = createIntakeApp({
+      store: boundedStore,
+      now: () => Date.UTC(2026, 6, 15),
+      gateLeakEnabled: true,
+      gateLeakIntakeBudget: { limit: 1, windowMs: 60_000 },
+    });
+    const request = () => bounded.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(VALID_GATE_LEAK_BODY),
+    });
+    expect((await request()).status).toBe(200);
+    expect((await request()).status).toBe(429);
+    expect((await boundedStore.pendingOutbox())).toHaveLength(1);
   });
 });
 

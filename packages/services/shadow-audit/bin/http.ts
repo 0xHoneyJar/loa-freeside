@@ -41,6 +41,10 @@ import {
   makeRepositoryRoleStore,
   type PostgresRoleSnapshotConnection,
 } from '../src/role-store-postgres.js';
+import {
+  connectPostgresEventStore,
+  type PostgresEventStoreConnection,
+} from '../src/event-store-postgres.js';
 
 process.on('unhandledRejection', (reason) => {
   // F9: log AND exit non-zero — a swallowed rejection can leave the process wedged (event loop alive, no
@@ -63,7 +67,13 @@ try {
 // `collection` would match no Transfers → an empty, silently-wrong audit.
 const RegistrySchema = z.record(
   z.string(),
-  z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
+  z
+    .object({
+      collection: z.string().min(1),
+      standard: z.enum(['erc721', 'erc1155']),
+      access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    })
+    .strict(),
 );
 
 function loadRegistryFromEnv(): { map: Record<string, CollectionRef>; chains: Set<string> } {
@@ -159,14 +169,28 @@ if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
   await postgresConnection.repository.initialize();
   roleStore = makeRepositoryRoleStore({ repository: postgresConnection.repository, community, sources });
 }
-const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore });
+
+// G-1: durable event store. configFromEnv already fails loud if postgres is selected without DATABASE_URL,
+// so reaching here with eventStoreBackend=postgres guarantees a URL. Initialize schema before HTTP bind.
+let eventStoreConnection: PostgresEventStoreConnection | undefined;
+let eventStore;
+if (config.eventStoreBackend === 'postgres') {
+  if (!config.databaseUrl) {
+    throw new Error('SHADOW_AUDIT_EVENT_STORE=postgres requires DATABASE_URL');
+  }
+  eventStoreConnection = connectPostgresEventStore(config.databaseUrl);
+  await eventStoreConnection.store.initialize();
+  eventStore = eventStoreConnection.store;
+}
+const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore, eventStore });
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
-    if (!postgresConnection) {
+    const closes = [postgresConnection?.close(), eventStoreConnection?.close()].filter(Boolean);
+    if (closes.length === 0) {
       process.exit(0);
     }
-    void postgresConnection.close().finally(() => process.exit(0));
+    void Promise.allSettled(closes).finally(() => process.exit(0));
   });
 }
 

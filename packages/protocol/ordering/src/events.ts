@@ -21,6 +21,29 @@ export const ORDER_LIFECYCLE_SUBJECTS = {
   failed: 'orders.lifecycle.failed.v1',
 } as const;
 
+/** Append-only, order-id-keyed join. It never rewrites either order's inputs. */
+export const ORDER_GATE_LEAK_JOIN_SUBJECT = 'orders.gate-leak.community-joined.v1' as const;
+export const ORDER_GATE_LEAK_INPUT_SUBJECT = 'orders.gate-leak.input-supplied.v1' as const;
+
+/** Public lifecycle signal only. The semantic value remains in the narrow order-input table. */
+export const GateLeakInputSuppliedSchema = z
+  .object({
+    gate_leak_order_id: z.string().min(1),
+    input: z.literal('access_started_at'),
+    supplied_at_unix: z.number().int().nonnegative(),
+  })
+  .strict();
+export type GateLeakInputSupplied = z.infer<typeof GateLeakInputSuppliedSchema>;
+
+export const GateLeakCommunityJoinSchema = z
+  .object({
+    gate_leak_order_id: z.string().min(1),
+    community_onboarding_order_id: z.string().min(1),
+    joined_at_unix: z.number().int().nonnegative(),
+  })
+  .strict();
+export type GateLeakCommunityJoin = z.infer<typeof GateLeakCommunityJoinSchema>;
+
 export type OrderLifecyclePhase = keyof typeof ORDER_LIFECYCLE_SUBJECTS;
 
 /** How a building endpoint was resolved. Truthful: `config` for the MVP, `loa-where` once declared. */

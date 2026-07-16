@@ -6,7 +6,7 @@ const NEW_ORDER: NewOrder = {
   order_id: 'ord_1',
   product: 'access-risk-audit',
   placed_by: 'operator:test',
-  inputs: { chain: 'ethereum', contract: '0xabc', snapshot_date: '2026-06-01' },
+  inputs: { chain: '1', contract: '0x' + '2'.repeat(40), snapshot_date: '2026-06-01' },
   placed_at_unix: 1_700_000_000,
   inputs_digest: 'a'.repeat(64),
 };
@@ -85,11 +85,74 @@ describe('InMemoryOrderStore', () => {
     expect(subjects).toContain('orders.lifecycle.producing.v1');
   });
 
+  it('appendEventOnce dedupes replayed producing history on its semantic key', async () => {
+    const s = store();
+    await s.placeOrder(NEW_ORDER, PLACED_EVENT);
+    const event = { subject: 'orders.lifecycle.producing.v1', payload: { step: 0 } };
+    expect((await s.appendEventOnce('ord_1', event, 'ord_1:producing:0')).created).toBe(true);
+    expect((await s.appendEventOnce('ord_1', event, 'ord_1:producing:0')).created).toBe(false);
+    expect((await s.pendingOutbox()).filter((entry) => entry.subject === event.subject)).toHaveLength(1);
+  });
+
   it('markPublished removes an entry from the pending set', async () => {
     const s = store();
     await s.placeOrder(NEW_ORDER, PLACED_EVENT);
     const [entry] = await s.pendingOutbox();
     await s.markPublished(entry!.seq);
     expect(await s.pendingOutbox()).toHaveLength(0);
+  });
+
+  it('claims shared gate-leak work once across distinct journeys', async () => {
+    const s = store();
+    const gateOrder = (orderId: string): NewOrder => ({
+      ...NEW_ORDER,
+      order_id: orderId,
+      product: 'gate-leak',
+      placed_by: 'anonymous',
+      inputs: { chain_id: '1', contract_address: '0xabc', source: 'public_gate_leak' },
+    });
+    await s.placeOrder(gateOrder('gate-a'), { ...PLACED_EVENT, payload: { order_id: 'gate-a' } });
+    await s.placeOrder(gateOrder('gate-b'), { ...PLACED_EVENT, payload: { order_id: 'gate-b' } });
+    expect((await s.claimGateLeakWork('same-work', 'gate-a')).created).toBe(true);
+    const second = await s.claimGateLeakWork('same-work', 'gate-b');
+    expect(second.created).toBe(false);
+    expect(second.claim.canonical_order_id).toBe('gate-a');
+  });
+
+  it('appends a gate-leak/community join without rewriting either order', async () => {
+    const s = store();
+    const gate: NewOrder = {
+      ...NEW_ORDER,
+      order_id: 'gate-join',
+      product: 'gate-leak',
+      placed_by: 'anonymous',
+      inputs: { chain_id: '1', contract_address: '0xabc', source: 'public_gate_leak' },
+    };
+    const community: NewOrder = {
+      ...NEW_ORDER,
+      order_id: 'community-join',
+      product: 'community-onboarding',
+      inputs: {
+        chain_id: '1',
+        contract_address: '0xabc',
+        contact_email: 'operator@example.test',
+        source: 'dashboard_onboarding',
+      },
+    };
+    await s.placeOrder(gate, { ...PLACED_EVENT, payload: { order_id: gate.order_id } });
+    await s.placeOrder(community, { ...PLACED_EVENT, payload: { order_id: community.order_id } });
+    const beforeGate = structuredClone(await s.get(gate.order_id));
+    const beforeCommunity = structuredClone(await s.get(community.order_id));
+    const join = {
+      gate_leak_order_id: gate.order_id,
+      community_onboarding_order_id: community.order_id,
+      joined_at_unix: 1_700_000_000,
+    };
+    expect((await s.appendGateLeakJoin(join, { subject: 'orders.gate-leak.community-joined.v1', payload: join })).created).toBe(true);
+    expect((await s.appendGateLeakJoin(join, { subject: 'orders.gate-leak.community-joined.v1', payload: join })).created).toBe(false);
+    expect(await s.get(gate.order_id)).toEqual(beforeGate);
+    expect(await s.get(community.order_id)).toEqual(beforeCommunity);
+    expect(await s.listGateLeakJoins(gate.order_id)).toEqual([join]);
+    expect((await s.pendingOutbox()).filter((e) => e.subject === 'orders.gate-leak.community-joined.v1')).toHaveLength(1);
   });
 });

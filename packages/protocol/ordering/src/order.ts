@@ -11,7 +11,7 @@ import { z } from 'zod';
  */
 
 /** Products that can be ordered today. A literal union; grows as presets are added. */
-export const ProductId = z.enum(['access-risk-audit', 'community-onboarding']);
+export const ProductId = z.enum(['access-risk-audit', 'community-onboarding', 'gate-leak']);
 export type ProductId = z.infer<typeof ProductId>;
 
 export const OrderEnvelopeSchema = z

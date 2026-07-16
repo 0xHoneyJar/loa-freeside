@@ -1,285 +1,362 @@
-# SDD — Shadow-Audit MVP: The Shadow-Mode Access-Intelligence Wedge
+# SDD — Public Gate Leak Lifecycle
 
 **Version:** 1.0
-**Date:** 2026-07-10
-**Cycle:** shadow-audit-mvp
-**PRD:** `grimoires/loa/prd.md` (v1.0, goals G-1..G-6)
-**Supersedes-active:** waggle-s1 SDD (→ `sdd.waggle-s1.md`)
+**Date:** 2026-07-15
+**Cycle:** public-gate-leak-lifecycle
+**Traces:** `grimoires/loa/prd.md` (FR-1..FR-10, G-1..G-6),
+`grimoires/loa/context/2026-07-15-gate-leak-grounding.md` (all `file:line` seams),
+`grimoires/loa/context/2026-07-15-public-gate-leak-lifecycle-seed.md` (operator seed).
 
-> This SDD resolves the 12 SDD-level findings from the flatline PRD review (IMP-001/003/004/005/007/008/
-> 009/010/011/012/013/014). A resolution map is in §12. Grounded citations use `[path:line]`.
+> **Grounded-reality rule:** every `path:line` in this SDD is copied from the grounding pass. Implementation
+> agents MUST re-open the cited file before editing; if the seam has moved, re-ground — do not patch from
+> plausibility ([[grounding]], [[ground-on-origin-not-the-local-checkout]]).
 
 ---
 
-## 1. Architecture Overview
+## 1. Design Overview
 
-The MVP is one slice of the D1 (member graph) + D4 (Shadow-Mode coexistence) control-plane (PRD §1, #283).
-**This cycle builds the concrete, demonstrable spine + the member graph's first writer; it does NOT build the
-D1 reasoning contract (#283/Option-C/Eileen) or rely on the unverified D4 coexistence runtime.**
+The public Gate Leak lifecycle is a **composition of two existing buildings**, not a third queue:
+
+- **`shadow-audit`** owns the E1 *compute* (`GET /v1/access-risk`), the append-only `EventStore`, and
+  feedback binding. This cycle makes its EventStore **durable + fail-loud**, **registers public runs**, and
+  adds a typed **`needs_input(access_started_at)`** state on the public path.
+- **`ordering`** owns the durable `placed→routing→producing→fulfilled/failed` lifecycle + Postgres outbox.
+  This cycle adds a new **anonymous-friendly `gate-leak` preset** that indexes a valid-but-unknown collection
+  and produces a durable subject/interest observation, joined to `community-onboarding` only by `order_id`.
+
+A thin **public lifecycle projection** maps internal ordering states + shadow-audit compute outcomes onto the
+seed's public journey states, and **append-only attention events** carry a canonical subject + bounded
+aggregate demand with **no member data**.
 
 ```
-[freeside-characters bot]                    [loa-freeside monolith]                  [Railway]
-  role-snapshot exporter  --RoleSnapshot JSON-->  shadow-audit service (35-ln box)  --deploy via IaC-->  shadow-audit-api
-        |  (writes FACTS)                            + Sonar/RPC ownership adapter
-        v                                            GET /v1/audit  (dogfood-full)
-  apps/worker profiles table  <---- Score/eligibility/ownership already write ----     GET /v1/audit (access-risk, no-install teaser)
-  (D1 member graph — live substrate)                     |
-                                                          v
-                                          [freeside-dashboard]  access-audit surface (renders drift, read-only)
+                          ┌───────────────────────── shadow-audit (Hono+Zod, no Effect) ─────────────────────────┐
+ visitor submits          │  GET/POST public gate-leak path                                                       │
+ (chain, contract,        │   ├─ registry known?  ── yes ─► access-start ratified? ── yes ─► computeAccessRisk ──►│─► delivered_e1
+  access_started_at?) ───►│   │                                     └─ no ─► needs_input(access_started_at) ◄─────│    (run registered
+                          │   │                                                      (resumable)                   │     → feedback binds)
+                          │   └─ no (valid but unknown) ─────────────────────────────────────┐                    │
+                          │  EventStore (append-only): PostgresEventStore ⟵ fail-loud wiring   │                    │
+                          └────────────────────────────────────────────────────────────────┼────────────────────┘
+                                                                                            ▼
+                          ┌──────────────────────── ordering (Zod+plain TS, no Effect) ─────────────────────────┐
+                          │  NEW `gate-leak` preset: placed→routing→producing(index)→fulfilled  (contact optional)│
+                          │  outbox tx; idempotency key on index/compute; order_id join → community-onboarding    │
+                          └──────────────────────────────────────────────────────────────────────────────────────┘
+        every path ─► append-only attention event { subject:(chain_id,contract_address), demand:bounded }  (NO member data)
+        every path ─► public lifecycle projection { submitted | resolving_subject | indexing | needs_input | computing | delivered_e1 | refused | unavailable }
 ```
 
-**Components (this cycle):**
-- **Shadow-audit service** — `packages/services/shadow-audit/` (built; ~35-line `runAudit` + injected Sonar/RPC
-  ownership adapter). Stateless; persists nothing. The SPINE's data path — **independent of the D4 coexistence
-  runtime** (flatline IMP-002).
-- **Role-snapshot exporter** — new one-shot CLI in freeside-characters (`apps/bot/`), forks `member-graph.ts`.
-- **Member-graph substrate** — the existing `profiles` Postgres table (`apps/worker/src/data/schema.ts:105`).
-- **Contract Access-Risk Audit** — the `access-risk-audit` ordering preset (no-install teaser).
-- **Deploy** — native Railway IaC (`.railway/railway.ts`).
+**Ownership rule (seed):** the dashboard is a medium-specific projection and does **not** own canonical report
+runs, artifacts, or graph truth. This cycle ships the upstream contracts; the dashboard BFF is a later cycle.
 
 ---
 
-## 2. ADR — Member-Graph Substrate = the live `profiles` table (resolves IMP-001)
+## 2. Component Design
 
-**Decision:** the member graph is the existing **`profiles` Postgres table** (`apps/worker/src/data/schema.ts:105`),
-NOT the event-sourced `packages/services/shadow-mode` ShadowLedger.
+### 2.1 `PostgresEventStore` (FR-1, FR-2 · G-1)
 
-**Evidence (grounded):**
-- `profiles` binds `communityId + discordId + telegramId + walletAddress + tier + currentRank`
-  (`schema.ts:105-116`) — it IS the "member graph exists as schema" of #283.
-- It **already has live writers**: `ScoreRepository`, `LeaderboardRepository`, `EligibilityNatsConsumer`,
-  `ownership-reverification` — so the operator's "member graph enriched by Score/Sonar/etc." is already real.
-- Unique constraints exist for upsert: `uq_profiles_discord (communityId, discordId)` (`schema.ts:131`),
-  `uq_profiles_telegram` (`:132`).
-- The ShadowLedger is a separate, un-consumed subsystem (event-sourced, `shadow-ledger.ts:49`) → stays parked
-  (PRD non-goal; BOEHM boring-box — use the live substrate, don't wire the ledger).
+**Location:** `packages/services/shadow-audit/src/event-store-postgres.ts` (new), sibling to the existing
+`event-store.ts` `InMemoryEventStore` [grounding §A].
 
-**Consequence:** the exporter becomes `profiles`' newest writer alongside Score + eligibility. No new
-subsystem. `[ASSUMPTION resolved — the PRD flagged this for /architect; decided here.]`
+**Implements** the existing port verbatim [obs `event-store.ts:47-55`]:
+```ts
+interface EventStore {
+  appendRunEvent(event: RunEvent): Promise<void>;   // append-only
+  appendContact(record: ContactRecord): Promise<void>; // rejects unknown run_id
+  getRun(runId: string): Promise<{ ts: string; inputs_hash: string } | undefined>;
+}
+```
+- Backed by `sql/0001_shadow_audit_events.sql` + a **forward migration** `sql/0002_public_gate_leak.sql`
+  (adds public-run + telemetry + subject/attention tables — §2.5, §2.6). Uses the same drizzle/`postgres`
+  dependency already present for the role store [obs `role-store-postgres.ts`]; **no new DB library**.
+- `appendContact` preserves the port contract: look up `getRun(run_id)` first; reject unknown run_id (mirrors
+  `InMemoryEventStore` [obs `:58-85`]).
+- **Invariants preserved:** `RunEventSchema`/`ContactRecordSchema` stay `.strict()` + member-field-free; the
+  adapter never writes a column not in the Zod schema. Append-only: INSERT only, no UPDATE/DELETE.
+- **Round-trip test (mandatory):** append via the adapter, read back via `getRun` **through the adapter's own
+  read path** — not a stub, not the in-memory double ([[test-the-seam-not-the-stub]], [[fakes-pass-live-finds-it]]).
 
----
+**Fail-loud wiring (FR-2):** in `src/server.ts` (currently `eventStore: new InMemoryEventStore()` [obs `:178`])
+and `bin/http.ts` — select the store like the role store already does [obs `bin/http.ts:151-160`]:
+- production/durable-required + `DATABASE_URL` present → `PostgresEventStore` (run migrations on boot, as
+  `PostgresOrderStore.runMigrations()` does [grounding §B]).
+- durable-required + `DATABASE_URL` absent → **refuse startup** (throw before `serve`), never silently
+  fall back. `InMemoryEventStore` remains the explicit **dev/test** default only.
 
-## 3. Member-Facts Write Contract (resolves IMP-001, IMP-009, IMP-010)
+### 2.2 Public run registration (FR-3 · G-2)
 
-The exporter writes ONLY identity+eligibility FACTS (PRD FR-4; reasoning deferred to #283).
+**Problem** [grounding §A]: `/v1/access-risk` returns at `audit-router.ts:342` without `recordRun`, so the
+teaser `run_id` (`risk_…`) has no backing event and reaction/contact 404 at `getRun`.
 
-- **Upsert key:** `(communityId, discordId)` — the existing unique constraint. `INSERT … ON CONFLICT
-  (community_id, discord_id) DO UPDATE`. Idempotent by construction (IMP-009).
-- **Field mapping (facts only):** `discordId`, `walletAddress` (resolved primary wallet or NULL), `communityId`.
-  Roles + eligibility state + last-verified + provenance are stored as a **facts sidecar** (a `member_facts`
-  JSON column or adjacent table — SDD-detail; NOT `tier`/`currentRank`, which are Score's reasoning fields —
-  the exporter MUST NOT overwrite Score-owned columns; IMP-001 conflict policy).
-- **Conflict policy (IMP-010 — identity cardinality):**
-  - *multi-wallet:* write the **primary** wallet (identity-api `primary_wallet`); record additional wallets in
-    provenance, do not fan out rows.
-  - *multi-discord for one wallet:* allowed — `profiles` is keyed by discord, one row per discord id.
-  - *stale/conflicting links:* if identity-api returns a wallet already bound to a DIFFERENT verified identity
-    in this community → FLAG (`provenance.conflict = true`), do NOT silently absorb (the account-takeover shape
-    from the shadow-mode-ledger lesson). Unresolved → `walletAddress = NULL`, flagged (never dropped).
-- **Idempotency + recovery (IMP-009):** the exporter is a pure re-runnable upsert; `--dry-run` prints the
-  planned upserts + a diff vs current `profiles` without writing; partial failure → the run is transactional
-  per-batch, resumable (no half-written snapshot); a post-write reconciliation counts written vs snapshot
-  entries and fails loud on drift.
+**Change:** at public delivery time (both a successful E1 **and** a typed refusal that yields a `run_id`), call
+`appendRunEvent` with an aggregate, member-free `RunEvent` reusing the computed `inputs_hash`. Reuse the
+existing `recordRun` helper path [obs `audit-router.ts:171-179`] rather than a parallel writer. Registration is
+**idempotent on `run_id`** (append-only store keyed by run_id; a replayed identical submission with the same
+`inputs_hash:nowUnixSeconds` yields the same run_id and must not double-count demand — §2.6).
 
----
+After this, `POST /v1/audit/reaction` + `/contact` bind to a public `run_id` within the run window [obs
+`:449-491`] with no other change.
 
-## 4. Shadow-Audit Service (the box)
+### 2.3 `needs_input(access_started_at)` typed state (FR-4 · G-3)
 
-### 4.1 `GET /v1/audit` contract (resolves IMP-003)
-- **Request:** `{chain, contract, snapshot_date, community, owner_wallet?, threshold}` (query; existing
-  `audit-router.ts:211`). Auth: **community-scoped Bearer** (see §10 tenancy). Anonymous `GET` = the
-  access-risk teaser (public, no member data); authed `POST` = member-level records (fail-closed today).
-- **Response:** `{ run_id, mode, inputs_hash, as_of_block, counts: {stale_access, sold_lapsed, newly_eligible,
-  holder_turnover, whale_concentration}, risk_band, provenance: {sonar_checkpoint, rpc_block, snapshot_captured_at,
-  registry_ref} }`. Provenance fields make every number reproducible (IMP-003).
-- **Pagination:** aggregate counts are unpaginated; member-level records (authed) are cursor-paginated.
+**Problem** [grounding §A]: the public path requires `snapshot_date` and has **no `needs-input` refusal**;
+`needs-input` semantics exist only in the authed mode-resolver (`external-mode`, `mode-resolver.ts:81-83`).
 
-### 4.2 Deterministic signal formulas (resolves IMP-004)
-Pinned, windowed, reproducible (`audit-service.ts:135-144` is the source of record):
-- `qualifies(w) := balance_at(w, as_of_block) >= threshold`
-- `stale_access := { w ∈ role_holders : ¬qualifies(w) }`
-- `sold_lapsed := { w : qualifies(w, snapshot_block) ∧ ¬qualifies(w, current_block) }`
-- `newly_eligible := { w : qualifies(w, current_block) ∧ w ∉ role_holders }`
-- `holder_turnover := |sold_lapsed| / max(1, |qualified_at_snapshot|)`
-- `whale_concentration := balance(top_1) / total_supply_held` (windows: snapshot_block, current_block).
+**Design:** the public path resolves access-start in this order, and NEVER silently picks a date:
+1. If the caller supplies `access_started_at` → use it as `snapshot_date` → compute.
+2. Else if the collection has a **ratified gate/access-start** in the registry → derive it → compute.
+3. Else → return a typed, resumable **`needs_input(access_started_at)`** projection state (NOT a 200 answer,
+   NOT an opaque 400). Add `needs-input` to the refusal enum / a sibling typed state so it carries a stable
+   wire status and a machine-readable `required_input: 'access_started_at'`.
 
-### 4.3 k-anonymity ↔ member-level reconciliation (resolves IMP-005)
-- Aggregate/teaser output: cohorts with count `< k` (default **k=5**, `AUDIT_K`) render as `<k`, never exact.
-- Member-level records (who specifically drifted): authed, community-scoped ONLY; suppressed for cohorts `< k`
-  unless the caller owns the community (operator viewing their own members). Cross-community member data is
-  never served (§10). This reconciles "member-level confront set" (operator value) with k-anon (privacy).
+**Resumability:** the `needs_input` projection returns a `journey`/`run` handle; a follow-up supplying
+`access_started_at` continues the SAME journey to `delivered_e1` without re-submitting the address. The prior
+input digest is preserved; the added input is modeled as an **appended event/transition**, never an in-place
+mutation (grounding §B immutable-inputs precedent).
 
-### 4.4 Freshness + latency bounds (resolves IMP-007)
-Numeric, in a `bounds.json` beside the suite: RoleSnapshot **max age 24h** (`freshness_threshold_seconds`);
-stale snapshot → served with an uncertainty label, not refused. Audit completion SLO **≤ 8s p95**; RPC calls
-capped + timed out (5s); block-at-date lookups memoized per run.
+**Privacy:** `needs_input` and every refusal string are member-free and sub-k-denominator-free (R-2).
 
-### 4.5 Block-at-date reconstruction (resolves IMP-008 — principal correctness risk, NFR-3)
-- **Finality depth:** `CONFIRMATIONS` (default 12) — block-at-date resolves to `block(date) - CONFIRMATIONS`
-  to avoid reorg'd tips.
-- **Timestamp selection:** the last block whose timestamp `<= snapshot_date` (deterministic; documented).
-- **Reorg handling:** balances are reconstructed from Sonar's indexed transfers at the finalized block;
-  a reorg below finality cannot affect the snapshot. Current balances use `current_block - CONFIRMATIONS`.
-- **Archival:** if Sonar lacks history to the snapshot block → LOUD `insufficient_history` error, never a
-  silently-partial audit (the money/ops floor).
+### 2.4 `gate-leak` ordering preset (FR-5, FR-6 · G-4)
 
----
+**Location:** `packages/protocol/ordering/src/preset.ts` (add a new preset next to
+`COMMUNITY_ONBOARDING_PRESET`) — **without** widening `CommunityOnboardingInputs` (grounding §C: structurally
+unsafe). ⚠️ **R-1 first:** confirm base-branch `ordering-protocol` tests pass before touching `preset.ts`; if
+the `metadata_snapshot` drift [grounding §D] makes them red, reconcile it as a scoped prerequisite or add the
+new preset in a way that does not disturb the drifted recipe.
 
-## 5. Role-Snapshot Exporter (freeside-characters)
+**New product id** in the `ProductId` union [obs `order.ts:8-15`]: `'gate-leak'`.
 
-Fork `apps/bot/src/cli/member-graph.ts`. Pipeline: `guild.members.fetch()` (privileged `GuildMembers`) →
-per member `{discord_user_id, role_ids: [...m.roles.cache].map(r=>r.id)}` → `member-identity-client.resolveMember`
-→ wallet (or NULL, flagged) → (a) emit `RoleSnapshotSchema` JSON to `ROLE_SNAPSHOT_PATH`; (b) write facts to
-`profiles` (§3). `export_method: "discord-bot-export:snowflakes:v1"`. Idempotent, `--dry-run`, batch-resumable
-(§3, IMP-009). Env: `DISCORD_BOT_TOKEN`, thj guild id, identity-api URL + world slug.
+**Anonymous-friendly input schema** (`.strict()`, contact OPTIONAL, explicit non-dashboard source):
+```ts
+const GateLeakInputs = z.object({
+  chain_id: z.string().min(1),
+  contract_address: z.string().min(1),
+  access_started_at: z.string().date().optional(),   // absent → needs_input downstream
+  source: z.enum(['public_gate_leak']),              // NOT 'dashboard_onboarding'
+  attribution: z.string().min(1).optional(),         // referrer/campaign, no PII
+  contact_email: z.string().email().optional(),      // OPTIONAL — value precedes signup
+}).strict();
+```
 
----
+**Recipe** (rides the existing lifecycle; minimal — this is the free rung, not the full onboarding recipe):
+```
+resolve-subject   → canonical (chain_id, contract_address) subject (no ownership assertion)
+index-collection  → only when registry-unknown (reuses the sonar collection-index capability)
+compute-gate-leak → calls shadow-audit access-risk compute (or needs_input)
+```
+- A **known** collection with ratified access-start may short-circuit index and deliver E1 directly through
+  shadow-audit; ordering is engaged for the **unknown-but-valid** case (durable indexing + interest) so the
+  submission is never a void refusal (closes gap 2/3).
+- **Contact optional:** the preset produces its interest observation with no `contact_email`; a later
+  `community-onboarding` join attaches contact/notification/claim intent (FR-6).
 
-## 6. Contract Access-Risk Audit (teaser — G-5)
+**Narrow join (FR-6):** a `gate-leak` order's result references a `community-onboarding` order by `order_id`
+via a typed `join`/`result_ref` — added as an appended event, never by mutating either order's immutable
+`inputs`/`inputs_digest` [grounding §B]. No preset input is widened.
 
-The `access-risk-audit` ordering preset. Inputs `{chain, contract, snapshot/reference date, optional gating
-rule}`; outputs the on-chain HALF only (§4.2 formulas, no Discord/role data): turnover · sold-lapsed ·
-newly-eligible · whale/concentration · stale-access risk estimate · CTA. Public, no-install, k-anon (§4.3),
-targetable at any contract (e.g. Pythenians). Reuses `runAudit`'s ownership adapter with an empty role set.
+### 2.5 Public lifecycle projection (FR-7 · G-5)
 
----
+**Location:** `packages/protocol/shadow-audit/` (a new `public-journey.ts` schema) + a minimal internal read in
+`shadow-audit` service. **Not** the dashboard BFF (deferred).
 
-## 7. thj Onboarding State Machine (resolves IMP-012)
+**Typed states** (Zod enum; the seed's model, discriminated union with state-specific payloads):
+```ts
+type PublicJourneyState =
+  | 'submitted' | 'resolving_subject' | 'indexing'
+  | { needs_input: 'access_started_at' }
+  | 'computing' | 'delivered_e1' | 'refused' | 'unavailable';
+```
+- The projection is a **pure mapper** from (ordering `OrderState` + ingredient checklist) × (shadow-audit
+  compute result / refusal) → `PublicJourneyState` — mirroring the existing `projection.ts` redaction-mapper
+  pattern [grounding §B, `projection.ts:11-29`]. No member data crosses it.
+- Read via a minimal internal poll (analogous to `GET /v1/orders/:id` [obs `intake.ts:155-160`]); the public
+  address-based POST/poll BFF is the later dashboard cycle (Non-Goal §5).
+- `refused` carries the typed refusal code; `unavailable` is the fail-closed state when durable upstream is
+  down (never a masquerading in-memory stub).
 
-`community-onboarding` order (PRD FR-6) is NOT "HTTP 200 = operated." The order fulfills through ingredient
-gates (`sonar → score → worlds_manifest → shadow_preview`, `community-onboarding-orchestrator.ts`); the
-community is `isOperatedCommunity` **only when the order reaches `fulfilled` with `world_slug` set**. Idempotent
-(re-placing the same inputs is a no-op via order dedup). The shadow-audit's `mode-resolver` reads the operated
-set; until fulfilled, thj audit → `external-mode` refusal (no fake data). The onboarding is an operator gate,
-tracked; the exporter + deploy can proceed in parallel and converge at the spine.
+### 2.6 Attention / demand events (FR-8, FR-9 · G-5, G-6)
 
----
+**Location:** `packages/protocol/shadow-audit/` attention schema + a table in `sql/0002_public_gate_leak.sql`.
 
-## 8. Deploy via Railway IaC + Organization-as-Code (G-1, G-6; resolves IMP-013)
-
-- **Service def:** `.railway/railway.ts` for the `shadow-audit-api` project: `service("shadow-audit-api",
-  {source: github("0xHoneyJar/loa-freeside"), ...})` with repo-root build context + Dockerfile at
-  `packages/services/shadow-audit/Dockerfile`; env = greenlit `COLLECTION_REGISTRY` (17 entries) + 5 verified
-  RPCs + `SHADOW_AUDIT_API_KEY` via `preserve()` (secret stays out of source).
-- **Flow:** `railway config plan` → operator reviews the EXACT plan → `railway config apply`. NEVER
-  `--yes`/`--confirm-destructive` from the agent without explicit approval (NFR-2, Railway's own agent skill).
-- **Agent gate mechanics (IMP-013):** on PR, CI runs `railway config plan --json --detailed-exit-code`
-  against a stored baseline; exit-code 2 (drift) fails the check unless the diff is the intended change;
-  secrets redacted (`«hidden»`); production apply requires human approval; the baseline is the last-applied
-  plan hash committed alongside `.railway/railway.ts`.
-- **Org-as-code convention:** two first instances (shadow-audit + ordering-service, both PoC-pulled); the
-  convention doc + the agent gate are the reusable deliverable, not all 13 buildings.
-
----
-
-## 9. Data Models
-
-- `profiles` (existing, `schema.ts:105`) — write target (§2/§3). New: a `member_facts` JSON column (or
-  `member_facts` table keyed by `profiles.id`) for roles/eligibility/last-verified/provenance — additive,
-  does not touch Score-owned columns.
-- `RoleSnapshotSchema` (existing, `shadow-audit/src/role-snapshot.ts:12`) — the exporter's JSON contract.
-- No new schema in the audit service (stateless).
-
----
-
-## 10. Security Architecture (resolves IMP-011, IMP-005, NFR-4/5)
-
-- **Tenancy/isolation (IMP-011):** member-level access is **community-scoped** — the Bearer/API key maps to a
-  community; `audit-acl.ts` resolves the operated community owning a contract and **fails closed on
-  `unknown-community`**. Cross-community member data is NEVER served. Per-community access is logged
-  (`capability-audit` style event: who/what/when).
-- **Read-only invariant (NFR-4):** the audit NEVER mutates incumbent roles (D4 coexistence invariant). The
-  service has no role-write path.
-- **k-anon (IMP-005):** §4.3 — small cohorts suppressed to prevent re-identification.
-- **Fail-closed (NFR-5):** service refuses startup without required vars; `SHADOW_AUDIT_API_KEY` mandatory,
-  constant-time compare; missing registry/RPC → boot fails (no wrong-audit).
-- **Bearer egress:** the activities-client SSRF/scheme allowlist hardening (A-1..A-4, prior cycle) is the
-  precedent for any credentialed outbound.
+**Schema (`.strict()`, member-forbidden):**
+```ts
+const AttentionEvent = z.object({
+  subject_chain_id: z.string().min(1),
+  subject_contract_address: z.string().min(1),   // canonical (chain_id, contract) subject
+  journey_token: z.string().min(1),              // opaque; distinguishes distinct journeys
+  kind: z.enum(['submitted','delivered_e1','needs_input','refused','enhance_intent','feedback']),
+  ts: z.string().datetime(),
+}).strict();                                       // .strict() STRUCTURALLY forbids wallets/roles/email/IP/free-text
+```
+- A canonical subject may be created/referenced but **asserts no ownership/membership/identity/gate semantics**
+  (seed constraint; enforced by the schema carrying only chain_id+contract).
+- **Idempotency vs demand (FR-9):** expensive work (index/compute) is deduped by an **idempotency key keyed to
+  the subject + inputs_hash** (mirrors `ingredientJobIdempotencyKey` [grounding §B, `kitchen.ts:103-105`]) so a
+  retry reuses work; **distinct-journey demand** is keyed to a distinct `journey_token` so two different humans
+  submitting the same collection each count once, but one human's retry does not. A single test asserts **both**
+  properties on the same replay (R-4).
 
 ---
 
-## 11. Test Strategy (resolves IMP-014)
+### 2.7 Public interaction transport + lifecycle-wide capability contract (FR-11 · G-7) — *amendment 2026-07-15, revised 2026-07-16*
 
-Beyond the single known-holder spot-check (SM-1), a representative E2E scenario set:
-- **Correctness scenarios:** a hand-verified holder (stale-access positive), a current holder (ok), a
-  never-held wallet (newly-eligible negative), a sold-since-snapshot wallet (sold-lapsed) — asserted against
-  known ground truth on Berachain Honeycomb.
-- **Failure modes:** dead RPC → loud; insufficient Sonar history → `insufficient_history`; empty role set →
-  teaser mode; stale snapshot → uncertainty label; unauthed member-level → 401.
-- **Read-only invariant:** assert no role-mutation path is reachable.
-- **Exporter:** idempotency (re-run = no-op), dry-run diff, unmatched-wallet flagged, conflict-flag on
-  cross-identity wallet.
-- **Contract suites** (existing `tests/contracts/` harness): activities/shadow-audit/inventory/ordering.
+**Problem** [grounding, this cycle]: `AttentionKindSchema` (`public-journey.ts`) admits `enhance_intent` +
+`feedback`, and `gate_leak_attention.kind`'s CHECK already lists both — but the router's local `attention()`
+helper only accepts the four *automatic* lifecycle kinds, so **no route ever emits `enhance_intent`/`feedback`**.
+The only public reaction transport, `POST /v1/audit/reaction`, hard-codes `mode: 'dogfood-full'` and binds via
+`getRun` (the internal dogfood store), so it is **not** a public Gate Leak feedback channel. `CtaInteractionSchema`
+(`event-store.ts`) is defined-but-unused. This section closes that seam **without** widening the EventStore port
+or the schemas — every durable primitive already exists.
+
+**Lifecycle-wide capability contract (revised 2026-07-16):** `run_id` is the *public address* — embeddable in
+a URL, QR code, or referrer log without privilege escalation (it is the 122-bit random identifier returned to
+anyone who submits). `journey_token` is the *authentication credential* — server-issued at submit, opaque,
+required to authenticate every subsequent sub-route. The two together form the capability; neither alone is
+sufficient.
+
+| Sub-route | Authentication | Missing/mismatch |
+|---|---|---|
+| `POST /v1/access-risk` (submit) | none — anonymous entry point | — |
+| `GET /v1/access-risk/:runId` (poll) | `?journey_token=` query param | `404` (no oracle) |
+| `POST /v1/access-risk/:runId/resume` | `journey_token` in strict body | `404` (no oracle) |
+| `POST /v1/access-risk/:runId/interaction` | `journey_token` in strict body | `404` (no oracle) |
+
+On a successful poll, the full `PublicJourneyProjection` (including `journey_token`) is returned so the client
+can re-confirm its held credential. The Ordering orchestrator stores the full projection and passes
+`priorJourney.data.journey_token` to `GateLeakPort.resume`; `HttpGateLeakPort` forwards it as `journey_token`
+in the body. The dashboard BFF never exposes the token to the end-user directly.
+
+**Route:** `POST /v1/access-risk/:runId/interaction` (sibling of the existing `:runId/resume` + `:runId` poll).
+
+**Request contract** (`.strict()` discriminated union; reuses existing service enums, no new payload fields):
+```ts
+// feedback  → the bounded "does this match?" reaction (worse|expected|surprised)
+// enhance_intent → the bounded willingness-to-advance CTA target (product|conversation)
+z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('feedback'),       journey_token: z.string().min(1).max(128), reaction: ReactionSchema }).strict(),
+  z.object({ kind: z.literal('enhance_intent'), journey_token: z.string().min(1).max(128), target:   CtaInteractionSchema }).strict(),
+])
+```
+The `subject` and `run mode` are **derived from the durable run**, never accepted from the caller — the body has
+no `subject`/`placed_by`/`chain`/`contract`, and `.strict()` structurally rejects any smuggled member/PII field.
+
+**Capability + fail-closed order** (each step is a pinned known-bad regression input):
+1. Rate-limit via the teaser limiter (shared with the other public routes).
+2. Parse body → `400` on malformed / unknown discriminant / extra field.
+3. `getPublicGateLeakJourney(runId)` → `404` if absent (a non-public / unknown `run_id` is not in this store — this
+   is what makes "non-public runs fail-closed" structural, since dogfood runs live only in `getRun`).
+4. `journey.journey_token === body.journey_token` → `404` on mismatch (no existence oracle for a caller without
+   the capability).
+5. `isRunWithinWindow(journey, now, runWindow)` → `404` when expired (same 24h window as reaction/contact).
+
+**Durable writes** (both already on the `EventStore` port; **no port change**):
+- `appendAttention({ subject: journey.subject, journey_token, kind, ts })` — the demand/proof event. Idempotent on
+  `(journey_token, kind)`; returns `{ created }`.
+- **Only when `created === true`**, `appendRunEvent({ run_id, mode: 'public-gate-leak', inputs_hash: journey.inputs_hash,
+  reaction? | cta_interaction?, stale_set_size: 0, reruns: 0, ts })` — persists the bounded value under the run's
+  **own** `public-gate-leak` mode (contrast the `dogfood-full` reaction handler).
+
+**Retry semantics (explicit + tested):** attention idempotency is the anchor. A repeat interaction of the same
+`(journey_token, kind)` returns `created=false` → the route writes **no** second `RunEvent` and replies `200
+{ ok:true, deduplicated:true }` — a journey cannot inflate demand (or the aggregate) by retrying, and a differing
+later value is a no-op, not an error (mirrors the `AttentionEvent` "counts once" contract, R-4). Attention is
+written before the value row so the weakest-link proof (the demand event) is the durable half if a write is
+interrupted.
+
+**Untouched:** `POST /v1/audit/reaction` + `/v1/audit/contact` keep their `dogfood-full` behavior verbatim.
 
 ---
 
-## 12. Flatline Findings Resolution Map
+## 3. Data Model & Migrations (FR-1, FR-10)
 
-| Finding | Resolved in |
-|---|---|
-| IMP-001 write target / upsert / conflict | §2 ADR + §3 write contract |
-| IMP-003 /v1/audit schema/auth/pagination/provenance | §4.1 |
-| IMP-004 deterministic signal formulas + windows | §4.2 |
-| IMP-005 member-level ↔ k-anon re-identification | §4.3, §10 |
-| IMP-007 freshness/latency numeric bounds | §4.4 |
-| IMP-008 block-at-date finality/timestamp/reorg | §4.5 |
-| IMP-009 exporter idempotency/dry-run/recovery | §3, §5 |
-| IMP-010 identity cardinality edge cases | §3 conflict policy |
-| IMP-011 tenancy/scope/isolation/access-logging | §10 |
-| IMP-012 onboarding state transitions/idempotency | §7 |
-| IMP-013 agent-gate baseline/redaction/CI exit | §8 |
-| IMP-014 representative E2E scenarios | §11 |
+New forward migration `packages/services/shadow-audit/sql/0002_public_gate_leak.sql` (additive; never alters the
+existing `shadow_audit_run_events`/`shadow_audit_contacts` shape [grounding §A]):
+
+| Table | Key columns | Purpose |
+|-------|-------------|---------|
+| `public_gate_leak_runs` | `run_id TEXT PK`, `inputs_hash CHAR(64)`, `subject_chain_id`, `subject_contract_address`, `outcome TEXT CHECK IN (delivered_e1, needs_input, refused, unavailable)`, `refusal_code TEXT NULL`, `ts TIMESTAMPTZ` | Durable public-run registration (FR-3); member-free. |
+| `gate_leak_attention` | `id BIGSERIAL PK`, `subject_chain_id`, `subject_contract_address`, `journey_token TEXT`, `kind TEXT CHECK(...)`, `ts TIMESTAMPTZ`, `UNIQUE(journey_token, kind)` for idempotent demand | Append-only attention/demand (FR-8/FR-9); `.strict()`-mirrored, no member columns. |
+| `gate_leak_subject` | `subject_chain_id`, `subject_contract_address`, `first_seen_ts`, `PRIMARY KEY(chain_id,contract_address)` | Canonical subject; no ownership fields. |
+
+All CHECK constraints mirror the Zod enums (single source of wire truth, matching the existing
+`REFUSAL_HTTP_STATUS` discipline [grounding §A]). Migrations apply idempotently on boot
+(`runMigrations()` pattern [grounding §B]).
 
 ---
 
-## 13. Deferred / Open (not this cycle)
+## 4. API / Contract Surface
 
-- **D1 holder-quality REASONING + `AccessDecisionRecord` + explanation layer** → #283 / Option-C / Eileen.
-- **D4 coexistence runtime verification** → separate read-only test spike (the spine does not depend on it, §1).
-- **Member-graph `member_facts` exact shape** (JSON column vs table) → implementation detail; both satisfy §3.
-- **Lane C holder-quality signal contract** (Hermes) · **Lane D action layer** ("later").
+| Method | Path | Building | Change |
+|--------|------|----------|--------|
+| GET/POST | public gate-leak entry (reuse/extend `/v1/access-risk` + a POST variant for `access_started_at` resume) | shadow-audit | Register run (FR-3); return typed `needs_input` (FR-4). Existing k-anon/cache/budget/refusal invariants unchanged. |
+| POST | `/v1/audit/reaction`, `/v1/audit/contact` | shadow-audit | **No change** — now resolve because the public run is registered (FR-3). Keep `dogfood-full` mode. |
+| POST | `/v1/access-risk/:runId/interaction` | shadow-audit | **New, minimal (FR-11 · amendment).** Capability = `run_id` + `journey_token`; strict `feedback`/`enhance_intent` union; derives subject + `public-gate-leak` mode from the durable run; appends `AttentionKind` + bounded value; fail-closed. |
+| POST | ordering intake for `gate-leak` product | ordering | New preset (FR-5); anonymous-friendly; `.strict()`. |
+| GET | `/v1/access-risk/:runId?journey_token=` (poll) | shadow-audit | Authenticated status poll (FR-7). `journey_token` required as query param; missing/mismatch → `404`. Returns full `PublicJourneyProjection` (including token) on success. NOT the dashboard BFF. |
+
+**Wire-status discipline:** `needs_input` gets a stable status via the refusal enum + `REFUSAL_HTTP_STATUS`
+map extension (or a sibling typed-state map). No raw ad-hoc HTTP codes.
 
 ---
 
-## 14. Flatline SDD Review — Integrations (2026-07-10)
+## 5. Security & Privacy (R-2, R-3 · hard invariants)
 
-> 3-model review. The reported "17 blockers" were **empty `SKP-*` artifacts** of a single-voice scoring
-> dropout (the middle voice scored 0 across all items) — NOT real blockers, no content. The genuine signal is
-> **1 high-consensus (IMP-016) + 15 content-bearing disputed** (gpt-5.6-sol + grok both scored 900+),
-> integrated below. Verdict quality: honest — degraded consensus, but the surviving voices agreed strongly.
+- **Every exit channel is member-free and sub-k-safe.** Enumerate and pin: `200` E1, typed refusal,
+  `needs_input`, attention event, poll projection, and logs. `.strict()` schemas structurally forbid member
+  fields; a known-bad regression input (a payload attempting to smuggle a wallet/email/sub-k denominator) must
+  be **rejected/absent**, pinned by test (not a comment) — the sibling-channel-leak lesson
+  ([[audit-the-sibling-channels]]).
+- **k-anon preserved:** the new path reuses `computeAccessRisk`'s existing k-anon cohorting [grounding §A]; the
+  registration/attention layer never re-publishes an exact sub-k denominator.
+- **Anti-abuse:** reuse the existing per-IP (best-effort) + cache + identity-independent **global budget**
+  [grounding §A]; the durable registration adds a per-subject idempotency key so abuse cannot inflate expensive
+  work. The **submit** path is unauthenticated (FR: value precedes signup); subsequent sub-routes (poll, resume,
+  interaction) are authenticated by the server-issued `journey_token` — see the capability contract in §2.7.
+- **Fail closed (R-5):** durable-upstream-down → `unavailable`, never an in-memory masquerade.
 
-### Load-bearing (refine the contracts above)
-- **IMP-009 (960) — RoleSnapshot transport was UNDEFINED (real gap).** The exporter (freeside-characters)
-  and the stateless service (Railway) are separate — a file path does not cross repos/hosts. Resolution:
-  the exporter `POST`s the RoleSnapshot to the service's authenticated ingestion endpoint
-  `POST /v1/role-snapshot` (service-token auth; body = `RoleSnapshotSchema` + `sha256` integrity); the
-  service holds the latest snapshot per `(community, captured_at)`, fail-closed if absent/stale.
-  `ROLE_SNAPSHOT_PATH` becomes the local-dev/file fallback ONLY.
-- **IMP-002/003 — separate teaser vs member contracts.** `GET /v1/access-risk` = PUBLIC teaser (on-chain
-  only, k-anon, NO member data; returns meaningful signals or an explicit `insufficient-data`, never
-  empty/always-true). `POST /v1/audit` = AUTHENTICATED member-level (community-scoped). Distinct routes,
-  auth, and clients — prevents the incompatible-client + security-mistake risk.
-- **IMP-006 — profiles field-level ownership.** Exporter OWNS `{walletAddress, member_facts sidecar}`;
-  Score OWNS `{tier, currentRank}`; eligibility OWNS its columns. `ON CONFLICT (community_id, discord_id)
-  DO UPDATE SET` touches ONLY exporter-owned columns — never Score's (no lost updates).
-- **IMP-007 — per-community scoped credentials** (not one shared key). Credential → `community_id`;
-  `audit-acl` fails closed on cross-community. MVP: one key per operated community, issued at onboarding.
-- **IMP-008 — k-anon owner-bypass authz.** Member-level small-cohort disclosure is allowed ONLY when the
-  credential's `community_id == audited community`, is access-logged, and NEVER served cross-community or
-  anonymously.
-- **IMP-010 — canonical role scope.** The audit's "role-holders" = the community's GATED roles (versioned
-  in community config), NOT all Discord roles. The exporter captures all `role_ids` (facts); the audit
-  filters to the gated subset.
-- **IMP-015 — PII retention/deletion/redaction (privacy floor).** Member facts (discord+wallet+roles) are
-  PII. MVP floor: current-state only (no history); community offboard PURGES its `profiles` rows; logs
-  redact wallet/discord (hash/truncate); at-rest encryption per the Postgres deployment. Full policy →
-  follow-on.
-- **IMP-016 (HIGH-CONSENSUS) — expand §11 tests:** add k-anon suppression (`<k` renders `<k`), k-waiver
-  authz (owner-only member-level), pagination ACL (cross-community denied), block finality/reorg (snapshot
-  at finalized block), `inputs_hash` stability (same inputs → same hash), `risk_band` boundary cases.
+---
 
-### Minor (SDD-detail / sprint acceptance criteria)
-IMP-004 `snapshot_date→block` mapping (§4.5 authoritative) · IMP-005 exporter batch is committed whole or
-not (no partial snapshot activation) · IMP-011 `inputs_hash`/`run_id` semantics · IMP-012 SLO measurement
-protocol · IMP-013 `whale_concentration` guard (`max(1, total_held)`; zero-supply→null) · IMP-014 refuse
-member-level older than 2× the freshness bound.
+## 6. Testing Strategy (FR-10 · G-6)
+
+| Layer | Test | Pins |
+|-------|------|------|
+| Round-trip | append→getRun through **real** `PostgresEventStore` (read by reader's path) | G-1, R-3 |
+| Fail-loud | startup with durable-required + no `DATABASE_URL` **throws** | G-1, FR-2 |
+| Feedback binding | register public run → reaction/contact resolve within window (previously 404) | G-2 |
+| Semantic prereq | valid collection, no access-start → typed `needs_input`; supply → resumes to `delivered_e1` | G-3 |
+| Anonymous intake | valid unknown contract → durable `indexing` observation, contact absent, `source:'public_gate_leak'`; `CommunityOnboardingInputs` untouched | G-4 |
+| Immutability | join to community-onboarding never mutates either `inputs_digest` | G-4, R-1 |
+| Privacy | each exit channel rejects/omits member data + sub-k denominator (known-bad inputs) | G-5, R-2 |
+| Idempotency vs demand | replay reuses index/compute AND distinct journeys each count once | G-6, R-4 |
+| Migration | `0002` applies idempotently on boot | FR-10 |
+
+Every non-trivial branch leaves a runnable check that fails if the logic breaks (Karpathy #4). Contract tests
+first where a schema is the contract.
+
+---
+
+## 7. Sprint Decomposition (preview — detailed in `sprint.md`)
+
+- **Sprint 0 (verify-first):** confirm base-branch `ordering-protocol` + `shadow-audit` test state; resolve or
+  route around the `preset.ts` `metadata_snapshot` drift (R-1). Gate: clean baseline before extending.
+- **Sprint 1 (durability + registration · G-1, G-2):** `PostgresEventStore`, fail-loud wiring, `0002`
+  migration, register public runs, feedback binds. Round-trip + fail-loud + binding tests.
+- **Sprint 2 (semantic prereq + projection + attention · G-3, G-5):** typed `needs_input(access_started_at)`
+  resumable state, public journey projection mapper + internal poll, privacy-safe attention events. Privacy +
+  resume tests.
+- **Sprint 3 (anonymous intake + join + idempotency · G-4, G-6):** `gate-leak` ordering preset, `order_id`
+  join to community-onboarding, subject idempotency vs distinct-journey demand, anti-abuse. Immutability +
+  idempotency-vs-demand tests.
+
+---
+
+## 8. Open Questions (resolved by grounding unless noted)
+
+- **Extend `/v1/access-risk` GET vs add a POST?** — A POST variant is cleanest for the `access_started_at`
+  resume + journey handle; the GET stays for the zero-input first probe. Sprint 2 settles the exact surface
+  against the existing router; either way the k-anon/budget path is reused, not reimplemented.
+- **Does the gate-leak preset run inside the same ordering service deploy?** — Yes; it rides the existing
+  lifecycle/outbox in `services/ordering`. Note the outbox drain has no scheduler in `bin/` today [grounding
+  §B]; Sprint 3 must not assume an already-running drain (either invoke `publishOutbox` inline for the
+  gate-leak path or add the scheduler within scope, whichever is smaller — decided against the code at
+  implementation time, disclosed in the PR).

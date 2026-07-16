@@ -14,6 +14,9 @@ import { createKitchenTriagePorts, KitchenTriagePorts } from './kitchen-triage-p
 import { createOrderStore } from './store-factory.js';
 import { FulfillmentOrchestrator, FulfillmentOrchestratorWorker } from './fulfillment-orchestrator.js';
 import { CommunityOnboardingOrchestrator } from './community-onboarding-orchestrator.js';
+import { gateLeakPortsFromEnv } from './gate-leak-ports.js';
+import { lifecyclePublisherFromEnv, type LifecyclePublisher } from './lifecycle-publisher.js';
+import { gateLeakIntakeBudgetFromEnv, type GateLeakIntakeBudget } from './gate-leak-budget.js';
 
 class NoopAudit implements AuditPort {
   async invoke(): Promise<AuditServiceResult> {
@@ -21,8 +24,8 @@ class NoopAudit implements AuditPort {
   }
 }
 
-function triageCapabilityConfig(): CapabilityConfig {
-  return {
+function triageCapabilityConfig(gateLeakReady = false): CapabilityConfig {
+  const config: CapabilityConfig = {
     'collection-index': {
       building: 'sonar-api',
       endpoint: process.env.SONAR_API_URL?.trim() || 'http://sonar.internal',
@@ -31,11 +34,26 @@ function triageCapabilityConfig(): CapabilityConfig {
       building: 'score-api',
       endpoint: process.env.SCORE_API_URL?.trim() || 'https://score.0xhoneyjar.xyz',
     },
+    'metadata-snapshot': {
+      building: 'score-api',
+      endpoint: process.env.SCORE_API_URL?.trim() || 'https://score.0xhoneyjar.xyz',
+    },
     'world-manifest': {
       building: 'worlds-api',
       endpoint: process.env.WORLDS_API_URL?.trim() || 'http://worlds.internal',
     },
+    'subject-resolution': {
+      building: 'ordering-service',
+      endpoint: 'local://gate-leak-subject-resolution',
+    },
   };
+  if (gateLeakReady) {
+    config['shadow-gate-leak'] = {
+      building: 'shadow-audit-api',
+      endpoint: process.env.SHADOW_AUDIT_API_URL!.trim(),
+    };
+  }
+  return config;
 }
 
 export function ctaFromEnv(): Cta {
@@ -48,6 +66,10 @@ export interface OrderingComposition {
   store: OrderStore;
   orchestrator: OrderOrchestrator;
   enqueue: IngredientEnqueueService | undefined;
+  lifecyclePublisher: LifecyclePublisher | undefined;
+  /** True only when index, compute, and durable lifecycle publication are all wired. */
+  gateLeakReady: boolean;
+  gateLeakIntakeBudget: GateLeakIntakeBudget;
 }
 
 export async function createOrderingComposition(): Promise<OrderingComposition> {
@@ -56,10 +78,21 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
   const httpProbes = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
   const github = createGitHubIssuePort();
   const enqueue = github || httpProbes ? new IngredientEnqueueService(store, github, httpProbes) : undefined;
+  const gateLeakPorts = gateLeakPortsFromEnv();
+  const lifecyclePublisher = lifecyclePublisherFromEnv();
+  const gateLeakIntakeBudget = gateLeakIntakeBudgetFromEnv();
+  const gateLeakParts = [gateLeakPorts.gateLeak, gateLeakPorts.index, lifecyclePublisher].filter(Boolean).length;
+  const gateLeakReady = gateLeakParts === 3;
+  if (gateLeakParts > 0 && !gateLeakReady) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[ordering-service] gate-leak is PARTIALLY configured and will fail closed; require SHADOW_AUDIT_API_URL, SONAR_API_URL + SERVICE_TOKEN, and ORDER_LIFECYCLE_PUBLISH_URL',
+    );
+  }
 
   const orchestrator = new OrderOrchestrator({
     store,
-    resolver: new ConfigCapabilityResolver(triageCapabilityConfig()),
+    resolver: new ConfigCapabilityResolver(triageCapabilityConfig(gateLeakReady)),
     audit: new NoopAudit(),
     communities: () => undefined,
     cta: ctaFromEnv(),
@@ -69,9 +102,12 @@ export async function createOrderingComposition(): Promise<OrderingComposition> 
     // The advanceIngredient health gate must have teeth on the INTAKE path too —
     // without this, the service/merge write path bypasses the choke point (BB #443).
     discordHealth: triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined,
+    gateLeak: gateLeakPorts.gateLeak,
+    gateLeakIndex: gateLeakPorts.index,
+    lifecyclePublisher,
   });
 
-  return { store, orchestrator, enqueue };
+  return { store, orchestrator, enqueue, lifecyclePublisher, gateLeakReady, gateLeakIntakeBudget };
 }
 
 export function orchestratorEnabled(): boolean {

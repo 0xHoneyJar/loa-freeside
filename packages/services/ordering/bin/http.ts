@@ -12,7 +12,7 @@ import {
 } from '../src/composition.js';
 import { ReProbeWorker } from '../src/reprobe-worker.js';
 
-const { store, orchestrator, enqueue } = await createOrderingComposition();
+const { store, orchestrator, enqueue, gateLeakReady, gateLeakIntakeBudget } = await createOrderingComposition();
 
 const serviceToken = serviceTokenFromEnv();
 const writeRoutes = writeRoutePostureFromEnv();
@@ -31,19 +31,29 @@ const app = createIntakeApp({
   store,
   now: () => Date.now(),
   onPlaced: (orderId) => {
-    void orchestrator.process(orderId);
+    void orchestrator.process(orderId).catch((error: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[ordering-service] order process failed:',
+        orderId,
+        error instanceof Error ? error.message : error,
+      );
+    });
   },
   orchestrator: mountWrites ? orchestrator : undefined,
   serviceToken,
   serviceTokenLabel: serviceTokenLabelFromEnv(),
+  gateLeakEnabled: gateLeakReady,
+  gateLeakIntakeBudget,
   healthz: {
     store: process.env.DATABASE_URL ? 'postgres' : 'memory',
     kitchen_enqueue: Boolean(enqueue),
+    gate_leak: gateLeakReady ? 'ready' : 'disabled_or_partial',
     write_routes: writeRoutes,
   },
 });
 
-if (process.env.ENABLE_REPROBE === 'true') {
+if (process.env.ENABLE_REPROBE === 'true' || gateLeakReady) {
   const worker = new ReProbeWorker(store, orchestrator);
   worker.start();
 }

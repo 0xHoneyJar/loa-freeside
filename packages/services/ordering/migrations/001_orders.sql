@@ -27,7 +27,17 @@ CREATE TABLE IF NOT EXISTS order_outbox (
   order_id    TEXT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
   subject     TEXT NOT NULL,
   payload     JSONB NOT NULL,
+  idempotency_key TEXT,
   published   BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS order_outbox_pending_idx ON order_outbox (published) WHERE published = FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS order_outbox_idempotency_idx
+  ON order_outbox (idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS order_write_budget (
+  bucket             TEXT NOT NULL,
+  window_started_at  TIMESTAMPTZ NOT NULL,
+  used               INTEGER NOT NULL CHECK (used >= 0),
+  PRIMARY KEY (bucket, window_started_at)
+);

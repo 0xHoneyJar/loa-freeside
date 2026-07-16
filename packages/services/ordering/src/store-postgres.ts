@@ -6,16 +6,21 @@ import pg from 'pg';
 import type { OrderState } from './order-state.js';
 import {
   OrderNotFoundError,
+  OrderWriteBudgetExceededError,
   type NewOrder,
   type OrderPatch,
   type OrderRecord,
   type OrderStore,
+  type OrderWriteBudget,
   type OutboxEntry,
   type OutboxEvent,
   type TransitionOpts,
+  type GateLeakWorkClaim,
+  type GateLeakOrderInput,
 } from './store.js';
 import { assertTransition } from './order-state.js';
 import type { IngredientJob, OperatorAuditEntry, OrderProbeMeta } from './kitchen-types.js';
+import type { GateLeakCommunityJoin } from '@freeside/ordering-protocol';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -34,7 +39,9 @@ function rowToRecord(row: pg.QueryResultRow): OrderRecord {
     output: row.output ?? undefined,
     output_digest: row.output_digest ?? undefined,
     refusal: row.refusal ?? undefined,
-    ingredients: row.ingredients ?? undefined,
+    ingredients: row.ingredients
+      ? { metadata_snapshot: 'optional', ...row.ingredients }
+      : undefined,
     fulfillment: row.fulfillment ?? undefined,
     ingredient_jobs: (row.ingredient_jobs ?? []) as IngredientJob[],
     operator_audit: (row.operator_audit ?? []) as OperatorAuditEntry[],
@@ -68,7 +75,7 @@ export class PostgresOrderStore implements OrderStore {
   }
 
   async runMigrations(): Promise<void> {
-    for (const file of ['001_orders.sql', '002_probe_meta.sql']) {
+    for (const file of ['001_orders.sql', '002_probe_meta.sql', '003_gate_leak.sql']) {
       const sql = readFileSync(join(__dirname, '../migrations', file), 'utf8');
       await this.pool.query(sql);
     }
@@ -78,7 +85,14 @@ export class PostgresOrderStore implements OrderStore {
     await this.pool.end();
   }
 
-  async placeOrder(order: NewOrder, placedEvent: OutboxEvent): Promise<{ created: boolean; record: OrderRecord }> {
+  async placeOrder(
+    order: NewOrder,
+    placedEvent: OutboxEvent,
+    writeBudget?: OrderWriteBudget,
+  ): Promise<{ created: boolean; record: OrderRecord }> {
+    if (writeBudget && (!Number.isInteger(writeBudget.limit) || writeBudget.limit < 1)) {
+      throw new Error('order write budget limit must be positive');
+    }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -86,6 +100,19 @@ export class PostgresOrderStore implements OrderStore {
       if (existing.rows.length > 0) {
         await client.query('COMMIT');
         return { created: false, record: rowToRecord(existing.rows[0]) };
+      }
+
+      if (writeBudget) {
+        const consumed = await client.query(
+          `INSERT INTO order_write_budget (bucket, window_started_at, used)
+           VALUES ($1,$2,1)
+           ON CONFLICT (bucket, window_started_at) DO UPDATE SET
+             used = order_write_budget.used + 1
+           WHERE order_write_budget.used < $3
+           RETURNING used`,
+          [writeBudget.bucket, writeBudget.window_started_at, writeBudget.limit],
+        );
+        if (consumed.rows.length === 0) throw new OrderWriteBudgetExceededError();
       }
 
       const ts = this.now();
@@ -209,6 +236,23 @@ export class PostgresOrderStore implements OrderStore {
     ]);
   }
 
+  async appendEventOnce(
+    orderId: string,
+    event: OutboxEvent,
+    idempotencyKey: string,
+  ): Promise<{ created: boolean }> {
+    const exists = await this.pool.query('SELECT 1 FROM orders WHERE order_id = $1', [orderId]);
+    if (exists.rows.length === 0) throw new OrderNotFoundError(orderId);
+    const inserted = await this.pool.query(
+      `INSERT INTO order_outbox (order_id, subject, payload, idempotency_key)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+       RETURNING seq`,
+      [orderId, event.subject, JSON.stringify(event.payload), idempotencyKey],
+    );
+    return { created: inserted.rows.length > 0 };
+  }
+
   async patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord> {
     const current = await this.get(orderId);
     if (!current) throw new OrderNotFoundError(orderId);
@@ -268,5 +312,149 @@ export class PostgresOrderStore implements OrderStore {
   async listByState(state: OrderState): Promise<OrderRecord[]> {
     const res = await this.pool.query('SELECT * FROM orders WHERE state = $1', [state]);
     return res.rows.map(rowToRecord);
+  }
+
+  async claimGateLeakWork(workKey: string, orderId: string): Promise<{ created: boolean; claim: GateLeakWorkClaim }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const order = await client.query('SELECT product FROM orders WHERE order_id = $1 FOR SHARE', [orderId]);
+      if (order.rows[0]?.product !== 'gate-leak') {
+        throw new Error(`gate-leak work claim requires a gate-leak order: ${orderId}`);
+      }
+      const inserted = await client.query(
+        `INSERT INTO gate_leak_work_claims (work_key, canonical_order_id, created_at_unix)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (work_key) DO NOTHING
+         RETURNING work_key, canonical_order_id`,
+        [workKey, orderId, this.now()],
+      );
+      const row = inserted.rows[0] ?? (
+        await client.query(
+          'SELECT work_key, canonical_order_id FROM gate_leak_work_claims WHERE work_key = $1',
+          [workKey],
+        )
+      ).rows[0];
+      await client.query('COMMIT');
+      return {
+        created: inserted.rows.length > 0,
+        claim: { work_key: row.work_key, canonical_order_id: row.canonical_order_id },
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async appendGateLeakInput(input: GateLeakOrderInput, event: OutboxEvent): Promise<{ created: boolean }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const order = await client.query('SELECT product FROM orders WHERE order_id = $1 FOR SHARE', [
+        input.gate_leak_order_id,
+      ]);
+      if (order.rows[0]?.product !== 'gate-leak') throw new Error('gate-leak order not found');
+      const inserted = await client.query(
+        `INSERT INTO gate_leak_order_inputs (
+          gate_leak_order_id, input_name, input_value, supplied_at_unix
+        ) VALUES ($1,$2,$3,$4)
+        ON CONFLICT (gate_leak_order_id, input_name) DO NOTHING
+        RETURNING gate_leak_order_id`,
+        [input.gate_leak_order_id, input.input, input.value, input.supplied_at_unix],
+      );
+      if (inserted.rows.length === 0) {
+        const existing = await client.query(
+          `SELECT input_value FROM gate_leak_order_inputs
+           WHERE gate_leak_order_id = $1 AND input_name = $2`,
+          [input.gate_leak_order_id, input.input],
+        );
+        if (existing.rows[0]?.input_value !== input.value) throw new Error('conflicting gate-leak input');
+      } else {
+        await client.query('INSERT INTO order_outbox (order_id, subject, payload) VALUES ($1,$2,$3)', [
+          input.gate_leak_order_id,
+          event.subject,
+          JSON.stringify(event.payload),
+        ]);
+      }
+      await client.query('COMMIT');
+      return { created: inserted.rows.length > 0 };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getGateLeakInput(orderId: string): Promise<GateLeakOrderInput | undefined> {
+    const result = await this.pool.query(
+      `SELECT gate_leak_order_id, input_name, input_value, supplied_at_unix
+       FROM gate_leak_order_inputs
+       WHERE gate_leak_order_id = $1 AND input_name = 'access_started_at'`,
+      [orderId],
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
+    return {
+      gate_leak_order_id: row.gate_leak_order_id,
+      input: 'access_started_at',
+      value: row.input_value,
+      supplied_at_unix: Number(row.supplied_at_unix),
+    };
+  }
+
+  async appendGateLeakJoin(join: GateLeakCommunityJoin, event: OutboxEvent): Promise<{ created: boolean }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const rows = await client.query(
+        'SELECT order_id, product FROM orders WHERE order_id = ANY($1::text[]) FOR SHARE',
+        [[join.gate_leak_order_id, join.community_onboarding_order_id]],
+      );
+      const products = new Map(rows.rows.map((row) => [row.order_id, row.product]));
+      if (products.get(join.gate_leak_order_id) !== 'gate-leak') throw new Error('gate-leak order not found');
+      if (products.get(join.community_onboarding_order_id) !== 'community-onboarding') {
+        throw new Error('community-onboarding order not found');
+      }
+      const inserted = await client.query(
+        `INSERT INTO gate_leak_order_joins (
+          gate_leak_order_id, community_onboarding_order_id, joined_at_unix
+        ) VALUES ($1,$2,$3)
+        ON CONFLICT (gate_leak_order_id, community_onboarding_order_id) DO NOTHING
+        RETURNING gate_leak_order_id`,
+        [join.gate_leak_order_id, join.community_onboarding_order_id, join.joined_at_unix],
+      );
+      if (inserted.rows.length > 0) {
+        await client.query('INSERT INTO order_outbox (order_id, subject, payload) VALUES ($1,$2,$3)', [
+          join.gate_leak_order_id,
+          event.subject,
+          JSON.stringify(event.payload),
+        ]);
+      }
+      await client.query('COMMIT');
+      return { created: inserted.rows.length > 0 };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listGateLeakJoins(gateLeakOrderId: string): Promise<GateLeakCommunityJoin[]> {
+    const result = await this.pool.query(
+      `SELECT gate_leak_order_id, community_onboarding_order_id, joined_at_unix
+       FROM gate_leak_order_joins
+       WHERE gate_leak_order_id = $1
+       ORDER BY joined_at_unix, community_onboarding_order_id`,
+      [gateLeakOrderId],
+    );
+    return result.rows.map((row) => ({
+      gate_leak_order_id: row.gate_leak_order_id,
+      community_onboarding_order_id: row.community_onboarding_order_id,
+      joined_at_unix: Number(row.joined_at_unix),
+    }));
   }
 }

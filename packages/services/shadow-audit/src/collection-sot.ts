@@ -26,6 +26,8 @@ export const EntitySnapshotSchema = z
     world_validated: z.boolean(),
     /** True iff ANY label on the entity is contested. */
     contested: z.boolean(),
+    /** Optional operator-ratified date when the community's gate/access began. */
+    access_started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   })
   .strict();
 
@@ -99,6 +101,7 @@ export function buildRegistryFromSnapshot(snapshot: RatifiedSnapshot): CollapseR
       map[`${e.chain}/${e.contract}`] = {
         collection: collectionKey,
         standard: e.token_standard as 'erc721' | 'erc1155',
+        access_started_at: e.access_started_at,
       };
       chains.add(e.chain);
       included.push(`${e.chain}:${e.contract}`);

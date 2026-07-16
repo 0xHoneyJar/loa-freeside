@@ -27,12 +27,19 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
+  AccessStartedAtDateSchema,
   OrderSchema,
+  PUBLIC_JOURNEY_HTTP_STATUS,
+  PublicGateLeakChainIdSchema,
+  PublicGateLeakContractAddressSchema,
   REFUSAL_HTTP_STATUS,
+  projectPublicJourney,
+  type AttentionKind,
   type CohortCount,
   type Cta,
   type DriftReport,
   type Order,
+  type PublicJourneyProjection,
   type Refusal,
 } from '@freeside/shadow-audit-protocol';
 import {
@@ -54,15 +61,20 @@ import {
 } from '../association-verifier.js';
 import type { RateLimiter } from '../rate-limiter.js';
 import {
+  CtaInteractionSchema,
   isRunWithinWindow,
   ReactionSchema,
   type EventStore,
   type RunEvent,
 } from '../event-store.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { RoleSnapshotSchema } from '../role-snapshot.js';
 import { timingSafeEqualStr, type RoleSink } from '../role-store.js';
-import { computeAccessRisk } from '../access-risk.js';
+import {
+  computeAccessRisk,
+  type AccessRiskOutput,
+  type AccessRiskResult,
+} from '../access-risk.js';
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
@@ -112,8 +124,12 @@ export interface AuditRouterDeps {
    * reconstructions per window no matter who calls, how many IPs they rotate, or what headers they forge.
    */
   teaserBudget?: RateLimiter;
+  /** Required deployment-wide durable-write budget, consumed atomically by EventStore registration. */
+  publicJourneyBudget: { limit: number; windowMs: number };
   /** S2-T3: TTL for memoizing the (deterministic) teaser result, so repeat queries cost ZERO chain work. */
   teaserCacheTtlMs?: number;
+  /** Distributed compute-claim lease. A crashed worker becomes retryable after this interval. */
+  publicComputeLeaseMs?: number;
 }
 
 const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
@@ -123,6 +139,8 @@ const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
 const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
 
 type RefusalStatus = 404 | 422 | 429 | 503;
+
+class PublicJourneyBudgetExceededError extends Error {}
 
 function refusalStatus(refusal: Refusal): RefusalStatus {
   return (REFUSAL_HTTP_STATUS[refusal.code] ?? 422) as RefusalStatus;
@@ -216,6 +234,12 @@ async function readBody(c: Context): Promise<{ body: unknown; isForm: boolean }>
 export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const app = new Hono();
   const runWindow = deps.runWindowMs ?? DEFAULT_RUN_WINDOW_MS;
+  if (!Number.isInteger(deps.publicJourneyBudget.limit) || deps.publicJourneyBudget.limit < 1) {
+    throw new Error('publicJourneyBudget.limit must be a positive integer');
+  }
+  if (!Number.isInteger(deps.publicJourneyBudget.windowMs) || deps.publicJourneyBudget.windowMs < 1) {
+    throw new Error('publicJourneyBudget.windowMs must be a positive integer');
+  }
 
   const isRateLimited = (c: Context): boolean =>
     !deps.rateLimiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed;
@@ -259,6 +283,340 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const teaserTtlMs = deps.teaserCacheTtlMs ?? 300_000; // 5 min
   const TEASER_CACHE_MAX = 500;
   const teaserCache = new Map<string, { at: number; body: unknown }>();
+  const teaserInFlight = new Map<string, Promise<PublicCompute>>();
+
+  const GateLeakBodySchema = z
+    .object({
+      chain: PublicGateLeakChainIdSchema,
+      contract: PublicGateLeakContractAddressSchema,
+      access_started_at: AccessStartedAtDateSchema.optional(),
+      threshold: z.number().int().positive().optional(),
+      /** Server-issued retry capability. A supplied token must already exist. */
+      journey_token: z.string().min(1).max(128).optional(),
+    })
+    .strict();
+  const ResumeGateLeakBodySchema = z
+    .object({
+      access_started_at: AccessStartedAtDateSchema,
+      // The server-issued capability token required to authenticate the resume request (lifecycle-wide
+      // capability contract: run_id is public address, journey_token is the authentication credential).
+      journey_token: z.string().min(1).max(128),
+    })
+    .strict();
+  // Public interaction contract (FR-11): a bounded, discrete demand signal against an existing run.
+  // `.strict()` on each arm STRUCTURALLY rejects any wallet / email / IP / free-text / role / holding /
+  // caller-supplied `subject` / `placed_by` — the only fields are the capability token and one bounded enum.
+  // `feedback` carries the "does this match?" reaction; `enhance_intent` carries the willingness-to-advance
+  // CTA target (finally wiring the previously-unused CtaInteractionSchema).
+  const InteractionBodySchema = z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal('feedback'),
+        journey_token: z.string().min(1).max(128),
+        reaction: ReactionSchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('enhance_intent'),
+        journey_token: z.string().min(1).max(128),
+        target: CtaInteractionSchema,
+      })
+      .strict(),
+  ]);
+
+  const publicSubject = (chain: string, contract: string) => ({
+    chain_id: chain,
+    contract_address: contract.toLowerCase(),
+  });
+  const originalSubmissionHash = (chain: string, contract: string, threshold: number): string =>
+    createHash('sha256')
+      .update(
+        JSON.stringify({
+          chain_id: chain,
+          contract_address: contract.toLowerCase(),
+          threshold,
+          source: 'public_gate_leak',
+        }),
+      )
+      .digest('hex');
+  // The run id is the anonymous mutation capability. It MUST be server-random; the
+  // caller-controlled journey token is only an idempotency/correlation key.
+  const publicRunId = (): string => `gate_${randomUUID().replaceAll('-', '')}`;
+  const isFutureAccessDate = (value: string, now: number): boolean =>
+    value > new Date(now).toISOString().slice(0, 10);
+
+  const cacheSuccessfulTeaser = (key: string, now: number, output: AccessRiskOutput): void => {
+    if (teaserCache.size >= TEASER_CACHE_MAX) {
+      const oldest = teaserCache.keys().next().value;
+      if (oldest !== undefined) teaserCache.delete(oldest);
+    }
+    teaserCache.set(key, { at: now, body: output });
+  };
+  const publicComputeCacheKey = (args: {
+    chain: string;
+    contract: string;
+    accessStartedAt: string;
+    threshold: number;
+  }): string => `${args.chain}/${args.contract}/${args.accessStartedAt}/${args.threshold}`;
+  const publicComputeKey = (args: {
+    chain: string;
+    contract: string;
+    accessStartedAt: string;
+    threshold: number;
+  }): string => createHash('sha256').update(publicComputeCacheKey(args)).digest('hex');
+
+  type PublicCompute =
+    | { kind: 'result'; result: AccessRiskResult }
+    | { kind: 'budget' }
+    | { kind: 'in_progress' };
+  const computePublic = async (args: {
+    chain: string;
+    contract: string;
+    accessStartedAt: string;
+    threshold: number;
+    now: number;
+  }): Promise<PublicCompute> => {
+    const cacheKey = publicComputeCacheKey(args);
+    const computeKey = publicComputeKey(args);
+    const hit = teaserCache.get(cacheKey);
+    if (hit && args.now - hit.at < teaserTtlMs) {
+      return { kind: 'result', result: { ok: true, output: hit.body as AccessRiskOutput } };
+    }
+    const durable = await deps.eventStore.getPublicComputeResult(computeKey);
+    if (durable !== undefined) {
+      const output = durable as AccessRiskOutput;
+      cacheSuccessfulTeaser(cacheKey, args.now, output);
+      return { kind: 'result', result: { ok: true, output } };
+    }
+    const active = teaserInFlight.get(cacheKey);
+    if (active) return active;
+    const ownerToken = randomUUID();
+    const claimedAt = new Date(args.now).toISOString();
+    const claim = await deps.eventStore.claimPublicCompute({
+      compute_key: computeKey,
+      owner_token: ownerToken,
+      claimed_at: claimedAt,
+      lease_expires_at: new Date(args.now + (deps.publicComputeLeaseMs ?? 600_000)).toISOString(),
+    });
+    if (claim === 'complete') {
+      const completed = await deps.eventStore.getPublicComputeResult(computeKey);
+      if (completed !== undefined) {
+        const output = completed as AccessRiskOutput;
+        cacheSuccessfulTeaser(cacheKey, args.now, output);
+        return { kind: 'result', result: { ok: true, output } };
+      }
+      return { kind: 'in_progress' };
+    }
+    if (claim === 'busy') return { kind: 'in_progress' };
+    if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) {
+      await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+      return { kind: 'budget' };
+    }
+    const computation = (async (): Promise<PublicCompute> => {
+      try {
+        const result = await computeAccessRisk(
+          {
+            chain: args.chain,
+            contract: args.contract,
+            snapshotDate: args.accessStartedAt,
+            threshold: args.threshold,
+            nowUnixSeconds: Math.floor(args.now / 1000),
+            cta: deps.cta,
+          },
+          { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
+        );
+        if (result.ok) {
+          // Re-read the clock after the expensive work. Passing the claim timestamp here
+          // would let a computation that actually outlived its lease commit stale work.
+          const completed = await deps.eventStore.completePublicCompute(
+            computeKey,
+            ownerToken,
+            result.output,
+            new Date(deps.now()).toISOString(),
+          );
+          if (!completed) {
+            // Another replica may have renewed the lease while this one was working.
+            // Never publish or locally cache the stale owner's result.
+            const replacement = await deps.eventStore.getPublicComputeResult(computeKey);
+            if (replacement !== undefined) {
+              const output = replacement as AccessRiskOutput;
+              cacheSuccessfulTeaser(cacheKey, deps.now(), output);
+              return { kind: 'result', result: { ok: true, output } };
+            }
+            await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+            return { kind: 'in_progress' };
+          }
+          cacheSuccessfulTeaser(cacheKey, deps.now(), result.output);
+        } else {
+          await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+        }
+        return { kind: 'result', result };
+      } catch (error) {
+        await deps.eventStore.releasePublicCompute(computeKey, ownerToken);
+        throw error;
+      }
+    })();
+    teaserInFlight.set(cacheKey, computation);
+    try {
+      return await computation;
+    } finally {
+      if (teaserInFlight.get(cacheKey) === computation) teaserInFlight.delete(cacheKey);
+    }
+  };
+
+  // Widened to the full AttentionKind: automatic lifecycle kinds are recorded by the journey
+  // registration path; the two INTERACTION kinds (`feedback`, `enhance_intent`) are recorded by the
+  // public interaction route below. Returns the append idempotency flag so callers that must react to
+  // a first-seen vs replay (the interaction route) can, while the fire-and-forget lifecycle callers ignore it.
+  const attention = async (
+    subject: ReturnType<typeof publicSubject>,
+    journeyToken: string,
+    kind: AttentionKind,
+    now: number,
+  ): Promise<{ created: boolean }> =>
+    deps.eventStore.appendAttention({
+      subject_chain_id: subject.chain_id,
+      subject_contract_address: subject.contract_address,
+      journey_token: journeyToken,
+      kind,
+      ts: new Date(now).toISOString(),
+    });
+
+  const registerPublicJourney = async (args: {
+    runId: string;
+    journeyToken: string;
+    chain: string;
+    contract: string;
+    threshold: number;
+    inputsHash: string;
+    outcome: 'submitted' | 'computing' | 'needs_input' | 'delivered_e1' | 'refused' | 'unavailable';
+    refusalCode?: Refusal['code'];
+    accessStartedAt?: string;
+    staleSetSize?: number;
+    now: number;
+  }) => {
+    const subject = publicSubject(args.chain, args.contract);
+    const appended = await deps.eventStore.appendPublicGateLeakRun(
+      {
+        run_id: args.runId,
+        journey_token: args.journeyToken,
+        subject,
+        inputs_hash: args.inputsHash,
+        threshold: args.threshold,
+        outcome: args.outcome,
+        refusal_code: args.refusalCode,
+        access_started_at: args.accessStartedAt,
+        ts: new Date(args.now).toISOString(),
+      },
+      {
+        bucket: 'public-gate-leak',
+        window_started_at: new Date(
+          Math.floor(args.now / deps.publicJourneyBudget.windowMs) * deps.publicJourneyBudget.windowMs,
+        ).toISOString(),
+        limit: deps.publicJourneyBudget.limit,
+      },
+    );
+    if (appended.rate_limited) throw new PublicJourneyBudgetExceededError();
+    let durable = await deps.eventStore.getPublicGateLeakJourneyByToken(args.journeyToken);
+    if (!durable) throw new Error(`public journey disappeared after append: ${args.journeyToken}`);
+    if (!appended.created && args.accessStartedAt) {
+      await deps.eventStore.appendPublicJourneyInput({
+        run_id: durable.run_id,
+        input: 'access_started_at',
+        value: args.accessStartedAt,
+        ts: new Date(args.now).toISOString(),
+      });
+    }
+    if (!appended.created && args.outcome !== 'submitted' && durable.current_outcome !== args.outcome) {
+      try {
+        await deps.eventStore.appendPublicJourneyTransition({
+          run_id: durable.run_id,
+          outcome: args.outcome,
+          refusal_code: args.refusalCode,
+          ts: new Date(args.now).toISOString(),
+        });
+      } catch (error) {
+        // A concurrent terminal writer wins. Durable state, never the attempted state,
+        // remains the response truth. Other conflicts (notably semantic input) surface.
+        if (!(error instanceof Error && error.message.includes('terminal public journey'))) throw error;
+      }
+      durable = (await deps.eventStore.getPublicGateLeakJourney(durable.run_id)) ?? durable;
+    }
+    const runId = durable.run_id;
+    // Self-healing binding: if a prior attempt persisted the public journey but died before
+    // registering the feedback run, the retry fills the missing append-only event.
+    if (
+      durable.current_outcome !== 'submitted' &&
+      durable.current_outcome !== 'computing' &&
+      !(await deps.eventStore.getRun(runId))
+    ) {
+      await deps.eventStore.appendRunEvent({
+        run_id: runId,
+        mode: 'public-gate-leak',
+        inputs_hash: args.inputsHash,
+        stale_set_size: args.staleSetSize ?? 0,
+        reruns: 0,
+        ts: new Date(args.now).toISOString(),
+      });
+    }
+    await attention(durable.subject, durable.journey_token, 'submitted', args.now);
+    if (
+      durable.current_outcome === 'needs_input' ||
+      durable.current_outcome === 'delivered_e1' ||
+      durable.current_outcome === 'refused'
+    ) {
+      await attention(durable.subject, durable.journey_token, durable.current_outcome, args.now);
+    }
+    return projectPublicJourney({
+      run_id: durable.run_id,
+      journey_token: durable.journey_token,
+      subject: durable.subject,
+      outcome: durable.current_outcome,
+      refusal_code: durable.current_refusal_code,
+    });
+  };
+
+  const publicJourneyStatus = (journey: PublicJourneyProjection): 200 | 202 | 404 | 422 | 428 | 429 | 503 =>
+    journey.status.state === 'refused'
+      ? (REFUSAL_HTTP_STATUS[journey.status.refusal_code] as 404 | 422 | 429 | 503)
+      : (PUBLIC_JOURNEY_HTTP_STATUS[journey.status.state] as 200 | 202 | 428 | 503);
+
+  const respondFromDurableJourney = async (
+    c: Context,
+    args: {
+      journey: PublicJourneyProjection;
+      attemptedRefusal?: Refusal;
+      output?: AccessRiskOutput;
+      compute?: { chain: string; contract: string; accessStartedAt: string; threshold: number };
+    },
+  ): Promise<Response> => {
+    if (args.journey.status.state === 'delivered_e1') {
+      let output = args.output;
+      if (!output && args.compute) {
+        output = (await deps.eventStore.getPublicComputeResult(publicComputeKey(args.compute))) as
+          | AccessRiskOutput
+          | undefined;
+      }
+      if (!output) {
+        // A delivered transition without its immutable aggregate artifact is a
+        // storage inconsistency. Never attach the losing attempted refusal or
+        // fabricate a success body.
+        return c.json({ journey: args.journey, error: 'delivered report is temporarily unavailable' }, 503);
+      }
+      return c.json({ journey: args.journey, report: { ...output, run_id: args.journey.run_id } }, 200);
+    }
+    if (
+      args.journey.status.state === 'refused' &&
+      args.attemptedRefusal?.code === args.journey.status.refusal_code
+    ) {
+      return c.json(
+        { journey: args.journey, error: args.attemptedRefusal },
+        publicJourneyStatus(args.journey),
+      );
+    }
+    return c.json({ journey: args.journey }, publicJourneyStatus(args.journey));
+  };
 
   app.get('/v1/access-risk', async (c) => {
     // Anti-abuse #1 — per-IP speed bump. BEST-EFFORT ONLY: the key derives from X-Forwarded-For, which the
@@ -333,6 +691,22 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       );
     }
 
+    // G-2: register the PUBLIC teaser run so its run_id resolves via getRun and reaction/contact can BIND to
+    // it (previously the teaser returned a run_id backed by NO event, so every follow-up 404'd). Aggregate
+    // only: stale_set_size mirrors recordRun — the exact cohort, or 0 when k-anon-suppressed (never a
+    // back-computable sub-k count). Runs on the cache-MISS path only (a cache hit returned above), so a
+    // flood does not multiply registrations. Fail-closed by design: if the durable store is unavailable the
+    // teaser errors rather than promise a feedback binding it cannot honor.
+    const staleUpper = result.output.stale_access_upper_bound;
+    await deps.eventStore.appendRunEvent({
+      run_id: result.output.run_id,
+      mode: 'public-gate-leak',
+      inputs_hash: result.output.inputs_hash,
+      stale_set_size: staleUpper.kind === 'exact' ? staleUpper.value : 0,
+      reruns: 0,
+      ts: new Date(now).toISOString(),
+    });
+
     if (teaserCache.size >= TEASER_CACHE_MAX) {
       // Evict the oldest insertion (Map preserves insertion order) — bounded memory, no LRU needed.
       const oldest = teaserCache.keys().next().value;
@@ -340,6 +714,432 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
     teaserCache.set(cacheKey, { at: now, body: result.output });
     return c.json(result.output);
+  });
+
+  // ---- POST /v1/access-risk — address-first, typed + resumable ------------
+  app.post('/v1/access-risk', async (c) => {
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    const parsed = GateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid gate-leak input', issues: parsed.error.issues }, 400);
+
+    const threshold = parsed.data.threshold ?? 1;
+    const inputsHash = originalSubmissionHash(parsed.data.chain, parsed.data.contract, threshold);
+    const now = deps.now();
+    if (parsed.data.access_started_at && isFutureAccessDate(parsed.data.access_started_at, now)) {
+      return c.json({ error: 'access_started_at cannot be in the future' }, 400);
+    }
+    const existing = parsed.data.journey_token
+      ? await deps.eventStore.getPublicGateLeakJourneyByToken(parsed.data.journey_token)
+      : undefined;
+    if (parsed.data.journey_token && !existing) {
+      // Tokens are capabilities issued by this server, not caller-chosen aliases.
+      // Rejecting unknown tokens prevents low-entropy preclaims from becoming a
+      // lookup path to the server-random run/resume capability.
+      return c.json({ error: 'journey_token is unknown' }, 404);
+    }
+    const journeyToken = existing?.journey_token ?? randomUUID();
+    if (
+      existing &&
+      (existing.inputs_hash !== inputsHash ||
+        existing.subject.chain_id !== parsed.data.chain ||
+        existing.subject.contract_address !== parsed.data.contract.toLowerCase() ||
+        existing.threshold !== threshold ||
+        (parsed.data.access_started_at !== undefined &&
+          existing.supplied_access_started_at !== undefined &&
+          parsed.data.access_started_at !== existing.supplied_access_started_at))
+    ) {
+      return c.json({ error: 'journey_token conflicts with its original submission' }, 409);
+    }
+    const runId = existing?.run_id ?? publicRunId();
+    try {
+      await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'submitted',
+        now,
+      });
+    } catch (error) {
+      if (error instanceof PublicJourneyBudgetExceededError) {
+        return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+      }
+      throw error;
+    }
+
+    if (!deps.collectionRegistry) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'unavailable',
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        compute: existing?.supplied_access_started_at
+          ? {
+              chain: parsed.data.chain,
+              contract: parsed.data.contract,
+              accessStartedAt: existing.supplied_access_started_at,
+              threshold,
+            }
+          : undefined,
+      });
+    }
+
+    const ref = deps.collectionRegistry({ chain: parsed.data.chain, contract: parsed.data.contract });
+    if (!ref) {
+      const refusal: Refusal = {
+        code: 'unindexed-contract',
+        reason: 'contract is not in the audited collection registry',
+        retryable: false,
+      };
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'refused',
+        refusalCode: refusal.code,
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        attemptedRefusal: refusal,
+        compute: existing?.supplied_access_started_at
+          ? {
+              chain: parsed.data.chain,
+              contract: parsed.data.contract,
+              accessStartedAt: existing.supplied_access_started_at,
+              threshold,
+            }
+          : undefined,
+      });
+    }
+
+    const accessStartedAt = parsed.data.access_started_at ?? ref.access_started_at;
+    if (!accessStartedAt) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'needs_input',
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        compute: existing?.supplied_access_started_at
+          ? {
+              chain: parsed.data.chain,
+              contract: parsed.data.contract,
+              accessStartedAt: existing.supplied_access_started_at,
+              threshold,
+            }
+          : undefined,
+      });
+    }
+    if (!AccessStartedAtDateSchema.safeParse(accessStartedAt).success || isFutureAccessDate(accessStartedAt, now)) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'unavailable',
+        now,
+      });
+      if (journey.status.state === 'unavailable') {
+        return c.json({ journey, error: 'registry access_started_at is invalid or in the future' }, 503);
+      }
+      return respondFromDurableJourney(c, { journey });
+    }
+
+    const computingJourney = await registerPublicJourney({
+      runId,
+      journeyToken,
+      chain: parsed.data.chain,
+      contract: parsed.data.contract,
+      threshold,
+      inputsHash,
+      outcome: 'computing',
+      accessStartedAt,
+      now,
+    });
+    if (computingJourney.status.state === 'delivered_e1' || computingJourney.status.state === 'refused') {
+      // A concurrent terminal state wins. A delivered retry continues to the durable
+      // compute cache below so the report can be returned; a refusal is already complete.
+      if (computingJourney.status.state === 'refused') {
+        return c.json({ journey: computingJourney }, publicJourneyStatus(computingJourney));
+      }
+    }
+
+    const computed = await computePublic({
+      chain: parsed.data.chain,
+      contract: parsed.data.contract,
+      accessStartedAt,
+      threshold,
+      now,
+    });
+    if (computed.kind === 'budget') {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'refused',
+        refusalCode: rateLimitRefusal.code,
+        accessStartedAt,
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        attemptedRefusal: rateLimitRefusal,
+        compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+      });
+    }
+    if (computed.kind === 'in_progress') {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'computing',
+        accessStartedAt,
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+      });
+    }
+    if (!computed.result.ok) {
+      const journey = await registerPublicJourney({
+        runId,
+        journeyToken,
+        chain: parsed.data.chain,
+        contract: parsed.data.contract,
+        threshold,
+        inputsHash,
+        outcome: 'refused',
+        refusalCode: computed.result.refusal.code,
+        accessStartedAt,
+        now,
+      });
+      return respondFromDurableJourney(c, {
+        journey,
+        attemptedRefusal: computed.result.refusal,
+        compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+      });
+    }
+
+    const staleUpper = computed.result.output.stale_access_upper_bound;
+    const journey = await registerPublicJourney({
+      runId,
+      journeyToken,
+      chain: parsed.data.chain,
+      contract: parsed.data.contract,
+      threshold,
+      inputsHash,
+      outcome: 'delivered_e1',
+      accessStartedAt,
+      staleSetSize: staleUpper.kind === 'exact' ? staleUpper.value : 0,
+      now,
+    });
+    return respondFromDurableJourney(c, {
+      journey,
+      output: computed.result.output,
+      compute: { chain: parsed.data.chain, contract: parsed.data.contract, accessStartedAt, threshold },
+    });
+  });
+
+  // Appends the missing semantic input; never rewrites the original submission/digest.
+  app.post('/v1/access-risk/:runId/resume', async (c) => {
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    const parsed = ResumeGateLeakBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid resume input', issues: parsed.error.issues }, 400);
+    const now = deps.now();
+    if (isFutureAccessDate(parsed.data.access_started_at, now)) {
+      return c.json({ error: 'access_started_at cannot be in the future' }, 400);
+    }
+
+    const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
+    if (!run) return c.json({ error: 'journey not found' }, 404);
+    // Lifecycle-wide capability contract: journey_token is the authentication credential for all
+    // public gate-leak sub-routes. Answer 404 (not 403) on mismatch — no existence oracle.
+    if (run.journey_token !== parsed.data.journey_token) {
+      return c.json({ error: 'journey not found' }, 404);
+    }
+    if (run.current_outcome !== 'needs_input' && run.current_outcome !== 'computing') {
+      const journey = projectPublicJourney({
+        run_id: run.run_id,
+        journey_token: run.journey_token,
+        subject: run.subject,
+        outcome: run.current_outcome,
+        refusal_code: run.current_refusal_code,
+      });
+      return c.json({ journey }, publicJourneyStatus(journey));
+    }
+
+    try {
+      await deps.eventStore.appendPublicJourneyInput({
+        run_id: run.run_id,
+        input: 'access_started_at',
+        value: parsed.data.access_started_at,
+        ts: new Date(now).toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('conflicting journey input')) {
+        return c.json({ error: 'access_started_at conflicts with the previously supplied value' }, 409);
+      }
+      throw error;
+    }
+
+    const computed = await computePublic({
+      chain: run.subject.chain_id,
+      contract: run.subject.contract_address,
+      accessStartedAt: parsed.data.access_started_at,
+      threshold: run.threshold,
+      now,
+    });
+    const refusal =
+      computed.kind === 'budget'
+        ? rateLimitRefusal
+        : computed.kind === 'result' && !computed.result.ok
+          ? computed.result.refusal
+          : undefined;
+    const output = computed.kind === 'result' && computed.result.ok ? computed.result.output : undefined;
+    const staleUpper = output?.stale_access_upper_bound;
+    const outcome = computed.kind === 'in_progress' ? 'computing' : refusal ? 'refused' : 'delivered_e1';
+    const journey = await registerPublicJourney({
+      runId: run.run_id,
+      journeyToken: run.journey_token,
+      chain: run.subject.chain_id,
+      contract: run.subject.contract_address,
+      threshold: run.threshold,
+      inputsHash: run.inputs_hash,
+      outcome,
+      refusalCode: refusal?.code,
+      accessStartedAt: parsed.data.access_started_at,
+      staleSetSize: staleUpper?.kind === 'exact' ? staleUpper.value : 0,
+      now,
+    });
+    return respondFromDurableJourney(c, {
+      journey,
+      attemptedRefusal: refusal,
+      output,
+      compute: {
+        chain: run.subject.chain_id,
+        contract: run.subject.contract_address,
+        accessStartedAt: parsed.data.access_started_at,
+        threshold: run.threshold,
+      },
+    });
+  });
+
+  // Authenticated status poll. The caller must supply the server-issued journey_token as a query
+  // parameter — this is the lifecycle-wide capability contract: run_id is the public address
+  // (embeddable in a URL/QR), journey_token is the authentication credential. A missing or
+  // mismatched token returns 404 with no existence oracle, identical to an unknown run_id.
+  // On success the full PublicJourneyProjection (including journey_token) is returned so the
+  // caller can refresh their held capability without a new submission.
+  app.get('/v1/access-risk/:runId', async (c) => {
+    try {
+      const journeyToken = c.req.query('journey_token');
+      if (!journeyToken) return c.json({ error: 'journey not found' }, 404);
+      const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
+      if (!run) return c.json({ error: 'journey not found' }, 404);
+      if (run.journey_token !== journeyToken) return c.json({ error: 'journey not found' }, 404);
+      const journey = projectPublicJourney({
+        run_id: run.run_id,
+        journey_token: run.journey_token,
+        subject: run.subject,
+        outcome: run.current_outcome,
+        refusal_code: run.current_refusal_code,
+      });
+      return c.json({ journey }, 200);
+    } catch {
+      return c.json({ run_id: c.req.param('runId'), status: { state: 'unavailable' } }, 503);
+    }
+  });
+
+  // ---- POST /v1/access-risk/:runId/interaction — public demand signal (FR-11 · G-7) -----------------
+  // A login-less caller holding the run's (run_id + server-issued journey_token) capability records a
+  // bounded `feedback` or `enhance_intent` demand signal. The subject AND the `public-gate-leak` run mode
+  // are DERIVED from the durable run, never accepted from the caller. This is deliberately DISTINCT from
+  // POST /v1/audit/reaction, which is the INTERNAL `dogfood-full` reaction bound via getRun — that route is
+  // left untouched. The two interaction kinds are the ones the router's lifecycle path never emits.
+  app.post('/v1/access-risk/:runId/interaction', async (c) => {
+    const limiter = deps.teaserRateLimiter ?? deps.rateLimiter;
+    if (!limiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed) {
+      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    }
+    const parsed = InteractionBodySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      // Deliberately omit zod `issues` on this PUBLIC surface: a bad `reaction`/`target` enum value would
+      // otherwise be echoed straight back to the caller. The contract is tiny + documented, so callers lose
+      // nothing actionable. (The older sibling public routes still echo issues — a follow-up consistency pass.)
+      return c.json({ error: 'invalid interaction input' }, 400);
+    }
+
+    const now = deps.now();
+    // A non-public / unknown run_id is not in the public journey store (dogfood runs live only in getRun),
+    // so this lookup IS the "non-public runs fail-closed" gate — nothing else needs to check the mode.
+    const run = await deps.eventStore.getPublicGateLeakJourney(c.req.param('runId'));
+    if (!run) return c.json({ error: 'journey not found' }, 404);
+    // Capability: the journey_token must match the run's server-issued token. Answer 404 (not 403) on a
+    // mismatch so a caller without the capability gets no existence oracle for the run_id.
+    if (run.journey_token !== parsed.data.journey_token) {
+      return c.json({ error: 'journey not found' }, 404);
+    }
+    // Same lifecycle window as reaction/contact (IMP-007): an expired run accepts no new demand.
+    if (!isRunWithinWindow(run, now, runWindow)) {
+      return c.json({ error: 'unknown or expired run_id' }, 404);
+    }
+
+    // Idempotency anchor is (journey_token, kind): a repeated interaction cannot inflate demand. The bounded
+    // VALUE row is written ONLY on first-seen, so a retry adds neither a second attention event nor a second
+    // aggregate RunEvent. Attention is written FIRST so the weakest-link proof (the demand event bound to the
+    // run's subject + capability) is the durable half if a write is interrupted mid-way.
+    const kind: AttentionKind = parsed.data.kind;
+    const { created } = await attention(run.subject, run.journey_token, kind, now);
+    if (created) {
+      await deps.eventStore.appendRunEvent({
+        run_id: run.run_id,
+        // The run's OWN mode — NOT `dogfood-full`. This is what makes the persisted value a public
+        // Gate Leak feedback/enhance-intent event rather than an internal dogfood reaction.
+        mode: 'public-gate-leak',
+        inputs_hash: run.inputs_hash,
+        stale_set_size: 0,
+        reruns: 0,
+        ...(parsed.data.kind === 'feedback'
+          ? { reaction: parsed.data.reaction }
+          : { cta_interaction: parsed.data.target }),
+        ts: new Date(now).toISOString(),
+      });
+    }
+    return c.json({ ok: true, deduplicated: !created });
   });
 
   // ---- GET /v1/audit — anonymous aggregate -------------------------------

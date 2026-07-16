@@ -65,6 +65,7 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
     cta: { product: '/shadow-access', conversation: '/talk' },
     now: () => NOW_MS,
     clientKey: (xff) => xff ?? 'default',
+    publicJourneyBudget: { limit: 1_000, windowMs: 60_000 },
     k: 5,
     ...over,
   };
