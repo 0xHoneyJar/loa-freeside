@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { VersionedDigest } from "@freeside/collection-protocol";
 import {
   GATE_LEAK_CAPABILITIES,
+  SUBJECT_COHORT_POLICY_V1,
   decodeGateLeakWorkKeyInput,
+  decodeSubjectCohortRef,
   digestGateLeakWorkKey,
 } from "../index.js";
 import {
@@ -141,6 +143,35 @@ describe("CR-002 work-key table", () => {
 
   it("different key: consent-policy version change on identity-link work", () => {
     expect(digestOf("identity-consent-bump")).not.toBe(digestOf("identity-base"));
+  });
+
+  it("pins subject cohorts and identity work keys to the exact v1 limit policy", () => {
+    const entry = vector("identity-base");
+    const decoded = expectEffectSuccess(decodeGateLeakWorkKeyInput(entry.input));
+    if (decoded.capability !== "identity_link_snapshot.v1") {
+      throw new Error("expected identity-link work-key input");
+    }
+
+    expect(decoded.cohort.limit_policy_version).toBe(
+      SUBJECT_COHORT_POLICY_V1.version,
+    );
+    expect(expectEffectSuccess(decodeSubjectCohortRef(decoded.cohort))).toStrictEqual(
+      decoded.cohort,
+    );
+    expect(expectEffectSuccess(digestGateLeakWorkKey(decoded))).toStrictEqual(
+      entry.work_key_digest,
+    );
+
+    for (const invalidPolicy of ["subject-cohort-limit.v0", "arbitrary-policy.v9"]) {
+      const staleCohort = {
+        ...decoded.cohort,
+        limit_policy_version: invalidPolicy,
+      };
+      expectEffectFailure(decodeSubjectCohortRef(staleCohort));
+      expectEffectFailure(
+        decodeGateLeakWorkKeyInput({ ...decoded, cohort: staleCohort }),
+      );
+    }
   });
 
   it("compute work: order-scoped keys differ per order; result-cache scope has no order identity", () => {

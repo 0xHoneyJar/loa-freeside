@@ -10,6 +10,7 @@ import {
   sortCanonicalSet,
 } from "@freeside/collection-protocol";
 import { Data, Effect, type ParseResult, Schema } from "effect";
+import { SUBJECT_COHORT_POLICY_V1 } from "./capabilities.js";
 import { GATE_LEAK_DIGEST_DOMAINS } from "./gate-rule.js";
 import {
   CommunityRef,
@@ -388,7 +389,7 @@ export const SubjectCohortRef = Schema.Struct({
   cardinality: NonNegativeInt,
   inclusion_rule_version: VersionIdentifier,
   source_role_snapshot_id: NonEmptyString,
-  limit_policy_version: VersionIdentifier,
+  limit_policy_version: Schema.Literal(SUBJECT_COHORT_POLICY_V1.version),
 }).annotations({ identifier: "SubjectCohortRef" });
 export interface SubjectCohortRef extends Schema.Schema.Type<typeof SubjectCohortRef> {}
 
