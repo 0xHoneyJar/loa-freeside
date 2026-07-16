@@ -149,3 +149,19 @@ export {
   type PrivateOpsPublisher,
   RecordingPrivateOps,
 } from './private-ops.js';
+
+export {
+  type ResolutionOperation,
+  type IdempotencyRecord,
+  type ResolutionStore,
+  type InMemoryResolutionStoreOptions,
+  InMemoryResolutionStore,
+} from './resolution-store.js';
+
+export {
+  type SonarResolveProbePort,
+  type ResolutionServiceClock,
+  type ResolutionIdGenerator,
+  type CollectionResolutionServiceOptions,
+  CollectionResolutionService,
+} from './resolution-service.js';

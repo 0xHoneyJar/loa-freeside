@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "candidate_snapshot_digest": {
+    "algorithm": "sha-256",
+    "domain": "collection-resolution.candidate-snapshot",
+    "major_version": 1,
+    "digest": "da5c399e41a36c190eadea125187b25209bd97064b5a55c04ffa71abd268d58e"
+  },
+  "selected_deployment_ids": [
+    {
+      "algorithm": "sha-256",
+      "domain": "collection.deployment",
+      "major_version": 1,
+      "digest": "f74d1dfe0e9b7445f356967d0eed683a0a50251d26d94da3053578ab9db38729"
+    }
+  ],
+  "expected_confirmation_version": 0,
+  "idempotency_key": "confirm-key-1"
+}
