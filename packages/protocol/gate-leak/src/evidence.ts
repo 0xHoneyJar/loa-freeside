@@ -406,6 +406,19 @@ const DeploymentCoverage = Schema.Struct({
   source_time: IsoTimestamp,
   completeness: Schema.Literal("complete", "partial"),
 });
+type DeploymentCoverageEntry = Schema.Schema.Type<typeof DeploymentCoverage>;
+
+const isStrictlySortedUniqueCoverage = (
+  coverage: ReadonlyArray<DeploymentCoverageEntry>,
+): boolean => {
+  for (let index = 1; index < coverage.length; index += 1) {
+    const previous = coverage[index - 1];
+    const current = coverage[index];
+    if (previous === undefined || current === undefined) return false;
+    if (previous.deployment_id.digest >= current.deployment_id.digest) return false;
+  }
+  return true;
+};
 
 const OwnershipFinalityAttestationDigest = VersionedDigest.pipe(
   Schema.filter(
@@ -715,6 +728,11 @@ export const OwnershipIndexEvidence = Schema.Struct({
   ),
   coverage: Schema.Array(DeploymentCoverage).pipe(
     Schema.filter((items) => items.length > 0 || "coverage must be non-empty"),
+    Schema.filter(
+      (items) =>
+        isStrictlySortedUniqueCoverage(items) ||
+        "coverage is a sorted unique set by deployment_id",
+    ),
   ),
   observation_window: ObservationWindow,
   evidence_digest: GateLeakEvidenceDigest,
@@ -1243,6 +1261,8 @@ export type OwnershipFinalityReadinessVerdict =
       readonly detail:
         | "missing_attestation"
         | "duplicate_attestation"
+        | "duplicate_coverage"
+        | "incomplete_coverage"
         | "unknown_or_unsupported_policy"
         | "wrong_vm_policy"
         | "wrong_network_reference"
@@ -1273,7 +1293,21 @@ export const evaluateOwnershipFinalityProof = (
   const supported = new Set<string>(supportedFinalityPolicies);
   const seen = new Set<string>();
   const byDeployment = new Map<string, OwnershipFinalityAttestation>();
+  const coverageByDeployment = new Map<string, DeploymentCoverageEntry>();
   const selectedDeploymentIds = [...selectedDeploymentNetworks.keys()];
+
+  for (const coverage of ownership.coverage) {
+    const deploymentId = coverage.deployment_id.digest;
+    if (coverageByDeployment.has(deploymentId)) {
+      return {
+        proven: false,
+        reason_code: "ownership_finality_unproven",
+        detail: "duplicate_coverage",
+        deployment_id: deploymentId,
+      };
+    }
+    coverageByDeployment.set(deploymentId, coverage);
+  }
 
   for (const attestation of ownership.finality_attestations) {
     const deploymentId = attestationDeploymentId(attestation).digest;
@@ -1370,14 +1404,20 @@ export const evaluateOwnershipFinalityProof = (
         deployment_id: deploymentId,
       };
     }
-    const coverage = ownership.coverage.find(
-      (entry) => entry.deployment_id.digest === deploymentId,
-    );
+    const coverage = coverageByDeployment.get(deploymentId);
     if (coverage === undefined) {
       return {
         proven: false,
         reason_code: "ownership_finality_unproven",
         detail: "detached_source",
+        deployment_id: deploymentId,
+      };
+    }
+    if (coverage.completeness !== "complete") {
+      return {
+        proven: false,
+        reason_code: "partial_deployment_coverage",
+        detail: "incomplete_coverage",
         deployment_id: deploymentId,
       };
     }

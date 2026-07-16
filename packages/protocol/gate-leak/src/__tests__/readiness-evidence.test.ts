@@ -56,6 +56,7 @@ import type {
   ObservationWindow,
   ObservedMutations,
   OwnershipIndexEvidence,
+  OwnershipFinalityAttestationMaterial,
   VerifiedDeploymentNetworkMap,
 } from "../index.js";
 import { deploymentReferenceSetsEqual } from "../readiness.js";
@@ -1343,6 +1344,115 @@ describe("ownership finality closed attestation contract", () => {
       ),
     ).toStrictEqual({ proven: true });
     expect(evaluate(readyContext()).ready).toBe(true);
+  });
+
+  it("preserves valid sorted multi-deployment coverage and finality", () => {
+    const secondDeployment = expectEffectSuccess(
+      makeCollectionDeploymentRef({
+        schema_version: 1,
+        network: {
+          schema_version: 1,
+          network_namespace: "eip155",
+          network_reference: "80094",
+        },
+        address: "0x2222222222222222222222222222222222222222",
+      }),
+    );
+    const secondMaterial: OwnershipFinalityAttestationMaterial = {
+      schema_version: 1,
+      deployment_ref: secondDeployment,
+      policy_version: OWNERSHIP_FINALITY_EIP155_FINALIZED_BLOCK_V1.version,
+      network_namespace: "eip155",
+      finality_status: "finalized",
+      finalized_block_height: "12345679",
+      finalized_observed_at: "2026-07-16T00:09:01Z",
+      adapter_version: "v1",
+    };
+    const [firstAttestation] = ownershipEvidence.finality_attestations;
+    const [firstCoverage] = ownershipEvidence.coverage;
+    if (firstAttestation === undefined || firstCoverage === undefined) {
+      throw new Error("expected baseline finality evidence");
+    }
+    const secondAttestation = {
+      schema_version: 1,
+      deployment_ref: secondDeployment,
+      policy_version: OWNERSHIP_FINALITY_EIP155_FINALIZED_BLOCK_V1.version,
+      finality_status: "finalized",
+      finalized_block_height: "12345679",
+      finalized_observed_at: "2026-07-16T00:09:01Z",
+      adapter_version: "v1",
+      attestation_digest: expectEffectSuccess(
+        computeOwnershipFinalityAttestationDigest(secondMaterial),
+      ),
+    };
+    const secondCoverage = {
+      schema_version: 1,
+      deployment_id: secondDeployment.deployment_id,
+      source_position: "12345679",
+      source_position_kind: "block",
+      source_time: "2026-07-16T00:09:01Z",
+      completeness: "complete",
+    };
+    const decoded = expectEffectSuccess(
+      decodeOwnershipIndexEvidence({
+        ...ownershipEvidence,
+        finality_attestations: [firstAttestation, secondAttestation].toSorted(
+          (left, right) => {
+            const leftDigest = left.deployment_ref.deployment_id.digest;
+            const rightDigest = right.deployment_ref.deployment_id.digest;
+            return leftDigest < rightDigest ? -1 : leftDigest > rightDigest ? 1 : 0;
+          },
+        ),
+        coverage: [firstCoverage, secondCoverage].toSorted((left, right) => {
+          const leftDigest = left.deployment_id.digest;
+          const rightDigest = right.deployment_id.digest;
+          return leftDigest < rightDigest ? -1 : leftDigest > rightDigest ? 1 : 0;
+        }),
+      }),
+    );
+    const networkMap = expectEffectSuccess(
+      buildVerifiedDeploymentNetworkMap([miberaDeployment, secondDeployment]),
+    );
+    expect(
+      evaluateOwnershipFinalityProof(
+        decoded,
+        networkMap,
+        OWNERSHIP_FINALITY_POLICY_VERSIONS_V1,
+      ),
+    ).toStrictEqual({ proven: true });
+  });
+
+  it("rejects split-authority duplicate coverage at decode and readiness", () => {
+    const [coverage] = ownershipEvidence.coverage;
+    if (coverage === undefined) throw new Error("expected coverage entry");
+    const duplicateCoverage: OwnershipIndexEvidence["coverage"] = [
+      { ...coverage, completeness: "partial" },
+      { ...coverage, completeness: "complete", source_position: "99999999" },
+    ];
+
+    expectEffectFailureTag(
+      decodeOwnershipIndexEvidence({
+        ...ownershipEvidence,
+        coverage: duplicateCoverage,
+      }),
+      "ParseError",
+    );
+    expect(
+      evaluateOwnershipFinalityProof(
+        { ...ownershipEvidence, coverage: duplicateCoverage },
+        selectedNetworkMap,
+        OWNERSHIP_FINALITY_POLICY_VERSIONS_V1,
+      ),
+    ).toMatchObject({
+      proven: false,
+      detail: "duplicate_coverage",
+    });
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        ownership: { ...ownershipEvidence, coverage: duplicateCoverage },
+      }),
+    ).toContain("ownership_finality_unproven");
   });
 
   it("unknown policy strings cannot decode; wrong-VM policy fails typed readiness", () => {
