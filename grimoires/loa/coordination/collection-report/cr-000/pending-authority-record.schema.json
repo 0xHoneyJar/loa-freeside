@@ -1,0 +1,503 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bonfire.local/schemas/cr-000-discord-policy-authority.json",
+  "title": "CR-000 Discord policy authority record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "schema_version",
+    "record_kind",
+    "task_id",
+    "decision",
+    "owners",
+    "application",
+    "privileged_intents",
+    "scale",
+    "privacy_policy",
+    "approved_purposes",
+    "approved_data_classes",
+    "evidence_digests",
+    "timing",
+    "renewal",
+    "emergency_revocation",
+    "tier_consequences",
+    "signatures"
+  ],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "schema_version": { "type": "string", "minLength": 1 },
+    "record_kind": { "const": "discord_policy_authority" },
+    "task_id": { "const": "CR-000" },
+    "cycle": { "type": "string" },
+    "decision": {
+      "type": "string",
+      "enum": ["pending", "go", "no-go"]
+    },
+    "owners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discord_application_owner", "privacy_security_owner"],
+      "properties": {
+        "discord_application_owner": { "$ref": "#/$defs/owner" },
+        "privacy_security_owner": { "$ref": "#/$defs/owner" }
+      }
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "application_id",
+        "bot_user_id",
+        "team_or_owner_attested",
+        "verification_or_review_state"
+      ],
+      "properties": {
+        "application_id": { "type": ["string", "null"] },
+        "bot_user_id": { "type": ["string", "null"] },
+        "team_or_owner_attested": { "type": ["string", "null"] },
+        "verification_or_review_state": {
+          "type": "string",
+          "enum": ["pending", "unverified", "verified", "review_pending", "review_approved", "review_denied", "unknown"]
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "privileged_intents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guild_members"],
+      "properties": {
+        "guild_members": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "portal_enabled",
+            "review_required",
+            "review_approved",
+            "approved_use_case_text",
+            "approval_conditions"
+          ],
+          "properties": {
+            "portal_enabled": { "$ref": "#/$defs/tri_pending_bool" },
+            "review_required": { "$ref": "#/$defs/tri_pending_bool" },
+            "review_approved": { "$ref": "#/$defs/tri_pending_bool" },
+            "approved_use_case_text": { "type": ["string", "null"] },
+            "approval_conditions": { "type": ["string", "null"] }
+          }
+        },
+        "message_content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "portal_enabled": { "$ref": "#/$defs/tri_pending_bool" }
+          }
+        },
+        "presence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "portal_enabled": { "$ref": "#/$defs/tri_pending_bool" }
+          }
+        }
+      }
+    },
+    "scale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guild_installed_user_count", "guild_installed_user_band"],
+      "properties": {
+        "guild_installed_user_count": { "type": ["integer", "null"], "minimum": 0 },
+        "guild_installed_user_band": {
+          "type": "string",
+          "enum": ["pending", "under_10000", "at_or_over_10000"]
+        },
+        "largest_target_guild_member_count": { "type": ["integer", "null"], "minimum": 0 },
+        "notes": { "type": "string" }
+      }
+    },
+    "privacy_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_url", "covers_discord_api_data", "covers_member_wallet_join_for_gate_leak"],
+      "properties": {
+        "public_url": { "type": ["string", "null"] },
+        "url_verified_at": { "type": ["string", "null"] },
+        "covers_discord_api_data": { "$ref": "#/$defs/tri_pending_bool" },
+        "covers_member_wallet_join_for_gate_leak": { "$ref": "#/$defs/tri_pending_bool" },
+        "retention_summary": { "type": ["string", "null"] },
+        "deletion_opt_out_summary": { "type": ["string", "null"] },
+        "encryption_safeguards_summary": { "type": ["string", "null"] }
+      }
+    },
+    "approved_purposes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "approved_data_classes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "excluded_purposes_or_data_classes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "evidence_digests": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/digest" },
+      "required": [
+        "public_policy_packet",
+        "developer_portal_export",
+        "privileged_intent_approval",
+        "privacy_policy_snapshot",
+        "privacy_security_determination"
+      ],
+      "properties": {
+        "public_policy_packet": { "$ref": "#/$defs/digest" },
+        "developer_portal_export": { "$ref": "#/$defs/digest" },
+        "privileged_intent_approval": { "$ref": "#/$defs/digest" },
+        "privacy_policy_snapshot": { "$ref": "#/$defs/digest" },
+        "privacy_security_determination": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_start_at", "decision_deadline_at", "effective_at", "expires_at"],
+      "properties": {
+        "issue_start_at": { "type": "string", "format": "date-time" },
+        "decision_deadline_at": { "type": "string", "format": "date-time" },
+        "effective_at": { "type": ["string", "null"], "format": "date-time" },
+        "expires_at": { "type": ["string", "null"], "format": "date-time" },
+        "review_by": { "type": ["string", "null"], "format": "date-time" },
+        "timezone_basis": { "type": "string" }
+      }
+    },
+    "renewal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_role",
+        "owner_name",
+        "interval_days",
+        "missed_renewal_behavior",
+        "no_change_renewal_creates_new_version",
+        "changed_evidence_requires_privacy_security_reapproval"
+      ],
+      "properties": {
+        "owner_role": { "type": "string" },
+        "owner_name": { "type": ["string", "null"] },
+        "first_check_at": { "type": ["string", "null"] },
+        "interval_days": { "type": "integer", "minimum": 1 },
+        "missed_renewal_behavior": { "type": "string" },
+        "no_change_renewal_creates_new_version": { "type": "boolean" },
+        "changed_evidence_requires_privacy_security_reapproval": { "type": "boolean" }
+      }
+    },
+    "emergency_revocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contacts", "triggers", "effects"],
+      "properties": {
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "role", "contact"],
+            "properties": {
+              "name": { "type": "string" },
+              "role": { "type": "string" },
+              "contact": { "type": "string" }
+            }
+          }
+        },
+        "triggers": { "type": "array", "items": { "type": "string" } },
+        "effects": { "type": "array", "items": { "type": "string" } },
+        "revoke_at": { "type": ["string", "null"] },
+        "revoked_by": { "type": ["string", "null"] },
+        "revocation_reason": { "type": ["string", "null"] }
+      }
+    },
+    "tier_consequences": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["t0_recognition", "t1_public_preparation", "t2_gate_leak_restricted"],
+      "properties": {
+        "t0_recognition": { "type": "string" },
+        "t1_public_preparation": { "type": "string" },
+        "t2_gate_leak_restricted": { "type": "string" }
+      }
+    },
+    "signatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discord_application_owner", "privacy_security_owner"],
+      "properties": {
+        "discord_application_owner": { "$ref": "#/$defs/signature" },
+        "privacy_security_owner": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "audit": { "type": "object" }
+  },
+  "$defs": {
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "name", "contact", "status"],
+      "properties": {
+        "role": { "type": "string" },
+        "name": { "type": ["string", "null"] },
+        "contact": { "type": ["string", "null"] },
+        "status": { "type": "string", "enum": ["pending", "named", "signed"] }
+      }
+    },
+    "tri_pending_bool": {
+      "type": "string",
+      "enum": ["pending", "true", "false", "unknown"]
+    },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "type": "string" },
+        "value": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "signed_at", "signature"],
+      "properties": {
+        "decision": {
+          "type": ["string", "null"],
+          "enum": ["go", "no-go", null]
+        },
+        "signed_at": { "type": ["string", "null"] },
+        "signature": { "type": ["string", "null"] }
+      }
+    },
+    "signed_owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "name", "contact", "status"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "contact": { "type": "string", "minLength": 1 },
+        "status": { "const": "signed" }
+      }
+    },
+    "go_signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "signed_at", "signature"],
+      "properties": {
+        "decision": { "const": "go" },
+        "signed_at": { "type": "string", "format": "date-time" },
+        "signature": { "type": "string", "minLength": 1 }
+      }
+    },
+    "completed_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value", "path"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "decision": { "const": "go" } } },
+      "then": {
+        "properties": {
+          "approved_purposes": { "type": "array", "minItems": 1 },
+          "approved_data_classes": { "type": "array", "minItems": 1 },
+          "owners": {
+            "type": "object",
+            "properties": {
+              "discord_application_owner": { "$ref": "#/$defs/signed_owner" },
+              "privacy_security_owner": { "$ref": "#/$defs/signed_owner" }
+            }
+          },
+          "application": {
+            "type": "object",
+            "properties": {
+              "application_id": { "type": "string", "minLength": 1 },
+              "bot_user_id": { "type": "string", "minLength": 1 },
+              "team_or_owner_attested": { "type": "string", "minLength": 1 },
+              "verification_or_review_state": {
+                "enum": ["unverified", "verified", "review_approved"]
+              }
+            }
+          },
+          "privileged_intents": {
+            "type": "object",
+            "properties": {
+              "guild_members": {
+                "type": "object",
+                "properties": {
+                  "portal_enabled": { "const": "true" },
+                  "review_required": {
+                    "enum": ["true", "false"]
+                  },
+                  "review_approved": {
+                    "enum": ["true", "false"]
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "review_required": { "const": "true" }
+                      },
+                      "required": ["review_required"]
+                    },
+                    "then": {
+                      "properties": {
+                        "review_approved": { "const": "true" },
+                        "approved_use_case_text": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "scale": {
+            "type": "object",
+            "properties": {
+              "guild_installed_user_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "guild_installed_user_band": {
+                "enum": ["under_10000", "at_or_over_10000"]
+              },
+              "largest_target_guild_member_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "privacy_policy": {
+            "type": "object",
+            "properties": {
+              "public_url": {
+                "type": "string",
+                "format": "uri",
+                "minLength": 1
+              },
+              "url_verified_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "covers_discord_api_data": { "const": "true" },
+              "covers_member_wallet_join_for_gate_leak": { "const": "true" },
+              "retention_summary": { "type": "string", "minLength": 1 },
+              "deletion_opt_out_summary": { "type": "string", "minLength": 1 },
+              "encryption_safeguards_summary": { "type": "string", "minLength": 1 }
+            }
+          },
+          "evidence_digests": {
+            "type": "object",
+            "properties": {
+              "public_policy_packet": { "$ref": "#/$defs/completed_digest" },
+              "developer_portal_export": { "$ref": "#/$defs/completed_digest" },
+              "privacy_policy_snapshot": { "$ref": "#/$defs/completed_digest" },
+              "privacy_security_determination": { "$ref": "#/$defs/completed_digest" }
+            }
+          },
+          "timing": {
+            "type": "object",
+            "properties": {
+              "effective_at": { "type": "string", "format": "date-time" },
+              "expires_at": { "type": "string", "format": "date-time" },
+              "review_by": { "type": "string", "format": "date-time" }
+            }
+          },
+          "renewal": {
+            "type": "object",
+            "properties": {
+              "owner_name": { "type": "string" }
+            }
+          },
+          "emergency_revocation": {
+            "type": "object",
+            "properties": {
+              "contacts": { "type": "array", "minItems": 1 }
+            }
+          },
+          "signatures": {
+            "type": "object",
+            "properties": {
+              "discord_application_owner": { "$ref": "#/$defs/go_signature" },
+              "privacy_security_owner": { "$ref": "#/$defs/go_signature" }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "privileged_intents": {
+                  "type": "object",
+                  "properties": {
+                    "guild_members": {
+                      "type": "object",
+                      "properties": {
+                        "review_required": { "const": "true" }
+                      },
+                      "required": ["review_required"]
+                    }
+                  },
+                  "required": ["guild_members"]
+                }
+              },
+              "required": ["privileged_intents"]
+            },
+            "then": {
+              "properties": {
+                "evidence_digests": {
+                  "type": "object",
+                  "properties": {
+                    "privileged_intent_approval": {
+                      "$ref": "#/$defs/completed_digest"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "pending" } } },
+      "then": {
+        "properties": {
+          "tier_consequences": {
+            "type": "object",
+            "properties": {
+              "t2_gate_leak_restricted": {
+                "type": "string",
+                "pattern": "disabled"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
