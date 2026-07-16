@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  computeApprovalManifestDigest,
   decodeGateManifestSync,
   flattenTaskManifest,
   validateGateManifest,
+  verifyManifestApproval,
   type GateManifestT,
   type GateStateT,
 } from "../src/index.js";
@@ -286,6 +288,43 @@ describe("semantic rejection matrix", () => {
       findingCodes(result).has("MANIFEST_APPROVAL_INVALID"),
       true,
     );
+  });
+
+  it("keeps the committed signed approval fixture synchronized", () => {
+    const manifest = decodeGateManifestSync(
+      readYaml(
+        fixturePath(
+          "test-vectors",
+          "positive",
+          "no-go-preserves-t0-t1.yaml",
+        ),
+      ),
+    );
+    const expectedDigest = computeApprovalManifestDigest(manifest);
+    const authorities = loadApprovalAuthorities();
+
+    for (const approval of manifest.approvals) {
+      const authority = authorities.get(approval.owner);
+      assert.ok(
+        authority,
+        `signed approval fixture has no trusted key for ${approval.owner}`,
+      );
+      assert.equal(
+        approval.manifest_digest,
+        expectedDigest,
+        `signed approval fixture for ${approval.owner} is stale; re-sign it against the current fixture manifest`,
+      );
+      assert.equal(
+        approval.key_id,
+        authority.key_id,
+        `signed approval fixture for ${approval.owner} uses an unexpected key`,
+      );
+      assert.equal(
+        verifyManifestApproval(approval, authority.public_key),
+        true,
+        `signed approval fixture for ${approval.owner} has an invalid signature`,
+      );
+    }
   });
 
   it("does not let gate-owner approvals substitute for repository acceptance", () => {

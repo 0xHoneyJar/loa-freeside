@@ -127,6 +127,20 @@ describe("Flatline regression fixtures", () => {
     assert.equal(hasCode(result, "RANGE_FORBIDDEN"), true);
   });
 
+  it("rejects prose task ranges in tier entry tasks before schema decoding", () => {
+    const result = scanRawTaskRefs({
+      tiers: [{ entry_tasks: ["CR-101 through CR-107"] }],
+    });
+    assert.deepEqual(result, [
+      {
+        code: "RANGE_FORBIDDEN",
+        path: "tiers[0].entry_tasks[0]",
+        message:
+          'range-shaped task reference "CR-101 through CR-107" — the manifest forbids ranges; enumerate every canonical ID explicitly',
+      },
+    ]);
+  });
+
   it("rejects bare IDs that hide explicit suffixed tasks", () => {
     const fixture = Schema.decodeUnknownSync(ImplicitSuffixFixture)(
       readYaml(

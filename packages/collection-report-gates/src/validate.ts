@@ -161,6 +161,7 @@ export function scanRawTaskRefs(raw: unknown): Finding[] {
   const tiers = Array.isArray(doc.tiers) ? doc.tiers : [];
   tiers.forEach((tier, i) => {
     if (!isRecord(tier)) return;
+    checkList(tier.entry_tasks, `tiers[${i}].entry_tasks`);
     checkList(tier.tasks, `tiers[${i}].tasks`);
     checkList(tier.acceptance, `tiers[${i}].acceptance`);
     if (isRecord(tier.summary)) {
