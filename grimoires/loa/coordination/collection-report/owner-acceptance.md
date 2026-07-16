@@ -6,6 +6,10 @@ human_ack: pending
 
 # ACCEPT-LOA — Conditional Technical Owner-Boundary Acceptance
 
+> **Acceptance state:** conditional technical record. Every human owner
+> acknowledgment remains pending or unsigned; this document is not owner
+> approval.
+
 | Field | Value |
 |---|---|
 | Task | `ACCEPT-LOA` (`collection-report-coordinator-f09.9`) |
@@ -542,3 +546,74 @@ CR-000 Discord viability and privacy/security signatures are still **missing
 entirely**; inventing either signature, or silently upgrading file RoleSnapshots
 and `access-risk-audit` into restricted Gate Leak authority, would falsify G-1,
 G1B-3, and every T2 release claim that depends on them.
+
+---
+
+## 11. Reproducible baseline evidence
+
+Run these commands from the repository root. They inspect the immutable audited
+tree directly, so the result does not depend on the caller's checked-out branch.
+
+```bash
+BASE=3782fd47e8a20cdaf6325621962bd0443e6781b8
+
+git show -s --format='%H %cI %s' "$BASE"
+git grep -n 'export const ProductId\|ProductId =' \
+  "$BASE" -- packages/protocol/ordering/src/order.ts
+
+for needle in \
+  CollectionDeploymentRef \
+  collection-report \
+  collection_resolver \
+  TrustEnvelope \
+  dependency.ledger \
+  capability.demand \
+  gate_mapping \
+  artifact_manifest
+do
+  count="$(
+    git grep -I -E "$needle" "$BASE" -- \
+      'packages/**/*.ts' \
+      'packages/**/*.tsx' \
+      'packages/**/*.json' \
+      'packages/**/*.sql' 2>/dev/null \
+      | wc -l \
+      | tr -d ' '
+  )"
+  printf '%s\t%s\n' "$needle" "$count"
+done
+
+git ls-tree -r --name-only "$BASE" \
+  packages/services/ordering/src/__tests__ \
+  | rg '\.(test|spec)\.ts$' \
+  | wc -l
+
+total=0
+while IFS= read -r file; do
+  lines="$(git show "$BASE:$file" | wc -l | tr -d ' ')"
+  total=$((total + lines))
+done < <(
+  git ls-tree -r --name-only "$BASE" \
+    packages/services/shadow-audit/src/__tests__ \
+    | rg '\.(test|spec)\.ts$'
+)
+printf '%s\n' "$total"
+```
+
+Observed output on 2026-07-16:
+
+```text
+3782fd47e8a20cdaf6325621962bd0443e6781b8 2026-07-14T22:56:10-07:00 feat(governance): project user intent and construct expertise (#468)
+3782fd47e8a20cdaf6325621962bd0443e6781b8:packages/protocol/ordering/src/order.ts:14:export const ProductId = z.enum(['access-risk-audit', 'community-onboarding']);
+3782fd47e8a20cdaf6325621962bd0443e6781b8:packages/protocol/ordering/src/order.ts:15:export type ProductId = z.infer<typeof ProductId>;
+CollectionDeploymentRef  0
+collection-report        0
+collection_resolver      0
+TrustEnvelope            0
+dependency.ledger        0
+capability.demand        0
+gate_mapping             0
+artifact_manifest        0
+25
+2210
+```
