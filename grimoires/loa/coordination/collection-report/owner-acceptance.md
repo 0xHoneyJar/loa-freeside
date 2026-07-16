@@ -253,12 +253,14 @@ Loa must not:
 
 ### 3.8 Boundary acknowledgment
 
-Loa **accepts** SDD §3.1: Dashboard presents; Sonar resolves/indexes physically;
-Ordering owns sessions/orders/shared work; Shadow Audit owns gate/Discord
-evidence; Identity owns links/consent; Storage owns Key Index; protocol owns
-shared wire. Loa **rejects** any plan that makes Shadow Audit’s current lead-
-magnet audit, Ordering’s onboarding kitchen, or the events pillar a silent
-substitute for the collection-report contracts above.
+This non-human technical record **conditionally accepts** the boundary split in
+SDD §3.1: Dashboard presents; Sonar resolves/indexes physically; Ordering owns
+sessions/orders/shared work; Shadow Audit owns gate/Discord evidence; Identity
+owns links/consent; Storage owns Key Index; protocol owns shared wire. The same
+technical record **rejects** any plan that makes Shadow Audit’s current
+lead-magnet audit, Ordering’s onboarding kitchen, or the events pillar a silent
+substitute for the collection-report contracts above. Human owner
+acknowledgments remain pending as recorded in §10.
 
 ---
 
@@ -572,7 +574,7 @@ for needle in \
   artifact_manifest
 do
   count="$(
-    git grep -I -E "$needle" "$BASE" -- \
+    git grep -I -F "$needle" "$BASE" -- \
       'packages/**/*.ts' \
       'packages/**/*.tsx' \
       'packages/**/*.json' \
