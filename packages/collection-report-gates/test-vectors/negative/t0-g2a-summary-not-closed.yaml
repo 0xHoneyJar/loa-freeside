@@ -1,0 +1,5 @@
+name: t0-g2a-summary-not-closed
+description: Reproduces the Flatline finding where the T0 human summary omitted CR-002.
+tier_id: T0
+remove_summary_task: CR-002
+expected_code: SUMMARY_NOT_CLOSED

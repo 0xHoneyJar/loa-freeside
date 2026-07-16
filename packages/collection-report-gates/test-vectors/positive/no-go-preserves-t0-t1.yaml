@@ -1,0 +1,174 @@
+# Positive fixture — the CR-019 branch-consequence proof: a No-go at CR-000
+# (gate G-1) preserves T0/T1 while making T2 impossible.
+#
+# G-1 is no_go with a signed no-go record; the public gates (G0, G2A) pass
+# with recorded fixture evidence; the restricted gate (G1B-3) is honestly
+# blocked; the T0 flag is enabled (its gates all pass); every restricted flag
+# stays disabled. This MUST validate with 0 findings, and the tier report
+# MUST show T0/T1 reachable and T2 impossible.
+schema_version: 1
+manifest_id: fixture-no-go-preserves-t0-t1
+manifest_version: 0.0.1
+cycle: collection-report
+status: owner_approved
+evaluated_at: 2026-07-16T00:00:00Z
+source:
+  task_manifest_path: fixture
+  task_manifest_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  sprint_plan_path: fixture
+  sprint_plan_version: "0.6"
+approvals:
+  - owner: discord-application-owner
+    manifest_digest: sha256:eac94d8ac7c715340574f528a969fa57546680b3d037aa190327bb9f2147f337
+    key_id: ed25519:968f6b748a51e401812b18cdadc2f02f788fcb54224b27b00fee3561586d8efb
+    signature: oFIaCuyCu7WceeLjyl8jeCsE7qQNmBYV7Z304YmiOVAbHY9RY1_Sl_VQ3ykKgBksG7UJyMzfPl7EZbVXi6f_Bw
+    signed_at: 2026-07-15T00:00:00Z
+  - owner: shared-protocol-maintainer
+    manifest_digest: sha256:eac94d8ac7c715340574f528a969fa57546680b3d037aa190327bb9f2147f337
+    key_id: ed25519:b8c9a410e71b96ff4fa5397588ffab5e6bc6d3b87fb3be40f38f3947ec3686f5
+    signature: iUcyaUjRzZL9tisoFnwMfuqU-ZtjjU4GxuZ3fCsHr8kzsaGlwLZ-riTV6myBfM8K3q1qr9ERW2bEcbLcCVi8Cg
+    signed_at: 2026-07-15T00:00:00Z
+  - owner: sonar-api-maintainer
+    manifest_digest: sha256:eac94d8ac7c715340574f528a969fa57546680b3d037aa190327bb9f2147f337
+    key_id: ed25519:4b6386857be6c739b1750bf57f5e60a4447e91e41a7b1985111c13f6b18cfe0d
+    signature: CPC2_VXpJH3NyzEquDxoAHxlJJKTO-zbxjSNIRBBmQMyTIy2oqTdT9HnPe-qGs7PvEvtnFvFn0D-FjWdgyzKDw
+    signed_at: 2026-07-15T00:00:00Z
+  - owner: ordering-maintainer
+    manifest_digest: sha256:eac94d8ac7c715340574f528a969fa57546680b3d037aa190327bb9f2147f337
+    key_id: ed25519:ae1514e25ea3a50ae79c8c25345973c45a831a136176bcf210430279bb0faddf
+    signature: 266uOIR5XwDVyOWQZCbfrH5kCv5ZKURUFm05vkkNWHVgq-N8wW3xrzj844y_DOik0HXnVclOU-ct4FmBObbUCQ
+    signed_at: 2026-07-15T00:00:00Z
+tasks:
+  - id: ACCEPT-LOA
+    title: Loa acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: platform-deployment-owner
+  - id: ACCEPT-SONAR
+    title: Sonar acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+  - id: CR-000
+    title: Discord restricted-tier viability go/no-go
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: discord-application-owner
+  - id: CR-001
+    title: Cross-VM collection identity contract
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+  - id: CR-016
+    title: Shadow Audit gate and Discord evidence producer
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shadow-audit-maintainer
+    depends_on: [CR-000]
+  - id: CR-101
+    title: Versioned resolver capability registry
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-001]
+gates:
+  - id: G-1
+    title: Discord viability
+    owner: discord-application-owner
+    requires_tasks: [CR-000]
+    evidence:
+      - id: EV-G-1-discord-viability-record
+        description: Signed no-go record
+        kind: external_policy
+        produced_by: [CR-000]
+        validity:
+          max_age_days: 90
+          valid_until: 2026-10-13T00:00:00Z
+          renewal_owner: discord-application-owner
+        recorded_at: 2026-07-15T00:00:00Z
+    state: no_go
+    on_no_go:
+      closes_tiers: [T2]
+      preserves_tiers: [T0, T1]
+  - id: G0
+    title: Identity
+    owner: shared-protocol-maintainer
+    requires_tasks: [CR-001]
+    evidence:
+      - id: EV-G0-identity-fixtures
+        description: CR-001 strict fixtures
+        kind: contract_fixture
+        produced_by: [CR-001]
+        validity:
+          valid_until: superseded
+        recorded_at: 2026-07-10T00:00:00Z
+    state: pass
+  - id: G2A
+    title: Resolver fixtures
+    owner: sonar-api-maintainer
+    requires_tasks: [CR-101]
+    depends_on_gates: [G0]
+    evidence:
+      - id: EV-G2A-resolver-fixture-matrix
+        description: Resolver fixture matrix
+        kind: contract_fixture
+        produced_by: [CR-101]
+        validity:
+          valid_until: superseded
+        recorded_at: 2026-07-12T00:00:00Z
+    state: pass
+  - id: G1B-3
+    title: Restricted trust
+    owner: ordering-maintainer
+    requires_tasks: [CR-016]
+    depends_on_gates: [G-1, G0]
+    evidence:
+      - id: EV-G1B3-restricted-stream-fixtures
+        description: Restricted stream fixtures
+        kind: contract_fixture
+        produced_by: [CR-016]
+        validity:
+          valid_until: superseded
+    state: blocked
+tiers:
+  - id: T0
+    title: Recognition
+    requires_gates: [G0, G2A]
+    entry_tasks: [CR-001, CR-101]
+    tasks: [CR-001, CR-101]
+    acceptance: [ACCEPT-LOA, ACCEPT-SONAR]
+    summary:
+      source: fixture
+      gates: [G0, G2A]
+      tasks: [CR-001, CR-101]
+  - id: T1
+    title: Public preparation proof
+    requires_gates: [G0, G2A]
+    entry_tasks: [CR-001, CR-101]
+    tasks: [CR-001, CR-101]
+    acceptance: [ACCEPT-LOA, ACCEPT-SONAR]
+    summary:
+      source: fixture
+      gates: [G0, G2A]
+      tasks: [CR-001, CR-101]
+  - id: T2
+    title: Gate Leak release
+    requires_gates: [G-1, G0, G2A, G1B-3]
+    entry_tasks: [CR-000, CR-016]
+    tasks: [CR-000, CR-001, CR-016, CR-101]
+    acceptance: [ACCEPT-LOA, ACCEPT-SONAR]
+    summary:
+      source: fixture
+      gates: [G-1, G0, G2A, G1B-3]
+      tasks: [CR-000, CR-016]
+flags:
+  - id: collection_recognition
+    description: T0 recognition surface
+    controlled_by_gates: [G0, G2A]
+    tier: T0
+    enabled: true
+  - id: restricted_report
+    description: T2 restricted Gate Leak release
+    controlled_by_gates: [G-1, G1B-3]
+    tier: T2
+    enabled: false

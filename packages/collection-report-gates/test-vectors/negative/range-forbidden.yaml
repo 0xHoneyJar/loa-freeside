@@ -1,0 +1,3 @@
+gates:
+  - requires_tasks:
+      - CR-101 through CR-107
