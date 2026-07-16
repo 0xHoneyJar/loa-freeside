@@ -3,6 +3,9 @@ import {
   decodeCandidateSnapshot,
   decodeConfirmedResolutionRecord,
   decodeOrderResolutionBinding,
+  decodeResolutionConfirmCommand,
+  decodeResolutionPublicProjection,
+  toPublicProjection,
 } from "../index.js";
 import {
   expectEffectSuccess,
@@ -25,5 +28,32 @@ describe("Dashboard consumer fixture contract", () => {
     expect(binding.candidate_snapshot_digest.digest).toBe(
       record.candidate_snapshot_digest.digest,
     );
+  });
+
+  it("round-trips the server snapshot digest from projection into confirm", () => {
+    const record = expectEffectSuccess(
+      decodeConfirmedResolutionRecord(readFixture("confirmed-resolution.valid.json")),
+    );
+    const projection = expectEffectSuccess(
+      decodeResolutionPublicProjection(toPublicProjection(record)),
+    );
+    const fixtureCommand = expectEffectSuccess(
+      decodeResolutionConfirmCommand(readFixture("confirm-command.valid.json")),
+    );
+    const clientCommand = expectEffectSuccess(
+      decodeResolutionConfirmCommand({
+        ...fixtureCommand,
+        candidate_snapshot_digest: projection.candidate_snapshot_digest,
+      }),
+    );
+
+    expect(clientCommand.candidate_snapshot_digest).toEqual(
+      record.candidate_snapshot_digest,
+    );
+    expect(projection).not.toHaveProperty("requester_subject");
+    expect(projection).not.toHaveProperty("authorization_scope");
+    expect(projection).not.toHaveProperty("original_request");
+    expect(projection).not.toHaveProperty("request_digest");
+    expect(projection).not.toHaveProperty("candidate_snapshot");
   });
 });

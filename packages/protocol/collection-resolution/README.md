@@ -43,6 +43,10 @@ Canonical rules:
   before comparison; unchecked caller input is never cloned into fingerprints;
 - any selection-relevant change yields typed `selection_stale` and requires
   reconfirmation;
+- public create/refresh projections carry the server-computed
+  `candidate_snapshot_digest`, allowing clients to echo it into confirm without
+  reimplementing canonicalization; private request and authorization material
+  remains absent;
 - order input carries only `resolution_id`, `candidate_snapshot_digest`, and
   scope — raw client candidate metadata is refused.
 

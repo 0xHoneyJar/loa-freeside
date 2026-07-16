@@ -186,6 +186,7 @@ export type ConfirmedResolutionRecord = Schema.Schema.Type<typeof ConfirmedResol
 export const ResolutionPublicProjection = Schema.Struct({
   schema_version: SchemaVersion,
   resolution_id: ResolutionId,
+  candidate_snapshot_digest: VersionedDigest,
   capability_snapshot_version: CapabilityRegistryVersion,
   candidates: Schema.Array(CollectionCandidate),
   diagnostics: ResolutionDiagnostics,
@@ -335,6 +336,7 @@ export const toPublicProjection = (
 ): ResolutionPublicProjection => ({
   schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
   resolution_id: record.resolution_id,
+  candidate_snapshot_digest: record.candidate_snapshot_digest,
   capability_snapshot_version: record.capability_snapshot_version,
   candidates: record.candidate_snapshot.candidates,
   diagnostics: record.candidate_snapshot.diagnostics,
