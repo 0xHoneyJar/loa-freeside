@@ -29,8 +29,10 @@ export {
   GateLeakRowReasonCode,
   EligibilityState,
   GATE_LEAK_ORDER_REASON_CODES,
+  GATE_LEAK_ORDER_REASON_CODE_ORDER,
   GATE_LEAK_ROW_REASON_CODES,
   GATE_LEAK_SCOPE_STATEMENT,
+  orderGateLeakOrderReasonCodes,
   type OrderReasonCodeEntry,
   type RowReasonCodeEntry,
 } from "./reason-codes.js";

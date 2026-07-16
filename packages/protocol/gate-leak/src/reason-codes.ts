@@ -58,6 +58,48 @@ export type GateLeakOrderReasonCode = Schema.Schema.Type<
   typeof GateLeakOrderReasonCode
 >;
 
+/** Stable public ordering for refusal arrays; declaration order is protocol order. */
+export const GATE_LEAK_ORDER_REASON_CODE_ORDER: ReadonlyArray<GateLeakOrderReasonCode> =
+  Object.freeze([
+    "unsupported_gate_rule",
+    "gate_mapping_not_ratified",
+    "gate_mapping_revoked",
+    "gate_mapping_malformed",
+    "mapping_integrity_violation",
+    "gate_config_ratify_required",
+    "identity_reveal_not_authorized",
+    "mapping_churn_limit_exceeded",
+    "report_churn_limit_exceeded",
+    "purpose_policy_missing",
+    "consent_purpose_mismatch",
+    "empty_deployment_selection",
+    "partial_deployment_coverage",
+    "evidence_scope_mismatch",
+    "evidence_version_below_floor",
+    "compute_input_binding_mismatch",
+    "restricted_evidence_expired",
+    "evidence_window_misaligned",
+    "ownership_evidence_stale",
+    "ownership_finality_unproven",
+    "discord_snapshot_stale",
+    "identity_snapshot_stale",
+    "watermark_mutation_restart",
+    "capture_contention",
+    "identity_invalidation_stale",
+    "authorization_revoked",
+    "cohort_too_large",
+    "insufficient_coverage",
+  ]);
+
+export const orderGateLeakOrderReasonCodes = (
+  reasonCodes: ReadonlySet<GateLeakOrderReasonCode>,
+): ReadonlyArray<GateLeakOrderReasonCode> =>
+  Object.freeze(
+    GATE_LEAK_ORDER_REASON_CODE_ORDER.filter((reasonCode) =>
+      reasonCodes.has(reasonCode),
+    ),
+  );
+
 export const GateLeakRowReasonCode = Schema.Literal(
   "eligible_balance_confirmed",
   "proven_zero_balance",

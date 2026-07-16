@@ -502,6 +502,56 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
     ).toContain("mapping_integrity_violation");
   });
 
+  it("readiness verifies inactive mapping history, not only the active version", () => {
+    const active = miberaAggregate.versions[0];
+    if (active === undefined) throw new Error("expected active version");
+    const tamperedInactive = {
+      ...active,
+      revoked_at: "2026-07-15T23:59:00Z",
+      role_ids: ["300000000000000999"],
+    };
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        mapping_aggregate: {
+          ...miberaAggregate,
+          versions: [tamperedInactive, active],
+        },
+      }),
+    ).toStrictEqual(["mapping_integrity_violation"]);
+  });
+
+  it("readiness strict-decodes the aggregate envelope and rejects excess fields", () => {
+    const malformed = {
+      ...miberaAggregate,
+      unratified_projection: true,
+    } as unknown as GateMappingAggregate;
+    expect(
+      refusalReasons({ ...readyContext(), mapping_aggregate: malformed }),
+    ).toStrictEqual(["gate_mapping_malformed"]);
+  });
+
+  it("orders public refusal reasons by the fixed protocol registry", () => {
+    const foreignCollection = {
+      ...collectionIdentityEvidence.collection_id,
+      digest: "9".repeat(64),
+    };
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        collection_identity: {
+          ...collectionIdentityEvidence,
+          collection_id: foreignCollection,
+        },
+        consent_purpose_policy: {
+          schema_version: 1,
+          policy: "consent-purpose",
+          version: "community-gate-audit.v2",
+        },
+      }),
+    ).toStrictEqual(["consent_purpose_mismatch", "evidence_scope_mismatch"]);
+  });
+
   it("a mapping ratified for a DIFFERENT deployment set refuses with evidence_scope_mismatch", () => {
     const otherDeployment = expectEffectSuccess(
       makeCollectionDeploymentRef({

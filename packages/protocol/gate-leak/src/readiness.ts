@@ -40,8 +40,9 @@ import {
   verifyOwnershipFinalityAttestationIntegrity,
 } from "./evidence.js";
 import type { GateMappingAggregate, GateMappingVersion } from "./mapping.js";
-import { mappingSatisfiesReadiness, verifyGateMappingVersionIntegrity } from "./mapping.js";
+import { decodeGateMappingAggregate, mappingSatisfiesReadiness } from "./mapping.js";
 import type { GateLeakOrderReasonCode } from "./reason-codes.js";
+import { orderGateLeakOrderReasonCodes } from "./reason-codes.js";
 import type { CommunityRef, DiscordSnowflake, IsoTimestamp } from "./scalars.js";
 import {
   digestDeploymentSet,
@@ -157,6 +158,40 @@ const deploymentRefDigestsEqual = (
       deployment.network.network_reference === right[index]!.network.network_reference,
   );
 
+type MappingAggregateReadinessVerification =
+  | { readonly verified: true; readonly aggregate: GateMappingAggregate }
+  | {
+      readonly verified: false;
+      readonly reason_code: "gate_mapping_malformed" | "mapping_integrity_violation";
+    };
+
+const verifyMappingAggregateForReadiness = (
+  input: unknown,
+): Effect.Effect<
+  MappingAggregateReadinessVerification,
+  CanonicalEncodingError | DigestComputationError
+> =>
+  decodeGateMappingAggregate(input).pipe(
+    Effect.map(
+      (aggregate): MappingAggregateReadinessVerification => ({
+        verified: true,
+        aggregate,
+      }),
+    ),
+    Effect.catchTag("ParseError", () =>
+      Effect.succeed<MappingAggregateReadinessVerification>({
+        verified: false,
+        reason_code: "gate_mapping_malformed",
+      }),
+    ),
+    Effect.catchTag("MappingIntegrityError", () =>
+      Effect.succeed<MappingAggregateReadinessVerification>({
+        verified: false,
+        reason_code: "mapping_integrity_violation",
+      }),
+    ),
+  );
+
 export const evaluateGateLeakReadiness = (
   context: GateLeakReadinessContext,
   recipe: GateLeakRecipe = GATE_LEAK_RECIPE_V1,
@@ -191,7 +226,16 @@ export const evaluateGateLeakReadiness = (
     }
 
     /* -- capability 3/6: gate_mapping.v1 ---------------------------------- */
-    const aggregate = context.mapping_aggregate;
+    const aggregateVerification = yield* verifyMappingAggregateForReadiness(
+      context.mapping_aggregate,
+    );
+    if (!aggregateVerification.verified) {
+      return {
+        ready: false,
+        reason_codes: [aggregateVerification.reason_code],
+      } satisfies GateLeakReadinessVerdict;
+    }
+    const aggregate = aggregateVerification.aggregate;
     if (
       aggregate.community_ref !== context.community_ref ||
       aggregate.guild_ref !== context.guild_ref
@@ -203,21 +247,9 @@ export const evaluateGateLeakReadiness = (
     if (!mappingVerdict.ready) {
       reasons.add(mappingVerdict.reason_code);
     } else {
-      const verified = yield* verifyGateMappingVersionIntegrity(
-        mappingVerdict.version,
-      ).pipe(
-        Effect.map((version) => ({ ok: true as const, version })),
-        Effect.catchTag("MappingIntegrityError", () =>
-          Effect.succeed({ ok: false as const }),
-        ),
-      );
-      if (!verified.ok) {
-        reasons.add("mapping_integrity_violation");
-      } else {
-        mappingVersion = verified.version;
-        if (!digestsEqual(mappingVersion.deployment_set_digest, selectedSetDigest)) {
-          reasons.add("evidence_scope_mismatch");
-        }
+      mappingVersion = mappingVerdict.version;
+      if (!digestsEqual(mappingVersion.deployment_set_digest, selectedSetDigest)) {
+        reasons.add("evidence_scope_mismatch");
       }
     }
 
@@ -475,7 +507,7 @@ export const evaluateGateLeakReadiness = (
     if (reasons.size > 0 || mappingVersion === undefined || !alignment.aligned) {
       return {
         ready: false,
-        reason_codes: [...reasons],
+        reason_codes: orderGateLeakOrderReasonCodes(reasons),
       } satisfies GateLeakReadinessVerdict;
     }
 

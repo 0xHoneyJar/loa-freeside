@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { VersionedDigest } from "@freeside/collection-protocol";
 import {
   GATE_LEAK_ORDER_REASON_CODES,
+  GATE_LEAK_ORDER_REASON_CODE_ORDER,
   GATE_LEAK_ROW_REASON_CODES,
   GATE_LEAK_SCOPE_STATEMENT,
   GateLeakMeasure,
@@ -226,6 +227,9 @@ describe("gate_leak_compute.v1 golden classification", () => {
     for (const [code, entry] of Object.entries(GATE_LEAK_ORDER_REASON_CODES)) {
       expect(entry.safe_public_copy.length, code).toBeGreaterThan(0);
     }
+    expect(GATE_LEAK_ORDER_REASON_CODE_ORDER).toStrictEqual(
+      Object.keys(GATE_LEAK_ORDER_REASON_CODES),
+    );
   });
 });
 
