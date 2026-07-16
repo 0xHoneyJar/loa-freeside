@@ -1,4 +1,10 @@
-# ACCEPT-LOA — Owner Acceptance
+---
+status: conditional
+acceptance_scope: technical-boundaries-only
+human_ack: pending
+---
+
+# ACCEPT-LOA — Conditional Technical Owner-Boundary Acceptance
 
 | Field | Value |
 |---|---|
@@ -25,6 +31,8 @@ This document does **not** invent, forge, backdate, or imply those signatures.
 ---
 
 ## 1. Verdict summary by owner boundary
+
+Notation: `CR-NNN*` means every lettered variant of `CR-NNN`.
 
 | Owner boundary | Verdict | One-line finding |
 |---|---|---|
@@ -325,10 +333,10 @@ ops **0.25 FTE** post-rehearsal (re-estimate after CR-404).
 
 | Aggregate | Value |
 |---|---|
-| Central estimate | **~250 eng-days** (~12 eng-months serial) |
-| Range | **~215–345 eng-days** |
-| Assumed peak headcount | **3.0–4.0 FTE** across protocol + Ordering + Shadow Audit + platform during S2/S3 |
-| Assumptions | Upstream Sonar/Inventory/Identity/Storage ACCEPT conditions close without redesign; CR-000 resolves within 10 business days once started; no second queue invented; Railway Ordering/Shadow Audit remain deployable seeds |
+| Central estimate | **~280 eng-days** (arithmetic midpoint of the component range; any different planning anchor requires an explicit U-14 derivation) |
+| Range | **~216–344 eng-days** |
+| Assumed peak headcount | **3.0–4.0 planned FTE** during S2/S3, assuming protocol, Ordering, and Shadow Audit upper-bound peaks do not overlap; the coincident upper envelope is approximately **5.0 FTE** |
+| Assumptions | Upstream Sonar/Inventory/Identity/Storage ACCEPT conditions close without redesign; CR-000 resolves within 10 business days once started; protocol, Ordering, and Shadow Audit upper-bound peaks are staggered; no second queue invented; Railway Ordering/Shadow Audit remain deployable seeds |
 | Retention / capacity fixtures Loa must meet (V1 thresholds) | 50k subjects; 500-subject pages; ≤1k Gateway deltas / 5m; ≤60s auth projection lag; ≤30s lease; ≤2s DB skew; 500 rows/page; 1 MiB ceilings; 30-day max restricted retention; disclosure bands per sprint; 20 demands/subject; 500/community — **none measured for collection-report on `main`** |
 
 An issue without a reconfirmed estimate at creation remains **not ready**
@@ -367,16 +375,24 @@ posture, `KITCHEN_*`, `ROLE_SNAPSHOT_PATH`, `AUDIT_K`) are **not** substitutes.
 
 ### 5.3 Deploy position (Loa-owned sequence)
 
+This is a deployment sequence, not an exhaustive tier-closure or dependency
+list. The coordinator master sprint tier table and CR-019 manifest remain
+canonical for T0/T1/T2 membership and transitive closure.
+
 1. CR-001/005 fixtures published before any consumer implements recognition UI
    against hand mirrors.
 2. CR-009 + CR-013 key registry before CR-011A/012A ledger closure.
-3. Public Ordering path (CR-006/007A/201A/202/204A/208) behind public flags
-   before any user-visible async preparation.
+3. T1 public preparation path
+   (CR-201A/CR-201C/CR-202/CR-203/CR-204A) behind public flags before any
+   user-visible async preparation; its C1/C2 prerequisites include
+   CR-006/CR-007A/CR-009/CR-011A/CR-012A/CR-013.
 4. CR-000 signed record **before** CR-007B/016/201B/204B restricted work is
    issue-ready for T2 (CR-010 may proceed after G-1 Go per sprint chain C3).
 5. CR-012B/015/205/206 restricted E2E before `collection_report_restricted_*`
    flags.
-6. CR-209A plan before CR-209B rehearsal; rehearsal before production constrain.
+6. T0 support demand (CR-208) may proceed independently after
+   CR-006/007A/102.
+7. CR-209A plan before CR-209B rehearsal; rehearsal before production constrain.
 
 ### 5.4 Rollback limits
 
@@ -423,7 +439,7 @@ manifest truth. Discord application owner owns CR-000 renewal.
 
 | Claim | Proof |
 |---|---|
-| HEAD == sprint loa-freeside baseline | `git rev-parse HEAD` → `3782fd47…` |
+| Audited tree matched sprint loa-freeside baseline before this artifact was authored | `origin/main` @ `3782fd47…`, verified 2026-07-16 |
 | Product enum lacks collection-report | `packages/protocol/ordering/src/order.ts` |
 | Order lifecycle + outbox exist | `order-state.ts`, `migrations/001_orders.sql`, `lifecycle-publisher.ts` |
 | Shadow Audit k-anon + file RoleSnapshot | `audit-router.ts`, `role-source.ts`, DEPLOY.md |
@@ -449,7 +465,7 @@ satisfy G0/G1/G1B/G3/G4/G4A/G4B or any collection-report CR verification.
 | Check | Result |
 |---|---|
 | Branch is `coord/collection-report-coordinator-f09.9` | Pass |
-| `HEAD` equals `origin/main` @ `3782fd47` | Pass |
+| Audited worktree matched `origin/main` @ `3782fd47` before the authoring commit | Pass (verified 2026-07-16) |
 | Required sections present in this artifact (verdicts, interfaces, boundaries, forbidden inferences, capacity, mixed-version/flags/rollback, ops, evidence, unresolved, closure) | Pass (author checklist) |
 | Claim spot-check: `ProductId` enum contents | Pass |
 | Claim spot-check: absence of `CollectionDeploymentRef` / `capability.demand` / trust-envelope symbols | Pass |
@@ -471,7 +487,9 @@ satisfy G0/G1/G1B/G3/G4/G4A/G4B or any collection-report CR verification.
 | U-7 | **Blocker** | No production key custody registry | CR-013 pinned registry, rotation, compromise drill | Public+restricted signed intake |
 | U-8 | **Blocker (restricted)** | No Gateway/gate-map producer | CR-016/018 prove epoch/cursor, mapping aggregate, capture feasibility | G1B-3; CR-204B/201B |
 | U-9 | **Blocker (T2)** | No CR-015 disclosure/deletion review | Privacy/security signed review packet against sprint disclosure bands + retention | G1B-4/G4B |
-| U-10 | **Blocker** | No collection-report Ordering preset / shared work | CR-201A/C/202/204A/206/208 land behind public flags with admission limits | T1 public proof / T0 demand |
+| U-10A | **Blocker** | No T1 public preparation path | CR-201A/CR-201C/CR-202/CR-203/CR-204A land behind public flags with admission limits and their C1/C2 prerequisites closed | T1 public preparation proof |
+| U-10B | **Blocker (T2)** | No authenticated report list/detail/artifact projections | CR-206 lands behind restricted flags after its privacy, storage, authorization, and evidence dependencies close | T2 report return path |
+| U-10C | **Blocker** | No recognition-only support-demand API | CR-208 lands after CR-006/007A/102 with bounded, non-ordering demand semantics | T0 support demand |
 | U-11 | High | No collection-report feature flags / CI hard lock | Flags from §5.2 + tests proving restricted enablement cannot bypass CR-019 manifest | Any production enablement |
 | U-12 | High | No mixed-version rehearsal | CR-209A matrix + CR-209B operator-signed rehearsal evidence | Integration release candidate |
 | U-13 | High | No CR-019 machine-readable gate manifest | Approved manifest is exhaustive transitive closure | Release decisions |
