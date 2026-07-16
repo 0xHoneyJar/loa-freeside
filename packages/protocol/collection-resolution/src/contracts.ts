@@ -284,16 +284,42 @@ export const decodeResolutionConfirmCommand = decodeConfirmStruct;
 export const decodeResolutionRefreshCommand = decodeRefreshStruct;
 export const decodeResolutionRequestMaterial = decodeRequestMaterialStruct;
 export const decodeOrderResolutionBinding = decodeOrderBindingStruct;
+
+/**
+ * CollectionCandidate's schema pins shape; its decoder additionally verifies
+ * deployment_id and collection_id against their canonical digest material.
+ * Every candidate-bearing boundary composes that one owning decoder.
+ */
+const decodeCandidateList = (candidates: ReadonlyArray<CollectionCandidate>) =>
+  Effect.forEach(candidates, decodeCollectionCandidate);
+
 export const decodeCandidateSnapshot = (input: unknown) =>
   decodeCandidateSnapshotStruct(input).pipe(
     Effect.flatMap((snapshot) =>
-      Effect.forEach(snapshot.candidates, (candidate) =>
-        decodeCollectionCandidate(candidate),
-      ).pipe(Effect.as(snapshot)),
+      decodeCandidateList(snapshot.candidates).pipe(
+        Effect.map((candidates) => ({ ...snapshot, candidates })),
+      ),
     ),
   );
-export const decodeConfirmedResolutionRecord = decodeRecordStruct;
-export const decodeResolutionPublicProjection = decodeProjectionStruct;
+export const decodeConfirmedResolutionRecord = (input: unknown) =>
+  decodeRecordStruct(input).pipe(
+    Effect.flatMap((record) =>
+      decodeCandidateSnapshot(record.candidate_snapshot).pipe(
+        Effect.map((candidateSnapshot) => ({
+          ...record,
+          candidate_snapshot: candidateSnapshot,
+        })),
+      ),
+    ),
+  );
+export const decodeResolutionPublicProjection = (input: unknown) =>
+  decodeProjectionStruct(input).pipe(
+    Effect.flatMap((projection) =>
+      decodeCandidateList(projection.candidates).pipe(
+        Effect.map((candidates) => ({ ...projection, candidates })),
+      ),
+    ),
+  );
 /**
  * Strict-decode a local capability snapshot and canonicalize `views` as a
  * unique sorted set keyed by (deployment_id, operation). Identical duplicates

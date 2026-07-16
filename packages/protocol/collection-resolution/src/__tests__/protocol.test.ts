@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   COLLECTION_RESOLUTION_PROTOCOL_VERSION,
   COLLECTION_RESOLUTION_SCHEMA_VERSION,
@@ -21,6 +21,7 @@ import {
   rejectAddressOnlyIdentity,
   compareCandidateFreshness,
   assertNoRawCandidateOrderFields,
+  toPublicProjection,
 } from "../index.js";
 import {
   expectEffectFailure,
@@ -89,6 +90,67 @@ describe("CR-006 protocol contracts", () => {
     expect(forged.candidate_snapshot_digest.digest).not.toBe(
       record.candidate_snapshot_digest.digest,
     );
+  });
+
+  it("rejects forged nested candidate identity digests at persisted and public boundaries", () => {
+    const validRecord = expectEffectSuccess(
+      decodeConfirmedResolutionRecord(readFixture("confirmed-resolution.valid.json")),
+    );
+    const boundaries: ReadonlyArray<{
+      readonly name: string;
+      readonly value: unknown;
+      readonly decode: (value: unknown) => Effect.Effect<unknown, unknown>;
+      readonly candidates: (value: Record<string, unknown>) => unknown[];
+    }> = [
+      {
+        name: "record",
+        value: structuredClone(validRecord),
+        decode: decodeConfirmedResolutionRecord,
+        candidates: (value: Record<string, unknown>) =>
+          (value.candidate_snapshot as { candidates: unknown[] }).candidates,
+      },
+      {
+        name: "projection",
+        value: structuredClone(toPublicProjection(validRecord)),
+        decode: decodeResolutionPublicProjection,
+        candidates: (value: Record<string, unknown>) => value.candidates as unknown[],
+      },
+    ];
+
+    for (const boundary of boundaries) {
+      for (const forgedField of ["collection_id", "deployment_id"] as const) {
+        const value = structuredClone(boundary.value) as Record<string, unknown>;
+        const candidate = boundary.candidates(value)[0] as {
+          identity: {
+            collection_id: { digest: string };
+            deployments: Array<{ deployment_id: { digest: string } }>;
+          };
+        };
+        if (forgedField === "collection_id") {
+          candidate.identity.collection_id.digest = "f".repeat(64);
+        } else {
+          candidate.identity.deployments[0]!.deployment_id.digest = "e".repeat(64);
+        }
+        expectEffectFailure(boundary.decode(value));
+      }
+    }
+  });
+
+  it("round-trips valid nested candidates through record and public decoders", () => {
+    const record = expectEffectSuccess(
+      decodeConfirmedResolutionRecord(readFixture("confirmed-resolution.valid.json")),
+    );
+    const decodedRecord = expectEffectSuccess(
+      decodeConfirmedResolutionRecord(structuredClone(record)),
+    );
+    const projection = expectEffectSuccess(
+      decodeResolutionPublicProjection(toPublicProjection(decodedRecord)),
+    );
+
+    expect(decodedRecord.candidate_snapshot.candidates).toEqual(
+      record.candidate_snapshot.candidates,
+    );
+    expect(projection.candidates).toEqual(record.candidate_snapshot.candidates);
   });
 
   it("accepts one deployment or an equivalence-group subset", () => {
