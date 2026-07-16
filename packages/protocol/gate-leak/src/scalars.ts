@@ -10,6 +10,40 @@ const DECIMAL_PATTERN = /^(0|[1-9][0-9]*)$/;
 const ISO_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
 
+export const isValidIsoTimestamp = (value: string): boolean => {
+  const match = ISO_TIMESTAMP_PATTERN.exec(value);
+  if (match === null) return false;
+  const [datePart, timePart] = value.split("T");
+  if (datePart === undefined || timePart === undefined) return false;
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute, second] = timePart
+    .replace(/Z$/, "")
+    .split(".")[0]!
+    .split(":")
+    .map(Number);
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined
+  ) {
+    return false;
+  }
+  const instant = new Date(0);
+  instant.setUTCFullYear(year, month - 1, day);
+  instant.setUTCHours(hour, minute, second, 0);
+  return (
+    instant.getUTCFullYear() === year &&
+    instant.getUTCMonth() === month - 1 &&
+    instant.getUTCDate() === day &&
+    instant.getUTCHours() === hour &&
+    instant.getUTCMinutes() === minute &&
+    instant.getUTCSeconds() === second
+  );
+};
+
 export const SchemaVersion = Schema.Literal(GATE_LEAK_PROTOCOL_SCHEMA_VERSION);
 
 /** Discord guild, role, and user identifiers are snowflakes; never numeric. */
@@ -38,6 +72,9 @@ export type DecimalString = Schema.Schema.Type<typeof DecimalString>;
 
 export const IsoTimestamp = Schema.String.pipe(
   Schema.pattern(ISO_TIMESTAMP_PATTERN),
+  Schema.filter(isValidIsoTimestamp, {
+    message: () => "timestamp must represent a real UTC calendar instant",
+  }),
 ).annotations({ identifier: "IsoTimestamp" });
 export type IsoTimestamp = Schema.Schema.Type<typeof IsoTimestamp>;
 

@@ -32,6 +32,7 @@ import {
   DecimalString,
   DiscordSnowflake,
   IsoTimestamp,
+  isValidIsoTimestamp,
   NonNegativeInt,
   SchemaVersion,
 } from "./scalars.js";
@@ -1144,8 +1145,12 @@ export const observationAgeSecondsAt = (
   observedAt: string,
   evaluatedAt: string,
   clockSkewToleranceSeconds: number = CLOCK_SKEW_POLICY_V1.max_database_clock_skew_seconds,
-): number | "future_beyond_skew" => {
+): number | "future_beyond_skew" | "invalid_timestamp" => {
+  if (!isValidIsoTimestamp(observedAt) || !isValidIsoTimestamp(evaluatedAt)) {
+    return "invalid_timestamp";
+  }
   const age = (Date.parse(evaluatedAt) - Date.parse(observedAt)) / 1000;
+  if (!Number.isFinite(age)) return "invalid_timestamp";
   if (age < -clockSkewToleranceSeconds) return "future_beyond_skew";
   if (age < 0) return 0;
   return age;
@@ -1165,7 +1170,7 @@ export type CapabilityFreshnessVerdict =
         | "identity_link_snapshot.v1";
       readonly observed_at: string;
       readonly evaluated_at: string;
-      readonly age_seconds: number | "future_beyond_skew";
+      readonly age_seconds: number | "future_beyond_skew" | "invalid_timestamp";
       readonly max_age_seconds: number;
       readonly remediation: string;
     };
@@ -1181,7 +1186,7 @@ const freshnessFailure = (input: {
     | "identity_link_snapshot.v1";
   readonly observed_at: string;
   readonly evaluated_at: string;
-  readonly age_seconds: number | "future_beyond_skew";
+  readonly age_seconds: number | "future_beyond_skew" | "invalid_timestamp";
   readonly max_age_seconds: number;
   readonly remediation: string;
 }): CapabilityFreshnessVerdict => ({ fresh: false, ...input });
@@ -1210,7 +1215,11 @@ export const evaluateOwnershipFreshnessAt = (
   ];
   for (const sample of timestamps) {
     const age = observationAgeSecondsAt(sample.at, evaluatedAt);
-    if (age === "future_beyond_skew" || age > maxSourceAgeSeconds) {
+    if (
+      age === "future_beyond_skew" ||
+      age === "invalid_timestamp" ||
+      age > maxSourceAgeSeconds
+    ) {
       return freshnessFailure({
         reason_code: "ownership_evidence_stale",
         capability: "ownership_index.v1",
@@ -1436,7 +1445,11 @@ export const evaluateDiscordSnapshotFreshnessAt = (
 ): CapabilityFreshnessVerdict => {
   const observedAt = discord.attestation.capture_window.window_end;
   const age = observationAgeSecondsAt(observedAt, evaluatedAt);
-  if (age === "future_beyond_skew" || age > maxSnapshotAgeSeconds) {
+  if (
+    age === "future_beyond_skew" ||
+    age === "invalid_timestamp" ||
+    age > maxSnapshotAgeSeconds
+  ) {
     return freshnessFailure({
       reason_code: "discord_snapshot_stale",
       capability: "discord_role_snapshot.v1",
@@ -1462,7 +1475,11 @@ export const evaluateIdentitySnapshotFreshnessAt = (
 ): CapabilityFreshnessVerdict => {
   const observedAt = identity.observation_window.window_end;
   const age = observationAgeSecondsAt(observedAt, evaluatedAt);
-  if (age === "future_beyond_skew" || age > maxSnapshotAgeSeconds) {
+  if (
+    age === "future_beyond_skew" ||
+    age === "invalid_timestamp" ||
+    age > maxSnapshotAgeSeconds
+  ) {
     return freshnessFailure({
       reason_code: "identity_snapshot_stale",
       capability: "identity_link_snapshot.v1",

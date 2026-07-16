@@ -18,6 +18,7 @@ export {
   SubjectRef,
   DecimalString,
   IsoTimestamp,
+  isValidIsoTimestamp,
   OperatorPermission,
   GATE_CONFIG_RATIFY_PERMISSION,
   PRIVACY_APPROVE_GATE_AUDIT_PERMISSION,

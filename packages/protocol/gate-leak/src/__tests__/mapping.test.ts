@@ -901,6 +901,13 @@ describe("gate_mapping.v1 aggregate", () => {
     expect(
       evaluateGateLeakOrderChurn(times, "2026-07-17T12:00:00Z"),
     ).toStrictEqual({ admitted: true });
+    const futureTimes = Array.from(
+      { length: 10 },
+      (_, index) => `2026-07-17T0${Math.min(index, 9)}:00:00Z`,
+    );
+    expect(
+      evaluateGateLeakOrderChurn(futureTimes, "2026-07-16T10:00:00Z"),
+    ).toStrictEqual({ admitted: true });
   });
 
   it("config digest is deterministic and reproducible from the command material", () => {

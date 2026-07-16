@@ -1189,7 +1189,10 @@ export const evaluateGateLeakOrderChurn = (
   candidateAt: string,
 ): OrderChurnVerdict => {
   const inWindow = recentDistinctCollectionOrderTimes.filter(
-    (time) => hoursBetween(time, candidateAt) < 24,
+    (time) => {
+      const hours = hoursBetween(time, candidateAt);
+      return hours >= 0 && hours < 24;
+    },
   );
   return inWindow.length >=
     GATE_LEAK_CHURN_POLICY_V1.max_distinct_collection_orders_per_community_per_24h

@@ -11,6 +11,7 @@ import {
   GATE_LEAK_CHURN_POLICY_V1,
   GATE_LEAK_RECIPE_V1,
   GATE_RULE_V1,
+  IsoTimestamp,
   OWNERSHIP_FINALITY_EIP155_FINALIZED_BLOCK_V1,
   OWNERSHIP_FINALITY_POLICY_VERSIONS_V1,
   OWNERSHIP_FINALITY_SOLANA_FINALIZED_COMMITMENT_V1,
@@ -1138,6 +1139,22 @@ describe("V1 gate-rule admission", () => {
 /* -------------------------------------------------------------------- */
 
 describe("recipe freshness at evaluated_at (no caller booleans)", () => {
+  it("rejects impossible calendar instants and treats raw invalid times as stale", () => {
+    expectEffectFailureTag(
+      Schema.decodeUnknown(IsoTimestamp)("2026-02-31T00:00:00Z"),
+      "ParseError",
+    );
+    const invalid = evaluateOwnershipFreshnessAt(
+      ownershipEvidence,
+      "2026-02-31T00:00:00Z",
+      300,
+    );
+    expect(invalid.fresh).toBe(false);
+    if (invalid.fresh) throw new Error("expected invalid timestamp refusal");
+    expect(invalid.reason_code).toBe("ownership_evidence_stale");
+    expect(invalid.age_seconds).toBe("invalid_timestamp");
+  });
+
   it("ownership: exact max-source-age boundary passes; one second over refuses", () => {
     const maxAge = 300;
     // Earliest ownership timestamp is coverage source_time 00:09:00.
