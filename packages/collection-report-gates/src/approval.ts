@@ -3,7 +3,11 @@ import {
   createPublicKey,
   verify as verifySignature,
 } from "node:crypto";
-import type { GateManifestT, ManifestApprovalT } from "./schema.js";
+import type {
+  GateManifestT,
+  ManifestApprovalT,
+  RepositoryAcceptanceReceiptT,
+} from "./schema.js";
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -80,6 +84,56 @@ export const verifyManifestApproval = (
       approvalSigningPayload(approval),
       publicKey,
       Buffer.from(approval.signature, "base64url"),
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Repository acceptance is a separate authority domain from manifest approval.
+ * A gate owner signature can never be replayed as repository-owner acceptance.
+ */
+export const repositoryAcceptanceSigningPayload = (
+  receipt: Omit<RepositoryAcceptanceReceiptT, "signature">,
+): Uint8Array =>
+  new TextEncoder().encode(
+    [
+      "collection-report-repository-acceptance/v1",
+      receipt.task_id,
+      receipt.repository,
+      receipt.owner,
+      receipt.reviewed_commit,
+      receipt.artifact_uri,
+      receipt.artifact_digest,
+      receipt.state,
+      receipt.valid_from,
+      receipt.valid_until,
+      receipt.key_id,
+      "",
+    ].join("\n"),
+  );
+
+export const verifyRepositoryAcceptance = (
+  receipt: RepositoryAcceptanceReceiptT,
+  publicKeyValue: string,
+): boolean => {
+  try {
+    const rawPublicKey = Buffer.from(publicKeyValue, "base64url");
+    const publicKey = createPublicKey({
+      key: {
+        kty: "OKP",
+        crv: "Ed25519",
+        x: rawPublicKey.toString("base64url"),
+      },
+      format: "jwk",
+    });
+    const { signature, ...signedFields } = receipt;
+    return verifySignature(
+      null,
+      repositoryAcceptanceSigningPayload(signedFields),
+      publicKey,
+      Buffer.from(signature, "base64url"),
     );
   } catch {
     return false;

@@ -22,6 +22,10 @@ export {
   ManifestApproval,
   ApprovalAuthority,
   ApprovalKeyring,
+  RepositoryAcceptanceReceipt,
+  RepositoryAcceptanceReceipts,
+  RepositoryAcceptanceAuthority,
+  RepositoryAcceptanceKeyring,
   Evidence,
   Validity,
   GateState,
@@ -41,7 +45,13 @@ export {
   type ManifestApprovalT,
   type ApprovalAuthorityT,
   type ApprovalKeyringT,
+  type RepositoryAcceptanceReceiptT,
+  type RepositoryAcceptanceReceiptsT,
+  type RepositoryAcceptanceAuthorityT,
+  type RepositoryAcceptanceKeyringT,
   decodeApprovalKeyringSync,
+  decodeRepositoryAcceptanceReceiptsSync,
+  decodeRepositoryAcceptanceKeyringSync,
 } from "./schema.js";
 
 export {
@@ -49,6 +59,8 @@ export {
   computeApprovalManifestDigest,
   expectedApprovalKeyId,
   verifyManifestApproval,
+  repositoryAcceptanceSigningPayload,
+  verifyRepositoryAcceptance,
 } from "./approval.js";
 
 export {
@@ -62,6 +74,9 @@ export {
   type SourceInventory,
   type ApprovalAuthorityRecord,
   type ApprovalAuthorities,
+  type FlattenedTaskManifest,
+  type RepositoryAcceptanceAuthorityRecord,
+  type RepositoryAcceptanceAuthorities,
 } from "./validate.js";
 
 export {

@@ -30,6 +30,13 @@ export const TaskId = Schema.String.pipe(
   }),
 ).annotations({ identifier: "TaskId" });
 
+export const AcceptanceTaskId = Schema.String.pipe(
+  Schema.pattern(/^ACCEPT-[A-Z][A-Z-]*$/, {
+    message: () =>
+      "repository acceptance task IDs must match ACCEPT-<REPOSITORY>",
+  }),
+).annotations({ identifier: "AcceptanceTaskId" });
+
 export const GateId = Schema.String.pipe(
   Schema.pattern(GATE_ID_PATTERN, {
     message: () => "gate IDs must match the ratified gate grammar (e.g. G-1, G0, G1B-3, G2A, G3-PUBLIC)",
@@ -333,6 +340,89 @@ export const ApprovalKeyring = Schema.Struct({
 }).annotations({ identifier: "ApprovalKeyring" });
 export type ApprovalKeyringT = typeof ApprovalKeyring.Type;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Repository-owner acceptance — distinct from manifest gate-owner approval
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const RepositoryAcceptanceReceipt = Schema.Struct({
+  task_id: AcceptanceTaskId,
+  repository: Schema.String.pipe(
+    Schema.pattern(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/),
+  ),
+  owner: Role,
+  reviewed_commit: Schema.String.pipe(
+    Schema.pattern(/^[a-f0-9]{40}$/, {
+      message: () => "reviewed_commit must be one full lowercase Git commit SHA",
+    }),
+  ),
+  artifact_uri: Schema.String.pipe(
+    Schema.pattern(
+      /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\/tree\/[a-f0-9]{40}$/,
+      {
+        message: () =>
+          "artifact_uri must identify an immutable GitHub repository tree at one full commit SHA",
+      },
+    ),
+  ),
+  artifact_digest: Schema.String.pipe(
+    Schema.pattern(/^sha256:[a-f0-9]{64}$/),
+  ),
+  state: Schema.Literal("accepted", "rejected"),
+  valid_from: IsoTimestamp,
+  valid_until: IsoTimestamp,
+  key_id: Schema.String.pipe(
+    Schema.pattern(/^ed25519:[a-f0-9]{64}$/),
+  ),
+  signature: Schema.String.pipe(
+    Schema.pattern(/^[A-Za-z0-9_-]{86}$/),
+  ),
+}).annotations({ identifier: "RepositoryAcceptanceReceipt" });
+export type RepositoryAcceptanceReceiptT =
+  typeof RepositoryAcceptanceReceipt.Type;
+
+export const RepositoryAcceptanceReceipts = Schema.Struct({
+  schema_version: Schema.Literal(1),
+  receipts: Schema.Array(RepositoryAcceptanceReceipt),
+}).annotations({ identifier: "RepositoryAcceptanceReceipts" });
+export type RepositoryAcceptanceReceiptsT =
+  typeof RepositoryAcceptanceReceipts.Type;
+
+export const RepositoryAcceptanceAuthority = Schema.Struct({
+  repository: Schema.String.pipe(
+    Schema.pattern(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/),
+  ),
+  owner: Role,
+  key_id: Schema.String.pipe(
+    Schema.pattern(/^ed25519:[a-f0-9]{64}$/),
+  ),
+  public_key: Schema.String.pipe(
+    Schema.pattern(/^[A-Za-z0-9_-]{43}$/),
+  ),
+}).annotations({ identifier: "RepositoryAcceptanceAuthority" });
+export type RepositoryAcceptanceAuthorityT =
+  typeof RepositoryAcceptanceAuthority.Type;
+
+export const RepositoryAcceptanceKeyring = Schema.Struct({
+  schema_version: Schema.Literal(1),
+  authorities: Schema.Array(RepositoryAcceptanceAuthority).pipe(
+    Schema.minItems(1),
+    Schema.filter(
+      (authorities) =>
+        new Set(authorities.map((authority) => authority.repository)).size ===
+          authorities.length ||
+        "repository acceptance keyring repositories must be unique",
+    ),
+    Schema.filter(
+      (authorities) =>
+        new Set(authorities.map((authority) => authority.key_id)).size ===
+          authorities.length ||
+        "repository acceptance keyring key IDs must be unique",
+    ),
+  ),
+}).annotations({ identifier: "RepositoryAcceptanceKeyring" });
+export type RepositoryAcceptanceKeyringT =
+  typeof RepositoryAcceptanceKeyring.Type;
+
 export const GateManifest = Schema.Struct({
   schema_version: Schema.Literal(1),
   manifest_id: Schema.String,
@@ -387,3 +477,19 @@ export const decodeApprovalKeyringSync = (
   input: unknown,
 ): ApprovalKeyringT =>
   Schema.decodeUnknownSync(ApprovalKeyring, strictDecodeOptions)(input);
+
+export const decodeRepositoryAcceptanceReceiptsSync = (
+  input: unknown,
+): RepositoryAcceptanceReceiptsT =>
+  Schema.decodeUnknownSync(
+    RepositoryAcceptanceReceipts,
+    strictDecodeOptions,
+  )(input);
+
+export const decodeRepositoryAcceptanceKeyringSync = (
+  input: unknown,
+): RepositoryAcceptanceKeyringT =>
+  Schema.decodeUnknownSync(
+    RepositoryAcceptanceKeyring,
+    strictDecodeOptions,
+  )(input);

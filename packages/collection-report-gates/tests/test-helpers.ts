@@ -6,9 +6,13 @@ import { parse } from "yaml";
 import {
   decodeGateManifestSync,
   decodeApprovalKeyringSync,
+  decodeRepositoryAcceptanceKeyringSync,
+  decodeRepositoryAcceptanceReceiptsSync,
   flattenTaskManifest,
   type ApprovalAuthorities,
   type GateManifestT,
+  type RepositoryAcceptanceAuthorities,
+  type RepositoryAcceptanceReceiptT,
   type SourceInventory,
 } from "../src/index.js";
 
@@ -29,9 +33,10 @@ export const loadManifest = (): GateManifestT =>
 export const loadSourceInventory = (): SourceInventory => {
   const path = fixturePath("test-vectors", "source", "task-manifest.yaml");
   const bytes = readFileSync(path);
+  const flattened = flattenTaskManifest(parse(bytes.toString("utf8")));
   return {
     digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
-    tasks: flattenTaskManifest(parse(bytes.toString("utf8"))),
+    ...flattened,
   };
 };
 
@@ -55,3 +60,34 @@ export const loadApprovalAuthorities = (): ApprovalAuthorities => {
     ]),
   );
 };
+
+export const loadRepositoryAcceptanceReceipts = (
+  directory: "positive" | "negative" = "positive",
+  fixture = "repository-acceptance-receipts.yaml",
+): readonly RepositoryAcceptanceReceiptT[] =>
+  decodeRepositoryAcceptanceReceiptsSync(
+    readYaml(fixturePath("test-vectors", directory, fixture)),
+  ).receipts;
+
+export const loadRepositoryAcceptanceAuthorities =
+  (): RepositoryAcceptanceAuthorities => {
+    const keyring = decodeRepositoryAcceptanceKeyringSync(
+      readYaml(
+        fixturePath(
+          "test-vectors",
+          "trust",
+          "repository-acceptance-keyring.yaml",
+        ),
+      ),
+    );
+    return new Map(
+      keyring.authorities.map((authority) => [
+        authority.repository,
+        {
+          owner: authority.owner,
+          key_id: authority.key_id,
+          public_key: authority.public_key,
+        },
+      ]),
+    );
+  };

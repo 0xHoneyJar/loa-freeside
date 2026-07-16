@@ -4,7 +4,9 @@
  *
  * Usage:
  *   check-gate-manifest --manifest <gates.yaml> [--source <task-manifest.yaml>]
- *     [--approval-keyring <trusted-owners.yaml>] [--json]
+ *     [--approval-keyring <trusted-gate-owners.yaml>]
+ *     [--acceptance-receipts <repository-acceptance.yaml>]
+ *     [--acceptance-keyring <trusted-repository-owners.yaml>] [--json]
  *
  * Validation stages (all deterministic; expiry is judged against the
  * manifest's own evaluated_at, never wall clock):
@@ -25,6 +27,8 @@ import { Either, ParseResult } from "effect";
 import {
   decodeApprovalKeyringSync,
   decodeGateManifestEither,
+  decodeRepositoryAcceptanceKeyringSync,
+  decodeRepositoryAcceptanceReceiptsSync,
 } from "../src/schema.js";
 import {
   scanRawTaskRefs,
@@ -42,11 +46,13 @@ const argValue = (flag: string): string | undefined => {
 const manifestPath = argValue("--manifest");
 const sourcePath = argValue("--source");
 const approvalKeyringPath = argValue("--approval-keyring");
+const acceptanceReceiptsPath = argValue("--acceptance-receipts");
+const acceptanceKeyringPath = argValue("--acceptance-keyring");
 const jsonOutput = args.includes("--json");
 
 if (!manifestPath) {
   console.error(
-    "usage: check-gate-manifest --manifest <gates.yaml> [--source <task-manifest.yaml>] [--approval-keyring <trusted-owners.yaml>] [--json]",
+    "usage: check-gate-manifest --manifest <gates.yaml> [--source <task-manifest.yaml>] [--approval-keyring <trusted-gate-owners.yaml>] [--acceptance-receipts <repository-acceptance.yaml>] [--acceptance-keyring <trusted-repository-owners.yaml>] [--json]",
   );
   process.exit(2);
 }
@@ -67,10 +73,19 @@ const report = (result: ValidationResult): never => {
       console.log(`ERROR ${f.code} at ${f.path}: ${f.message}`);
     }
     for (const t of result.tiers) {
-      const status = t.reachable
-        ? "reachable"
+      const feasibility = t.structurally_possible
+        ? "structurally possible"
         : `IMPOSSIBLE (no_go: ${t.blocking_no_go_gates.join(", ")})`;
-      console.log(`tier ${t.tier}: ${status} · closure ${t.closure_size} tasks`);
+      const readiness = t.release_ready
+        ? "RELEASE READY"
+        : `not release-ready (unpassed gates: ${
+            t.unpassed_gates.join(", ") || "none"
+          }; owner acceptance: ${
+            t.missing_owner_acceptance.join(", ") || "complete"
+          })`;
+      console.log(
+        `tier ${t.tier}: ${feasibility} · ${readiness} · closure ${t.closure_size} tasks`,
+      );
     }
     console.log(
       result.valid
@@ -106,9 +121,10 @@ let source;
 if (sourcePath) {
   try {
     const bytes = readFileSync(sourcePath);
+    const flattened = flattenTaskManifest(parse(bytes.toString("utf-8")));
     source = {
       digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
-      tasks: flattenTaskManifest(parse(bytes.toString("utf-8"))),
+      ...flattened,
     };
   } catch (err) {
     console.error(`[check-gate-manifest] cannot read/parse ${sourcePath}: ${String(err)}`);
@@ -139,4 +155,49 @@ if (approvalKeyringPath) {
   }
 }
 
-report(validateGateManifest(manifest, { source, approvalAuthorities }));
+let acceptanceReceipts;
+if (acceptanceReceiptsPath) {
+  try {
+    acceptanceReceipts = decodeRepositoryAcceptanceReceiptsSync(
+      parse(readFileSync(acceptanceReceiptsPath, "utf-8")),
+    ).receipts;
+  } catch (err) {
+    console.error(
+      `[check-gate-manifest] cannot read/parse ${acceptanceReceiptsPath}: ${String(err)}`,
+    );
+    process.exit(2);
+  }
+}
+
+let acceptanceAuthorities;
+if (acceptanceKeyringPath) {
+  try {
+    const keyring = decodeRepositoryAcceptanceKeyringSync(
+      parse(readFileSync(acceptanceKeyringPath, "utf-8")),
+    );
+    acceptanceAuthorities = new Map(
+      keyring.authorities.map((authority) => [
+        authority.repository,
+        {
+          owner: authority.owner,
+          key_id: authority.key_id,
+          public_key: authority.public_key,
+        },
+      ]),
+    );
+  } catch (err) {
+    console.error(
+      `[check-gate-manifest] cannot read/parse ${acceptanceKeyringPath}: ${String(err)}`,
+    );
+    process.exit(2);
+  }
+}
+
+report(
+  validateGateManifest(manifest, {
+    source,
+    approvalAuthorities,
+    acceptanceReceipts,
+    acceptanceAuthorities,
+  }),
+);

@@ -5,7 +5,8 @@
 # with recorded fixture evidence; the restricted gate (G1B-3) is honestly
 # blocked; the T0 flag is enabled (its gates all pass); every restricted flag
 # stays disabled. This MUST validate with 0 findings, and the tier report
-# MUST show T0/T1 reachable and T2 impossible.
+# MUST show T0/T1 release-ready and T2 structurally impossible when the
+# independently signed repository-acceptance fixture is also supplied.
 schema_version: 1
 manifest_id: fixture-no-go-preserves-t0-t1
 manifest_version: 0.0.1

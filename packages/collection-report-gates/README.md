@@ -29,12 +29,19 @@ Direct CLI use:
 ```bash
 check-gate-manifest \
   --manifest manifest/collection-report.gates.yaml \
-  --source test-vectors/source/task-manifest.yaml
+  --source test-vectors/source/task-manifest.yaml \
+  --approval-keyring test-vectors/trust/approval-keyring.yaml \
+  --acceptance-receipts test-vectors/positive/repository-acceptance-receipts.yaml \
+  --acceptance-keyring test-vectors/trust/repository-acceptance-keyring.yaml
 ```
 
 For an `owner_approved` manifest, also pass an independently governed trust
-store with `--approval-keyring <trusted-owners.yaml>`. The validator never
-accepts a public key asserted by the approval receipt itself.
+store with `--approval-keyring <trusted-gate-owners.yaml>`. Repository-owner
+acceptance is a separate input and authority domain:
+`--acceptance-receipts <repository-acceptance.yaml>` plus
+`--acceptance-keyring <trusted-repository-owners.yaml>`. Neither receipt type
+can satisfy the other, and the validator never accepts a public key asserted
+by a receipt itself.
 
 Exit codes are `0` for valid, `1` for validation findings, and `2` for
 usage/I/O errors.
@@ -57,5 +64,15 @@ owner before a new version may set `status: owner_approved`. Each receipt binds
 the owner, signing instant, and exact approval-scope manifest digest with a
 verifiable Ed25519 signature whose owner-to-key binding comes from the
 independently supplied keyring; individual gate states still advance only with
-their required evidence. Tier tables and checkpoint diagrams are summaries and
-cannot independently authorize release.
+their required evidence.
+
+Each required `ACCEPT-*` task must additionally have a valid repository-owner
+receipt before its tier can become release-ready or a tier flag can be enabled.
+That domain-separated Ed25519 receipt binds the acceptance task, repository,
+repository-owner role, exact reviewed commit, immutable GitHub tree URI,
+artifact digest, accepted/rejected state, and validity interval. File presence,
+filenames, and prose are never interpreted as acceptance. Tier reports say
+`structurally possible` separately from `release-ready`; a pending branch is
+never described as ready merely because no No-go has closed it. Tier tables and
+checkpoint diagrams remain summaries and cannot independently authorize
+release.

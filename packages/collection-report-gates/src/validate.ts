@@ -17,7 +17,13 @@
  * (never wall clock); findings are sorted; no randomness, no I/O.
  */
 
-import type { GateManifestT, GateT, TaskT, TierT } from "./schema.js";
+import type {
+  GateManifestT,
+  GateT,
+  RepositoryAcceptanceReceiptT,
+  TaskT,
+  TierT,
+} from "./schema.js";
 import {
   STATIC_EVIDENCE_KINDS,
   DYNAMIC_EVIDENCE_KINDS,
@@ -27,6 +33,7 @@ import {
   computeApprovalManifestDigest,
   expectedApprovalKeyId,
   verifyManifestApproval,
+  verifyRepositoryAcceptance,
 } from "./approval.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +70,9 @@ export type FindingCode =
   | "SOURCE_REPO_MISMATCH"
   | "MANIFEST_APPROVAL_MISSING"
   | "MANIFEST_APPROVAL_INVALID"
+  | "OWNER_ACCEPTANCE_MISSING"
+  | "OWNER_ACCEPTANCE_INVALID"
+  | "OWNER_ACCEPTANCE_REJECTED"
   | "TASK_KIND_MISMATCH"
   | "SCHEMA_INVALID";
 
@@ -74,9 +84,13 @@ export interface Finding {
 
 export interface TierReport {
   tier: string;
-  /** false when any transitively required gate is no_go. */
-  reachable: boolean;
+  /** Structural branch feasibility only; this is never a readiness claim. */
+  structurally_possible: boolean;
+  /** True only with approved manifest, passed gates, and valid owner receipts. */
+  release_ready: boolean;
   blocking_no_go_gates: string[];
+  unpassed_gates: string[];
+  missing_owner_acceptance: string[];
   closure_size: number;
 }
 
@@ -226,6 +240,8 @@ export interface SourceInventory {
   digest: string;
   /** Every task id → owning repo slug, flattened from child_repos[].tasks[]. */
   tasks: ReadonlyMap<string, string>;
+  /** Duplicate IDs are retained as findings; the first declaration wins. */
+  duplicate_task_ids: readonly string[];
 }
 
 export interface ApprovalAuthorityRecord {
@@ -238,10 +254,29 @@ export type ApprovalAuthorities = ReadonlyMap<
   ApprovalAuthorityRecord
 >;
 
-/** Flatten a parsed coordinator task-manifest.yaml into a SourceInventory task map. */
-export function flattenTaskManifest(raw: unknown): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!isRecord(raw)) return out;
+export interface RepositoryAcceptanceAuthorityRecord {
+  owner: string;
+  key_id: string;
+  public_key: string;
+}
+
+export type RepositoryAcceptanceAuthorities = ReadonlyMap<
+  string,
+  RepositoryAcceptanceAuthorityRecord
+>;
+
+export interface FlattenedTaskManifest {
+  tasks: ReadonlyMap<string, string>;
+  duplicate_task_ids: readonly string[];
+}
+
+/** Flatten source tasks without allowing a duplicate ID to overwrite its first owner. */
+export function flattenTaskManifest(raw: unknown): FlattenedTaskManifest {
+  const tasksById = new Map<string, string>();
+  const duplicateIds = new Set<string>();
+  if (!isRecord(raw)) {
+    return { tasks: tasksById, duplicate_task_ids: [] };
+  }
   const repos = Array.isArray(raw.child_repos) ? raw.child_repos : [];
   for (const repo of repos) {
     if (!isRecord(repo)) continue;
@@ -250,10 +285,18 @@ export function flattenTaskManifest(raw: unknown): Map<string, string> {
     for (const task of tasks) {
       if (!isRecord(task)) continue;
       const id = typeof task.id === "string" ? task.id : "";
-      if (id) out.set(id, slug);
+      if (!id) continue;
+      if (tasksById.has(id)) {
+        duplicateIds.add(id);
+      } else {
+        tasksById.set(id, slug);
+      }
     }
   }
-  return out;
+  return {
+    tasks: tasksById,
+    duplicate_task_ids: [...duplicateIds].sort(),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +308,8 @@ export function validateGateManifest(
   options: {
     source?: SourceInventory;
     approvalAuthorities?: ApprovalAuthorities;
+    acceptanceReceipts?: readonly RepositoryAcceptanceReceiptT[];
+    acceptanceAuthorities?: RepositoryAcceptanceAuthorities;
   } = {},
 ): ValidationResult {
   const findings: Finding[] = [];
@@ -413,6 +458,123 @@ export function validateGateManifest(
         message: `owner_approved manifest is missing gate-owner receipts: ${missingOwners.join(", ")}`,
       });
     }
+  }
+
+  const acceptedAcceptanceTasks = new Set<string>();
+  const rejectedAcceptanceTasks = new Set<string>();
+  const invalidAcceptanceTasks = new Set<string>();
+  const seenAcceptanceTasks = new Set<string>();
+  for (const [i, receipt] of (options.acceptanceReceipts ?? []).entries()) {
+    const path = `acceptance_receipts[${i}]`;
+    let receiptValid = true;
+    if (seenAcceptanceTasks.has(receipt.task_id)) {
+      findings.push({
+        code: "DUPLICATE_ID",
+        path: `${path}.task_id`,
+        message: `duplicate repository-owner acceptance receipt for ${receipt.task_id}`,
+      });
+      receiptValid = false;
+    }
+    seenAcceptanceTasks.add(receipt.task_id);
+
+    const task = taskById.get(receipt.task_id);
+    if (task === undefined || task.kind !== "acceptance") {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.task_id`,
+        message: `${receipt.task_id} is not a declared repository acceptance task`,
+      });
+      receiptValid = false;
+    } else {
+      if (receipt.repository !== task.repository) {
+        findings.push({
+          code: "OWNER_ACCEPTANCE_INVALID",
+          path: `${path}.repository`,
+          message: `${receipt.task_id} is for ${task.repository}, not ${receipt.repository}`,
+        });
+        receiptValid = false;
+      }
+      if (receipt.owner !== task.primary_owner) {
+        findings.push({
+          code: "OWNER_ACCEPTANCE_INVALID",
+          path: `${path}.owner`,
+          message: `${receipt.task_id} must be signed by repository owner ${task.primary_owner}, not ${receipt.owner}`,
+        });
+        receiptValid = false;
+      }
+    }
+
+    const expectedArtifactUri =
+      `https://github.com/${receipt.repository}/tree/${receipt.reviewed_commit}`;
+    if (receipt.artifact_uri !== expectedArtifactUri) {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.artifact_uri`,
+        message: `artifact_uri must bind the same repository and reviewed_commit as the receipt`,
+      });
+      receiptValid = false;
+    }
+
+    const validFrom = Date.parse(receipt.valid_from);
+    const validUntil = Date.parse(receipt.valid_until);
+    const evaluated = Date.parse(evaluatedAt);
+    if (validFrom >= validUntil) {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.valid_until`,
+        message: `repository acceptance validity must end after it begins`,
+      });
+      receiptValid = false;
+    } else if (evaluated < validFrom || evaluated >= validUntil) {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.valid_until`,
+        message: `repository acceptance is not valid at evaluated_at ${evaluatedAt}`,
+      });
+      receiptValid = false;
+    }
+
+    const authority = options.acceptanceAuthorities?.get(receipt.repository);
+    if (authority === undefined) {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.key_id`,
+        message: `${receipt.repository} has no independently pinned repository acceptance key`,
+      });
+      receiptValid = false;
+    } else if (
+      authority.owner !== receipt.owner ||
+      authority.key_id !== expectedApprovalKeyId(authority.public_key) ||
+      receipt.key_id !== authority.key_id
+    ) {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.key_id`,
+        message: `${receipt.task_id} key is not authorized for ${receipt.repository} owner ${receipt.owner}`,
+      });
+      receiptValid = false;
+    } else if (!verifyRepositoryAcceptance(receipt, authority.public_key)) {
+      findings.push({
+        code: "OWNER_ACCEPTANCE_INVALID",
+        path: `${path}.signature`,
+        message: `${receipt.task_id} repository acceptance signature is invalid`,
+      });
+      receiptValid = false;
+    }
+
+    if (receiptValid) {
+      if (receipt.state === "accepted") {
+        acceptedAcceptanceTasks.add(receipt.task_id);
+      } else {
+        rejectedAcceptanceTasks.add(receipt.task_id);
+      }
+    } else {
+      invalidAcceptanceTasks.add(receipt.task_id);
+    }
+  }
+  for (const taskId of invalidAcceptanceTasks) {
+    acceptedAcceptanceTasks.delete(taskId);
+    rejectedAcceptanceTasks.delete(taskId);
   }
 
   const knownTaskIds = new Set(taskById.keys());
@@ -774,6 +936,8 @@ export function validateGateManifest(
     );
 
   const tierClosure = new Map<string, Set<string>>();
+  const tierMissingAcceptance = new Map<string, string[]>();
+  const acceptanceBlockingTiers = new Map<string, Set<string>>();
   const orderedTiers = [...manifest.tiers].sort(
     (a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)),
   );
@@ -870,7 +1034,36 @@ export function validateGateManifest(
         message: `tier ${tier.id} closure spans repositories without a boundary-acceptance task: ${unaccepted.join(", ")}`,
       });
     }
+
+    const missingOwnerAcceptance = tier.acceptance
+      .filter((taskId) => !acceptedAcceptanceTasks.has(taskId))
+      .sort();
+    tierMissingAcceptance.set(tier.id, missingOwnerAcceptance);
+    const everyGatePassed = [...allGates].every(
+      (gateId) => gateById.get(gateId)?.state === "pass",
+    );
+    if (manifest.status === "owner_approved" && everyGatePassed) {
+      for (const taskId of missingOwnerAcceptance) {
+        const blockedTiers =
+          acceptanceBlockingTiers.get(taskId) ?? new Set<string>();
+        blockedTiers.add(tier.id);
+        acceptanceBlockingTiers.set(taskId, blockedTiers);
+      }
+    }
   });
+
+  for (const [taskId, blockedTiers] of [...acceptanceBlockingTiers.entries()].sort()) {
+    const rejected = rejectedAcceptanceTasks.has(taskId);
+    findings.push({
+      code: rejected
+        ? "OWNER_ACCEPTANCE_REJECTED"
+        : "OWNER_ACCEPTANCE_MISSING",
+      path: "acceptance_receipts",
+      message: `${taskId} ${
+        rejected ? "is explicitly rejected" : "has no current, valid repository-owner receipt"
+      }; release-ready tiers blocked: ${[...blockedTiers].sort().join(", ")}`,
+    });
+  }
 
   // ── no-go consequences (structural + live) ───────────────────────────────
   manifest.gates.forEach((gate, i) => {
@@ -915,6 +1108,13 @@ export function validateGateManifest(
   // ── premature flag enablement ────────────────────────────────────────────
   manifest.flags.forEach((flag, i) => {
     if (!flag.enabled) return;
+    if (flag.tier === undefined) {
+      findings.push({
+        code: "PREMATURE_FLAG",
+        path: `flags[${i}].tier`,
+        message: `enabled flag ${flag.id} must name a release tier so repository-owner acceptance can be enforced`,
+      });
+    }
     if (manifest.status !== "owner_approved") {
       findings.push({
         code: "PREMATURE_FLAG",
@@ -931,6 +1131,17 @@ export function validateGateManifest(
         code: "PREMATURE_FLAG",
         path: `flags[${i}]`,
         message: `flag ${flag.id} is enabled before its controlling gates pass: ${notPassed.join(", ")}`,
+      });
+    }
+    const missingAcceptance =
+      flag.tier === undefined
+        ? []
+        : (tierMissingAcceptance.get(flag.tier) ?? []);
+    if (missingAcceptance.length > 0) {
+      findings.push({
+        code: "PREMATURE_FLAG",
+        path: `flags[${i}]`,
+        message: `flag ${flag.id} is enabled without current, valid repository-owner acceptance for tier ${flag.tier}: ${missingAcceptance.join(", ")}`,
       });
     }
   });
@@ -982,7 +1193,18 @@ export function validateGateManifest(
 
   // ── source inventory cross-check (unknown vs missing CRs) ────────────────
   if (options.source) {
-    const { digest, tasks: sourceTasks } = options.source;
+    const {
+      digest,
+      tasks: sourceTasks,
+      duplicate_task_ids: duplicateTaskIds,
+    } = options.source;
+    for (const taskId of duplicateTaskIds) {
+      findings.push({
+        code: "DUPLICATE_ID",
+        path: "source.tasks",
+        message: `coordinator task-manifest declares ${taskId} more than once; duplicate IDs cannot overwrite canonical ownership`,
+      });
+    }
     if (digest !== manifest.source.task_manifest_digest) {
       findings.push({
         code: "SOURCE_DIGEST_MISMATCH",
@@ -1017,16 +1239,30 @@ export function validateGateManifest(
     }
   }
 
-  // ── tier reachability report ─────────────────────────────────────────────
+  // ── tier feasibility/readiness report ───────────────────────────────────
   const tierReports: TierReport[] = orderedTiers.map((tier) => {
     const gates = gateTransitive(tier.requires_gates);
     const noGo = [...gates]
       .filter((id) => gateById.get(id)?.state === "no_go")
       .sort();
+    const unpassed = [...gates]
+      .filter((id) => gateById.get(id)?.state !== "pass")
+      .map((id) => `${id}=${gateById.get(id)?.state ?? "unknown"}`)
+      .sort();
+    const missingAcceptance = tierMissingAcceptance.get(tier.id) ?? [];
+    const structurallyPossible = noGo.length === 0;
     return {
       tier: tier.id,
-      reachable: noGo.length === 0,
+      structurally_possible: structurallyPossible,
+      release_ready:
+        findings.length === 0 &&
+        structurallyPossible &&
+        manifest.status === "owner_approved" &&
+        unpassed.length === 0 &&
+        missingAcceptance.length === 0,
       blocking_no_go_gates: noGo,
+      unpassed_gates: unpassed,
+      missing_owner_acceptance: missingAcceptance,
       closure_size: tierClosure.get(tier.id)?.size ?? 0,
     };
   });

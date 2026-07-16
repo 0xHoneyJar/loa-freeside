@@ -30,7 +30,7 @@ describe("check-gate-manifest CLI", () => {
     assert.match(result.stdout, /RANGE_FORBIDDEN/);
   });
 
-  it("accepts an owner-approved manifest only with the pinned keyring", () => {
+  it("requires independent gate and repository-owner trust inputs", () => {
     const manifest = fixturePath(
       "test-vectors",
       "positive",
@@ -44,7 +44,7 @@ describe("check-gate-manifest CLI", () => {
     );
     assert.match(withoutKeyring.stdout, /MANIFEST_APPROVAL_INVALID/);
 
-    const withKeyring = run(
+    const withGateKeyringOnly = run(
       "--manifest",
       manifest,
       "--approval-keyring",
@@ -54,8 +54,38 @@ describe("check-gate-manifest CLI", () => {
         "approval-keyring.yaml",
       ),
     );
-    assert.equal(withKeyring.status, 0, withKeyring.stdout + withKeyring.stderr);
-    assert.match(withKeyring.stdout, /VALID — 0 findings/);
+    assert.equal(
+      withGateKeyringOnly.status,
+      1,
+      withGateKeyringOnly.stdout + withGateKeyringOnly.stderr,
+    );
+    assert.match(withGateKeyringOnly.stdout, /OWNER_ACCEPTANCE_MISSING/);
+
+    const withBothTrustDomains = run(
+      "--manifest",
+      manifest,
+      "--approval-keyring",
+      fixturePath("test-vectors", "trust", "approval-keyring.yaml"),
+      "--acceptance-receipts",
+      fixturePath(
+        "test-vectors",
+        "positive",
+        "repository-acceptance-receipts.yaml",
+      ),
+      "--acceptance-keyring",
+      fixturePath(
+        "test-vectors",
+        "trust",
+        "repository-acceptance-keyring.yaml",
+      ),
+    );
+    assert.equal(
+      withBothTrustDomains.status,
+      0,
+      withBothTrustDomains.stdout + withBothTrustDomains.stderr,
+    );
+    assert.match(withBothTrustDomains.stdout, /RELEASE READY/);
+    assert.match(withBothTrustDomains.stdout, /VALID — 0 findings/);
   });
 
   it("uses exit code 2 for missing arguments", () => {

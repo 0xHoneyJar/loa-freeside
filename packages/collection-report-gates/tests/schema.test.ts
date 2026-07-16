@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { decodeGateManifestSync } from "../src/index.js";
-import { loadManifest } from "./test-helpers.js";
+import {
+  decodeGateManifestSync,
+  decodeRepositoryAcceptanceReceiptsSync,
+} from "../src/index.js";
+import {
+  loadManifest,
+  loadRepositoryAcceptanceReceipts,
+} from "./test-helpers.js";
 
 describe("GateManifest strict boundary", () => {
   it("decodes the canonical manifest", () => {
@@ -67,6 +73,24 @@ describe("GateManifest strict boundary", () => {
           },
           ...manifest.gates.slice(1),
         ],
+      }),
+    );
+  });
+
+  it("strictly decodes content-bound repository acceptance receipts", () => {
+    const receipts = loadRepositoryAcceptanceReceipts();
+    assert.doesNotThrow(() =>
+      decodeRepositoryAcceptanceReceiptsSync({
+        schema_version: 1,
+        receipts,
+      }),
+    );
+    const first = receipts[0];
+    assert.ok(first);
+    assert.throws(() =>
+      decodeRepositoryAcceptanceReceiptsSync({
+        schema_version: 1,
+        receipts: [{ ...first, prose_approval: "looks good" }],
       }),
     );
   });
