@@ -24,6 +24,11 @@ resource "aws_cloudwatch_metric_alarm" "dixie_health_check_failure" {
   alarm_description   = "Dixie service has no healthy targets — service is DOWN."
   treat_missing_data  = "breaching"
 
+  # Self-disabling: a service deliberately scaled to zero must not page.
+  # Was stuck in ALARM since 2026-04/05 firing into sensenet-alarms-ingest
+  # (see grimoires/loa/context/2026-07-17-arrakis-void-alarm-audit.md).
+  actions_enabled = var.dixie_desired_count > 0
+
   dimensions = {
     TargetGroup  = aws_lb_target_group.dixie.arn_suffix
     LoadBalancer = aws_lb.main.arn_suffix
