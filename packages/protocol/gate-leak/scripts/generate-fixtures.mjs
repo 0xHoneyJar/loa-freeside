@@ -197,7 +197,14 @@ const miberaRatify = {
   effective_at: T0,
   idempotency_key: "mibera-ratify-0001",
 };
-const miberaRatified = run(ratifyGateMapping(miberaSeed, miberaRatify));
+const miberaRatified = run(
+  ratifyGateMapping(miberaSeed, miberaRatify, {
+    schema_version: 1,
+    policy_version: "gate-leak-churn.v1",
+    community_ref: miberaRatify.community_ref,
+    version_effective_times: [],
+  }),
+);
 
 const legacyRecords = [
   {

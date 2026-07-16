@@ -342,6 +342,13 @@ export class MappingChurnLimitError extends Data.TaggedError("MappingChurnLimitE
   readonly window_hours: 24;
 }> {}
 
+export class MappingChurnWindowInvalidError extends Data.TaggedError(
+  "MappingChurnWindowInvalidError",
+)<{
+  readonly reason_code: "mapping_churn_window_invalid";
+  readonly reason: string;
+}> {}
+
 export class SecondApproverInvalidError extends Data.TaggedError(
   "SecondApproverInvalidError",
 )<{
@@ -671,6 +678,27 @@ export interface RatifyGateMappingResult {
 }
 
 /**
+ * Same-transaction, community-wide mapping history supplied by the
+ * persistence admission layer. A single collection aggregate cannot prove a
+ * per-community churn bound by itself.
+ */
+export const CommunityMappingChurnWindow = Schema.Struct({
+  schema_version: Schema.Literal(1),
+  policy_version: Schema.Literal(GATE_LEAK_CHURN_POLICY_V1.version),
+  community_ref: CommunityRef,
+  version_effective_times: Schema.Array(IsoTimestamp),
+}).annotations({ identifier: "CommunityMappingChurnWindow" });
+export interface CommunityMappingChurnWindow
+  extends Schema.Schema.Type<typeof CommunityMappingChurnWindow> {}
+export const decodeCommunityMappingChurnWindow = Schema.decodeUnknown(
+  CommunityMappingChurnWindow,
+  {
+    errors: "all",
+    onExcessProperty: "error",
+  },
+);
+
+/**
  * Strict-decode + integrity-verify the complete stored aggregate envelope
  * before any transition branch. Malformed `schema_version`,
  * `aggregate_version`, audit records, excess keys, grafted envelope fields,
@@ -728,6 +756,7 @@ const verifyStoredMappingAggregate = (
 export const ratifyGateMapping = (
   aggregate: GateMappingAggregate,
   command: RatifyGateMappingCommand,
+  communityChurnWindow: CommunityMappingChurnWindow,
 ): Effect.Effect<
   RatifyGateMappingResult,
   | UnauthorizedRatifierError
@@ -736,6 +765,7 @@ export const ratifyGateMapping = (
   | MalformedMappingAggregateError
   | MappingIntegrityError
   | MappingChurnLimitError
+  | MappingChurnWindowInvalidError
   | SecondApproverInvalidError
   | IntegrationEvidenceMismatchError
   | MappingScopeMismatchError
@@ -746,6 +776,9 @@ export const ratifyGateMapping = (
 > =>
   Effect.gen(function* () {
     const verifiedAggregate = yield* verifyStoredMappingAggregate(aggregate);
+    const verifiedChurnWindow = yield* decodeCommunityMappingChurnWindow(
+      communityChurnWindow,
+    );
 
     if (
       command.community_ref !== verifiedAggregate.community_ref ||
@@ -758,6 +791,52 @@ export const ratifyGateMapping = (
             "ratify command community, guild, and collection must match the aggregate scope",
         }),
       );
+    }
+
+    if (verifiedChurnWindow.community_ref !== command.community_ref) {
+      return yield* Effect.fail(
+        new MappingChurnWindowInvalidError({
+          reason_code: "mapping_churn_window_invalid",
+          reason:
+            "community mapping churn window must match the ratification community",
+        }),
+      );
+    }
+
+    const candidateEffectiveAt = Date.parse(command.effective_at);
+    if (
+      verifiedChurnWindow.version_effective_times.some(
+        (effectiveAt) => Date.parse(effectiveAt) > candidateEffectiveAt,
+      )
+    ) {
+      return yield* Effect.fail(
+        new MappingChurnWindowInvalidError({
+          reason_code: "mapping_churn_window_invalid",
+          reason:
+            "community mapping churn window cannot contain versions effective after the candidate",
+        }),
+      );
+    }
+
+    // The persistence snapshot must include this aggregate's complete history.
+    // This catches accidentally collection-scoped windows while the admission
+    // transaction supplies the additional histories for sibling aggregates.
+    const windowTimeCounts = new Map<string, number>();
+    for (const effectiveAt of verifiedChurnWindow.version_effective_times) {
+      windowTimeCounts.set(effectiveAt, (windowTimeCounts.get(effectiveAt) ?? 0) + 1);
+    }
+    for (const version of verifiedAggregate.versions) {
+      const remaining = windowTimeCounts.get(version.effective_at) ?? 0;
+      if (remaining === 0) {
+        return yield* Effect.fail(
+          new MappingChurnWindowInvalidError({
+            reason_code: "mapping_churn_window_invalid",
+            reason:
+              "community mapping churn window omits history from the target aggregate",
+          }),
+        );
+      }
+      windowTimeCounts.set(version.effective_at, remaining - 1);
     }
 
     if (!command.ratifier_permissions.includes(GATE_CONFIG_RATIFY_PERMISSION)) {
@@ -846,11 +925,14 @@ export const ratifyGateMapping = (
       }
     }
 
-    const recentVersions = verifiedAggregate.versions.filter(
-      (version) => hoursBetween(version.effective_at, command.effective_at) < 24,
+    const recentCommunityVersions = verifiedChurnWindow.version_effective_times.filter(
+      (effectiveAt) => {
+        const hours = hoursBetween(effectiveAt, command.effective_at);
+        return hours >= 0 && hours < 24;
+      },
     );
     if (
-      recentVersions.length >=
+      recentCommunityVersions.length >=
       GATE_LEAK_CHURN_POLICY_V1.max_new_mapping_versions_per_community_per_24h
     ) {
       return yield* Effect.fail(

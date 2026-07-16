@@ -8,6 +8,7 @@ import {
 import {
   DISCORD_CAPTURE_POLICY_V1,
   EVIDENCE_ALIGNMENT_POLICY_V1,
+  GATE_LEAK_CHURN_POLICY_V1,
   GATE_LEAK_RECIPE_V1,
   GATE_RULE_V1,
   OWNERSHIP_FINALITY_EIP155_FINALIZED_BLOCK_V1,
@@ -203,7 +204,14 @@ const miberaSeed = expectEffectSuccess(
 const miberaCommand = expectEffectSuccess(
   decodeRatifyGateMappingCommand(community.ratify_command),
 );
-const miberaRatified = expectEffectSuccess(ratifyGateMapping(miberaSeed, miberaCommand));
+const miberaRatified = expectEffectSuccess(
+  ratifyGateMapping(miberaSeed, miberaCommand, {
+    schema_version: 1,
+    policy_version: GATE_LEAK_CHURN_POLICY_V1.version,
+    community_ref: miberaCommand.community_ref,
+    version_effective_times: [],
+  }),
+);
 const miberaAggregate: GateMappingAggregate = miberaRatified.aggregate;
 const miberaVersion: GateMappingVersion = miberaRatified.version;
 

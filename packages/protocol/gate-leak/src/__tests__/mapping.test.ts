@@ -14,7 +14,7 @@ import {
   evaluateGateLeakOrderChurn,
   mappingPermitsIdentityReveal,
   mappingSatisfiesReadiness,
-  ratifyGateMapping,
+  ratifyGateMapping as ratifyGateMappingTransition,
   revokeGateMappingVersion,
   verifyGateMappingVersionIntegrity,
 } from "../index.js";
@@ -67,6 +67,20 @@ const seedOf = (fixture: { readonly seed_aggregate: unknown }): GateMappingAggre
 
 const ratifyCommandOf = (raw: unknown): RatifyGateMappingCommand =>
   expectEffectSuccess(decodeRatifyGateMappingCommand(raw));
+
+const ratifyGateMapping = (
+  aggregate: GateMappingAggregate,
+  command: RatifyGateMappingCommand,
+  versionEffectiveTimes: ReadonlyArray<string> = aggregate.versions.map(
+    (version) => version.effective_at,
+  ),
+) =>
+  ratifyGateMappingTransition(aggregate, command, {
+    schema_version: 1,
+    policy_version: GATE_LEAK_CHURN_POLICY_V1.version,
+    community_ref: command.community_ref,
+    version_effective_times: versionEffectiveTimes,
+  });
 
 const integrityMismatchesOf = (tampered: GateMappingVersion): ReadonlyArray<string> => {
   const failure = expectEffectFailureTag(
@@ -790,6 +804,46 @@ describe("gate_mapping.v1 aggregate", () => {
       }),
     );
     expect(outsideWindow.idempotent_replay).toBe(false);
+  });
+
+  it("enforces mapping churn across sibling aggregates in the same community", () => {
+    const aggregate = seedOf(mibera);
+    const command = {
+      ...ratifyCommandOf(mibera.ratify_command),
+      effective_at: "2026-07-16T05:00:00Z",
+      idempotency_key: "mibera-community-churn-overflow",
+    };
+    const communityHistory = Array.from(
+      {
+        length:
+          GATE_LEAK_CHURN_POLICY_V1.max_new_mapping_versions_per_community_per_24h,
+      },
+      (_, index) => `2026-07-16T0${index}:00:00Z`,
+    );
+    const failure = expectEffectFailureTag(
+      ratifyGateMapping(aggregate, command, communityHistory),
+      "MappingChurnLimitError",
+    );
+    expect(failure).toMatchObject({
+      reason_code: "mapping_churn_limit_exceeded",
+    });
+  });
+
+  it("refuses a community churn window that omits target-aggregate history", () => {
+    const command = ratifyCommandOf(mibera.ratify_command);
+    const first = expectEffectSuccess(ratifyGateMapping(seedOf(mibera), command));
+    const replayFailure = expectEffectFailureTag(
+      ratifyGateMappingTransition(first.aggregate, command, {
+        schema_version: 1,
+        policy_version: GATE_LEAK_CHURN_POLICY_V1.version,
+        community_ref: command.community_ref,
+        version_effective_times: [],
+      }),
+      "MappingChurnWindowInvalidError",
+    );
+    expect(replayFailure).toMatchObject({
+      reason_code: "mapping_churn_window_invalid",
+    });
   });
 
   it("scope mismatch: a command for another community/guild cannot touch this aggregate", () => {

@@ -258,8 +258,11 @@ being ratified (`IntegrationEvidenceMismatchError`).
 
 `GATE_LEAK_CHURN_POLICY_V1`: 5 new mapping versions and 10 distinct-collection
 Gate Leak orders per community per rolling 24h. The mapping limit is enforced
-inside the ratify transition (revoked versions still count toward creation
-rate); the order limit ships as `evaluateGateLeakOrderChurn`, whose
+inside the ratify transition against a required, same-transaction
+`CommunityMappingChurnWindow` supplied by persistence (revoked versions and
+sibling collection/guild aggregates still count toward creation rate). The
+transition rejects a wrong-community, future-dated, or target-history-omitting
+window. The order limit ships as `evaluateGateLeakOrderChurn`, whose
 enforcement site is Ordering admission. Raising either requires privacy
 review and a new policy version.
 
