@@ -1,10 +1,13 @@
 import {
+  copyFileSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -442,6 +445,87 @@ describe("CR-005 artifact harness", () => {
         }),
       ),
     ).toBeInstanceOf(ArtifactFixtureDigestMismatch);
+  });
+
+  it("verifies legacy SHA pins from a dependency-free unpacked artifact", () => {
+    const isolatedRoot = mkdtempSync(
+      join(tmpdir(), "collection-protocol-legacy-verify-"),
+    );
+    const scriptsRoot = join(isolatedRoot, "scripts");
+    const verifierPath = join(scriptsRoot, "verify-artifact.mjs");
+    const artifactPath = join(isolatedRoot, "legacy-artifact.tgz");
+
+    try {
+      mkdirSync(scriptsRoot, { recursive: true });
+      copyFileSync(
+        join(packageRoot, "scripts/verify-artifact.mjs"),
+        verifierPath,
+      );
+      writeFileSync(artifactPath, "dependency-free legacy artifact\n", "utf8");
+      const expectedSha = sha256Hex(readFileSync(artifactPath));
+      const env = { ...process.env, NODE_PATH: "" };
+
+      const stdout = execFileSync(
+        "node",
+        [
+          verifierPath,
+          "--tarball",
+          artifactPath,
+          "--legacy-sha256",
+          expectedSha,
+        ],
+        { cwd: isolatedRoot, encoding: "utf8", env },
+      );
+      expect(JSON.parse(stdout)).toEqual({
+        ok: true,
+        mode: "legacy-sha256",
+        artifact_sha256: expectedSha,
+      });
+
+      try {
+        execFileSync(
+          "node",
+          [
+            verifierPath,
+            "--tarball",
+            artifactPath,
+            "--legacy-sha256",
+            "0".repeat(64),
+          ],
+          {
+            cwd: isolatedRoot,
+            encoding: "utf8",
+            env,
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+        throw new Error("expected isolated legacy checksum verification to fail");
+      } catch (error) {
+        const status =
+          error !== null &&
+          typeof error === "object" &&
+          "status" in error &&
+          typeof (error as { status: unknown }).status === "number"
+            ? (error as { status: number }).status
+            : undefined;
+        const stderr =
+          error !== null &&
+          typeof error === "object" &&
+          "stderr" in error &&
+          typeof (error as { stderr: unknown }).stderr === "string"
+            ? (error as { stderr: string }).stderr
+            : "";
+        expect(status).toBe(1);
+        expect(JSON.parse(stderr)).toMatchObject({
+          ok: false,
+          tag: "ArtifactChecksumMismatch",
+          expected: "0".repeat(64),
+          actual: expectedSha,
+        });
+      }
+    } finally {
+      rmSync(isolatedRoot, { recursive: true, force: true });
+    }
   });
 
   it("does not create a package cycle: harness depends only on protocol locals", async () => {

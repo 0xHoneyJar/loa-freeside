@@ -17,7 +17,6 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
-import { Cause, Effect, Exit } from "effect";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "..");
@@ -77,18 +76,6 @@ const fail = (tag, details) => {
   process.exit(1);
 };
 
-const failureFromExit = (exit) => {
-  const failures = Array.from(Cause.failures(exit.cause));
-  if (failures[0] !== undefined) {
-    return failures[0];
-  }
-  const defects = Array.from(Cause.defects(exit.cause));
-  if (defects[0] !== undefined) {
-    return defects[0];
-  }
-  return exit.cause;
-};
-
 const options = parseArgs(process.argv.slice(2));
 if (!options.tarball) {
   fail("UsageError", { reason: "--tarball is required" });
@@ -119,6 +106,22 @@ if (!options.manifest) {
     reason: "--manifest is required unless --legacy-sha256 is used",
   });
 }
+
+// Legacy pins are intentionally verifiable from an unpacked artifact without
+// installing this package's peer dependencies. Manifest verification is the
+// only path that needs Effect and the compiled protocol harness.
+const { Cause, Effect, Exit } = await import("effect");
+const failureFromExit = (exit) => {
+  const failures = Array.from(Cause.failures(exit.cause));
+  if (failures[0] !== undefined) {
+    return failures[0];
+  }
+  const defects = Array.from(Cause.defects(exit.cause));
+  if (defects[0] !== undefined) {
+    return defects[0];
+  }
+  return exit.cause;
+};
 
 const loaderUrl = pathToFileURL(join(here, "lib/isolated-harness.mjs")).href;
 const { loadHarnessForVerify } = await import(loaderUrl);
