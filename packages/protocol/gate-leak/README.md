@@ -124,4 +124,5 @@ pnpm install
 pnpm typecheck
 pnpm build
 pnpm test
+pnpm verify:fixtures
 ```

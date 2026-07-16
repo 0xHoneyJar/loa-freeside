@@ -14,7 +14,7 @@
  * synthetic, must never be treated as production identifiers, and do NOT
  * satisfy the external three-live-community G1 evidence gate.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
@@ -24,6 +24,7 @@ import {
   makeCollectionIdentity,
 } from "@freeside/collection-protocol";
 import {
+  GATE_LEAK_CHURN_POLICY_V1,
   GATE_RULE_V1,
   classifyGateLeakSubjects,
   computeGateLeakMeasure,
@@ -37,16 +38,38 @@ import {
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixturesRoot = join(packageRoot, "fixtures");
-mkdirSync(join(fixturesRoot, "malformed"), { recursive: true });
+const checkOnly = process.argv.includes("--check");
+const pendingFixtureWrites = new Map();
 
 const run = (effect) => Effect.runSync(effect);
 const write = (name, value) => {
-  writeFileSync(join(fixturesRoot, name), `${JSON.stringify(value, null, 2)}\n`);
-  console.log(`wrote fixtures/${name}`);
+  pendingFixtureWrites.set(name, `${JSON.stringify(value, null, 2)}\n`);
+};
+const flushFixtures = () => {
+  for (const [name, contents] of pendingFixtureWrites) {
+    const path = join(fixturesRoot, name);
+    if (checkOnly) {
+      assert(
+        readFileSync(path, "utf8") === contents,
+        `fixtures/${name} differs from deterministic regeneration`,
+      );
+      continue;
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, contents);
+    console.log(`wrote fixtures/${name}`);
+  }
 };
 const assert = (condition, message) => {
   if (!condition) throw new Error(`golden expectation failed: ${message}`);
 };
+
+const mappingChurnWindowFor = (aggregate) => ({
+  schema_version: 1,
+  policy_version: GATE_LEAK_CHURN_POLICY_V1.version,
+  community_ref: aggregate.community_ref,
+  version_effective_times: aggregate.versions.map((version) => version.effective_at),
+});
 
 const G1_DISCLAIMER =
   "Recorded-SHAPE stand-in with synthetic identifiers. Does NOT satisfy the external three-live-community G1 evidence gate; live operator-supplied exports remain the open external evidence.";
@@ -198,12 +221,7 @@ const miberaRatify = {
   idempotency_key: "mibera-ratify-0001",
 };
 const miberaRatified = run(
-  ratifyGateMapping(miberaSeed, miberaRatify, {
-    schema_version: 1,
-    policy_version: "gate-leak-churn.v1",
-    community_ref: miberaRatify.community_ref,
-    version_effective_times: [],
-  }),
+  ratifyGateMapping(miberaSeed, miberaRatify, mappingChurnWindowFor(miberaSeed)),
 );
 
 const legacyRecords = [
@@ -304,7 +322,9 @@ const acmeRatify = {
   effective_at: T0,
   idempotency_key: "acme-ratify-0001",
 };
-const acmeRatified = run(ratifyGateMapping(acmeSeed, acmeRatify));
+const acmeRatified = run(
+  ratifyGateMapping(acmeSeed, acmeRatify, mappingChurnWindowFor(acmeSeed)),
+);
 const acmeRevoke = {
   schema_version: 1,
   mapping_version_id: acmeRatified.version.mapping_version_id,
@@ -325,7 +345,13 @@ const acmeRelink = {
   effective_at: T2,
   idempotency_key: "acme-relink-0001",
 };
-const acmeRelinked = run(ratifyGateMapping(acmeRevoked.aggregate, acmeRelink));
+const acmeRelinked = run(
+  ratifyGateMapping(
+    acmeRevoked.aggregate,
+    acmeRelink,
+    mappingChurnWindowFor(acmeRevoked.aggregate),
+  ),
+);
 assert(
   acmeRelinked.version.config_digest.digest === acmeRatified.version.config_digest.digest,
   "relink of the identical configuration reproduces the same config digest",
@@ -966,4 +992,9 @@ write("malformed/disclosure-key-unsorted-roles.invalid.json", {
   epoch_index: 0,
 });
 
-console.log("all golden expectations held");
+flushFixtures();
+console.log(
+  checkOnly
+    ? "all golden expectations held; committed fixtures match regeneration"
+    : "all golden expectations held",
+);
