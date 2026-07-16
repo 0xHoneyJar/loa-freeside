@@ -105,6 +105,12 @@ const baselineDigestMaterial = (baseline: CapabilityRegistryBaseline): unknown =
   version: baseline.version,
 });
 
+const digestMatches = (left: VersionedDigest, right: VersionedDigest): boolean =>
+  left.algorithm === right.algorithm &&
+  left.domain === right.domain &&
+  left.major_version === right.major_version &&
+  left.digest === right.digest;
+
 export const decodeCapabilityRegistryBaseline = (input: unknown) =>
   decodeCapabilityRegistryBaselineStruct(input).pipe(
     Effect.flatMap((baseline) =>
@@ -114,7 +120,7 @@ export const decodeCapabilityRegistryBaseline = (input: unknown) =>
         baselineDigestMaterial(baseline),
       ).pipe(
         Effect.flatMap((expected) =>
-          expected.digest === baseline.baseline_digest.digest
+          digestMatches(expected, baseline.baseline_digest)
             ? Effect.succeed(baseline)
             : Effect.fail(
                 new RegistryBaselineIntegrityError({
@@ -127,69 +133,97 @@ export const decodeCapabilityRegistryBaseline = (input: unknown) =>
   );
 
 export const compareCapabilityRegistryVersions = (
-  left: CapabilityRegistryVersion,
-  right: CapabilityRegistryVersion,
-): Effect.Effect<RegistryVersionRelation, RegistryEpochMismatchError> => {
-  if (left.registry_epoch !== right.registry_epoch) {
-    return Effect.fail(
-      new RegistryEpochMismatchError({
-        left_epoch: left.registry_epoch,
-        right_epoch: right.registry_epoch,
-        reason: "cross-epoch ordering requires an installed complete baseline",
-      }),
-    );
-  }
+  left: unknown,
+  right: unknown,
+) =>
+  Effect.all({
+    left: decodeCapabilityRegistryVersion(left),
+    right: decodeCapabilityRegistryVersion(right),
+  }).pipe(
+    Effect.flatMap(({
+      left: decodedLeft,
+      right: decodedRight,
+    }): Effect.Effect<RegistryVersionRelation, RegistryEpochMismatchError> => {
+      if (decodedLeft.registry_epoch !== decodedRight.registry_epoch) {
+        return Effect.fail(
+          new RegistryEpochMismatchError({
+            left_epoch: decodedLeft.registry_epoch,
+            right_epoch: decodedRight.registry_epoch,
+            reason: "cross-epoch ordering requires an installed complete baseline",
+          }),
+        );
+      }
 
-  const leftSequence = BigInt(left.registry_sequence);
-  const rightSequence = BigInt(right.registry_sequence);
-  if (leftSequence < rightSequence) return Effect.succeed("older");
-  if (leftSequence > rightSequence) return Effect.succeed("newer");
-  return Effect.succeed("equal");
-};
+      const leftSequence = BigInt(decodedLeft.registry_sequence);
+      const rightSequence = BigInt(decodedRight.registry_sequence);
+      if (leftSequence < rightSequence) return Effect.succeed("older");
+      if (leftSequence > rightSequence) return Effect.succeed("newer");
+      return Effect.succeed("equal");
+    }),
+  );
 
 export const advanceCapabilityRegistryVersion = (
-  current: CapabilityRegistryVersion,
-  candidate: CapabilityRegistryVersion,
-  installedBaseline?: CapabilityRegistryBaseline,
-): Effect.Effect<
-  RegistryVersionAdvance,
-  | RegistryBaselineRequiredError
-  | InvalidRegistryBaselineError
-  | RegistrySequenceRegressionError
-> => {
-  if (current.registry_epoch === candidate.registry_epoch) {
-    if (BigInt(candidate.registry_sequence) <= BigInt(current.registry_sequence)) {
-      return Effect.fail(
-        new RegistrySequenceRegressionError({
-          current_sequence: current.registry_sequence,
-          candidate_sequence: candidate.registry_sequence,
-        }),
-      );
-    }
-    return Effect.succeed("sequence");
-  }
+  current: unknown,
+  candidate: unknown,
+  installedBaseline?: unknown,
+) =>
+  Effect.all({
+    current: decodeCapabilityRegistryVersion(current),
+    candidate: decodeCapabilityRegistryVersion(candidate),
+    installedBaseline:
+      installedBaseline === undefined
+        ? Effect.succeed(undefined)
+        : decodeCapabilityRegistryBaseline(installedBaseline),
+  }).pipe(
+    Effect.flatMap(
+      ({
+        current: decodedCurrent,
+        candidate: decodedCandidate,
+        installedBaseline: decodedBaseline,
+      }): Effect.Effect<
+        RegistryVersionAdvance,
+        | RegistryBaselineRequiredError
+        | InvalidRegistryBaselineError
+        | RegistrySequenceRegressionError
+      > => {
+        if (decodedCurrent.registry_epoch === decodedCandidate.registry_epoch) {
+          if (
+            BigInt(decodedCandidate.registry_sequence) <=
+            BigInt(decodedCurrent.registry_sequence)
+          ) {
+            return Effect.fail(
+              new RegistrySequenceRegressionError({
+                current_sequence: decodedCurrent.registry_sequence,
+                candidate_sequence: decodedCandidate.registry_sequence,
+              }),
+            );
+          }
+          return Effect.succeed("sequence");
+        }
 
-  if (installedBaseline === undefined) {
-    return Effect.fail(
-      new RegistryBaselineRequiredError({
-        current_epoch: current.registry_epoch,
-        candidate_epoch: candidate.registry_epoch,
-      }),
-    );
-  }
+        if (decodedBaseline === undefined) {
+          return Effect.fail(
+            new RegistryBaselineRequiredError({
+              current_epoch: decodedCurrent.registry_epoch,
+              candidate_epoch: decodedCandidate.registry_epoch,
+            }),
+          );
+        }
 
-  if (
-    installedBaseline.previous_registry_epoch !== current.registry_epoch ||
-    installedBaseline.version.registry_epoch !== candidate.registry_epoch ||
-    installedBaseline.version.registry_sequence !== candidate.registry_sequence ||
-    candidate.registry_sequence !== "0"
-  ) {
-    return Effect.fail(
-      new InvalidRegistryBaselineError({
-        reason: "installed baseline does not authorize this exact zero-sequence epoch reset",
-      }),
-    );
-  }
+        if (
+          decodedBaseline.previous_registry_epoch !== decodedCurrent.registry_epoch ||
+          decodedBaseline.version.registry_epoch !== decodedCandidate.registry_epoch ||
+          decodedBaseline.version.registry_sequence !== decodedCandidate.registry_sequence ||
+          decodedCandidate.registry_sequence !== "0"
+        ) {
+          return Effect.fail(
+            new InvalidRegistryBaselineError({
+              reason: "installed baseline does not authorize this exact zero-sequence epoch reset",
+            }),
+          );
+        }
 
-  return Effect.succeed("epoch_reset");
-};
+        return Effect.succeed("epoch_reset");
+      },
+    ),
+  );

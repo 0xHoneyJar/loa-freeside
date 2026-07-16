@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Data, Effect, Schema } from "effect";
+import { Data, Effect, ParseResult, Schema } from "effect";
 import { Sha256Hex } from "./scalars.js";
 
 export const DigestDomain = Schema.String.pipe(
@@ -7,10 +7,15 @@ export const DigestDomain = Schema.String.pipe(
 ).annotations({ identifier: "DigestDomain" });
 export type DigestDomain = Schema.Schema.Type<typeof DigestDomain>;
 
+const DigestMajorVersion = Schema.Number.pipe(
+  Schema.int(),
+  Schema.greaterThanOrEqualTo(1),
+);
+
 export const VersionedDigest = Schema.Struct({
   algorithm: Schema.Literal("sha-256"),
   domain: DigestDomain,
-  major_version: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(1)),
+  major_version: DigestMajorVersion,
   digest: Sha256Hex,
 }).annotations({ identifier: "VersionedDigest" });
 export interface VersionedDigest extends Schema.Schema.Type<typeof VersionedDigest> {}
@@ -225,29 +230,38 @@ export const sortCanonicalSet = <Value>(
   );
 
 export const digestVersioned = (
-  domain: DigestDomain,
-  majorVersion: number,
+  domain: unknown,
+  majorVersion: unknown,
   value: unknown,
 ): Effect.Effect<
   VersionedDigest,
-  CanonicalEncodingError | DigestComputationError
+  ParseResult.ParseError | CanonicalEncodingError | DigestComputationError
 > =>
-  canonicalEncode({ domain, major_version: majorVersion, value }).pipe(
-    Effect.flatMap((bytes) =>
-      Effect.try({
-        try: () => createHash("sha256").update(bytes).digest("hex"),
-        catch: (cause) => new DigestComputationError({ domain, cause }),
-      }),
+  Effect.all({
+    domain: Schema.decodeUnknown(DigestDomain)(domain),
+    majorVersion: Schema.decodeUnknown(DigestMajorVersion)(majorVersion),
+  }).pipe(
+    Effect.flatMap(({ domain: decodedDomain, majorVersion: decodedMajorVersion }) =>
+      canonicalEncode({
+        domain: decodedDomain,
+        major_version: decodedMajorVersion,
+        value,
+      }).pipe(
+        Effect.flatMap((bytes) =>
+          Effect.try({
+            try: () => createHash("sha256").update(bytes).digest("hex"),
+            catch: (cause) =>
+              new DigestComputationError({ domain: decodedDomain, cause }),
+          }),
+        ),
+        Effect.map((digest): VersionedDigest => ({
+          algorithm: "sha-256",
+          domain: decodedDomain,
+          major_version: decodedMajorVersion,
+          digest,
+        })),
+      ),
     ),
-    Effect.map((digest) => {
-      const result: VersionedDigest = {
-        algorithm: "sha-256",
-        domain,
-        major_version: majorVersion,
-        digest,
-      };
-      return result;
-    }),
   );
 
 export const CANONICAL_ENCODING_RULES = Object.freeze({

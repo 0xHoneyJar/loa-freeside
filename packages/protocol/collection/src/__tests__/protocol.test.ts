@@ -285,6 +285,13 @@ describe("RFC 8785, NFC, collection rules, and versioned digests", () => {
     expectEffectFailure(canonicalize({ bad_unicode: "\ud800" }));
     expectEffectFailure(canonicalize(new Date("2026-07-16T00:00:00Z")));
   });
+
+  it("rejects malformed digest domains and major versions through Effect", () => {
+    expectEffectFailure(digestVersioned("INVALID DOMAIN", 1, { value: true }));
+    expectEffectFailure(digestVersioned("fixture.valid", 0, { value: true }));
+    expectEffectFailure(digestVersioned("fixture.valid", 1.5, { value: true }));
+    expectEffectFailure(digestVersioned("fixture.valid", "1", { value: true }));
+  });
 });
 
 describe("capability registry wire version", () => {
@@ -354,6 +361,38 @@ describe("capability registry wire version", () => {
         registry_epoch: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
         registry_sequence: "1",
       }),
+    );
+  });
+
+  it("keeps malformed public-helper inputs in the Effect error channel", () => {
+    const epoch = "11111111-1111-4111-8111-111111111111";
+    const valid = { registry_epoch: epoch, registry_sequence: "10" };
+    const malformed = { registry_epoch: epoch, registry_sequence: "not-a-number" };
+
+    expectEffectFailure(compareCapabilityRegistryVersions(malformed, valid));
+    expectEffectFailure(advanceCapabilityRegistryVersion(valid, malformed));
+    expectEffectFailure(
+      advanceCapabilityRegistryVersion(
+        valid,
+        {
+          registry_epoch: "22222222-2222-4222-8222-222222222222",
+          registry_sequence: "0",
+        },
+        {
+          schema_version: 1,
+          previous_registry_epoch: epoch,
+          version: {
+            registry_epoch: "22222222-2222-4222-8222-222222222222",
+            registry_sequence: "0",
+          },
+          baseline_digest: {
+            algorithm: "sha-256",
+            domain: "capability.registry-baseline",
+            major_version: 1,
+            digest: "not-a-digest",
+          },
+        },
+      ),
     );
   });
 });

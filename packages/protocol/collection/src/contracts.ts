@@ -528,7 +528,10 @@ const validateDeploymentRef = (
   deployment: CollectionDeploymentRef,
 ): Effect.Effect<
   CollectionDeploymentRef,
-  CanonicalEncodingError | DigestComputationError | ContractIntegrityError
+  | ParseResult.ParseError
+  | CanonicalEncodingError
+  | DigestComputationError
+  | ContractIntegrityError
 > =>
   digestVersioned(
     DIGEST_DOMAINS.deployment,
@@ -597,7 +600,10 @@ const validateIdentity = (
   identity: CollectionIdentity,
 ): Effect.Effect<
   CollectionIdentity,
-  CanonicalEncodingError | DigestComputationError | ContractIntegrityError
+  | ParseResult.ParseError
+  | CanonicalEncodingError
+  | DigestComputationError
+  | ContractIntegrityError
 > =>
   Effect.forEach(identity.deployments, validateDeploymentRef).pipe(
     Effect.flatMap(() =>
