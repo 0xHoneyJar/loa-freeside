@@ -718,9 +718,6 @@ export const OwnershipIndexEvidence = Schema.Struct({
    */
   finality_attestations: Schema.Array(OwnershipFinalityAttestation).pipe(
     Schema.filter(
-      (items) => items.length > 0 || "finality_attestations must be non-empty",
-    ),
-    Schema.filter(
       (items) =>
         isStrictlySortedUniqueFinalityAttestations(items) ||
         "finality_attestations are a sorted unique set by deployment_ref.deployment_id",

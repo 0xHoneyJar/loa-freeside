@@ -791,6 +791,114 @@ describe("gate_mapping.v1 aggregate", () => {
     expectEffectFailureTag(decodeGateMappingAggregate(tampered), "MappingIntegrityError");
   });
 
+  it("strict-decodes incoming ratify and revoke commands at the transition boundary", () => {
+    const seed = seedOf(mibera);
+    const command = ratifyCommandOf(mibera.ratify_command);
+    expectEffectFailureTag(
+      ratifyGateMapping(seed, {
+        ...command,
+        rogue: true,
+      } as unknown as RatifyGateMappingCommand),
+      "ParseError",
+    );
+    expectEffectFailureTag(
+      ratifyGateMapping(seed, {
+        ...command,
+        schema_version: 99,
+      } as unknown as RatifyGateMappingCommand),
+      "ParseError",
+    );
+
+    const ratified = expectEffectSuccess(ratifyGateMapping(seed, command));
+    const revoke: RevokeGateMappingCommand = {
+      schema_version: 1,
+      mapping_version_id: ratified.version.mapping_version_id,
+      revoker_subject: "op:alice",
+      revoker_permissions: ["gate-config:ratify"],
+      expected_aggregate_version: ratified.aggregate.aggregate_version,
+      revoked_at: "2026-07-16T12:00:00Z",
+      reason: "strict command boundary probe",
+    };
+    expectEffectFailureTag(
+      revokeGateMappingVersion(ratified.aggregate, {
+        ...revoke,
+        expected_aggregate_version: -1,
+      } as RevokeGateMappingCommand),
+      "ParseError",
+    );
+    expectEffectFailureTag(
+      revokeGateMappingVersion(ratified.aggregate, {
+        ...revoke,
+        rogue: true,
+      } as unknown as RevokeGateMappingCommand),
+      "ParseError",
+    );
+  });
+
+  it("binds aggregate counters and audit events into one append-only history", () => {
+    const seed = seedOf(mibera);
+    const command = ratifyCommandOf(mibera.ratify_command);
+    const ratified = expectEffectSuccess(ratifyGateMapping(seed, command));
+    const [ratifiedEvent] = ratified.aggregate.audit;
+    if (ratifiedEvent === undefined) throw new Error("expected ratified audit event");
+    const foreignMappingId = {
+      ...ratified.version.mapping_version_id,
+      digest: "f".repeat(64),
+    };
+    const probes: ReadonlyArray<GateMappingAggregate> = [
+      {
+        ...ratified.aggregate,
+        aggregate_version: ratified.aggregate.aggregate_version + 1,
+      },
+      {
+        ...ratified.aggregate,
+        audit: [{ ...ratifiedEvent, aggregate_version: 7 }],
+      },
+      {
+        ...ratified.aggregate,
+        audit: [{ ...ratifiedEvent, mapping_version_id: foreignMappingId }],
+      },
+      {
+        ...ratified.aggregate,
+        audit: [{ ...ratifiedEvent, actor_subject: "op:mallory" }],
+      },
+      {
+        ...ratified.aggregate,
+        audit: [],
+      },
+    ];
+
+    for (const aggregate of probes) {
+      expectEffectFailureTag(
+        decodeGateMappingAggregate(aggregate),
+        "MalformedMappingAggregateError",
+      );
+      expectEffectFailureTag(
+        ratifyGateMapping(aggregate, command),
+        "MalformedMappingAggregateError",
+      );
+    }
+
+    const revoked = expectEffectSuccess(
+      revokeGateMappingVersion(ratified.aggregate, {
+        schema_version: 1,
+        mapping_version_id: ratified.version.mapping_version_id,
+        revoker_subject: "op:alice",
+        revoker_permissions: ["gate-config:ratify"],
+        expected_aggregate_version: ratified.aggregate.aggregate_version,
+        revoked_at: "2026-07-16T12:00:00Z",
+        reason: "history ordering probe",
+      }),
+    );
+    expectEffectFailureTag(
+      decodeGateMappingAggregate({
+        ...revoked.aggregate,
+        audit: [...revoked.aggregate.audit].reverse(),
+      }),
+      "MalformedMappingAggregateError",
+    );
+  });
+
   it("enforces the 5-per-24h mapping churn limit across revoke/relink cycles and admits again outside the window", () => {
     let aggregate = seedOf(mibera);
     const base = ratifyCommandOf(mibera.ratify_command);

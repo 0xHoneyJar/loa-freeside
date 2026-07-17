@@ -579,6 +579,106 @@ const decodeAggregateEnvelopeStruct = Schema.decodeUnknown(
 );
 const decodeAggregateStruct = Schema.decodeUnknown(GateMappingAggregate, strictOptions);
 
+const aggregateHistoryMismatch = (
+  aggregate: GateMappingAggregate,
+): string | undefined => {
+  if (aggregate.aggregate_version !== aggregate.audit.length) {
+    return "aggregate_version must equal the complete audit event count";
+  }
+
+  const versionsById = new Map<string, GateMappingVersion>();
+  for (const version of aggregate.versions) {
+    const id = version.mapping_version_id.digest;
+    if (versionsById.has(id)) return "mapping version IDs must be unique";
+    versionsById.set(id, version);
+  }
+
+  for (const [index, event] of aggregate.audit.entries()) {
+    if (event.aggregate_version !== index + 1) {
+      return "audit aggregate_version values must be contiguous from 1";
+    }
+    if (event.actor_permission !== GATE_CONFIG_RATIFY_PERMISSION) {
+      return "mapping audit events require gate-config:ratify authority";
+    }
+    if (!versionsById.has(event.mapping_version_id.digest)) {
+      return "every audit event must reference a stored mapping version";
+    }
+    const previous = aggregate.audit[index - 1];
+    if (
+      previous !== undefined &&
+      Date.parse(previous.occurred_at) > Date.parse(event.occurred_at)
+    ) {
+      return "mapping audit events must be ordered by occurred_at";
+    }
+  }
+
+  const ratifiedEvents = aggregate.audit.filter((event) => event.event === "ratified");
+  if (ratifiedEvents.length !== aggregate.versions.length) {
+    return "every stored mapping version must have exactly one ratified audit event";
+  }
+  if (
+    ratifiedEvents.some(
+      (event, index) =>
+        event.mapping_version_id.digest !==
+        aggregate.versions[index]?.mapping_version_id.digest,
+    )
+  ) {
+    return "mapping version order must match ratification audit order";
+  }
+
+  for (const version of aggregate.versions) {
+    const id = version.mapping_version_id.digest;
+    const ratifications = aggregate.audit.filter(
+      (event) => event.event === "ratified" && event.mapping_version_id.digest === id,
+    );
+    const revocations = aggregate.audit.filter(
+      (event) => event.event === "revoked" && event.mapping_version_id.digest === id,
+    );
+    const ratification = ratifications[0];
+    if (
+      ratifications.length !== 1 ||
+      ratification === undefined ||
+      ratification.actor_subject !== version.ratifier_subject ||
+      ratification.occurred_at !== version.effective_at ||
+      version.command_material.expected_aggregate_version !==
+        ratification.aggregate_version - 1
+    ) {
+      return "ratified audit events must bind version identity, actor, time, and prior counter";
+    }
+    if (version.revoked_at === undefined) {
+      if (revocations.length !== 0) {
+        return "active mapping versions cannot have revocation audit events";
+      }
+      continue;
+    }
+    const revocation = revocations[0];
+    if (
+      revocations.length !== 1 ||
+      revocation === undefined ||
+      revocation.occurred_at !== version.revoked_at ||
+      revocation.aggregate_version <= ratification.aggregate_version
+    ) {
+      return "revoked versions require one later audit event at revoked_at";
+    }
+  }
+
+  return undefined;
+};
+
+const verifyAggregateHistory = (
+  aggregate: GateMappingAggregate,
+): Effect.Effect<GateMappingAggregate, MalformedMappingAggregateError> => {
+  const reason = aggregateHistoryMismatch(aggregate);
+  return reason === undefined
+    ? Effect.succeed(aggregate)
+    : Effect.fail(
+        new MalformedMappingAggregateError({
+          reason_code: "gate_mapping_malformed",
+          reason,
+        }),
+      );
+};
+
 /** Strict decode PLUS digest-integrity verification (CR-001 decoder style). */
 export const decodeGateMappingVersion = (
   input: unknown,
@@ -600,13 +700,15 @@ export const decodeGateMappingAggregate = (
   GateMappingAggregate,
   | ParseResult.ParseError
   | MappingIntegrityError
+  | MalformedMappingAggregateError
   | CanonicalEncodingError
   | DigestComputationError
 > =>
   decodeAggregateStruct(input).pipe(
     Effect.flatMap((aggregate) =>
       Effect.forEach(aggregate.versions, verifyGateMappingVersionIntegrity).pipe(
-        Effect.as(aggregate),
+        Effect.map((versions) => ({ ...aggregate, versions })),
+        Effect.flatMap(verifyAggregateHistory),
       ),
     ),
   );
@@ -737,7 +839,7 @@ const verifyStoredMappingAggregate = (
       decoded.versions,
       verifyGateMappingVersionIntegrity,
     );
-    return { ...decoded, versions };
+    return yield* verifyAggregateHistory({ ...decoded, versions });
   });
 
 /**
@@ -756,7 +858,7 @@ const verifyStoredMappingAggregate = (
  */
 export const ratifyGateMapping = (
   aggregate: GateMappingAggregate,
-  command: RatifyGateMappingCommand,
+  commandInput: RatifyGateMappingCommand,
   communityChurnWindow: CommunityMappingChurnWindow,
 ): Effect.Effect<
   RatifyGateMappingResult,
@@ -776,6 +878,7 @@ export const ratifyGateMapping = (
   | DigestComputationError
 > =>
   Effect.gen(function* () {
+    const command = yield* decodeRatifyGateMappingCommand(commandInput);
     const verifiedAggregate = yield* verifyStoredMappingAggregate(aggregate);
     const verifiedChurnWindow = yield* decodeCommunityMappingChurnWindow(
       communityChurnWindow,
@@ -1040,7 +1143,7 @@ export interface RevokeGateMappingResult {
 
 export const revokeGateMappingVersion = (
   aggregate: GateMappingAggregate,
-  command: RevokeGateMappingCommand,
+  commandInput: RevokeGateMappingCommand,
 ): Effect.Effect<
   RevokeGateMappingResult,
   | UnauthorizedRatifierError
@@ -1054,6 +1157,7 @@ export const revokeGateMappingVersion = (
   | DigestComputationError
 > =>
   Effect.gen(function* () {
+    const command = yield* decodeRevokeGateMappingCommand(commandInput);
     const verifiedAggregate = yield* verifyStoredMappingAggregate(aggregate);
 
     if (!command.revoker_permissions.includes(GATE_CONFIG_RATIFY_PERMISSION)) {

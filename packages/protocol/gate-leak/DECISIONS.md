@@ -15,6 +15,9 @@ a package-local pnpm override for monorepo development) and re-uses its scalars,
 canonical encoder, digest envelope,
 `CollectionWorkKeyMaterial`, and `CapabilityRegistryVersion`. Nothing in
 CR-001 imports this package; the direction can never invert.
+The package-local toolchain declares Node `>=22.12.0`, the first supported
+Node 22 minor for its TypeScript/Vitest stack; installs on older Node 22
+minors are intentionally refused instead of failing later in CI.
 
 ## D-2 Capability identity
 
@@ -160,6 +163,10 @@ readiness evaluator refuses partial ownership coverage with
 `disclose`/`allow`, but readiness then returns an explicit
 `disclosed_coverage_gap` naming the missing deployment digests — permitted
 partial coverage is always disclosed; silent partiality is unrepresentable.
+Missing finality attestations are therefore a representable wire state:
+`decodeOwnershipIndexEvidence` accepts the empty attestation set, while
+readiness applies the selected recipe's `reject`/`disclose`/`allow` policy.
+The V1 recipe still rejects that state.
 
 ## D-11 Coverage threshold
 
@@ -229,14 +236,26 @@ mismatches (fixture + in-process probes).
 
 **Integrity-first transitions.** Every public transition that consumes an
 existing mapping aggregate (`ratifyGateMapping`, `revokeGateMappingVersion`)
-strict-decodes and verifies the aggregate and all versions BEFORE idempotency
-lookup or any other branch. `ratifyGateMapping` never compares against a raw
+strict-decodes its incoming command, then strict-decodes and verifies the
+aggregate and all versions BEFORE idempotency lookup or any other branch.
+Typed in-process objects are not treated as validated wire values.
+`ratifyGateMapping` never compares against a raw
 stored `command_digest` field and never returns replay from an unverified
 in-memory object — replay and conflict digests are recomputed from verified
 `command_material`. A grafted command digest, material, version ID, role set,
 config field, or reveal evidence on a JS object fails `MappingIntegrityError`
 exactly as persisted decode would; verified same-command replay and
 changed-command `IdempotencyConflictError` behavior are unchanged.
+
+**Append-only history semantics.** `aggregate_version` equals the audit-event
+count; event counters are contiguous from 1; audit timestamps are ordered;
+every event references a stored mapping ID under `gate-config:ratify`;
+version order matches ratification order; and each version has exactly one
+ratification plus, when revoked, exactly one later revocation at `revoked_at`.
+The ratification event also binds actor, effective time, and the command's
+prior aggregate counter. Structural shape without these relationships is a
+`MalformedMappingAggregateError` at decode, readiness, and transition
+boundaries.
 
 ## D-14 Identity-reveal basis (bound evidence)
 

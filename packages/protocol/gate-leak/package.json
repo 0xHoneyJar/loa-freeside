@@ -28,6 +28,9 @@
     "verify:pack": "node scripts/verify-packed-consumer.mjs"
   },
   "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "dependencies": {
     "@freeside/collection-protocol": "^1.0.0"
   },

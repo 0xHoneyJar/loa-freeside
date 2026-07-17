@@ -741,6 +741,14 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
   });
 
   it("applies reject, disclose, and allow consistently when finality is missing", () => {
+    const decodedWithoutFinality = expectEffectSuccess(
+      decodeOwnershipIndexEvidence({
+        ...ownershipEvidence,
+        finality_attestations: [],
+      }),
+    );
+    expect(decodedWithoutFinality.finality_attestations).toStrictEqual([]);
+
     const policies: ReadonlyArray<GateLeakRecipeRequirement["partial_policy"]> = [
       "reject",
       "disclose",
@@ -750,7 +758,7 @@ describe("recipe readiness proves all six capabilities from evidence", () => {
       const verdict = evaluate(
         {
           ...readyContext(),
-          ownership: { ...ownershipEvidence, finality_attestations: [] },
+          ownership: decodedWithoutFinality,
         },
         recipeWithOwnershipPartialPolicy(policy),
       );

@@ -205,6 +205,12 @@ const verifyMappingAggregateForReadiness = (
         reason_code: "gate_mapping_malformed",
       }),
     ),
+    Effect.catchTag("MalformedMappingAggregateError", () =>
+      Effect.succeed<MappingAggregateReadinessVerification>({
+        verified: false,
+        reason_code: "gate_mapping_malformed",
+      }),
+    ),
     Effect.catchTag("MappingIntegrityError", () =>
       Effect.succeed<MappingAggregateReadinessVerification>({
         verified: false,
