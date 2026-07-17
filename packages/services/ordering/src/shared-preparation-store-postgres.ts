@@ -466,34 +466,56 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     failure: { code: string; reason: string };
     now_ms: number;
   }): Promise<SharedPreparationWorkRecord> {
-    const result = await this.pool.query(
-      `UPDATE shared_preparation_work
-       SET state = 'retry_wait',
-           attempt = attempt + 1,
-           next_attempt_at = $3,
-           retry_deadline = $4,
-           lease_until = NULL,
-           failure_reason = $5,
-           updated_at = $6
-       WHERE work_id = $1 AND lease_epoch = $2 AND state = 'preparing'
-       RETURNING *`,
-      [
-        input.work_id,
-        input.expected_lease_epoch,
-        msToIso(input.next_attempt_at_unix_ms),
-        msToIso(input.retry_deadline_unix_ms),
-        JSON.stringify(input.failure),
-        msToIso(input.now_ms),
-      ],
-    );
-    if (result.rows.length === 0) {
-      return this.classifyZeroRowWorkUpdate(
-        input.work_id,
-        input.expected_lease_epoch,
-        "retryable failure",
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `UPDATE shared_preparation_work
+         SET state = 'retry_wait',
+             attempt = attempt + 1,
+             next_attempt_at = $3,
+             retry_deadline = $4,
+             lease_until = NULL,
+             failure_reason = $5,
+             updated_at = $6
+         WHERE work_id = $1 AND lease_epoch = $2 AND state = 'preparing'
+         RETURNING *`,
+        [
+          input.work_id,
+          input.expected_lease_epoch,
+          msToIso(input.next_attempt_at_unix_ms),
+          msToIso(input.retry_deadline_unix_ms),
+          JSON.stringify(input.failure),
+          msToIso(input.now_ms),
+        ],
       );
+      if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return this.classifyZeroRowWorkUpdate(
+          input.work_id,
+          input.expected_lease_epoch,
+          "retryable failure",
+        );
+      }
+      // Invalidate child progress so finalize cannot reuse pre-retry evidence.
+      await client.query(
+        `UPDATE preparation_work_items
+         SET state = 'queued',
+             evidence_envelope = NULL,
+             failure_reason = NULL,
+             updated_at = $2
+         WHERE work_id = $1
+           AND state IN ('ready', 'preparing', 'failed', 'retry_wait')`,
+        [input.work_id, msToIso(input.now_ms)],
+      );
+      await client.query("COMMIT");
+      return rowToWork(result.rows[0]);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
-    return rowToWork(result.rows[0]);
   }
 
   async wakeRetryWait(input: {

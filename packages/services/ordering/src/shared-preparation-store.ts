@@ -509,6 +509,20 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
       work.lease_until_unix_ms = undefined;
       work.failure_reason = { ...input.failure };
       work.updated_at_unix_ms = input.now_ms;
+      // Invalidate child progress so finalize cannot reuse pre-retry evidence.
+      for (const item of this.itemsForWork(work.work_id)) {
+        if (
+          item.state === "ready" ||
+          item.state === "preparing" ||
+          item.state === "failed" ||
+          item.state === "retry_wait"
+        ) {
+          item.state = "queued";
+          item.evidence_envelope = undefined;
+          item.failure_reason = undefined;
+          item.updated_at_unix_ms = input.now_ms;
+        }
+      }
       return cloneWork(work);
     });
     return this.unwrapLocked(locked, () => {

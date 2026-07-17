@@ -247,6 +247,104 @@ describe("CR-201A public shared preparation store", () => {
     expect(preparing.state).toBe("preparing");
   });
 
+  it("resets ready children on retryable failure so finalize requires republish", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey({ capability: "collection_identity.v1" });
+    const joined = await store.joinPublicWork({
+      order_id: "ord_retry_children",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1,
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    const lease1 = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "worker-a",
+      lease_duration_ms: 30_000,
+      now_ms: 2,
+    });
+    if (lease1.kind !== "acquired") throw new Error("lease failed");
+    await store.transitionToPreparing({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease1.work.lease_epoch,
+      now_ms: 3,
+    });
+
+    const evidence = fixtureReadinessEvidence(workKey.deployment_ids);
+    for (const item of await store.listWorkItems(joined.work.work_id)) {
+      await store.publishChildEvidence({
+        work_item_id: item.work_item_id,
+        expected_lease_epoch: lease1.work.lease_epoch,
+        evidence,
+        now_ms: 4,
+      });
+    }
+    const readyBefore = await store.listWorkItems(joined.work.work_id);
+    expect(readyBefore.every((item) => item.state === "ready")).toBe(true);
+
+    const failed = await store.recordRetryableFailure({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease1.work.lease_epoch,
+      next_attempt_at_unix_ms: 100,
+      retry_deadline_unix_ms: 604_800_000,
+      failure: { code: "dependency_unavailable", reason: "force retry" },
+      now_ms: 5,
+    });
+    expect(failed.state).toBe("retry_wait");
+    const resetChildren = await store.listWorkItems(joined.work.work_id);
+    expect(resetChildren.every((item) => item.state === "queued")).toBe(true);
+    expect(resetChildren.every((item) => item.evidence_envelope === undefined)).toBe(true);
+
+    const woke = await store.wakeRetryWait({
+      work_id: joined.work.work_id,
+      expected_attempt: failed.attempt,
+      now_ms: 100,
+    });
+    expect(woke.kind).toBe("woke");
+
+    const lease2 = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "worker-b",
+      lease_duration_ms: 30_000,
+      now_ms: 110,
+    });
+    if (lease2.kind !== "acquired" && lease2.kind !== "reclaimed") {
+      throw new Error("second lease failed");
+    }
+    await store.transitionToPreparing({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease2.work.lease_epoch,
+      now_ms: 120,
+    });
+    const preparingChildren = await store.listWorkItems(joined.work.work_id);
+    expect(preparingChildren.every((item) => item.state === "preparing")).toBe(true);
+
+    const pending = await store.finalizeReadyIfQualified({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease2.work.lease_epoch,
+      readiness_evidence: evidence,
+      now_ms: 130,
+    });
+    expect(pending.kind).toBe("pending_children");
+
+    for (const item of await store.listWorkItems(joined.work.work_id)) {
+      await store.publishChildEvidence({
+        work_item_id: item.work_item_id,
+        expected_lease_epoch: lease2.work.lease_epoch,
+        evidence,
+        now_ms: 140,
+      });
+    }
+    const ready = await store.finalizeReadyIfQualified({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease2.work.lease_epoch,
+      readiness_evidence: evidence,
+      now_ms: 150,
+    });
+    expect(ready.kind).toBe("ready");
+  });
+
   it("allows only one winner under contested lease reclaim", async () => {
     const store = new InMemorySharedPreparationStore();
     const workKey = fixturePublicWorkKey();
