@@ -43,6 +43,8 @@ describe("CR-007A public authorization HTTP", () => {
         command: {
           schema_version: 1,
           deployment_set_digest: "dep-set-1",
+          network_ref: "ethereum-mainnet",
+          token_standard: "erc721",
           required_capability: "ownership_index.v1",
           policy_version: "policy-1",
           resolution_id: "res-1",
@@ -64,6 +66,8 @@ describe("CR-007A public authorization HTTP", () => {
         command: {
           schema_version: 1,
           deployment_set_digest: "dep-set-1",
+          network_ref: "ethereum-mainnet",
+          token_standard: "erc721",
           required_capability: "ownership_index.v1",
           policy_version: "policy-1",
           resolution_id: "res-1",
@@ -72,9 +76,9 @@ describe("CR-007A public authorization HTTP", () => {
       }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { demand_id: string; state: string };
+    const body = (await res.json()) as { demand_id: string; lifecycle_state: string };
     expect(body.demand_id.length).toBeGreaterThan(0);
-    expect(body.state).toBe("open");
+    expect(body.lifecycle_state).toBe("open");
   });
 
   it("denies cross-community scope tampering on resolution create", async () => {
@@ -135,6 +139,8 @@ describe("CR-007A public authorization HTTP", () => {
       command: {
         schema_version: 1,
         deployment_set_digest: "dep-set-1",
+        network_ref: "ethereum-mainnet",
+        token_standard: "erc721",
         required_capability: "ownership_index.v1",
         policy_version: "policy-1",
         resolution_id: "res-1",

@@ -112,6 +112,7 @@ const app = createIntakeApp({
     capability_demands: {
       enabled: mountPublicAuthRoutes,
       store: 'memory',
+      lifecycle: 'cr-208',
     },
     public_authorization: {
       mode: publicAuthPosture.mode,
@@ -148,7 +149,7 @@ if (mountPublicAuthRoutes && publicAuth) {
     auth: publicAuth,
   });
 
-  // CR-007A: capability-demand authorization contract (CR-208 extends lifecycle).
+  // CR-208: recognition-only capability-demand lifecycle (no report orders).
   mountCapabilityDemandRoutes(app, {
     store: capabilityDemandStore,
     auth: publicAuth,

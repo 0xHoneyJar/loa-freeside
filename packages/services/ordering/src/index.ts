@@ -188,10 +188,32 @@ export {
 } from './public-authorization-projections.js';
 export { mountCapabilityDemandRoutes } from './capability-demand-http.js';
 export {
+  OPEN_DEMAND_LIMIT_PER_SUBJECT,
+  OPEN_DEMAND_LIMIT_PER_COMMUNITY,
+  OPEN_DEMAND_TTL_MS,
+  CAPABILITY_DEMAND_ATTENTION_KIND,
+  CAPABILITY_DEMAND_SOURCE_KIND,
+} from './capability-demand-constants.js';
+export {
+  buildCapabilityDemandSupportedIntent,
+  stableCapabilityDemandIntentId,
+  type CapabilityDemandAttentionIntent,
+} from './capability-demand-intent.js';
+export {
+  buildTriageAggregate,
+  mapSupportRequestUserStatus,
+  toSupportRequestListItem,
+  type CapabilityDemandTriageAggregate,
+  type CapabilityDemandTriageBucket,
+  type SupportRequestListItem,
+  type SupportRequestUserStatus,
+} from './capability-demand-projection.js';
+export {
   InMemoryCapabilityDemandStore,
   toPublicCapabilityDemandProjection,
   type CapabilityDemandStore,
   type CapabilityDemandRecord,
+  type CapabilityDemandState,
 } from './capability-demand-store.js';
 export {
   createHttpSonarResolveProbePort,
