@@ -457,7 +457,7 @@ manifest truth. Discord application owner owns CR-000 renewal.
 | Order lifecycle + outbox exist | `order-state.ts`, `migrations/001_orders.sql`, `lifecycle-publisher.ts` |
 | Shadow Audit k-anon + file RoleSnapshot | `audit-router.ts`, `role-source.ts`, DEPLOY.md |
 | No collection-report protocol symbols | Scoped `packages/` implementation search: zero hits for listed symbols in §2.2 |
-| No CR-000 / Discord-policy authority artifact | No `*cr-000*` / Discord-policy record in repo |
+| No signed CR-000 / Discord-policy authority record outside this conditional acceptance artifact | Expected authority surface is a separate versioned CR-000 record signed by the Discord application owner and privacy/security owner, binding verification, `GUILD_MEMBERS` intent, limits, purposes/data classes, effective time, expiry, and emergency revocation; no such signed record is referenced as existing |
 | Events envelope is `acvp-l1-v2` | `packages/events/src/envelope.ts` |
 | Order ed25519 signer exists for audit path | `order-signer.ts` |
 | Railway deploy seeds | `packages/services/{ordering,shadow-audit}/DEPLOY.md` |
@@ -482,7 +482,7 @@ satisfy G0/G1/G1B/G3/G4/G4A/G4B or any collection-report CR verification.
 | Required sections present in this artifact (verdicts, interfaces, boundaries, forbidden inferences, capacity, mixed-version/flags/rollback, ops, evidence, unresolved, closure) | Author-observed pass (advisory checklist) |
 | Claim spot-check: `ProductId` enum contents | Author-observed pass (advisory) |
 | Claim spot-check: scoped package absence of `CollectionDeploymentRef` / `capability.demand` / trust-envelope symbols | Author-observed pass (advisory) |
-| Claim spot-check: no CR-000 signature file invented or referenced as existing | Author-observed pass (advisory) |
+| Claim spot-check: no separate signed CR-000 authority record invented or referenced as existing by this conditional artifact | Author-observed pass (advisory) |
 | Package vitest execution in this worktree | **Not run** — `vitest` binary not installed in package/`node_modules` here; docs-only dispatch does not claim suite green |
 
 ---
