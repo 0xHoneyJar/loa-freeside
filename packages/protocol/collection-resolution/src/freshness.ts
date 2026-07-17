@@ -16,6 +16,9 @@ import { RESOLUTION_DIGEST_DOMAINS } from "./version.js";
  * Narrow allowlist of truly display-only fields. Everything else on a persisted
  * candidate participates in selection-relevant freshness — UI omission never
  * authorizes ignoring recognition, readiness, identity, or capability semantics.
+ * Name, symbol, and image are presentation metadata rather than collection
+ * identity: selection is bound to canonical collection/deployment digests, so
+ * presentation refreshes do not silently substitute a different collection.
  */
 export const DISPLAY_ONLY_CANDIDATE_FIELDS = Object.freeze([
   "ranking_reasons",

@@ -821,6 +821,35 @@ describe("CR-006 Ordering resolution service", () => {
     );
     expect(admitted.decision).toBe("admit");
 
+    const selectedView = localViewFor(
+      created.candidates[0]!,
+      {},
+      { registry_epoch: registry.registry_epoch, registry_sequence: "11" },
+    );
+    const unrelatedView = {
+      ...selectedView.views[0]!,
+      deployment_id: {
+        ...selectedView.views[0]!.deployment_id,
+        digest: "f".repeat(64),
+      },
+    };
+    const admittedWithUnrelatedView = await service.admit(
+      {
+        schema_version: 1,
+        resolution_id: created.resolution_id,
+        candidate_snapshot_digest: snapshotDigest,
+        community_ref: "community-alpha",
+      },
+      scope,
+      {
+        ...selectedView,
+        views: [...selectedView.views, unrelatedView],
+      },
+    );
+    expect(admittedWithUnrelatedView.compatibility_digest).toEqual(
+      admitted.compatibility_digest,
+    );
+
     await expect(
       service.admit(
         {
@@ -1325,5 +1354,28 @@ describe("CR-006 Ordering resolution service", () => {
       ),
     ).rejects.toBeInstanceOf(ImmutableRequestMismatchError);
     expect(sonar.probes).toBe(probesBefore);
+  });
+
+  it("revision-3: refresh idempotency binds supplied-request presence", async () => {
+    const { service, sonar } = makeService();
+    const created = await service.create(createCommand, scope);
+    await confirmFirst(service, created, "confirm-refresh-shape");
+    const command = {
+      schema_version: 1 as const,
+      expected_confirmation_version: 1,
+      idempotency_key: "refresh-supplied-shape",
+    };
+
+    await service.refresh(created.resolution_id, command, scope);
+    const probesAfterFirst = sonar.probes;
+    await expect(
+      service.refresh(
+        created.resolution_id,
+        command,
+        scope,
+        requestMaterialFromCreate(createCommand),
+      ),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
+    expect(sonar.probes).toBe(probesAfterFirst);
   });
 });

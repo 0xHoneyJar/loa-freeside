@@ -255,6 +255,12 @@ export const evaluateAdmissionCompatibility = (
       );
     }
 
+    /**
+     * Admission is deliberately scoped to the selected deployment set. Views
+     * for unrelated deployments in the same registry snapshot are decoded at
+     * the boundary, but are neither consulted nor digest-bound: adding an
+     * unrelated collection must not change an already-valid order decision.
+     */
     const compatibilityDigest = yield* digestAdmissionDecision({
       resolution_id: record.resolution_id,
       candidate_snapshot_digest: record.candidate_snapshot_digest,

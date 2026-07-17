@@ -480,6 +480,9 @@ export class CollectionResolutionService {
       expected_confirmation_version: sealedCommand.expected_confirmation_version,
       idempotency_key: sealedCommand.idempotency_key,
       original_request: effectiveRequest,
+      // Presence is part of the exact command shape even when the supplied
+      // request canonically equals the persisted immutable request.
+      supplied_request: sealedSupplied ?? null,
       request_digest: current.request_digest,
       scope: sealedScope,
       authorization_scope: current.authorization_scope,
