@@ -1,5 +1,5 @@
 /**
- * CR-206 — authenticated collection-report list/detail HTTP edge.
+ * CR-206/CR-305 — authenticated collection-report list/detail HTTP edge.
  *
  *   GET /v1/collection-reports
  *   GET /v1/collection-reports/:order_id
@@ -7,27 +7,32 @@
  * Auth: Bearer SERVICE_TOKEN (Dashboard BFF). Authorization scope is supplied
  * in the query string and re-checked against community_ref (never trusted alone).
  *
- * Deferred vs full CR-206: identity-row paging, encrypted export, CR-015
- * disclosure fences, artifact byte retrieval + audit. This cut unblocks
- * Dashboard CR-304 table + detail status projections.
+ * CR-305 adds attention_kind / attention_unseen / transition_sequence on items.
  */
 
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 
-import type { OrderStore } from "./store.js";
+import type { OrderRecord, OrderStore } from "./store.js";
 import type { ResolutionStore } from "./resolution-store.js";
 import {
   decodeCursor,
   encodeCursor,
+  mapAttentionKind,
   toCollectionReportListItem,
+  transitionSequenceOf,
   type CollectionReportListItem,
   type CollectionReportListResponse,
 } from "./collection-report-projection.js";
+import {
+  REPORT_ATTENTION_SOURCE_KIND,
+  type ReportAttentionStore,
+} from "./report-attention-store.js";
 
 export interface CollectionReportHttpDeps {
   readonly store: OrderStore;
   readonly resolutionStore?: ResolutionStore;
+  readonly attentionStore?: ReportAttentionStore;
   readonly serviceToken?: string;
 }
 
@@ -83,6 +88,22 @@ async function collectionSummary(
   }
 }
 
+async function attentionUnseenFor(
+  attentionStore: ReportAttentionStore | undefined,
+  subjectId: string,
+  record: OrderRecord,
+): Promise<boolean> {
+  if (mapAttentionKind(record) === null) return false;
+  if (!attentionStore) return true;
+  const seen = await attentionStore.hasSeen({
+    subject_ref: subjectId,
+    source_kind: REPORT_ATTENTION_SOURCE_KIND,
+    source_id: record.order_id,
+    transition_sequence: transitionSequenceOf(record),
+  });
+  return !seen;
+}
+
 export function mountCollectionReportRoutes(
   app: Hono,
   deps: CollectionReportHttpDeps,
@@ -123,7 +144,12 @@ export function mountCollectionReportRoutes(
         deps.resolutionStore,
         typeof inputs.resolution_id === "string" ? inputs.resolution_id : "",
       );
-      const item = toCollectionReportListItem(row, summary);
+      const unseen = await attentionUnseenFor(
+        deps.attentionStore,
+        parsed.data.subject_id,
+        row,
+      );
+      const item = toCollectionReportListItem(row, summary, { unseen });
       if (item) items.push(item);
     }
 
@@ -173,7 +199,8 @@ export function mountCollectionReportRoutes(
       deps.resolutionStore,
       typeof inputs.resolution_id === "string" ? inputs.resolution_id : "",
     );
-    const item = toCollectionReportListItem(record, summary);
+    const unseen = await attentionUnseenFor(deps.attentionStore, subject_id, record);
+    const item = toCollectionReportListItem(record, summary, { unseen });
     if (!item) return errorJson(c, 404, "not_found");
     return c.json(item, 200, { "Cache-Control": "no-store" });
   });

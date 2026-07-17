@@ -1,8 +1,12 @@
 /**
- * CR-206 — safe collection-report list/detail projections for Dashboard BFF.
+ * CR-206/CR-305 — safe collection-report list/detail projections for Dashboard BFF.
  *
  * Redacts raw inputs, digests, refusal internals, and operator audit.
  * User-visible status maps from order lifecycle (sprint CR-202/CR-304 vocabulary).
+ *
+ * Attention fields (CR-305):
+ * - transition_sequence = updated_at_unix (documented V1 sequence for mark-seen)
+ * - attention_kind only for ready / needs_attention (no routine progress noise)
  */
 
 import type { OrderRecord } from "./store.js";
@@ -21,6 +25,8 @@ export type ArtifactAvailability =
   | "deleted"
   | "quarantined";
 
+export type ReportAttentionKind = "report.ready" | "report.needs_attention";
+
 export interface CollectionReportListItem {
   readonly schema_version: 1;
   readonly order_id: string;
@@ -37,6 +43,10 @@ export interface CollectionReportListItem {
   readonly placed_at_unix: number;
   readonly updated_at_unix: number;
   readonly created_at_unix: number;
+  /** V1: equals updated_at_unix — stable key for mark-seen receipts. */
+  readonly transition_sequence: number;
+  readonly attention_kind: ReportAttentionKind | null;
+  readonly attention_unseen: boolean;
 }
 
 export interface CollectionReportListResponse {
@@ -74,6 +84,18 @@ export function mapUserStatus(record: OrderRecord): CollectionReportUserStatus {
   }
 }
 
+export function mapAttentionKind(record: OrderRecord): ReportAttentionKind | null {
+  const status = mapUserStatus(record);
+  if (status === "ready") return "report.ready";
+  if (status === "needs_attention") return "report.needs_attention";
+  return null;
+}
+
+/** V1 attention sequence — updated_at_unix at the attention-bearing state. */
+export function transitionSequenceOf(record: OrderRecord): number {
+  return record.updated_at_unix;
+}
+
 export function mapArtifactAvailability(record: OrderRecord): ArtifactAvailability {
   if (record.state !== "fulfilled") return "none";
   if (typeof record.result_ref === "string" && record.result_ref.length > 0) {
@@ -100,6 +122,7 @@ export function toCollectionReportListItem(
     name: null,
     symbol: null,
   },
+  attention: { readonly unseen: boolean } = { unseen: false },
 ): CollectionReportListItem | null {
   if (record.product !== "collection-report") return null;
   const inputs = record.inputs as {
@@ -114,6 +137,7 @@ export function toCollectionReportListItem(
   }
 
   const artifact_availability = mapArtifactAvailability(record);
+  const attention_kind = mapAttentionKind(record);
   return {
     schema_version: 1,
     order_id: record.order_id,
@@ -130,6 +154,9 @@ export function toCollectionReportListItem(
     placed_at_unix: record.placed_at_unix,
     updated_at_unix: record.updated_at_unix,
     created_at_unix: record.created_at_unix,
+    transition_sequence: transitionSequenceOf(record),
+    attention_kind,
+    attention_unseen: attention_kind !== null ? attention.unseen : false,
   };
 }
 

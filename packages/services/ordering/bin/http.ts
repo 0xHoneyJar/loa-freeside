@@ -14,10 +14,13 @@ import { ReProbeWorker } from '../src/reprobe-worker.js';
 import { createCatalogResolveProbePort } from '../src/catalog-resolve-probe.js';
 import { mountCollectionResolutionRoutes } from '../src/resolution-http.js';
 import { mountCollectionReportRoutes } from '../src/collection-report-http.js';
+import { mountReportAttentionRoutes } from '../src/report-attention-http.js';
 import { createResolutionStore } from '../src/resolution-store-factory.js';
 import { CollectionResolutionService } from '../src/resolution-service.js';
 import { sonarResolveProbeFromEnv } from '../src/sonar-resolve-probe-client.js';
 import { PostgresOrderStore } from '../src/store-postgres.js';
+import { InMemoryReportAttentionStore } from '../src/report-attention-store.js';
+import { PostgresReportAttentionStore } from '../src/report-attention-store-postgres.js';
 
 const { store, orchestrator, enqueue } = await createOrderingComposition();
 
@@ -66,9 +69,15 @@ const app = createIntakeApp({
     write_routes: writeRoutes,
     collection_resolutions: true,
     collection_reports: true,
+    report_attention: true,
     resolve_probe: resolutionProbeMode,
   },
 });
+
+const attentionStore =
+  store instanceof PostgresOrderStore
+    ? new PostgresReportAttentionStore(store.getPool())
+    : new InMemoryReportAttentionStore();
 
 // CR-006: mount create/confirm/refresh. Token posture matches write routes —
 // when SERVICE_TOKEN is set, Bearer is required; open_dev allows tokenless.
@@ -83,6 +92,14 @@ mountCollectionResolutionRoutes(app, {
 mountCollectionReportRoutes(app, {
   store,
   resolutionStore,
+  attentionStore,
+  serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
+});
+
+// CR-305: idempotent mark-seen for report attention.
+mountReportAttentionRoutes(app, {
+  store,
+  attentionStore,
   serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
 });
 
