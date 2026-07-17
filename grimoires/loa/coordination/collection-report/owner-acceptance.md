@@ -6,7 +6,6 @@ acceptance_effect: non_gating_conditional_record
 pending_independent_owner: true
 gating: false
 owner_approved: false
-blocks_release: true
 ---
 
 # ACCEPT-LOA — Conditional Technical Owner-Boundary Acceptance
