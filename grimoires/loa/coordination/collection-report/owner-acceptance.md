@@ -107,13 +107,19 @@ SDD §11 subject/resource/action authorization model for collection-report.
 | Collection registry | Operator-supplied `COLLECTION_REGISTRY` map to belt collection ids | DEPLOY.md |
 | Settle gate | Ratified collection ledger snapshot at boot | `bin/http.ts` |
 
-### 2.2 Required by plan; absent on `3782fd47`
+### 2.2 Required by plan; absent from the audited package implementation tree
 
-Zero matches across all tracked non-binary files in the audited tree for:
-`CollectionDeploymentRef`, `collection-report`, `collection_resolver`,
-`TrustEnvelope` / CR-009 Ordering envelope, `dependency.ledger`,
-`capability.demand`, `gate_mapping`, hierarchical `artifact_manifest` /
-Key Index contracts as named by the masters.
+The reproducible search in §11 reports zero fixed-string matches in tracked
+non-binary files under `packages/`, excluding any nested `docs/` or
+`grimoires/` trees, for: `CollectionDeploymentRef`, `collection-report`,
+`collection_resolver`, `TrustEnvelope` / CR-009 Ordering envelope,
+`dependency.ledger`, `capability.demand`, `gate_mapping`, and hierarchical
+`artifact_manifest` / Key Index contracts as named by the masters. Top-level
+planning and coordination sources (`grimoires/`, `docs/`, and this acceptance)
+are explicitly outside that search universe because they describe the planned
+interfaces. This is lexical corroboration for the package-interface rows below,
+not a claim that those words are absent from every tracked file or exhaustive
+proof about non-package infrastructure.
 
 | Planned interface | Owning CR(s) | Status on `main` |
 |---|---|---|
@@ -450,7 +456,7 @@ manifest truth. Discord application owner owns CR-000 renewal.
 | Product enum lacks collection-report | `packages/protocol/ordering/src/order.ts` |
 | Order lifecycle + outbox exist | `order-state.ts`, `migrations/001_orders.sql`, `lifecycle-publisher.ts` |
 | Shadow Audit k-anon + file RoleSnapshot | `audit-router.ts`, `role-source.ts`, DEPLOY.md |
-| No collection-report protocol symbols | Tree search: zero hits for listed symbols in §2.2 |
+| No collection-report protocol symbols | Scoped `packages/` implementation search: zero hits for listed symbols in §2.2 |
 | No CR-000 / Discord-policy authority artifact | No `*cr-000*` / Discord-policy record in repo |
 | Events envelope is `acvp-l1-v2` | `packages/events/src/envelope.ts` |
 | Order ed25519 signer exists for audit path | `order-signer.ts` |
@@ -475,7 +481,7 @@ satisfy G0/G1/G1B/G3/G4/G4A/G4B or any collection-report CR verification.
 | Audited worktree matched `origin/main` @ `3782fd47` before the authoring commit | Author-observed pass (advisory; verified 2026-07-16) |
 | Required sections present in this artifact (verdicts, interfaces, boundaries, forbidden inferences, capacity, mixed-version/flags/rollback, ops, evidence, unresolved, closure) | Author-observed pass (advisory checklist) |
 | Claim spot-check: `ProductId` enum contents | Author-observed pass (advisory) |
-| Claim spot-check: absence of `CollectionDeploymentRef` / `capability.demand` / trust-envelope symbols | Author-observed pass (advisory) |
+| Claim spot-check: scoped package absence of `CollectionDeploymentRef` / `capability.demand` / trust-envelope symbols | Author-observed pass (advisory) |
 | Claim spot-check: no CR-000 signature file invented or referenced as existing | Author-observed pass (advisory) |
 | Package vitest execution in this worktree | **Not run** — `vitest` binary not installed in package/`node_modules` here; docs-only dispatch does not claim suite green |
 
@@ -567,6 +573,9 @@ git show -s --format='%H %cI %s' "$BASE"
 git grep -n 'export const ProductId\|ProductId =' \
   "$BASE" -- packages/protocol/ordering/src/order.ts
 
+printf '%s\n' \
+  'search scope: tracked non-binary files under packages/, excluding nested docs/ and grimoires/'
+
 for needle in \
   CollectionDeploymentRef \
   collection-report \
@@ -578,7 +587,11 @@ for needle in \
   artifact_manifest
 do
   count="$(
-    git grep -I -F "$needle" "$BASE" -- . 2>/dev/null \
+    git grep -I -F "$needle" "$BASE" -- \
+      packages \
+      ':!packages/**/docs/**' \
+      ':!packages/**/grimoires/**' \
+      2>/dev/null \
       | wc -l \
       | tr -d ' '
   )"
@@ -605,6 +618,7 @@ Observed output on 2026-07-16:
 3782fd47e8a20cdaf6325621962bd0443e6781b8 2026-07-14T22:56:10-07:00 feat(governance): project user intent and construct expertise (#468)
 3782fd47e8a20cdaf6325621962bd0443e6781b8:packages/protocol/ordering/src/order.ts:14:export const ProductId = z.enum(['access-risk-audit', 'community-onboarding']);
 3782fd47e8a20cdaf6325621962bd0443e6781b8:packages/protocol/ordering/src/order.ts:15:export type ProductId = z.infer<typeof ProductId>;
+search scope: tracked non-binary files under packages/, excluding nested docs/ and grimoires/
 CollectionDeploymentRef  0
 collection-report        0
 collection_resolver      0
