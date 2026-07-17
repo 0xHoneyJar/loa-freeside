@@ -79,7 +79,7 @@ async function seed(
   }
 }
 
-function appWith(store: InMemoryOrderStore, withAuth = false) {
+function appWith(store: InMemoryOrderStore, withAuth = true) {
   const app = new Hono();
   mountCollectionReportRoutes(app, {
     store,
@@ -94,45 +94,57 @@ describe("CR-206 collection-report HTTP", () => {
     const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
     const app = appWith(store);
     const res = await app.request(
-      "/v1/collection-reports?community_ref=mibera&subject_id=user-a",
+      "/v1/collection-reports?community_ref=community-alpha&subject_id=subject-alice",
     );
     expect(res.status).toBe(401);
+  });
+
+  it("fails closed when auth is omitted from the mount", async () => {
+    const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+    const app = appWith(store, false);
+    const res = await app.request(
+      "/v1/collection-reports?community_ref=community-alpha&subject_id=subject-alice",
+      { headers: { authorization: `Bearer ${TOKEN}` } },
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("public_authorization_unconfigured");
   });
 
   it("lists only the subject+community rows with safe projection", async () => {
     const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
     await seed(store, {
       order_id: "ord-a",
-      placed_by: "user-a",
-      community_ref: "mibera",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
       state: "fulfilled",
       created_at_unix: 100,
     });
     await seed(store, {
       order_id: "ord-b",
-      placed_by: "user-a",
-      community_ref: "mibera",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
       state: "placed",
       created_at_unix: 90,
     });
     await seed(store, {
       order_id: "ord-other-user",
-      placed_by: "user-b",
-      community_ref: "mibera",
+      placed_by: "subject-bob",
+      community_ref: "community-alpha",
       state: "placed",
       created_at_unix: 110,
     });
     await seed(store, {
       order_id: "ord-other-community",
-      placed_by: "user-a",
-      community_ref: "other",
+      placed_by: "subject-alice",
+      community_ref: "community-beta",
       state: "placed",
       created_at_unix: 120,
     });
 
     const app = appWith(store);
     const res = await app.request(
-      "/v1/collection-reports?community_ref=mibera&subject_id=user-a&limit=10",
+      "/v1/collection-reports?community_ref=community-alpha&subject_id=subject-alice&limit=10",
       { headers: { authorization: `Bearer ${TOKEN}` } },
     );
     expect(res.status).toBe(200);
@@ -202,26 +214,26 @@ describe("CR-206 collection-report HTTP", () => {
     const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
     await seed(store, {
       order_id: "ord-3",
-      placed_by: "user-a",
-      community_ref: "mibera",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
       created_at_unix: 30,
     });
     await seed(store, {
       order_id: "ord-2",
-      placed_by: "user-a",
-      community_ref: "mibera",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
       created_at_unix: 20,
     });
     await seed(store, {
       order_id: "ord-1",
-      placed_by: "user-a",
-      community_ref: "mibera",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
       created_at_unix: 10,
     });
 
     const app = appWith(store);
     const page1 = await app.request(
-      "/v1/collection-reports?community_ref=mibera&subject_id=user-a&limit=2",
+      "/v1/collection-reports?community_ref=community-alpha&subject_id=subject-alice&limit=2",
       { headers: { authorization: `Bearer ${TOKEN}` } },
     );
     const body1 = (await page1.json()) as {
@@ -232,7 +244,7 @@ describe("CR-206 collection-report HTTP", () => {
     expect(body1.next_cursor).toBeTruthy();
 
     const page2 = await app.request(
-      `/v1/collection-reports?community_ref=mibera&subject_id=user-a&limit=2&cursor=${encodeURIComponent(body1.next_cursor)}`,
+      `/v1/collection-reports?community_ref=community-alpha&subject_id=subject-alice&limit=2&cursor=${encodeURIComponent(body1.next_cursor)}`,
       { headers: { authorization: `Bearer ${TOKEN}` } },
     );
     const body2 = (await page2.json()) as {

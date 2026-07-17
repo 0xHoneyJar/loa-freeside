@@ -127,26 +127,42 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     }
 
     if (body.data.product === 'collection-report') {
+      // CR-007A denial envelope — schema_version/code/reason (BB #496).
+      const deny = (
+        status: 400 | 403 | 409 | 503,
+        code: string,
+        reason?: string,
+      ) =>
+        c.json(
+          {
+            schema_version: 1,
+            code,
+            ...(reason !== undefined ? { reason } : {}),
+          },
+          status,
+          noStoreHeaders(),
+        );
+
       if (!deps.resolutionService || !deps.resolutionStore) {
-        return c.json({ error: 'collection-report admission unavailable' }, 503);
+        return deny(503, 'collection_report_admission_unavailable');
       }
       if (!deps.publicAuth) {
-        return c.json({ error: 'collection-report authorization unavailable' }, 503);
+        return deny(503, 'public_authorization_unconfigured');
       }
       if (body.data.authorization_scope === undefined) {
-        return c.json({ error: 'authorization_scope required for collection-report' }, 400);
+        return deny(400, 'authorization_scope_required');
       }
       let scope;
       try {
         scope = deps.publicAuth.decodeScope(body.data.authorization_scope);
       } catch {
-        return c.json({ error: 'invalid authorization_scope' }, 400);
+        return deny(400, 'invalid_authorization_scope');
       }
       if (scope.permission !== 'report:create') {
-        return c.json({ error: 'order placement requires report:create' }, 403);
+        return deny(403, 'permission_mismatch', 'order placement requires report:create');
       }
       if (scope.subject_id !== body.data.placed_by) {
-        return c.json({ error: 'placed_by must match authorization subject' }, 403);
+        return deny(403, 'cross_subject', 'placed_by must match authorization subject');
       }
       const binding = inputsParsed.data as {
         schema_version: 1;
@@ -155,11 +171,11 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         community_ref: string;
       };
       if (binding.community_ref !== scope.community_ref) {
-        return c.json({ error: 'community_ref must match authorization scope' }, 403);
+        return deny(403, 'scope_tamper', 'community_ref must match authorization scope');
       }
       const record = await deps.resolutionStore.get(binding.resolution_id);
       if (record === undefined) {
-        return c.json({ error: 'order binding rejected', reason: 'resolution_not_found' }, 409);
+        return deny(409, 'resolution_not_found');
       }
       try {
         deps.publicAuth.acquireLease({
@@ -185,13 +201,10 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
           buildLocalCapabilityFromRecord(record),
         );
         if (admitted.decision !== 'admit') {
-          return c.json(
-            { error: 'order binding rejected', decision: admitted.decision },
-            409,
-          );
+          return deny(409, 'order_binding_rejected', admitted.decision);
         }
       } catch {
-        return c.json({ error: 'order binding rejected' }, 409);
+        return deny(409, 'order_binding_rejected');
       }
     }
 

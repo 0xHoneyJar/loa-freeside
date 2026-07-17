@@ -65,7 +65,10 @@ function authorizeReportRead(
   subjectId: string,
   action: "list" | "detail",
 ): Response | undefined {
-  if (!deps.auth) return undefined;
+  // Fail closed: production mount must always pass auth (BB #496 LOW).
+  if (!deps.auth) {
+    return errorJson(c, 503, "public_authorization_unconfigured");
+  }
   try {
     deps.auth.acquireLease({
       operation: { resource: "report_order", action },

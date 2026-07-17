@@ -116,6 +116,13 @@ export {
 export { normalizeContractAddress, normalizeChainId } from './contract-address.js';
 export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';
 export { createOrderingComposition, serviceTokenFromEnv, ctaFromEnv } from './composition.js';
+export {
+  resolvePublicAuthPosture,
+  publicAuthPostureFromEnv,
+  serviceTokenForPublicAuthMounts,
+  isDeployedEnv,
+} from './public-auth-posture.js';
+export type { PublicAuthMode, PublicAuthPosture } from './public-auth-posture.js';
 
 export { createFrontendApp } from './frontend.js';
 
