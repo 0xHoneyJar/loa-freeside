@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "candidates": [
+    {
+      "schema_version": 1,
+      "identity": {
+        "collection_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.identity",
+          "major_version": 1,
+          "digest": "dda01f8237462b119f6cffea59616cd356a3c402df540a60abd553d3314aec03"
+        },
+        "schema_version": 1,
+        "collection_key": "mibera",
+        "name": "Mibera",
+        "symbol": "MIB",
+        "image": "https://images.example.test/mibera.png",
+        "deployments": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "1"
+            },
+            "address": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+            "normalized_address": "0xabcdef0123456789abcdef0123456789abcdef01",
+            "deployment_id": {
+              "algorithm": "sha-256",
+              "domain": "collection.deployment",
+              "major_version": 1,
+              "digest": "f74d1dfe0e9b7445f356967d0eed683a0a50251d26d94da3053578ab9db38729"
+            }
+          }
+        ],
+        "equivalence_basis": {
+          "schema_version": 1,
+          "kind": "single_deployment"
+        }
+      },
+      "token_standard": {
+        "schema_version": 1,
+        "value": "erc721"
+      },
+      "recognition": "recognized",
+      "index_status": "indexed",
+      "report_readiness": "ready",
+      "metadata_quality": "onchain",
+      "provenance": [
+        {
+          "schema_version": 1,
+          "source": "onchain",
+          "observed_at": "2026-07-16T08:00:00Z",
+          "evidence_digest": {
+            "algorithm": "sha-256",
+            "domain": "collection.provenance",
+            "major_version": 1,
+            "digest": "036dc29e13e14f593ba26edb66eda1ad3fa0918dd42eeb6c190455693d3c3cfc"
+          }
+        }
+      ],
+      "finality_policies": [
+        {
+          "schema_version": 1,
+          "network": {
+            "schema_version": 1,
+            "network_namespace": "eip155",
+            "network_reference": "1"
+          },
+          "finality_policy_version": "ethereum-finalized.v1"
+        }
+      ],
+      "ranking_reasons": [
+        "exact_inventory_match",
+        "supported_standard",
+        "indexed"
+      ]
+    }
+  ],
+  "diagnostics": {
+    "schema_version": 1,
+    "searched": [
+      {
+        "schema_version": 1,
+        "network_namespace": "eip155",
+        "network_reference": "1"
+      }
+    ],
+    "timed_out": [],
+    "unavailable": []
+  }
+}

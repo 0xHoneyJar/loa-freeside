@@ -11,6 +11,11 @@ import {
   writeRoutePostureFromEnv,
 } from '../src/composition.js';
 import { ReProbeWorker } from '../src/reprobe-worker.js';
+import { createCatalogResolveProbePort } from '../src/catalog-resolve-probe.js';
+import { mountCollectionResolutionRoutes } from '../src/resolution-http.js';
+import { createResolutionStore } from '../src/resolution-store-factory.js';
+import { sonarResolveProbeFromEnv } from '../src/sonar-resolve-probe-client.js';
+import { PostgresOrderStore } from '../src/store-postgres.js';
 
 const { store, orchestrator, enqueue } = await createOrderingComposition();
 
@@ -27,6 +32,13 @@ if (!mountWrites) {
   );
 }
 
+const resolutionStore = await createResolutionStore({
+  orderStore: store instanceof PostgresOrderStore ? store : undefined,
+});
+const httpSonarProbe = sonarResolveProbeFromEnv();
+const sonarProbe = httpSonarProbe ?? createCatalogResolveProbePort();
+const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';
+
 const app = createIntakeApp({
   store,
   now: () => Date.now(),
@@ -40,7 +52,17 @@ const app = createIntakeApp({
     store: process.env.DATABASE_URL ? 'postgres' : 'memory',
     kitchen_enqueue: Boolean(enqueue),
     write_routes: writeRoutes,
+    collection_resolutions: true,
+    resolve_probe: resolutionProbeMode,
   },
+});
+
+// CR-006: mount create/confirm/refresh. Token posture matches write routes —
+// when SERVICE_TOKEN is set, Bearer is required; open_dev allows tokenless.
+mountCollectionResolutionRoutes(app, {
+  store: resolutionStore,
+  sonar: sonarProbe,
+  serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
 });
 
 if (process.env.ENABLE_REPROBE === 'true') {
@@ -51,4 +73,6 @@ if (process.env.ENABLE_REPROBE === 'true') {
 const port = Number(process.env.PORT ?? 8090);
 serve({ fetch: app.fetch, port });
 // eslint-disable-next-line no-console
-console.log(`ordering-service listening on :${port} (write_routes=${writeRoutes})`);
+console.log(
+  `ordering-service listening on :${port} (write_routes=${writeRoutes}, resolve_probe=${resolutionProbeMode})`,
+);

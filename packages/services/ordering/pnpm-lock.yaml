@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@freeside/collection-protocol':
+        specifier: file:../../protocol/collection
+        version: file:../../protocol/collection(effect@3.22.0)
+      '@freeside/collection-resolution-protocol':
+        specifier: file:../../protocol/collection-resolution
+        version: file:../../protocol/collection-resolution(effect@3.22.0)
       '@freeside/ordering-protocol':
         specifier: file:../../protocol/ordering
         version: file:../../protocol/ordering(zod@3.25.76)
@@ -20,6 +26,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.27)
+      effect:
+        specifier: ^3.21.0
+        version: 3.22.0
       hono:
         specifier: ^4.7.0
         version: 4.12.27
@@ -310,6 +319,16 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       pino: '>=8.0.0'
+
+  '@freeside/collection-protocol@file:../../protocol/collection':
+    resolution: {directory: ../../protocol/collection, type: directory}
+    peerDependencies:
+      effect: ^3.21.0
+
+  '@freeside/collection-resolution-protocol@file:../../protocol/collection-resolution':
+    resolution: {directory: ../../protocol/collection-resolution, type: directory}
+    peerDependencies:
+      effect: ^3.21.0
 
   '@freeside/core@file:../../core':
     resolution: {directory: ../../core, type: directory}
@@ -710,6 +729,9 @@ packages:
       sqlite3:
         optional: true
 
+  effect@3.22.0:
+    resolution: {integrity: sha512-jhYFe0zTlIRqYFrKTS+6luhmS/Tm0f+JLo0K9KUxvtFab1SUGEszQi2ehOP6QzAZvy831lDmTwwzvVDZSPNz3g==}
+
   es-module-lexer@2.2.0:
     resolution: {integrity: sha512-3lGxdTXCLfe1MYfTz1y2ksAAUM4NAOP6rPEjxGJVKO7TZ5+tvHCaQWGpC4Y3IXvW3ece0Cz1cIP4FWBxOnGCTQ==}
 
@@ -727,6 +749,10 @@ packages:
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
+
+  fast-check@3.23.2:
+    resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
+    engines: {node: '>=8.0.0'}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -942,6 +968,9 @@ packages:
 
   process-warning@5.0.0:
     resolution: {integrity: sha512-a39t9ApHNx2L4+HBnQKqxxHNs1r7KF+Intd8Q/g1bUh6q0WIp9voPXJ/x0j+ZL45KF1pJd9+q2jLIRMfvEshkA==}
+
+  pure-rand@6.1.0:
+    resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
 
   quick-format-unescaped@4.0.4:
     resolution: {integrity: sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==}
@@ -1483,6 +1512,15 @@ snapshots:
       - typescript
       - utf-8-validate
 
+  '@freeside/collection-protocol@file:../../protocol/collection(effect@3.22.0)':
+    dependencies:
+      effect: 3.22.0
+
+  '@freeside/collection-resolution-protocol@file:../../protocol/collection-resolution(effect@3.22.0)':
+    dependencies:
+      '@freeside/collection-protocol': file:../../protocol/collection(effect@3.22.0)
+      effect: 3.22.0
+
   '@freeside/core@file:../../core': {}
 
   '@freeside/ordering-protocol@file:../../protocol/ordering(zod@3.25.76)':
@@ -1784,6 +1822,11 @@ snapshots:
       pg: 8.22.0
       postgres: 3.4.9
 
+  effect@3.22.0:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      fast-check: 3.23.2
+
   es-module-lexer@2.2.0: {}
 
   esbuild@0.28.1:
@@ -1822,6 +1865,10 @@ snapshots:
   eventemitter3@5.0.1: {}
 
   expect-type@1.4.0: {}
+
+  fast-check@3.23.2:
+    dependencies:
+      pure-rand: 6.1.0
 
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
@@ -2010,6 +2057,8 @@ snapshots:
   postgres@3.4.9: {}
 
   process-warning@5.0.0: {}
+
+  pure-rand@6.1.0: {}
 
   quick-format-unescaped@4.0.4: {}
 

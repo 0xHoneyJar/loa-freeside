@@ -68,10 +68,19 @@ export class PostgresOrderStore implements OrderStore {
   }
 
   async runMigrations(): Promise<void> {
-    for (const file of ['001_orders.sql', '002_probe_meta.sql']) {
+    for (const file of [
+      '001_orders.sql',
+      '002_probe_meta.sql',
+      '004_collection_resolutions.sql',
+    ]) {
       const sql = readFileSync(join(__dirname, '../migrations', file), 'utf8');
       await this.pool.query(sql);
     }
+  }
+
+  /** Shared pool for sibling adapters (e.g. PostgresResolutionStore). */
+  getPool(): pg.Pool {
+    return this.pool;
   }
 
   async close(): Promise<void> {

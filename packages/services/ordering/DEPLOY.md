@@ -7,6 +7,9 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
+| POST | `/v1/collection-resolutions` | `Bearer $SERVICE_TOKEN` (when set) | CR-006 create resolution session via Sonar resolve-probe |
+| POST | `/v1/collection-resolutions/:id/confirm` | `Bearer $SERVICE_TOKEN` (when set) | Confirm selection (CAS + idempotency) |
+| POST | `/v1/collection-resolutions/:id/refresh` | `Bearer $SERVICE_TOKEN` (when set) | Refresh probe; preserve selection or `selection_stale` |
 | GET | `/healthz` | none | Railway healthcheck; reports `write_routes: open_dev\|token\|disabled_no_token` |
 | POST | `/v1/orders` | none (MVP) | Place order → `{ order_id }`; unknown product → 400 + `available_presets` |
 | GET | `/v1/orders/:id` | none (MVP) | Poll state + ingredients + `probe_meta` (public projection) |
