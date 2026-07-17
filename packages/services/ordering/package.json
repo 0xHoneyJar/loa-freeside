@@ -26,7 +26,10 @@
     "hono": "^4.7.0",
     "pg": "^8.16.0",
     "tsx": "^4.19.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@freeside/collection-protocol": "file:../../protocol/collection",
+    "@freeside/collection-resolution-protocol": "file:../../protocol/collection-resolution",
+    "effect": "^3.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "subject_id": "subject-alice",
+  "community_ref": "community-alpha",
+  "permission": "report:create"
+}

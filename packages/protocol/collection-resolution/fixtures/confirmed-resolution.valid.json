@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "resolution_id": "res_fixture_001",
+  "requester_subject": "subject-alice",
+  "authorization_scope": {
+    "schema_version": 1,
+    "subject_id": "subject-alice",
+    "community_ref": "community-alpha",
+    "permission": "report:create"
+  },
+  "original_request": {
+    "schema_version": 1,
+    "identifier": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+    "environment": "mainnet",
+    "report_type": "gate_leak",
+    "report_version": "gate-leak.v1",
+    "community_ref": "community-alpha"
+  },
+  "request_digest": {
+    "algorithm": "sha-256",
+    "domain": "collection-resolution.request",
+    "major_version": 1,
+    "digest": "3bc53bf3b5eb2766224e1723273c5a94316eb59d61a0ee505e8dbc5e259f1949"
+  },
+  "capability_snapshot_version": {
+    "registry_epoch": "11111111-1111-4111-8111-111111111111",
+    "registry_sequence": "10"
+  },
+  "candidate_snapshot": {
+    "schema_version": 1,
+    "candidates": [
+      {
+        "schema_version": 1,
+        "identity": {
+          "collection_id": {
+            "algorithm": "sha-256",
+            "domain": "collection.identity",
+            "major_version": 1,
+            "digest": "dda01f8237462b119f6cffea59616cd356a3c402df540a60abd553d3314aec03"
+          },
+          "schema_version": 1,
+          "collection_key": "mibera",
+          "name": "Mibera",
+          "symbol": "MIB",
+          "image": "https://images.example.test/mibera.png",
+          "deployments": [
+            {
+              "schema_version": 1,
+              "network": {
+                "schema_version": 1,
+                "network_namespace": "eip155",
+                "network_reference": "1"
+              },
+              "address": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+              "normalized_address": "0xabcdef0123456789abcdef0123456789abcdef01",
+              "deployment_id": {
+                "algorithm": "sha-256",
+                "domain": "collection.deployment",
+                "major_version": 1,
+                "digest": "f74d1dfe0e9b7445f356967d0eed683a0a50251d26d94da3053578ab9db38729"
+              }
+            }
+          ],
+          "equivalence_basis": {
+            "schema_version": 1,
+            "kind": "single_deployment"
+          }
+        },
+        "token_standard": {
+          "schema_version": 1,
+          "value": "erc721"
+        },
+        "recognition": "recognized",
+        "index_status": "indexed",
+        "report_readiness": "ready",
+        "metadata_quality": "onchain",
+        "provenance": [
+          {
+            "schema_version": 1,
+            "source": "onchain",
+            "observed_at": "2026-07-16T08:00:00Z",
+            "evidence_digest": {
+              "algorithm": "sha-256",
+              "domain": "collection.provenance",
+              "major_version": 1,
+              "digest": "036dc29e13e14f593ba26edb66eda1ad3fa0918dd42eeb6c190455693d3c3cfc"
+            }
+          }
+        ],
+        "finality_policies": [
+          {
+            "schema_version": 1,
+            "network": {
+              "schema_version": 1,
+              "network_namespace": "eip155",
+              "network_reference": "1"
+            },
+            "finality_policy_version": "ethereum-finalized.v1"
+          }
+        ],
+        "ranking_reasons": [
+          "exact_inventory_match",
+          "supported_standard",
+          "indexed"
+        ]
+      }
+    ],
+    "diagnostics": {
+      "schema_version": 1,
+      "searched": [
+        {
+          "schema_version": 1,
+          "network_namespace": "eip155",
+          "network_reference": "1"
+        }
+      ],
+      "timed_out": [],
+      "unavailable": []
+    }
+  },
+  "candidate_snapshot_digest": {
+    "algorithm": "sha-256",
+    "domain": "collection-resolution.candidate-snapshot",
+    "major_version": 1,
+    "digest": "da5c399e41a36c190eadea125187b25209bd97064b5a55c04ffa71abd268d58e"
+  },
+  "selected_deployment_ids": [
+    {
+      "algorithm": "sha-256",
+      "domain": "collection.deployment",
+      "major_version": 1,
+      "digest": "f74d1dfe0e9b7445f356967d0eed683a0a50251d26d94da3053578ab9db38729"
+    }
+  ],
+  "selected_collection_id": {
+    "algorithm": "sha-256",
+    "domain": "collection.identity",
+    "major_version": 1,
+    "digest": "dda01f8237462b119f6cffea59616cd356a3c402df540a60abd553d3314aec03"
+  },
+  "confirmation_version": 1,
+  "confirmed_at": "2026-07-16T08:05:00Z",
+  "expires_at": "2026-07-16T08:15:00Z",
+  "created_at": "2026-07-16T08:00:00Z",
+  "updated_at": "2026-07-16T08:05:00Z"
+}
