@@ -15,7 +15,6 @@ import {
 import {
   isActivePublicWorkState,
   type PreparationWorkItemRecord,
-  type PublicPreparationWorkKeyMaterial,
   type ReadinessEvidenceEnvelope,
   type ReportWorkLinkRecord,
   type SharedPreparationWorkRecord,
@@ -29,6 +28,15 @@ import {
 } from "./shared-preparation-store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function isUniqueActiveKeyViolation(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const pgErr = err as Error & { code?: string; constraint?: string };
+  return (
+    pgErr.code === "23505" ||
+    err.message.includes("shared_preparation_work_key_active_idx")
+  );
+}
 
 function rowToWork(row: pg.QueryResultRow): SharedPreparationWorkRecord {
   return {
@@ -137,16 +145,40 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
   }
 
   async runMigrations(): Promise<void> {
-    const sql = readFileSync(join(__dirname, "../migrations/007_shared_preparation_work.sql"), "utf8");
-    await this.pool.query(sql);
+    // Orders FK target for report_work_links.
+    for (const file of [
+      "001_orders.sql",
+      "007_shared_preparation_work.sql",
+    ]) {
+      const sql = readFileSync(join(__dirname, "../migrations", file), "utf8");
+      await this.pool.query(sql);
+    }
   }
 
   async close(): Promise<void> {
     await this.pool.end();
   }
 
+  /** Exposed for race harnesses that need a bare pool. */
+  getPool(): pg.Pool {
+    return this.pool;
+  }
+
   private async advisoryLock(client: pg.PoolClient, workKeyDigest: string): Promise<void> {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [workKeyDigest]);
+  }
+
+  private async classifyZeroRowWorkUpdate(
+    workId: string,
+    expectedLeaseEpoch: number,
+    context: string,
+  ): Promise<never> {
+    const current = await this.getWork(workId);
+    if (!current) throw new SharedPreparationStateError("work not found");
+    if (current.lease_epoch !== expectedLeaseEpoch) {
+      throw new SharedPreparationFencingError(`stale lease epoch for ${context}`);
+    }
+    throw new SharedPreparationStateError(`cannot ${context} from ${current.state}`);
   }
 
   async joinPublicWork(input: JoinPublicWorkInput): Promise<JoinPublicWorkResult> {
@@ -170,11 +202,12 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       if (readyResult.rows.length > 0) {
         const work = rowToWork(readyResult.rows[0]);
         await this.insertLink(client, input, work.work_id, work.generation);
+        const links = await this.fetchActiveLinks(client, work.work_id);
         await client.query("COMMIT");
         return {
           kind: "joined",
           work,
-          links: await this.fetchActiveLinks(client, work.work_id),
+          links,
           created: false,
           reused_ready: true,
         };
@@ -189,11 +222,12 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       if (activeResult.rows.length > 0) {
         const work = rowToWork(activeResult.rows[0]);
         await this.insertLink(client, input, work.work_id, work.generation);
+        const links = await this.fetchActiveLinks(client, work.work_id);
         await client.query("COMMIT");
         return {
           kind: "joined",
           work,
-          links: await this.fetchActiveLinks(client, work.work_id),
+          links,
           created: false,
           reused_ready: false,
         };
@@ -252,18 +286,18 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
         "SELECT * FROM shared_preparation_work WHERE work_id = $1",
         [workId],
       );
+      const links = await this.fetchActiveLinks(client, workId);
       await client.query("COMMIT");
-      const work = rowToWork(workRow.rows[0]);
       return {
         kind: "joined",
-        work,
-        links: await this.fetchActiveLinks(work.work_id),
+        work: rowToWork(workRow.rows[0]),
+        links,
         created: true,
         reused_ready: false,
       };
     } catch (err) {
       await client.query("ROLLBACK");
-      if (err instanceof Error && err.message.includes("shared_preparation_work_key_active_idx")) {
+      if (isUniqueActiveKeyViolation(err)) {
         return { kind: "serialization_retry" };
       }
       throw err;
@@ -360,10 +394,11 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       const nextEpoch = work.lease_epoch + 1;
       const leaseUntil = msToIso(input.now_ms + input.lease_duration_ms);
       const nowIso = msToIso(input.now_ms);
-      await client.query(
+      const updated = await client.query(
         `UPDATE shared_preparation_work
          SET lease_epoch = $2, lease_until = $3, updated_at = $4
-         WHERE work_id = $1`,
+         WHERE work_id = $1
+         RETURNING *`,
         [input.work_id, nextEpoch, leaseUntil, nowIso],
       );
       await client.query(
@@ -373,9 +408,7 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       await client.query("COMMIT");
       return {
         kind: reclaimed ? ("reclaimed" as const) : ("acquired" as const),
-        work: {
-          ...(await this.getWork(input.work_id))!,
-        },
+        work: rowToWork(updated.rows[0]),
       };
     } catch (err) {
       await client.query("ROLLBACK");
@@ -390,28 +423,38 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     expected_lease_epoch: number;
     now_ms: number;
   }): Promise<SharedPreparationWorkRecord> {
-    const result = await this.pool.query(
-      `UPDATE shared_preparation_work
-       SET state = 'preparing', updated_at = $3
-       WHERE work_id = $1 AND lease_epoch = $2 AND state IN ('queued', 'retry_wait')
-       RETURNING *`,
-      [input.work_id, input.expected_lease_epoch, msToIso(input.now_ms)],
-    );
-    if (result.rows.length === 0) {
-      const current = await this.getWork(input.work_id);
-      if (!current) throw new SharedPreparationStateError("work not found");
-      if (current.lease_epoch !== input.expected_lease_epoch) {
-        throw new SharedPreparationFencingError("stale lease epoch for preparing transition");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `UPDATE shared_preparation_work
+         SET state = 'preparing', updated_at = $3
+         WHERE work_id = $1 AND lease_epoch = $2 AND state IN ('queued', 'retry_wait')
+         RETURNING *`,
+        [input.work_id, input.expected_lease_epoch, msToIso(input.now_ms)],
+      );
+      if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return this.classifyZeroRowWorkUpdate(
+          input.work_id,
+          input.expected_lease_epoch,
+          "preparing transition",
+        );
       }
-      throw new SharedPreparationStateError(`cannot enter preparing from ${current.state}`);
+      await client.query(
+        `UPDATE preparation_work_items
+         SET state = 'preparing', updated_at = $2
+         WHERE work_id = $1 AND state IN ('queued', 'retry_wait')`,
+        [input.work_id, msToIso(input.now_ms)],
+      );
+      await client.query("COMMIT");
+      return rowToWork(result.rows[0]);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
-    await this.pool.query(
-      `UPDATE preparation_work_items
-       SET state = 'preparing', updated_at = $2
-       WHERE work_id = $1 AND state IN ('queued', 'retry_wait')`,
-      [input.work_id, msToIso(input.now_ms)],
-    );
-    return rowToWork(result.rows[0]);
   }
 
   async recordRetryableFailure(input: {
@@ -426,16 +469,15 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       `UPDATE shared_preparation_work
        SET state = 'retry_wait',
            attempt = attempt + 1,
-           next_attempt_at = $4,
-           retry_deadline = $5,
+           next_attempt_at = $3,
+           retry_deadline = $4,
            lease_until = NULL,
-           failure_reason = $6,
-           updated_at = $7
+           failure_reason = $5,
+           updated_at = $6
        WHERE work_id = $1 AND lease_epoch = $2 AND state = 'preparing'
        RETURNING *`,
       [
         input.work_id,
-        input.expected_lease_epoch,
         input.expected_lease_epoch,
         msToIso(input.next_attempt_at_unix_ms),
         msToIso(input.retry_deadline_unix_ms),
@@ -444,27 +486,33 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       ],
     );
     if (result.rows.length === 0) {
-      throw new SharedPreparationFencingError("stale lease epoch for retryable failure");
+      return this.classifyZeroRowWorkUpdate(
+        input.work_id,
+        input.expected_lease_epoch,
+        "retryable failure",
+      );
     }
     return rowToWork(result.rows[0]);
   }
 
   async wakeRetryWait(input: {
     work_id: string;
-    expected_next_attempt_at_unix_ms: number;
+    expected_attempt: number;
     now_ms: number;
   }) {
+    // CAS on attempt (monotonic token), deadline as inequality — not timestamptz equality.
     const result = await this.pool.query(
       `UPDATE shared_preparation_work
        SET state = 'queued', updated_at = $3
        WHERE work_id = $1
          AND state = 'retry_wait'
-         AND next_attempt_at = $2
+         AND attempt = $2
+         AND next_attempt_at IS NOT NULL
          AND next_attempt_at <= $4
        RETURNING *`,
       [
         input.work_id,
-        msToIso(input.expected_next_attempt_at_unix_ms),
+        input.expected_attempt,
         msToIso(input.now_ms),
         msToIso(input.now_ms),
       ],
@@ -481,19 +529,33 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
   }): Promise<PreparationWorkItemRecord> {
     const result = await this.pool.query(
       `UPDATE preparation_work_items
-       SET state = 'ready', evidence_envelope = $4, updated_at = $5
-       WHERE work_item_id = $1 AND lease_epoch = $2
+       SET state = 'ready', evidence_envelope = $3, updated_at = $4
+       WHERE work_item_id = $1
+         AND lease_epoch = $2
+         AND state = 'preparing'
        RETURNING *`,
       [
         input.work_item_id,
-        input.expected_lease_epoch,
         input.expected_lease_epoch,
         JSON.stringify(input.evidence),
         msToIso(input.now_ms),
       ],
     );
     if (result.rows.length === 0) {
-      throw new SharedPreparationFencingError("stale lease epoch for child evidence");
+      const current = await this.pool.query(
+        "SELECT * FROM preparation_work_items WHERE work_item_id = $1",
+        [input.work_item_id],
+      );
+      if (current.rows.length === 0) {
+        throw new SharedPreparationStateError("work item not found");
+      }
+      const item = rowToItem(current.rows[0]);
+      if (item.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for child evidence");
+      }
+      throw new SharedPreparationStateError(
+        `child evidence requires preparing, got ${item.state}`,
+      );
     }
     return rowToItem(result.rows[0]);
   }
@@ -504,42 +566,95 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     readiness_evidence: ReadinessEvidenceEnvelope;
     now_ms: number;
   }) {
-    const pending = await this.pool.query(
-      "SELECT COUNT(*)::int AS pending FROM preparation_work_items WHERE work_id = $1 AND state <> 'ready'",
-      [input.work_id],
-    );
-    if (Number(pending.rows[0].pending) > 0) {
-      return {
-        kind: "pending_children" as const,
-        work: (await this.getWork(input.work_id))!,
-      };
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const locked = await client.query(
+        `SELECT * FROM shared_preparation_work WHERE work_id = $1 FOR UPDATE`,
+        [input.work_id],
+      );
+      if (locked.rows.length === 0) {
+        await client.query("ROLLBACK");
+        throw new SharedPreparationStateError("work not found");
+      }
+      const work = rowToWork(locked.rows[0]);
+      if (work.lease_epoch !== input.expected_lease_epoch) {
+        await client.query("ROLLBACK");
+        throw new SharedPreparationFencingError("stale lease epoch for parent ready");
+      }
+      if (work.state !== "preparing") {
+        await client.query("ROLLBACK");
+        throw new SharedPreparationStateError(
+          `finalize ready requires preparing, got ${work.state}`,
+        );
+      }
+
+      const pending = await client.query(
+        "SELECT COUNT(*)::int AS pending FROM preparation_work_items WHERE work_id = $1 AND state <> 'ready'",
+        [input.work_id],
+      );
+      if (Number(pending.rows[0].pending) > 0) {
+        await client.query("COMMIT");
+        return { kind: "pending_children" as const, work };
+      }
+
+      const result = await client.query(
+        `UPDATE shared_preparation_work
+         SET state = 'ready',
+             readiness_evidence = $3,
+             lease_until = NULL,
+             updated_at = $4
+         WHERE work_id = $1
+           AND lease_epoch = $2
+           AND state = 'preparing'
+           AND NOT EXISTS (
+             SELECT 1 FROM preparation_work_items
+             WHERE work_id = $1 AND state <> 'ready'
+           )
+         RETURNING *`,
+        [
+          input.work_id,
+          input.expected_lease_epoch,
+          JSON.stringify(input.readiness_evidence),
+          msToIso(input.now_ms),
+        ],
+      );
+      if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return this.classifyZeroRowWorkUpdate(
+          input.work_id,
+          input.expected_lease_epoch,
+          "parent ready",
+        );
+      }
+      await client.query("COMMIT");
+      return { kind: "ready" as const, work: rowToWork(result.rows[0]) };
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // already rolled back / committed
+      }
+      throw err;
+    } finally {
+      client.release();
     }
-    const result = await this.pool.query(
-      `UPDATE shared_preparation_work
-       SET state = 'ready',
-           readiness_evidence = $4,
-           lease_until = NULL,
-           updated_at = $5
-       WHERE work_id = $1 AND lease_epoch = $2
-       RETURNING *`,
-      [
-        input.work_id,
-        input.expected_lease_epoch,
-        input.expected_lease_epoch,
-        JSON.stringify(input.readiness_evidence),
-        msToIso(input.now_ms),
-      ],
-    );
-    if (result.rows.length === 0) {
-      throw new SharedPreparationFencingError("stale lease epoch for parent ready");
-    }
-    return { kind: "ready" as const, work: rowToWork(result.rows[0]) };
   }
 
   async detachSubscriber(input: { order_id: string; work_id: string; now_ms: number }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      const workRow = await client.query(
+        "SELECT work_key_digest FROM shared_preparation_work WHERE work_id = $1 FOR UPDATE",
+        [input.work_id],
+      );
+      if (workRow.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { kind: "not_linked" as const };
+      }
+      await this.advisoryLock(client, workRow.rows[0].work_key_digest as string);
+
       const linkResult = await client.query(
         `UPDATE report_work_links
          SET detached_at = $3
@@ -551,24 +666,24 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
         await client.query("ROLLBACK");
         return { kind: "not_linked" as const };
       }
-      const remaining = await client.query(
-        "SELECT COUNT(*)::int AS count FROM report_work_links WHERE work_id = $1 AND detached_at IS NULL",
-        [input.work_id],
+
+      // Re-check zero active links in the same statement that abandons.
+      const abandoned = await client.query(
+        `UPDATE shared_preparation_work AS w
+         SET state = 'abandoned', lease_until = NULL, updated_at = $2
+         WHERE w.work_id = $1
+           AND w.state IN ('queued', 'preparing', 'retry_wait')
+           AND NOT EXISTS (
+             SELECT 1 FROM report_work_links l
+             WHERE l.work_id = w.work_id AND l.detached_at IS NULL
+           )
+         RETURNING *`,
+        [input.work_id, msToIso(input.now_ms)],
       );
-      if (Number(remaining.rows[0].count) === 0) {
-        const abandoned = await client.query(
-          `UPDATE shared_preparation_work
-           SET state = 'abandoned', lease_until = NULL, updated_at = $2
-           WHERE work_id = $1 AND state IN ('queued', 'preparing', 'retry_wait')
-           RETURNING *`,
-          [input.work_id, msToIso(input.now_ms)],
-        );
-        await client.query("COMMIT");
-        if (abandoned.rows.length > 0) {
-          return { kind: "detached" as const, work: rowToWork(abandoned.rows[0]) };
-        }
-      }
       await client.query("COMMIT");
+      if (abandoned.rows.length > 0) {
+        return { kind: "detached" as const, work: rowToWork(abandoned.rows[0]) };
+      }
       return { kind: "detached" as const };
     } catch (err) {
       await client.query("ROLLBACK");

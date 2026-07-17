@@ -3,8 +3,12 @@ import {
   countActiveRows,
   InMemorySharedPreparationStore,
   SharedPreparationFencingError,
+  SharedPreparationStateError,
 } from "../shared-preparation-store.js";
-import { buildPublicWorkKeyMaterial } from "../shared-preparation-work-key.js";
+import {
+  buildPublicWorkKeyMaterial,
+  digestPublicWorkKey,
+} from "../shared-preparation-work-key.js";
 import { PUBLIC_PREP_CAPABILITIES } from "../shared-preparation-types.js";
 import {
   fixtureCommunityScopeDigest,
@@ -196,14 +200,21 @@ describe("CR-201A public shared preparation store", () => {
 
     const staleWake = await store.wakeRetryWait({
       work_id: joined.work.work_id,
-      expected_next_attempt_at_unix_ms: 9_000,
+      expected_attempt: 0,
       now_ms: 10_000,
     });
     expect(staleWake.kind).toBe("stale_wake");
 
+    const earlyWake = await store.wakeRetryWait({
+      work_id: joined.work.work_id,
+      expected_attempt: failed.attempt,
+      now_ms: 9_999,
+    });
+    expect(earlyWake.kind).toBe("stale_wake");
+
     const woke = await store.wakeRetryWait({
       work_id: joined.work.work_id,
-      expected_next_attempt_at_unix_ms: 10_000,
+      expected_attempt: failed.attempt,
       now_ms: 10_000,
     });
     expect(woke.kind).toBe("woke");
@@ -341,5 +352,142 @@ describe("CR-201A public shared preparation store", () => {
       }),
     ).toThrow(/non-public capability/);
     expect(PUBLIC_PREP_CAPABILITIES).toEqual(["collection_identity.v1", "ownership_index.v1"]);
+  });
+
+  it("canonicalizes deployment_ids and finality_policies before hashing", () => {
+    const candidate = loadEvmFixtureCandidate();
+    const a = candidate.identity.deployments[0]!.deployment_id;
+    const b = {
+      algorithm: "sha-256" as const,
+      domain: "collection.deployment",
+      major_version: 1,
+      digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    };
+    const policyEvm = candidate.finality_policies[0]!;
+    const policySol = {
+      schema_version: 1 as const,
+      network: {
+        schema_version: 1 as const,
+        network_namespace: "solana" as const,
+        network_reference: "mainnet-beta",
+      },
+      finality_policy_version: "solana-confirmed.v1",
+    };
+    const forward = buildPublicWorkKeyMaterial({
+      capability: "ownership_index.v1",
+      capability_version: "v1",
+      collection_id: candidate.identity.collection_id,
+      deployment_ids: [b, a],
+      finality_policies: [policySol, policyEvm],
+      source_identity: {
+        schema_version: 1,
+        producer: "sonar-api.fixture",
+        upstream_evidence_source: "sonar.public-capability.v1",
+      },
+      readiness_policy_version: "gate-leak-public-prep.v1",
+      adapter_version: "sonar-kitchen.v1",
+    });
+    const reverse = buildPublicWorkKeyMaterial({
+      capability: "ownership_index.v1",
+      capability_version: "v1",
+      collection_id: candidate.identity.collection_id,
+      deployment_ids: [a, b],
+      finality_policies: [policyEvm, policySol],
+      source_identity: {
+        schema_version: 1,
+        producer: "sonar-api.fixture",
+        upstream_evidence_source: "sonar.public-capability.v1",
+      },
+      readiness_policy_version: "gate-leak-public-prep.v1",
+      adapter_version: "sonar-kitchen.v1",
+    });
+    expect(digestPublicWorkKey(forward)).toBe(digestPublicWorkKey(reverse));
+    expect(forward.deployment_ids.map((d) => d.digest)).toEqual(
+      reverse.deployment_ids.map((d) => d.digest),
+    );
+    expect(forward.finality_policies.map((p) => p.network.network_namespace)).toEqual(
+      reverse.finality_policies.map((p) => p.network.network_namespace),
+    );
+  });
+
+  it("rejects child evidence and finalize outside preparing", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey();
+    const joined = await store.joinPublicWork({
+      order_id: "ord_state",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1,
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+    const lease = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "w",
+      lease_duration_ms: 30_000,
+      now_ms: 2,
+    });
+    if (lease.kind !== "acquired") throw new Error("lease failed");
+    const item = (await store.listWorkItems(joined.work.work_id))[0]!;
+    await expect(
+      store.publishChildEvidence({
+        work_item_id: item.work_item_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        evidence: fixtureReadinessEvidence(workKey.deployment_ids),
+        now_ms: 3,
+      }),
+    ).rejects.toBeInstanceOf(SharedPreparationStateError);
+    await expect(
+      store.finalizeReadyIfQualified({
+        work_id: joined.work.work_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        readiness_evidence: fixtureReadinessEvidence(workKey.deployment_ids),
+        now_ms: 4,
+      }),
+    ).rejects.toBeInstanceOf(SharedPreparationStateError);
+  });
+
+  it("survives concurrent detach and join without abandoning an active subscriber", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey();
+    const first = await store.joinPublicWork({
+      order_id: "ord_race_a",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1,
+    });
+    if (first.kind !== "joined") throw new Error("join failed");
+
+    const rounds = await Promise.all(
+      Array.from({ length: 40 }, async (_, index) => {
+        if (index % 2 === 0) {
+          return store.detachSubscriber({
+            order_id: "ord_race_a",
+            work_id: first.work.work_id,
+            now_ms: 10 + index,
+          });
+        }
+        return store.joinPublicWork({
+          order_id: `ord_race_b_${index}`,
+          order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+          work_key: workKey,
+          now_ms: 10 + index,
+        });
+      }),
+    );
+
+    expect(rounds.length).toBe(40);
+    const digest = fixtureWorkKeyDigest(workKey);
+    const active = countActiveRows(store, digest);
+    // Either still active with ≥1 subscriber, or abandoned after last detach — never two actives.
+    expect(active).toBeLessThanOrEqual(1);
+    if (active === 1) {
+      const work = await store.getWork(first.work.work_id);
+      const links = work ? await store.listActiveLinks(work.work_id) : [];
+      // If the original row is still active it must have links; successor gens are ok too.
+      const surviving = (await store.getWork(first.work.work_id))?.state;
+      if (surviving && ["queued", "preparing", "retry_wait"].includes(surviving)) {
+        expect(links.length).toBeGreaterThan(0);
+      }
+    }
   });
 });

@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS shared_preparation_work (
   CONSTRAINT shared_preparation_work_unique_generation UNIQUE (work_key_digest, generation)
 );
 
-CREATE INDEX IF NOT EXISTS shared_preparation_work_key_active_idx
+-- Active is exactly queued/preparing/retry_wait; one active row per work key.
+CREATE UNIQUE INDEX IF NOT EXISTS shared_preparation_work_key_active_idx
   ON shared_preparation_work (work_key_digest)
   WHERE state IN ('queued', 'preparing', 'retry_wait');
 

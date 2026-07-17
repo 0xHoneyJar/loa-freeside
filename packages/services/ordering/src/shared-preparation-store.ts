@@ -83,7 +83,8 @@ export interface SharedPreparationStore {
   }): Promise<SharedPreparationWorkRecord>;
   wakeRetryWait(input: {
     work_id: string;
-    expected_next_attempt_at_unix_ms: number;
+    /** CAS token: wake only when attempt still matches the scheduled failure. */
+    expected_attempt: number;
     now_ms: number;
   }): Promise<
     | { readonly kind: "woke"; readonly work: SharedPreparationWorkRecord }
@@ -470,7 +471,7 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
 
   async wakeRetryWait(input: {
     work_id: string;
-    expected_next_attempt_at_unix_ms: number;
+    expected_attempt: number;
     now_ms: number;
   }): Promise<
     | { readonly kind: "woke"; readonly work: SharedPreparationWorkRecord }
@@ -478,10 +479,13 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
   > {
     const work = this.works.get(input.work_id);
     if (!work || work.state !== "retry_wait") return { kind: "stale_wake" };
-    if (work.next_attempt_at_unix_ms !== input.expected_next_attempt_at_unix_ms) {
+    if (work.attempt !== input.expected_attempt) {
       return { kind: "stale_wake" };
     }
-    if (input.now_ms < input.expected_next_attempt_at_unix_ms) {
+    if (
+      work.next_attempt_at_unix_ms === undefined ||
+      input.now_ms < work.next_attempt_at_unix_ms
+    ) {
       return { kind: "stale_wake" };
     }
     work.state = "queued";
@@ -499,6 +503,11 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     if (!item) throw new SharedPreparationStateError("work item not found");
     if (item.lease_epoch !== input.expected_lease_epoch) {
       throw new SharedPreparationFencingError("stale lease epoch for child evidence");
+    }
+    if (item.state !== "preparing") {
+      throw new SharedPreparationStateError(
+        `child evidence requires preparing, got ${item.state}`,
+      );
     }
     item.state = "ready";
     item.evidence_envelope = structuredClone(input.evidence);
@@ -520,6 +529,11 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     if (work.lease_epoch !== input.expected_lease_epoch) {
       throw new SharedPreparationFencingError("stale lease epoch for parent ready");
     }
+    if (work.state !== "preparing") {
+      throw new SharedPreparationStateError(
+        `finalize ready requires preparing, got ${work.state}`,
+      );
+    }
     const children = this.itemsForWork(work.work_id);
     if (!allChildrenReady(children)) {
       return { kind: "pending_children", work: cloneWork(work) };
@@ -539,36 +553,60 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     | { readonly kind: "detached"; readonly work?: SharedPreparationWorkRecord }
     | { readonly kind: "not_linked" }
   > {
-    const key = this.linkKey(input.order_id, input.work_id);
-    const link = this.links.get(key);
-    if (!link || link.detached_at_unix_ms !== undefined) {
+    const work = this.works.get(input.work_id);
+    if (!work) return { kind: "not_linked" };
+    const locked = await this.withWorkKeyLock(work.work_key_digest, async () => {
+      const key = this.linkKey(input.order_id, input.work_id);
+      const link = this.links.get(key);
+      if (!link || link.detached_at_unix_ms !== undefined) {
+        return { kind: "not_linked" as const };
+      }
+      link.detached_at_unix_ms = input.now_ms;
+      const current = this.works.get(input.work_id);
+      if (!current) return { kind: "detached" as const };
+      const remaining = this.activeLinksForWork(input.work_id);
+      if (remaining.length === 0 && isActivePublicWorkState(current.state)) {
+        current.state = "abandoned";
+        current.updated_at_unix_ms = input.now_ms;
+        current.lease_until_unix_ms = undefined;
+        return { kind: "detached" as const, work: cloneWork(current) };
+      }
+      return { kind: "detached" as const };
+    });
+    if (
+      locked &&
+      typeof locked === "object" &&
+      "kind" in locked &&
+      locked.kind === "serialization_retry"
+    ) {
       return { kind: "not_linked" };
     }
-    link.detached_at_unix_ms = input.now_ms;
-    const work = this.works.get(input.work_id);
-    if (!work) return { kind: "detached" };
-    const remaining = this.activeLinksForWork(input.work_id);
-    if (remaining.length === 0 && isActivePublicWorkState(work.state)) {
-      work.state = "abandoned";
-      work.updated_at_unix_ms = input.now_ms;
-      work.lease_until_unix_ms = undefined;
-      return { kind: "detached", work: cloneWork(work) };
-    }
-    return { kind: "detached" };
+    return locked as
+      | { readonly kind: "detached"; readonly work?: SharedPreparationWorkRecord }
+      | { readonly kind: "not_linked" };
   }
 
   async supersedeActiveGeneration(input: {
     work_key_digest: string;
     now_ms: number;
   }): Promise<SharedPreparationWorkRecord | undefined> {
-    return this.withWorkKeyLock(input.work_key_digest, async () => {
+    const locked = await this.withWorkKeyLock(input.work_key_digest, async () => {
       const active = this.activeRow(input.work_key_digest);
       if (!active) return undefined;
       active.state = "superseded";
       active.updated_at_unix_ms = input.now_ms;
       active.lease_until_unix_ms = undefined;
       return cloneWork(active);
-    }) as Promise<SharedPreparationWorkRecord | undefined>;
+    });
+    if (
+      locked &&
+      typeof locked === "object" &&
+      "kind" in locked &&
+      locked.kind === "serialization_retry"
+    ) {
+      return undefined;
+    }
+    return locked as SharedPreparationWorkRecord | undefined;
   }
 }
 

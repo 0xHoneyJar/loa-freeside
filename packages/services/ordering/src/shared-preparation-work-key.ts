@@ -16,8 +16,24 @@ function digestKey(digest: VersionedDigest): string {
   return `${digest.domain}:${digest.major_version}:${digest.digest}`;
 }
 
+function sortDeploymentIds(
+  deploymentIds: readonly VersionedDigest[],
+): VersionedDigest[] {
+  return [...deploymentIds].sort((a, b) => digestKey(a).localeCompare(digestKey(b)));
+}
+
+function sortFinalityPolicies(
+  policies: CollectionCandidate["finality_policies"],
+): CollectionCandidate["finality_policies"] {
+  return [...policies].sort((a, b) => {
+    const left = `${a.network.network_namespace}:${a.network.network_reference}:${a.finality_policy_version}`;
+    const right = `${b.network.network_namespace}:${b.network.network_reference}:${b.finality_policy_version}`;
+    return left.localeCompare(right);
+  });
+}
+
 function sortedDeploymentSetDigest(deploymentIds: readonly VersionedDigest[]): string {
-  const keys = deploymentIds.map(digestKey).sort();
+  const keys = sortDeploymentIds(deploymentIds).map(digestKey);
   return createHash("sha256").update(keys.join("\n")).digest("hex");
 }
 
@@ -45,13 +61,16 @@ export function buildPublicWorkKeyMaterial(input: {
     throw new Error(`deployment ceiling ${PUBLIC_PREP_LIMITS.maxDeployments} exceeded`);
   }
 
+  const deployment_ids = sortDeploymentIds(input.deployment_ids);
+  const finality_policies = sortFinalityPolicies(input.finality_policies);
+
   const collectionWorkKey: CollectionWorkKeyMaterial = {
     schema_version: 1,
     capability: input.capability.replace(".v1", ""),
     capability_version: input.capability_version,
     collection_id: input.collection_id,
-    deployment_ids: input.deployment_ids,
-    finality_policies: input.finality_policies,
+    deployment_ids,
+    finality_policies,
   };
 
   const collectionDigest = runEffect(digestCollectionWorkKey(collectionWorkKey));
@@ -61,8 +80,8 @@ export function buildPublicWorkKeyMaterial(input: {
     capability: input.capability,
     capability_version: input.capability_version,
     collection_id: input.collection_id,
-    deployment_ids: input.deployment_ids,
-    finality_policies: input.finality_policies,
+    deployment_ids,
+    finality_policies,
     scope_class: "deployment",
     scope_digest: collectionDigest.digest,
     privacy_class: "public_chain",
@@ -77,13 +96,15 @@ export function buildPublicWorkKeyMaterial(input: {
 }
 
 export function digestPublicWorkKey(material: PublicPreparationWorkKeyMaterial): string {
+  const deployment_ids = sortDeploymentIds(material.deployment_ids);
+  const finality_policies = sortFinalityPolicies(material.finality_policies);
   const canonical = {
     schema_version: material.schema_version,
     capability: material.capability,
     capability_version: material.capability_version,
     collection_id: material.collection_id,
-    deployment_ids: material.deployment_ids,
-    finality_policies: material.finality_policies,
+    deployment_ids,
+    finality_policies,
     scope_class: material.scope_class,
     scope_digest: material.scope_digest,
     privacy_class: material.privacy_class,
@@ -107,8 +128,10 @@ export function deploymentSetDigest(deploymentIds: readonly VersionedDigest[]): 
 export function finalityPolicyVersion(
   finalityPolicies: PublicPreparationWorkKeyMaterial["finality_policies"],
 ): string {
-  return finalityPolicies
-    .map((policy) => `${policy.network.network_namespace}:${policy.network.network_reference}:${policy.finality_policy_version}`)
-    .sort()
+  return sortFinalityPolicies(finalityPolicies)
+    .map(
+      (policy) =>
+        `${policy.network.network_namespace}:${policy.network.network_reference}:${policy.finality_policy_version}`,
+    )
     .join("|");
 }

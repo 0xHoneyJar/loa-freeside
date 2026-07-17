@@ -12,7 +12,12 @@ describe("CR-201A migration rollback safety", () => {
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS shared_preparation_work/);
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS preparation_work_items/);
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS report_work_links/);
-    expect(sql).toMatch(/shared_preparation_work_key_active_idx/);
+    expect(sql).toMatch(
+      /CREATE UNIQUE INDEX IF NOT EXISTS shared_preparation_work_key_active_idx/,
+    );
+    expect(sql).toMatch(
+      /WHERE state IN \('queued', 'preparing', 'retry_wait'\)/,
+    );
     expect(sql).toMatch(/capability IN \('collection_identity\.v1', 'ownership_index\.v1'\)/);
     expect(sql).toMatch(/privacy_class = 'public_chain'/);
   });
