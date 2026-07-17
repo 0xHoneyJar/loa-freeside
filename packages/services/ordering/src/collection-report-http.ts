@@ -28,12 +28,15 @@ import {
   REPORT_ATTENTION_SOURCE_KIND,
   type ReportAttentionStore,
 } from "./report-attention-store.js";
+import type { PublicAuthorizationService } from "./public-authorization-service.js";
+import { noStoreHeaders, requireServiceBearer } from "./public-authorization-http.js";
 
 export interface CollectionReportHttpDeps {
   readonly store: OrderStore;
   readonly resolutionStore?: ResolutionStore;
   readonly attentionStore?: ReportAttentionStore;
   readonly serviceToken?: string;
+  readonly auth?: PublicAuthorizationService;
 }
 
 const ScopeQuerySchema = z
@@ -45,21 +48,44 @@ const ScopeQuerySchema = z
   })
   .strict();
 
-function requireBearer(c: Context, token: string | undefined): boolean {
-  if (!token) return true;
-  return c.req.header("authorization") === `Bearer ${token}`;
-}
+const requireBearer = requireServiceBearer;
 
 function errorJson(
   c: Context,
   status: 400 | 401 | 403 | 404,
   code: string,
 ): Response {
-  return c.json(
-    { schema_version: 1, code },
-    status,
-    { "Cache-Control": "no-store" },
-  );
+  return c.json({ schema_version: 1, code }, status, noStoreHeaders());
+}
+
+function authorizeReportRead(
+  deps: CollectionReportHttpDeps,
+  c: Context,
+  communityRef: string,
+  subjectId: string,
+  action: "list" | "detail",
+): Response | undefined {
+  // Fail closed: production mount must always pass auth (BB #496 LOW).
+  if (!deps.auth) {
+    return errorJson(c, 503, "public_authorization_unconfigured");
+  }
+  try {
+    deps.auth.acquireLease({
+      operation: { resource: "report_order", action },
+      scope: {
+        schema_version: 1,
+        subject_id: subjectId,
+        community_ref: communityRef,
+        permission: "report:read",
+      },
+      authoritativeCommunityRef: communityRef,
+      authoritativeSubjectId: subjectId,
+    });
+    return undefined;
+  } catch (err) {
+    const mapped = deps.auth.mapDenial(err);
+    return c.json(mapped.body, mapped.status, noStoreHeaders());
+  }
 }
 
 async function collectionSummary(
@@ -123,6 +149,15 @@ export function mountCollectionReportRoutes(
       return errorJson(c, 400, "invalid_request");
     }
 
+    const denied = authorizeReportRead(
+      deps,
+      c,
+      parsed.data.community_ref,
+      parsed.data.subject_id,
+      "list",
+    );
+    if (denied) return denied;
+
     const cursor = decodeCursor(parsed.data.cursor);
     if (parsed.data.cursor !== undefined && cursor === undefined) {
       return errorJson(c, 400, "invalid_request");
@@ -183,12 +218,12 @@ export function mountCollectionReportRoutes(
       return errorJson(c, 400, "invalid_request");
     }
 
+    const denied = authorizeReportRead(deps, c, community_ref, subject_id, "detail");
+    if (denied) return denied;
+
     const record = await deps.store.get(c.req.param("order_id"));
     if (!record || record.product !== "collection-report") {
       return errorJson(c, 404, "not_found");
-    }
-    if (record.placed_by !== subject_id) {
-      return errorJson(c, 403, "forbidden");
     }
     const inputs = record.inputs as { community_ref?: unknown; resolution_id?: unknown };
     if (inputs.community_ref !== community_ref) {

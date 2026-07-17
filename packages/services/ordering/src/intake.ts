@@ -21,6 +21,8 @@ import {
 import type { CollectionResolutionService } from './resolution-service.js';
 import type { ResolutionStore } from './resolution-store.js';
 import { buildLocalCapabilityFromRecord } from './admission-local-capability.js';
+import type { PublicAuthorizationService } from './public-authorization-service.js';
+import { noStoreHeaders, requireServiceBearer } from './public-authorization-http.js';
 
 /**
  * order-intake (SDD §5) — the internal HTTP edge.
@@ -55,6 +57,8 @@ export interface IntakeDeps {
   /** CR-006 resolution admission for collection-report orders. */
   resolutionService?: CollectionResolutionService;
   resolutionStore?: ResolutionStore;
+  /** CR-007A public authorization recheck for collection-report placement. */
+  publicAuth?: PublicAuthorizationService;
 }
 
 const PlaceOrderBodySchema = z
@@ -62,6 +66,7 @@ const PlaceOrderBodySchema = z
     product: ProductId,
     placed_by: z.string().min(1),
     inputs: z.record(z.string(), z.unknown()),
+    authorization_scope: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
@@ -122,8 +127,42 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     }
 
     if (body.data.product === 'collection-report') {
+      // CR-007A denial envelope — schema_version/code/reason (BB #496).
+      const deny = (
+        status: 400 | 403 | 409 | 503,
+        code: string,
+        reason?: string,
+      ) =>
+        c.json(
+          {
+            schema_version: 1,
+            code,
+            ...(reason !== undefined ? { reason } : {}),
+          },
+          status,
+          noStoreHeaders(),
+        );
+
       if (!deps.resolutionService || !deps.resolutionStore) {
-        return c.json({ error: 'collection-report admission unavailable' }, 503);
+        return deny(503, 'collection_report_admission_unavailable');
+      }
+      if (!deps.publicAuth) {
+        return deny(503, 'public_authorization_unconfigured');
+      }
+      if (body.data.authorization_scope === undefined) {
+        return deny(400, 'authorization_scope_required');
+      }
+      let scope;
+      try {
+        scope = deps.publicAuth.decodeScope(body.data.authorization_scope);
+      } catch {
+        return deny(400, 'invalid_authorization_scope');
+      }
+      if (scope.permission !== 'report:create') {
+        return deny(403, 'permission_mismatch', 'order placement requires report:create');
+      }
+      if (scope.subject_id !== body.data.placed_by) {
+        return deny(403, 'cross_subject', 'placed_by must match authorization subject');
       }
       const binding = inputsParsed.data as {
         schema_version: 1;
@@ -131,24 +170,41 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         candidate_snapshot_digest: unknown;
         community_ref: string;
       };
+      if (binding.community_ref !== scope.community_ref) {
+        return deny(403, 'scope_tamper', 'community_ref must match authorization scope');
+      }
       const record = await deps.resolutionStore.get(binding.resolution_id);
       if (record === undefined) {
-        return c.json({ error: 'order binding rejected', reason: 'resolution_not_found' }, 409);
+        return deny(409, 'resolution_not_found');
       }
+      try {
+        deps.publicAuth.acquireLease({
+          operation: { resource: 'report_order', action: 'create' },
+          scope,
+          authoritativeCommunityRef: binding.community_ref,
+          authoritativeSubjectId: body.data.placed_by,
+        });
+      } catch (err) {
+        const mapped = deps.publicAuth.mapDenial(err);
+        return c.json(mapped.body, mapped.status, noStoreHeaders());
+      }
+      const resolutionScope = {
+        schema_version: 1 as const,
+        subject_id: scope.subject_id,
+        community_ref: scope.community_ref,
+        permission: 'report:create' as const,
+      };
       try {
         const admitted = await deps.resolutionService.admit(
           binding,
-          record.authorization_scope,
+          resolutionScope,
           buildLocalCapabilityFromRecord(record),
         );
         if (admitted.decision !== 'admit') {
-          return c.json(
-            { error: 'order binding rejected', decision: admitted.decision },
-            409,
-          );
+          return deny(409, 'order_binding_rejected', admitted.decision);
         }
       } catch {
-        return c.json({ error: 'order binding rejected' }, 409);
+        return deny(409, 'order_binding_rejected');
       }
     }
 

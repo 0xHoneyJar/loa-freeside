@@ -11,7 +11,8 @@
  * create/confirm/refresh + idempotency retention guarantees.
  *
  * EXTERNAL AUTH/HTTP BLOCKER: no production authorization endpoint wiring is
- * shipped by CR-006; Dashboard/Sonar HTTP auth remains downstream (CR-007A).
+ * CR-007A wires membership/grant projections and short-lived leases at the HTTP
+ * edge; Dashboard BFF holds service credentials.
  */
 
 import type {

@@ -17,6 +17,9 @@ importers:
       '@freeside/ordering-protocol':
         specifier: file:../../protocol/ordering
         version: file:../../protocol/ordering(zod@3.25.76)
+      '@freeside/public-authorization-protocol':
+        specifier: file:../../protocol/public-authorization
+        version: file:../../protocol/public-authorization(effect@3.22.0)
       '@freeside/shadow-audit-protocol':
         specifier: file:../../protocol/shadow-audit
         version: file:../../protocol/shadow-audit(zod@3.25.76)
@@ -338,6 +341,11 @@ packages:
     resolution: {directory: ../../protocol/ordering, type: directory}
     peerDependencies:
       zod: ^3.23.0
+
+  '@freeside/public-authorization-protocol@file:../../protocol/public-authorization':
+    resolution: {directory: ../../protocol/public-authorization, type: directory}
+    peerDependencies:
+      effect: ^3.21.0
 
   '@freeside/shadow-audit-protocol@file:../../protocol/shadow-audit':
     resolution: {directory: ../../protocol/shadow-audit, type: directory}
@@ -1526,6 +1534,10 @@ snapshots:
   '@freeside/ordering-protocol@file:../../protocol/ordering(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
+
+  '@freeside/public-authorization-protocol@file:../../protocol/public-authorization(effect@3.22.0)':
+    dependencies:
+      effect: 3.22.0
 
   '@freeside/shadow-audit-protocol@file:../../protocol/shadow-audit(zod@3.25.76)':
     dependencies:

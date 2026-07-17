@@ -51,9 +51,10 @@ Canonical rules:
   scope — raw client candidate metadata is refused.
 
 The fixtures are protocol publication artifacts. `Dashboard` and `Sonar`
-consumer-shaped tests intentionally decode the same committed files; HTTP
-authorization endpoints and production Postgres adapters remain downstream work
-(CR-007A / persistence adapter).
+consumer-shaped tests intentionally decode the same committed files. CR-007A
+public authorization is ratified in `@freeside/public-authorization-protocol`
+and wired at the Ordering HTTP edge; production Postgres adapters and Identity
+grant-stream ingestion remain downstream.
 
 ## Pre-existing Ordering failures (out of CR-006 scope)
 

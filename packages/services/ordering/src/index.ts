@@ -116,6 +116,13 @@ export {
 export { normalizeContractAddress, normalizeChainId } from './contract-address.js';
 export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';
 export { createOrderingComposition, serviceTokenFromEnv, ctaFromEnv } from './composition.js';
+export {
+  resolvePublicAuthPosture,
+  publicAuthPostureFromEnv,
+  serviceTokenForPublicAuthMounts,
+  isDeployedEnv,
+} from './public-auth-posture.js';
+export type { PublicAuthMode, PublicAuthPosture } from './public-auth-posture.js';
 
 export { createFrontendApp } from './frontend.js';
 
@@ -168,6 +175,24 @@ export {
 export { PostgresResolutionStore } from './resolution-store-postgres.js';
 export { createResolutionStore } from './resolution-store-factory.js';
 export { mountCollectionResolutionRoutes } from './resolution-http.js';
+export {
+  PublicAuthorizationService,
+  createFixturePublicAuthorizationService,
+  type PublicAuthorizationProjections,
+  type PublicAuthorizationProjectionPort,
+} from './public-authorization-service.js';
+export {
+  FixturePublicAuthorizationProjectionPort,
+  publicAuthFixtureFromEnv,
+  DEFAULT_BASELINE_FIXTURE,
+} from './public-authorization-projections.js';
+export { mountCapabilityDemandRoutes } from './capability-demand-http.js';
+export {
+  InMemoryCapabilityDemandStore,
+  toPublicCapabilityDemandProjection,
+  type CapabilityDemandStore,
+  type CapabilityDemandRecord,
+} from './capability-demand-store.js';
 export {
   createHttpSonarResolveProbePort,
   sonarResolveProbeFromEnv,
