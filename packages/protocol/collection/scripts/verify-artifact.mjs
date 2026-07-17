@@ -29,8 +29,8 @@ const parseArgs = (argv) => {
     manifest: "",
     legacySha256: "",
     expectVersion: "",
-    expectMajor: "",
-    expectMinor: "",
+    expectMajor: null,
+    expectMinor: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -77,6 +77,27 @@ const fail = (tag, details) => {
 };
 
 const options = parseArgs(process.argv.slice(2));
+const parseExpectedInteger = (flag, raw) => {
+  if (raw === null) return undefined;
+  if (!/^\d+$/u.test(raw)) {
+    fail("UsageError", {
+      reason: `${flag} must be a non-negative integer`,
+      value: raw,
+    });
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    fail("UsageError", {
+      reason: `${flag} must be a safe non-negative integer`,
+      value: raw,
+    });
+  }
+  return value;
+};
+
+const expectedMajor = parseExpectedInteger("--expect-major", options.expectMajor);
+const expectedMinor = parseExpectedInteger("--expect-minor", options.expectMinor);
+
 if (!options.tarball) {
   fail("UsageError", { reason: "--tarball is required" });
 }
@@ -136,14 +157,8 @@ try {
       tarballPath: options.tarball,
       manifest: manifestText,
       expectedPackageVersion: options.expectVersion || undefined,
-      expectedContractMajor:
-        options.expectMajor === ""
-          ? undefined
-          : Number(options.expectMajor),
-      expectedContractMinor:
-        options.expectMinor === ""
-          ? undefined
-          : Number(options.expectMinor),
+      expectedContractMajor: expectedMajor,
+      expectedContractMinor: expectedMinor,
     }),
   );
 

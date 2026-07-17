@@ -132,6 +132,12 @@ describe("CR-005 artifact harness", () => {
     expect(
       first.manifest.files.some((entry) => entry.path === PROTOCOL_IDENTITY_PATH),
     ).toBe(true);
+    const publishedPaths = first.manifest.files.map((entry) => entry.path);
+    expect(publishedPaths).toContain("scripts/pack-artifact.mjs");
+    expect(publishedPaths).toContain("scripts/verify-artifact.mjs");
+    expect(publishedPaths).toContain("scripts/lib/isolated-harness.mjs");
+    expect(publishedPaths).not.toContain("scripts/ci-compat.sh");
+    expect(publishedPaths).not.toContain("scripts/lib/strict-verify.mjs");
 
     const extractRoot = join(packageRoot, ".tmp/harness-extract");
     rmSync(extractRoot, { recursive: true, force: true });
@@ -445,6 +451,51 @@ describe("CR-005 artifact harness", () => {
         }),
       ),
     ).toBeInstanceOf(ArtifactFixtureDigestMismatch);
+  });
+
+  it("rejects malformed expected schema numbers before reading the artifact", () => {
+    const invalidExpectations = [
+      ["--expect-major", "abc"],
+      ["--expect-major", "1.5"],
+      ["--expect-major", "-1"],
+      ["--expect-minor", "Infinity"],
+      ["--expect-minor", ""],
+    ] as const;
+
+    for (const [flag, value] of invalidExpectations) {
+      try {
+        execFileSync(
+          "node",
+          [
+            join(packageRoot, "scripts/verify-artifact.mjs"),
+            "--tarball",
+            join(packageRoot, ".tmp/does-not-exist.tgz"),
+            "--manifest",
+            join(packageRoot, ".tmp/does-not-exist.manifest.json"),
+            flag,
+            value,
+          ],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        );
+        throw new Error(`expected ${flag}=${value} to fail`);
+      } catch (error) {
+        const stderr =
+          error !== null &&
+          typeof error === "object" &&
+          "stderr" in error &&
+          typeof (error as { stderr: unknown }).stderr === "string"
+            ? (error as { stderr: string }).stderr
+            : "";
+        const failure = JSON.parse(stderr) as {
+          tag: string;
+          reason: string;
+          value: string;
+        };
+        expect(failure.tag).toBe("UsageError");
+        expect(failure.reason).toContain("non-negative integer");
+        expect(failure.value).toBe(value);
+      }
+    }
   });
 
   it("verifies legacy SHA pins from a dependency-free unpacked artifact", () => {
