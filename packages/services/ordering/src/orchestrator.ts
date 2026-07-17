@@ -6,6 +6,7 @@ import { type AuditPort, type OperatedCommunityRegistry } from './audit-acl.js';
 import type { PrivateOpsPublisher } from './private-ops.js';
 import { AccessRiskAuditOrchestrator } from './access-risk-audit-orchestrator.js';
 import { CommunityOnboardingOrchestrator, type CommunityOnboardingOrchestratorDeps } from './community-onboarding-orchestrator.js';
+import { CollectionReportOrchestrator } from './collection-report-orchestrator.js';
 import type { TriagePorts } from './triage-ports.js';
 import { StubTriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
@@ -46,6 +47,7 @@ export interface OrchestratorDeps {
 export class OrderOrchestrator {
   private readonly accessRiskAudit: AccessRiskAuditOrchestrator;
   readonly communityOnboarding: CommunityOnboardingOrchestrator;
+  private readonly collectionReport: CollectionReportOrchestrator;
 
   constructor(private readonly deps: OrchestratorDeps) {
     const shared = {
@@ -66,6 +68,7 @@ export class OrderOrchestrator {
       enqueue: deps.enqueue,
       discordHealth: deps.discordHealth,
     });
+    this.collectionReport = new CollectionReportOrchestrator(shared);
   }
 
   async process(orderId: string): Promise<ProcessResult> {
@@ -77,6 +80,9 @@ export class OrderOrchestrator {
 
     if (record.product === 'community-onboarding') {
       return this.communityOnboarding.process(orderId, record);
+    }
+    if (record.product === 'collection-report') {
+      return this.collectionReport.process(orderId, record);
     }
     return this.accessRiskAudit.process(orderId, record);
   }
