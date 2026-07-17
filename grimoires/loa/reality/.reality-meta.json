@@ -1,54 +1,46 @@
 {
   "schema_version": 1,
-  "git_sha": "9b0f4a12",
-  "git_sha_full": "9b0f4a129c1c04d97298015d1e07c69435c971bf",
-  "branch": "feat/spiral-spiral-20260706-359e28-cycle-1",
-  "generated_at": "2026-07-06T23:15:55Z",
-  "generator": "/ride reality+ground-truth refresh v1.180.0",
-  "scope": "reality + ground-truth refresh (PRD/SDD preserved)",
-  "integrity_gate": "override (benign stale checksums 2026-01-17 vs framework 1.180.0; user-authorized)",
+  "git_sha": "b589f728e978",
+  "git_sha_full": "b589f728e97817e9a6d6b52265efdcc2548c0629",
+  "branch": "feat/shadow-audit-mvp",
+  "generated_at": "2026-07-17T18:38:58Z",
+  "generator": "/ride hub-thinning fresh 2026-07-17",
+  "scope": "hub-thinning",
+  "fresh": true,
   "supersedes": {
-    "previous_generated_at": "2026-05-18T00:00:00Z",
-    "previous_status": "CORPSE (monolith capture, quarantined by governance-doctor.sh)",
-    "preserved": true
+    "previous_generated_at": "2026-07-06T23:15:55Z",
+    "previous_generator": "/ride reality+ground-truth refresh v1.180.0",
+    "previous_scope": "reality + ground-truth refresh (PRD/SDD preserved)",
+    "previous_status": "superseded by hub-thinning fresh pass",
+    "preserved": false
   },
   "files": {
-    "index.md": { "status": "required", "regenerated": true },
-    "structure.md": { "status": "required", "regenerated": true },
-    "architecture-overview.md": { "status": "required", "regenerated": true },
-    "api-surface.md": { "status": "required", "regenerated": true },
-    "entry-points.md": { "status": "required", "regenerated": true },
-    "hygiene-report.md": { "status": "required", "regenerated": true },
-    "types.md": { "status": "required", "regenerated": true },
-    "api.md": { "status": "preserved", "regenerated": false },
-    "services.md": { "status": "preserved", "regenerated": false },
-    "database.md": { "status": "preserved", "regenerated": false },
-    "commands.md": { "status": "preserved", "regenerated": false },
-    "environment.md": { "status": "preserved", "regenerated": false },
-    "triggers.md": { "status": "preserved", "regenerated": false },
-    "interfaces.md": {
-      "status": "preserved",
-      "regenerated": false,
-      "note": "Interface extraction intentionally OUT of scope for this reality+ground-truth refresh; current contracts are covered in types.md. Run a dedicated interfaces pass if interface drift is suspected."
-    }
+    "loading-plan.md": { "status": "required", "regenerated": true, "bytes_approx": 5200 },
+    "structure.md": { "status": "required", "regenerated": true, "bytes_approx": 6800 },
+    "entry-points.md": { "status": "required", "regenerated": true, "bytes_approx": 5200 },
+    ".reality-meta.json": { "status": "required", "regenerated": true }
   },
   "validation": {
-    "required_surfaces": ["index.md", "structure.md", "architecture-overview.md", "api-surface.md", "types.md", "entry-points.md", "hygiene-report.md"],
-    "preserved_surfaces": ["api.md", "services.md", "database.md", "commands.md", "environment.md", "triggers.md", "interfaces.md"],
-    "preserved_rationale": "Legacy Feb-May spokes not regenerated this refresh. interfaces.md is preserved by EXPLICIT exception (see files.interfaces.md.note) rather than silent downgrade. The superseded 2026-05-18 corpse is retired per the supersedes block. Checksums (ground-truth/checksums.json) cover the required_surfaces + ground-truth spokes only.",
-    "checksums_manifest": "grimoires/loa/ground-truth/checksums.json"
+    "required_surfaces": ["loading-plan.md", "structure.md", "entry-points.md", ".reality-meta.json"],
+    "out_of_scope": ["PRD", "SDD"],
+    "counts_method": "walk *.ts|tsx|js|mjs|rs|go|py|tf excluding node_modules/dist/target/.git",
+    "key_loc": {
+      "themes/sietch/src": { "files": 653, "loc": 186242 },
+      "packages/adapters/agent": { "files": 37, "loc": 9409 },
+      "packages/services": { "files": 192, "loc": 32505 },
+      "apps/worker": { "files": 157, "loc": 42457 },
+      "apps/mcp-gateway": { "files": 15, "loc": 2725 }
+    }
   },
   "outputs": {
     "reality": "grimoires/loa/reality/",
-    "ground_truth": "grimoires/loa/ground-truth/",
-    "drift_report": "grimoires/loa/drift-report.md (local/gitignored; summary in NOTES.md)",
-    "claims_to_verify": "grimoires/loa/context/claims-to-verify.md (local/gitignored)"
+    "focus": "hub thinning & extraction"
   },
   "key_findings": [
-    "Namespace migrated @arrakis/* -> @freeside/* (0 @arrakis refs remain); AGENTS.md example imports fixed this refresh",
-    "Monolith -> hexagonal federation (registry cells; 8 canonical external *-api + ledger-api + events-api)",
-    "9 PostgreSQL tables (Drizzle RLS) + 8 legacy SQLite; 68 TS + 19 SQL migrations",
-    "New surfaces: freeside-cli, mcp-gateway, operator-dash, BeaconV3, @0xhoneyjar/events",
-    "No CI canary yet for cluster secret-parity (plan: specs/cluster-secret-parity-canary/)"
+    "sietch/src ~186k LOC remains the stuck hub; packages under sietch (~71k) are duplicate extraction debt",
+    "Agent REST + Discord/Telegram /agent + NOWPayments/x402 are BUILDING-STUCK on sietch Express/mediums",
+    "shadow-audit already has independent Hono bin (packages/services/shadow-audit/bin/http.ts) — cut shape exists",
+    "mcp-gateway + freeside-cli + beacon-schema + registry are NETWORK keepers; gateway/worker/ingestor are PLATFORM keepers",
+    "Billing helpers (credit-lot, nowpayments-handler, x402-settlement) live as flat packages/services/*.ts awaiting billing-api"
   ]
 }

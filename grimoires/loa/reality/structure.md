@@ -1,66 +1,148 @@
 ---
 source_type: ai-autogen
 use_label: usable
-read_state: read
-as_of: 2026-07-06
-generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
+read_state: validated
+as_of: 2026-07-17
+generated_by: /ride hub-thinning fresh 2026-07-17
+scope: hub-thinning
 ---
 
-# Structure — loa-freeside (current)
+# Structure — Hub Thinning View (depth ≤4)
 
-> Generated 2026-07-06 by /ride. CODE IS TRUTH. A **dual-concern hexagonal federation** monorepo
-> (ADR-007): a vertical platform (`@freeside/*`) + an ecosystem network (`@0xhoneyjar/*`), with a
-> workspace firewall (CODEOWNERS + CI scope checks) keeping the two in distinct cycles/beads/grimoires.
+> CODE IS TRUTH · 2026-07-17. LOC/file counts exclude `node_modules`, `dist`, `target`, `.git`.
+> One-line roles are **hub-thinning relevance** (keep / extract / already-extracted).
 
-## Root
+## Totals (focus)
 
-- **Package manager**: `pnpm@9.15.4`; **engines**: node `>=22`. Root `package.json` is private (no name/version).
-- **No** root `tsconfig`, `turbo.json`, or `pnpm-workspace.yaml` — workspaces are declared in root `package.json`.
-- Framework: `loa-hounfour` git-pinned (postinstall `build:hounfour`).
-- TypeScript 5.3–5.7 across the workspace; Vitest 3.2.4 root + per-package configs.
+| Area | Files | LOC | Hub role |
+|---|---:|---:|---|
+| `themes/sietch/src` | 653 | 186242 | Thick hub — primary thinning target |
+| `apps/*` (5) | 209 | 51458 | Substrate + network runtimes |
+| `packages/adapters` | 157 | 57293 | Platform adapters (keep) |
+| `packages/services` | 192 | 32505 | Mixed: billing helpers stuck + shadow-audit product |
+| `packages/core` | 30 | 9433 | Ports/contracts (keep) |
+| `infrastructure` | 73 | 15297 | Platform substrate (keep) |
 
-## Workspace (30 package.json; 18 `@freeside/*` + 3 `@0xhoneyjar/*` + sietch + protocols)
+---
 
-### packages/ — platform + network libraries
-| Dir | npm name | Purpose |
+## `apps/` (depth-4)
+
+```
+apps/
+├── gateway/                          # PLATFORM — Rust Discord shard pool → NATS (keep)
+│   ├── src/
+│   │   ├── main.rs                   # Entry: ShardPool + axum health (2123 LOC / 13 files app-wide)
+│   │   ├── nats/                     # JetStream publisher
+│   │   ├── shard/                    # Twilight shard pool
+│   │   ├── health/ · metrics/ · events/
+│   └── tests/
+├── worker/                           # PLATFORM — NATS consumers + Discord REST (42457 LOC / 157 files)
+│   └── src/
+│       ├── main-nats.ts              # 4 consumers: command/event/eligibility/usage
+│       ├── consumers/                # JetStream durable consumers
+│       ├── handlers/ · jobs/ · services/
+│       └── embeds/ · repositories/ · infrastructure/
+├── ingestor/                         # PLATFORM — Discord Gateway → RabbitMQ, zero biz logic (2143 / 12)
+│   └── src/
+│       ├── index.ts · handlers.ts · publisher.ts · health.ts
+├── mcp-gateway/                      # NETWORK — MCP federation Hono proxy (2725 / 15)
+│   ├── bin/http.ts                   # serve() entry
+│   └── src/
+│       ├── app.ts                    # /:slug/* proxy + federation.json
+│       ├── beacon-cache.ts · beacon-resolver.ts · tenants.ts
+└── freeside-operator-dash/           # NETWORK-adjacent — events/operator UI (2010 / 12)
+    ├── bin/ · src/
+```
+
+---
+
+## `packages/` (depth-4, key dirs)
+
+```
+packages/
+├── core/                             # PLATFORM contract — ports only (9433 / 30)
+│   ├── ports/                        # IChainProvider, IAgentGateway, … (7211 / 23) KEEP
+│   └── domain/
+├── adapters/                         # PLATFORM execution adapters (57293 / 157) KEEP
+│   ├── agent/                        # Budget/BYOK/SSE/ensemble (9409 / 37) — keep; HTTP mount stuck elsewhere
+│   ├── chain/ · sonar/ · score/ · storage/
+│   ├── coexistence/ · security/ · synthesis/ · themes/ · wizard/ · telemetry/
+├── services/                         # MIXED — flat billing libs + product services (32505 / 192)
+│   ├── credit-lot-service.ts         # EXTRACT w/ billing (~252)
+│   ├── nowpayments-handler.ts        # EXTRACT w/ billing (~239)
+│   ├── x402-settlement.ts            # EXTRACT w/ billing/agent pay (~292)
+│   ├── conservation-guard.ts         # Travels w/ agent budget plane (~458)
+│   ├── shadow-audit/                 # BUILDING product — own HTTP bin (9431 / 55) already extractable
+│   │   ├── bin/http.ts
+│   │   └── src/{server,http/audit-router,audit-service}.ts
+│   ├── ordering/                     # BUILDING — order intake/orchestrator (8700 / 65)
+│   └── shadow-mode/                  # L2 member-graph spine (4609 / 39)
+├── freeside-registry/                # NETWORK — registry.yaml + federation (922 / 8) KEEP
+├── freeside-cli/                     # NETWORK — list/inspect/doctor/order/kitchen/fulfill (4080 / 18) KEEP
+│   ├── bin/freeside-cli.ts
+│   └── src/verbs/
+├── beacon-schema/                    # NETWORK — Beacon V2/V3 Effect schema (2241 / 12) KEEP
+├── routes/                           # x402 Express router (701 / 3) — extract w/ payment surface
+├── events/                           # ACVP event substrate (4407 / 31)
+├── protocol/{shadow-audit,shadow-mode,ordering,eligibility}/  # Contract schemas
+├── sandbox/ · shared/nats-schemas/ · dune-meter/ · cli/ · …
+```
+
+---
+
+## `themes/sietch/src/` (key dirs only)
+
+```
+themes/sietch/src/                    # BUILDING-STUCK monolith host (186242 / 653)
+├── index.ts                          # Express + Discord + Telegram boot
+├── api/                              # HTTP product surface (32081 / 86) — thin first
+│   ├── routes/                       # 54 route modules (~20008 LOC) — agent/billing/webhooks
+│   │   ├── agents.routes.ts          # POST /api/agents/invoke|stream
+│   │   ├── billing-routes.ts         # x402 topup + credit balance
+│   │   ├── webhook.routes.ts         # NOWPayments payout IPN
+│   │   ├── settlement.routes.ts      # Dixie x402 quote/settle
+│   │   └── admin/ · dashboard/
+│   ├── crypto-billing.routes.ts      # POST /crypto/webhook (NOWPayments)
+│   └── middleware/                   # x402-middleware, webhook throttle
+├── discord/                          # Mediums stuck (10076 / 36)
+│   └── commands/agent.ts             # /agent slash
+├── telegram/                         # Mediums stuck (2798 / 14)
+│   └── commands/agent.ts             # /agent bot cmd
+├── services/                         # Feature services (35583 / 109)
+│   └── billing/                      # CryptoWebhookService etc (3034 / 7) EXTRACT → billing-api
+├── packages/                         # Pre-extraction duplicate mass (71438 / 217) DELETE after cutover
+│   ├── adapters/{billing,payment,chain,…}/
+│   ├── core/{ports,billing,protocol}/
+│   └── jobs/coexistence/
+├── jobs/                             # Bull/coexistence workers (2852 / 19)
+├── db/                               # SQLite + Drizzle schemas (16844 / 92)
+├── trigger/                          # Trigger.dev schedules (814 / 10)
+└── ui/                               # Dashboard builder (4327 / 48) — defer unless product extraction
+```
+
+---
+
+## `infrastructure/` (depth-4)
+
+```
+infrastructure/                       # PLATFORM substrate (15297 / 73) KEEP
+├── terraform/                        # AWS ECS/RDS/ElastiCache/ALB (14885 / 71)
+│   ├── environments/{staging,production}/
+│   ├── modules/world/
+│   ├── freeside-storage/
+│   ├── dns/ · ci-templates/ · docs/ · scripts/
+├── observability/{grafana,prometheus,tempo}/
+├── k8s/ · rabbitmq/ · scylladb/
+├── alerts/ · dashboards/ · migrations/ · tests/
+```
+
+---
+
+## Hub-thinning map (one glance)
+
+| Keep in hub | Extract / already leaving | Debt to delete |
 |---|---|---|
-| core | `@freeside/core` | DDD hexagonal **ports** — `IChainProvider`, `IStorageProvider`, `IAgentGateway` (`packages/core/ports/`) |
-| adapters | `@freeside/adapters` | 10 submodules: sonar, score, chain, storage, themes, wizard, synthesis, security, coexistence, agent |
-| cli | `@freeside/cli` | `gaib` IaC orchestrator (login/sandbox/server) — bin `dist/bin/gaib.js` |
-| sandbox | `@freeside/sandbox` | Discord Server Sandboxes (drizzle+pg provisioning, NATS/Redis) |
-| freeside-cli | `@freeside/freeside-cli` | Ecosystem CLI `loa freeside <verb>` — list/inspect/doctor/order/kitchen/fulfill |
-| freeside-registry | `@freeside/freeside-registry` | Beacon aggregator + federation manifest server; L1 truth `registry.yaml`; `/federation.json`; Effect schema |
-| beacon-schema | `@freeside/beacon-schema` v0.2.0 | Sealed Effect Schema for Beacon V2/V3; bin `build-beacon-json` |
-| shared/nats-schemas | `@freeside/nats-schemas` | Shared Zod wire format (Rust gateway ↔ TS workers) |
-| events | `@0xhoneyjar/events` | ACVP-enveloped cross-cell event substrate (RFC 8785 JCS + Ed25519 + Hounfour topics, NATS JetStream) |
-| dune-meter | `@freeside/dune-meter` | Cost-aware Dune Sim adapter/meter |
-| eligibility-protocol | `@freeside/eligibility-protocol` | Eligibility verdict schemas (Zod) |
-| protocol/shadow-mode | `@freeside/shadow-mode-protocol` | Shadow-ledger schemas (collection/identity/jcs/topics/events/divergence) |
-| protocol/ordering | `@freeside/ordering-protocol` | Order-system contracts |
-| services/shadow-audit | `@freeside/shadow-audit-service` | Shadow Access **Audit** (hono; ports) — the L3 product |
-| services/shadow-mode | `@freeside/shadow-mode-service` | Shadow-ledger service (the L2 member-graph spine, #316) |
-| services/ordering | `@freeside/ordering-service` | Order intake/orchestrator (durable state, idempotency, outbox); bins http/worker/fulfillment-orchestrator |
-| shadow-audit-protocol | `@freeside/shadow-audit-protocol` | Audit contracts |
-| routes, asson, gaib-cli | (see dir) | route library, asson, gaib-cli helpers |
-
-### apps/ — runtimes
-| Dir | npm name | Runtime | Entry |
-|---|---|---|---|
-| gateway | (Rust `arrakis-gateway`) | Rust (Twilight + tokio) | `apps/gateway/src/main.rs` — Discord shard pool → NATS |
-| worker | `@freeside/worker` | Node/TS | `apps/worker/src/main-nats.ts` — 4 NATS consumers + agent gateway |
-| ingestor | `@freeside/ingestor` | Node/TS | `apps/ingestor/src/index.ts` — Discord Gateway → RabbitMQ (zero business logic) |
-| mcp-gateway | `@0xhoneyjar/freeside-mcp-gateway` | Node/TS (Hono) | `apps/mcp-gateway/bin/http.ts` — MCP federation v0.3 |
-| freeside-operator-dash | `@0xhoneyjar/freeside-operator-dash` | Node/TS | operator dashboard (events tracing) |
-
-### themes/
-- `themes/sietch` — **`sietch-service` v6.0.0**, the remaining monolith (Discord service + web dashboard). Entry `themes/sietch/src/index.ts`. Dual persistence: legacy SQLite (`src/db/`) + PostgreSQL (Drizzle).
-- `themes/packages/*` — theme services.
-
-## Federation (external cells — registry.yaml, NOT in this repo)
-8 canonical `*-api` cells extracted to external `github.com/0xHoneyJar/*` repos: sonar, storage, mint, activities, inventory, score, identity, mediums (`freeside-mediums`). Plus ledger-api (external, not deployed). `events-api` + `mint-api` have in-repo components (git_url → loa-freeside). See `../decisions/009-freeside-hexagonal-federation.md`, `packages/freeside-registry/registry.yaml`.
-
-## Other top-level
-- `decisions/` (repo root) — federation ADRs (007 absorption, 009 hexagonal, 012 health contract). `grimoires/loa/decisions/` — billing ADRs 008–015.
-- `infrastructure/` — Terraform (AWS ECS/RDS/ElastiCache/ALB/EFS/S3/DynamoDB/CloudWatch).
-- `.github/workflows/` — 39 workflows (ci, cluster-compliance, security-audit, deploy-*, e2e-billing, post-merge, secret-scanning, container-security).
-- `tools/`, `scripts/`, `evals/`, `sites/`, `tests/`.
+| `apps/{gateway,worker,ingestor}` | `themes/sietch/.../billing` → billing building | `themes/sietch/src/packages/**` duplicate |
+| `packages/{core,adapters}` | discord/telegram mediums → worlds/mediums | Agent HTTP still on sietch Express |
+| `apps/mcp-gateway` + `freeside-{cli,registry}` + `beacon-schema` | `packages/services/shadow-audit` (has bin) | Flat `packages/services/*` billing helpers once billing-api exists |
+| `infrastructure/terraform` | `packages/services/ordering` (has bins) | — |

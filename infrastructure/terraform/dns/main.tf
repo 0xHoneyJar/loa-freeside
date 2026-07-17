@@ -18,7 +18,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "arrakis-tfstate-891376933289"
+    bucket         = "arrakis-tfstate-AWS_ACCOUNT_ID_REDACTED"
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "arrakis-terraform-locks"
