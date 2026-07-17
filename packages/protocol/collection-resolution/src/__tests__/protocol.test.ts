@@ -255,6 +255,55 @@ describe("CR-006 protocol contracts", () => {
     expect(recognitionCompare.stale_reason).toBe("recognition_changed");
   });
 
+  it("treats candidate and diagnostic array permutations as the same snapshot", () => {
+    const base = expectEffectSuccess(
+      decodeCandidateSnapshot(readFixture("candidate-snapshot.valid.json")),
+    );
+    const equivalent = expectEffectSuccess(
+      decodeCandidateSnapshot(readFixture("equivalence-candidate-snapshot.valid.json")),
+    );
+    const firstProbe = equivalent.diagnostics.searched[0];
+    const secondProbe = equivalent.diagnostics.searched[1];
+    expect(firstProbe).toBeDefined();
+    expect(secondProbe).toBeDefined();
+    if (firstProbe === undefined || secondProbe === undefined) return;
+
+    const snapshot = {
+      schema_version: 1 as const,
+      candidates: [base.candidates[0]!, equivalent.candidates[0]!],
+      diagnostics: {
+        schema_version: 1 as const,
+        searched: [...base.diagnostics.searched, ...equivalent.diagnostics.searched],
+        timed_out: [firstProbe, secondProbe],
+        unavailable: [base.diagnostics.searched[0]!, secondProbe],
+      },
+    };
+    const permuted = {
+      ...snapshot,
+      candidates: [...snapshot.candidates].reverse(),
+      diagnostics: {
+        ...snapshot.diagnostics,
+        searched: [...snapshot.diagnostics.searched].reverse(),
+        timed_out: [...snapshot.diagnostics.timed_out].reverse(),
+        unavailable: [...snapshot.diagnostics.unavailable].reverse(),
+      },
+    };
+
+    const snapshotDigest = expectEffectSuccess(digestCandidateSnapshot(snapshot));
+    const permutedDigest = expectEffectSuccess(digestCandidateSnapshot(permuted));
+    expect(permutedDigest).toEqual(snapshotDigest);
+
+    const comparison = expectEffectSuccess(
+      compareCandidateFreshness(snapshot, snapshotDigest, permuted, permutedDigest),
+    );
+    expect(comparison.byte_equivalent).toBe(true);
+    expect(comparison.selection_relevant_equal).toBe(true);
+    expect(comparison.stale_reason).toBeNull();
+
+    expect(snapshot.candidates[0]).toBe(base.candidates[0]);
+    expect(snapshot.diagnostics.searched[0]).toBe(base.diagnostics.searched[0]);
+  });
+
   it("rejects unknown protocol major / excess projection fields", () => {
     expectEffectFailure(
       decodeResolutionPublicProjection({

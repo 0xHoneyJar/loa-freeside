@@ -8,7 +8,7 @@ import type {
 import { digestVersioned } from "@freeside/collection-protocol";
 import type { AuthorizationScope, CandidateSnapshot } from "./contracts.js";
 import { scopesMatch } from "./contracts.js";
-import { digestsEqual } from "./digests.js";
+import { canonicalCandidateSnapshotMaterial, digestsEqual } from "./digests.js";
 import { SelectionStaleError } from "./errors.js";
 import { RESOLUTION_DIGEST_DOMAINS } from "./version.js";
 
@@ -30,7 +30,9 @@ export const DISPLAY_ONLY_CANDIDATE_FIELDS = Object.freeze([
  * candidate semantics over a hand-picked subset.
  */
 export const selectionRelevantMaterial = (snapshot: CandidateSnapshot): unknown => ({
-  candidates: snapshot.candidates.map((candidate) => selectionRelevantCandidate(candidate)),
+  candidates: canonicalCandidateSnapshotMaterial(snapshot).candidates.map((candidate) =>
+    selectionRelevantCandidate(candidate),
+  ),
 });
 
 const selectionRelevantCandidate = (candidate: CollectionCandidate): unknown => {

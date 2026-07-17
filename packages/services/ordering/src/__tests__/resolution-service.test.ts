@@ -29,9 +29,9 @@ import {
 } from "@freeside/collection-resolution-protocol";
 import {
   CollectionResolutionService,
-  InMemoryResolutionStore,
   type SonarResolveProbePort,
 } from "../index.js";
+import { InMemoryResolutionStore } from "../resolution-store.js";
 
 const fixturesDir = join(
   dirname(fileURLToPath(import.meta.url)),

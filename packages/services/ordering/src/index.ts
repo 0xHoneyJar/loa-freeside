@@ -154,8 +154,6 @@ export {
   type ResolutionOperation,
   type IdempotencyRecord,
   type ResolutionStore,
-  type InMemoryResolutionStoreOptions,
-  InMemoryResolutionStore,
 } from './resolution-store.js';
 
 export {
