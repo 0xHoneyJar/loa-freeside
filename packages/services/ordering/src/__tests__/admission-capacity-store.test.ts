@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryAdmissionCapacityStore } from "../admission-capacity-store.js";
+import {
+  isHeldEnvelopeUniqueViolation,
+  shouldRetryAdmissionTxn,
+} from "../admission-capacity-pg-errors.js";
 import { fixtureGateLeakCertificate } from "../recipe-expansion-certificate.js";
 import { InMemorySharedPreparationStore } from "../shared-preparation-store.js";
 import { InMemoryOrderStore } from "../store.js";
@@ -275,5 +279,136 @@ describe("CR-201C admission capacity store", () => {
     accounting = await capacity.snapshotAccounting();
     expect(accounting.admission_rate.consumed).toBe(0);
     expect(accounting.queued_work.consumed).toBe(0);
+  });
+
+  it("F2: concurrent held-envelope unique violation maps to admission retry", () => {
+    const uniqueErr = {
+      code: "23505",
+      constraint: "admission_capacity_reservations_work_held_unique_idx",
+      detail: "Key (work_key_digest)=(abc) already exists.",
+    };
+    expect(isHeldEnvelopeUniqueViolation(uniqueErr)).toBe(true);
+    expect(shouldRetryAdmissionTxn(uniqueErr)).toBe(true);
+    expect(shouldRetryAdmissionTxn(new Error("serialization_retry"))).toBe(true);
+    expect(shouldRetryAdmissionTxn({ code: "40001" })).toBe(true);
+    expect(shouldRetryAdmissionTxn({ code: "23505", constraint: "orders_pkey" })).toBe(false);
+  });
+
+  it("F1: releasing envelope owner promotes peer to held with quantity", async () => {
+    const { capacity } = makeStore();
+    const a = await capacity.admitOrder(admitInput({ client_request_id: "own-a" }));
+    const b = await capacity.admitOrder(
+      admitInput({ client_request_id: "own-b", requester_subject: "subject-bob", now_ms: 2 }),
+    );
+    expect(a.kind).toBe("admitted");
+    expect(b.kind).toBe("admitted");
+    if (a.kind !== "admitted" || b.kind !== "admitted") return;
+
+    const aQueued = (await capacity.listHeldReservations(a.order.order_id)).find(
+      (r) => r.ledger_kind === "queued_work",
+    );
+    // Owner holds the envelope; fan-in peer is transferred.
+    expect(aQueued?.state).toBe("held");
+    expect(aQueued?.quantity).toBeGreaterThan(0);
+
+    await capacity.releaseOrderCapacity({
+      order_id: a.order.order_id,
+      reason: "cancelled",
+      now_ms: 10,
+    });
+
+    const bHeld = (await capacity.listHeldReservations(b.order.order_id)).find(
+      (r) => r.ledger_kind === "queued_work",
+    );
+    expect(bHeld?.state).toBe("held");
+    expect(bHeld?.quantity).toBeGreaterThan(0);
+
+    // Subsequent admit must share the promoted held envelope (not create a second).
+    const c = await capacity.admitOrder(
+      admitInput({ client_request_id: "own-c", requester_subject: "subject-carol", now_ms: 11 }),
+    );
+    expect(c.kind).toBe("admitted");
+    if (c.kind !== "admitted") return;
+    expect(c.work_created).toBe(false);
+    const accounting = await capacity.snapshotAccounting();
+    expect(accounting.queued_work.consumed).toBe(1);
+    expect(accounting.admission_rate.consumed).toBe(2); // B + C (A released)
+  });
+
+  it("F3: sole held envelope is not folded away when join reuses work", async () => {
+    const { capacity, preparationStore } = makeStore();
+    // Pre-create ready/active work so the next admit joins without creating work,
+    // but is still the sole capacity envelope owner.
+    const seed = await capacity.admitOrder(admitInput({ client_request_id: "seed" }));
+    expect(seed.kind).toBe("admitted");
+    if (seed.kind !== "admitted") return;
+
+    // Detach seed order's capacity while leaving the shared work row active so a
+    // later admit joins existing work (created=false) as the new sole envelope.
+    await capacity.releaseOrderCapacity({
+      order_id: seed.order.order_id,
+      reason: "cancelled",
+      now_ms: 5,
+    });
+    // Work row may still be active with zero subscribers — admit again with a
+    // stubbed join that reports reused work while we are the only capacity holder.
+    const realJoin = preparationStore.joinPublicWork.bind(preparationStore);
+    let soleAdmit = false;
+    preparationStore.joinPublicWork = async (input) => {
+      const result = await realJoin(input);
+      if (result.kind === "joined" && soleAdmit) {
+        return { ...result, created: false };
+      }
+      return result;
+    };
+
+    soleAdmit = true;
+    const only = await capacity.admitOrder(
+      admitInput({ client_request_id: "sole", requester_subject: "subject-bob", now_ms: 6 }),
+    );
+    expect(only.kind).toBe("admitted");
+    if (only.kind !== "admitted") return;
+
+    const held = (await capacity.listHeldReservations(only.order.order_id)).find(
+      (r) => r.ledger_kind === "queued_work",
+    );
+    expect(held?.state).toBe("held");
+    expect(held?.quantity).toBeGreaterThan(0);
+    const accounting = await capacity.snapshotAccounting();
+    expect(accounting.queued_work.consumed).toBe(1);
+  });
+
+  it("F4: releaseReservation on shared envelope promotes peer instead of double-free", async () => {
+    const { capacity } = makeStore();
+    const a = await capacity.admitOrder(admitInput({ client_request_id: "rsv-a" }));
+    const b = await capacity.admitOrder(
+      admitInput({ client_request_id: "rsv-b", requester_subject: "subject-bob", now_ms: 2 }),
+    );
+    expect(a.kind).toBe("admitted");
+    expect(b.kind).toBe("admitted");
+    if (a.kind !== "admitted" || b.kind !== "admitted") return;
+
+    const aQueued = (await capacity.listHeldReservations(a.order.order_id)).find(
+      (r) => r.ledger_kind === "queued_work",
+    );
+    expect(aQueued).toBeDefined();
+    if (!aQueued) return;
+
+    const released = await capacity.releaseReservation({
+      reservation_id: aQueued.reservation_id,
+      expected_version: aQueued.reservation_version,
+      reason: "cancel_queued",
+      now_ms: 10,
+    });
+    expect(released.kind).toBe("released");
+
+    const accounting = await capacity.snapshotAccounting();
+    expect(accounting.queued_work.consumed).toBe(1);
+
+    const bHeld = (await capacity.listHeldReservations(b.order.order_id)).find(
+      (r) => r.ledger_kind === "queued_work",
+    );
+    expect(bHeld?.state).toBe("held");
+    expect(bHeld?.quantity).toBeGreaterThan(0);
   });
 });

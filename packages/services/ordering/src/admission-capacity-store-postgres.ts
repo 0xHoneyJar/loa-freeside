@@ -31,6 +31,7 @@ import type {
   OrderAdmissionIdempotencyRecord,
 } from "./admission-capacity-types.js";
 import { CapacityUnavailableError } from "./admission-capacity-types.js";
+import { shouldRetryAdmissionTxn } from "./admission-capacity-pg-errors.js";
 import { assertCertificateAdmissible } from "./recipe-expansion-certificate.js";
 import { digestOf } from "./digest.js";
 import { PostgresSharedPreparationStore } from "./shared-preparation-store-postgres.js";
@@ -38,6 +39,8 @@ import { digestPublicWorkKey } from "./shared-preparation-work-key.js";
 import type { OrderRecord } from "./store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const ADMISSION_TXN_RETRIES = 8;
 
 function rowToPool(row: pg.QueryResultRow): CapacityPoolRecord {
   return {
@@ -309,6 +312,23 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     if (input.advisory_shed) {
       return { kind: "capacity_unavailable", reason: "advisory_shed" };
     }
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < ADMISSION_TXN_RETRIES; attempt += 1) {
+      try {
+        return await this.admitOrderAttempt(input);
+      } catch (err) {
+        lastErr = err;
+        if (shouldRetryAdmissionTxn(err)) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    void lastErr;
+    return { kind: "capacity_unavailable", reason: "lock_timeout" };
+  }
+
+  private async admitOrderAttempt(input: AdmitOrderInput): Promise<AdmitOrderResult> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
@@ -489,20 +509,32 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
           throw new Error("serialization_retry");
         }
 
-        // If we created a queued envelope but join reused work, fold into fan-in.
+        // Fold only when another held envelope already exists for this work key.
+        // Never refund/zero the sole held envelope just because join reused work.
         if (!join.created && queuedState === "held" && queuedQty > 0) {
-          await client.query(
-            `UPDATE admission_capacity_pools
-             SET consumed_units = consumed_units - $2, version = version + 1
-             WHERE pool_id = $1`,
-            [queued.pool_id, queuedQty],
+          const otherHeld = await client.query(
+            `SELECT reservation_id FROM admission_capacity_reservations
+             WHERE work_key_digest = $1
+               AND ledger_kind = 'queued_work'
+               AND state = 'held'
+               AND reservation_id <> $2
+             FOR UPDATE`,
+            [workKeyDigest, queuedRsv],
           );
-          await client.query(
-            `UPDATE admission_capacity_reservations
-             SET state = 'transferred', quantity = 0, reservation_version = reservation_version + 1
-             WHERE reservation_id = $1`,
-            [queuedRsv],
-          );
+          if (otherHeld.rows.length > 0) {
+            await client.query(
+              `UPDATE admission_capacity_pools
+               SET consumed_units = consumed_units - $2, version = version + 1
+               WHERE pool_id = $1`,
+              [queued.pool_id, queuedQty],
+            );
+            await client.query(
+              `UPDATE admission_capacity_reservations
+               SET state = 'transferred', quantity = 0, reservation_version = reservation_version + 1
+               WHERE reservation_id = $1`,
+              [queuedRsv],
+            );
+          }
         }
 
         await client.query(
@@ -534,17 +566,8 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         if (err instanceof CapacityUnavailableError) {
           return { kind: "capacity_unavailable", reason: err.reason };
         }
-        if (err instanceof Error && err.message === "serialization_retry") {
-          return { kind: "capacity_unavailable", reason: "lock_timeout" };
-        }
-        // Postgres serialization failure
-        if (
-          err &&
-          typeof err === "object" &&
-          "code" in err &&
-          (err as { code: string }).code === "40001"
-        ) {
-          return { kind: "capacity_unavailable", reason: "lock_timeout" };
+        if (shouldRetryAdmissionTxn(err)) {
+          throw new Error("serialization_retry");
         }
         throw err;
       }
@@ -618,6 +641,108 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     }
   }
 
+  /**
+   * Fan-in-aware queued envelope release on an open client (F1/F4).
+   * Promotes a peer to held+quantity, or frees pool units only for last subscriber.
+   */
+  private async releaseQueuedEnvelopeOnClient(
+    client: pg.PoolClient,
+    row: CapacityReservationRecord,
+    reason: string,
+    now_ms: number,
+  ): Promise<CapacityReservationRecord> {
+    if (!row.work_key_digest) {
+      const updated = await client.query(
+        `UPDATE admission_capacity_reservations
+         SET state = 'released',
+             reservation_version = reservation_version + 1,
+             released_at = to_timestamp($2/1000.0)
+         WHERE reservation_id = $1
+         RETURNING *`,
+        [row.reservation_id, now_ms],
+      );
+      return rowToReservation(updated.rows[0]);
+    }
+
+    const others = await client.query(
+      `SELECT reservation_id, quantity, state, reservation_version
+       FROM admission_capacity_reservations
+       WHERE work_key_digest = $1
+         AND ledger_kind = 'queued_work'
+         AND state IN ('held', 'transferred')
+         AND reservation_id <> $2
+       FOR UPDATE`,
+      [row.work_key_digest, row.reservation_id],
+    );
+
+    if (others.rows.length > 0) {
+      if (row.state === "held" && row.quantity > 0) {
+        const peer = others.rows[0]!;
+        const envelopeQty = row.quantity;
+        await client.query(
+          `UPDATE admission_capacity_reservations
+           SET state = 'transferred',
+               quantity = 0,
+               reservation_version = reservation_version + 1
+           WHERE reservation_id = $1`,
+          [row.reservation_id],
+        );
+        const promoted = await client.query(
+          `UPDATE admission_capacity_reservations
+           SET state = 'held',
+               quantity = $2,
+               reservation_version = reservation_version + 1
+           WHERE reservation_id = $1
+           RETURNING reservation_version`,
+          [peer.reservation_id, envelopeQty],
+        );
+        await client.query(
+          `INSERT INTO admission_capacity_transfer_log (
+            event_id, reservation_id, from_state, to_state, reason, event_version, created_at
+          ) VALUES ($1,$2,$3,'held','envelope_ownership_promote',$4,to_timestamp($5/1000.0))`,
+          [
+            `cte_${randomUUID()}`,
+            peer.reservation_id,
+            peer.state,
+            Number(promoted.rows[0]?.reservation_version ?? 1),
+            now_ms,
+          ],
+        );
+      }
+    } else if (row.quantity > 0) {
+      await client.query(
+        `UPDATE admission_capacity_pools
+         SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
+         WHERE pool_id = $1`,
+        [row.pool_id, row.quantity],
+      );
+    }
+
+    const updated = await client.query(
+      `UPDATE admission_capacity_reservations
+       SET state = 'released',
+           reservation_version = reservation_version + 1,
+           released_at = to_timestamp($2/1000.0)
+       WHERE reservation_id = $1
+       RETURNING *`,
+      [row.reservation_id, now_ms],
+    );
+    await client.query(
+      `INSERT INTO admission_capacity_transfer_log (
+        event_id, reservation_id, from_state, to_state, reason, event_version, created_at
+      ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
+      [
+        `cte_${randomUUID()}`,
+        row.reservation_id,
+        row.state,
+        reason,
+        row.reservation_version + 1,
+        now_ms,
+      ],
+    );
+    return rowToReservation(updated.rows[0]);
+  }
+
   async releaseReservation(input: {
     reservation_id: string;
     expected_version: number;
@@ -641,7 +766,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         return { kind: "not_found" };
       }
       const row = rowToReservation(res.rows[0]);
-      if (row.state !== "held") {
+      if (row.state !== "held" && row.state !== "transferred") {
         await client.query("COMMIT");
         return { kind: "already_released", reservation: row };
       }
@@ -649,7 +774,19 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         await client.query("ROLLBACK");
         return { kind: "version_mismatch" };
       }
-      if (row.quantity > 0) {
+
+      if (row.ledger_kind === "queued_work" && row.work_key_digest) {
+        const released = await this.releaseQueuedEnvelopeOnClient(
+          client,
+          row,
+          input.reason,
+          input.now_ms,
+        );
+        await client.query("COMMIT");
+        return { kind: "released", reservation: released };
+      }
+
+      if (row.quantity > 0 && row.state === "held") {
         await client.query(
           `UPDATE admission_capacity_pools
            SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
@@ -669,10 +806,11 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
       await client.query(
         `INSERT INTO admission_capacity_transfer_log (
           event_id, reservation_id, from_state, to_state, reason, event_version, created_at
-        ) VALUES ($1,$2,'held','released',$3,$4,to_timestamp($5/1000.0))`,
+        ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
         [
           `cte_${randomUUID()}`,
           input.reservation_id,
+          row.state,
           input.reason,
           row.reservation_version + 1,
           input.now_ms,

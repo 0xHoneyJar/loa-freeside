@@ -584,13 +584,9 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
             throw new Error("serialization_retry");
           }
 
-          // Join reused existing work after we allocated a new envelope → fold into fan-in.
+          // Fold only when another held envelope already exists for this work key.
+          // Never refund/zero the sole held envelope just because join reused work.
           if (!join.created && createdQueuedEnvelope && queuedReservation) {
-            this.releaseUnits(pools.queued, queuedReservation.quantity, input.now_ms);
-            const meta = this.queuedEnvelopeByWork.get(workKeyDigest);
-            if (meta?.reservation_id === queuedReservation.reservation_id) {
-              this.queuedEnvelopeByWork.delete(workKeyDigest);
-            }
             const existing = [...this.reservations.values()].find(
               (r) =>
                 r.ledger_kind === "queued_work" &&
@@ -600,18 +596,22 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
                 r.reservation_id !== queuedReservation!.reservation_id,
             );
             if (existing) {
-              this.queuedEnvelopeByWork.set(workKeyDigest, {
-                reservation_id: existing.reservation_id,
-                quantity: existing.quantity,
-              });
+              this.releaseUnits(pools.queued, queuedReservation.quantity, input.now_ms);
+              const meta = this.queuedEnvelopeByWork.get(workKeyDigest);
+              if (meta?.reservation_id === queuedReservation.reservation_id) {
+                this.queuedEnvelopeByWork.set(workKeyDigest, {
+                  reservation_id: existing.reservation_id,
+                  quantity: existing.quantity,
+                });
+              }
+              this.transitionReservation(
+                queuedReservation,
+                "transferred",
+                "fan_in_after_join",
+                input.now_ms,
+              );
+              queuedReservation.quantity = 0;
             }
-            this.transitionReservation(
-              queuedReservation,
-              "transferred",
-              "fan_in_after_join",
-              input.now_ms,
-            );
-            queuedReservation.quantity = 0;
           }
 
           const placedEvent: OrderPlaced = {
@@ -742,6 +742,83 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
     });
   }
 
+  /**
+   * Fan-in-aware queued-envelope release: promote a peer to held owner with the
+   * envelope quantity, or free pool units only when this is the last subscriber.
+   */
+  private releaseQueuedEnvelopeLocked(
+    row: MutableReservation,
+    reason: string,
+    now_ms: number,
+  ): void {
+    if (!row.work_key_digest) {
+      this.transitionReservation(row, "released", reason, now_ms);
+      return;
+    }
+    const workKeyDigest = row.work_key_digest;
+    const pool = this.pools.get(row.pool_id);
+    const otherSubscribers = [...this.reservations.values()].filter(
+      (r) =>
+        r.reservation_id !== row.reservation_id &&
+        r.work_key_digest === workKeyDigest &&
+        r.ledger_kind === "queued_work" &&
+        (r.state === "held" || r.state === "transferred"),
+    );
+    const meta = this.queuedEnvelopeByWork.get(workKeyDigest);
+    const envelopeQty =
+      (meta?.reservation_id === row.reservation_id ? meta.quantity : undefined) ??
+      (row.state === "held" && row.quantity > 0 ? row.quantity : undefined) ??
+      meta?.quantity ??
+      0;
+
+    if (otherSubscribers.length > 0) {
+      // Shared envelope remains — promote a peer to held owner with quantity.
+      const peer = otherSubscribers[0]!;
+      if (envelopeQty > 0) {
+        if (row.state === "held") {
+          row.quantity = 0;
+          this.transitionReservation(row, "transferred", "envelope_ownership_handoff", now_ms);
+        }
+        if (peer.state !== "held" || peer.quantity !== envelopeQty) {
+          const from = peer.state;
+          peer.state = "held";
+          peer.quantity = envelopeQty;
+          peer.reservation_version += 1;
+          this.transferLog.push({
+            event_id: `cte_${randomUUID()}`,
+            reservation_id: peer.reservation_id,
+            from_state: from,
+            to_state: "held",
+            reason: "envelope_ownership_promote",
+            event_version: peer.reservation_version,
+            created_at_unix_ms: now_ms,
+          });
+        }
+        this.queuedEnvelopeByWork.set(workKeyDigest, {
+          reservation_id: peer.reservation_id,
+          quantity: envelopeQty,
+        });
+      } else if (meta && meta.reservation_id === row.reservation_id) {
+        this.queuedEnvelopeByWork.set(workKeyDigest, {
+          reservation_id: peer.reservation_id,
+          quantity: meta.quantity,
+        });
+      }
+      if (row.state !== "released") {
+        this.transitionReservation(row, "released", reason, now_ms);
+      }
+      return;
+    }
+
+    // Last subscriber: free the shared envelope quantity exactly once.
+    const qty = envelopeQty > 0 ? envelopeQty : row.quantity;
+    if (pool && qty > 0) {
+      this.releaseUnits(pool, qty, now_ms);
+    }
+    this.queuedEnvelopeByWork.delete(workKeyDigest);
+    this.transitionReservation(row, "released", reason, now_ms);
+  }
+
   async releaseReservation(input: {
     reservation_id: string;
     expected_version: number;
@@ -756,21 +833,19 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
     return this.withSerializableTxn(async () => {
       const row = this.reservations.get(input.reservation_id);
       if (!row) return { kind: "not_found" };
-      if (row.state !== "held") {
+      if (row.state !== "held" && row.state !== "transferred") {
         return { kind: "already_released", reservation: structuredClone(row) };
       }
       if (row.reservation_version !== input.expected_version) {
         return { kind: "version_mismatch" };
       }
-      const pool = this.pools.get(row.pool_id);
-      if (pool && row.quantity > 0) {
-        this.releaseUnits(pool, row.quantity, input.now_ms);
-      }
       if (row.ledger_kind === "queued_work" && row.work_key_digest) {
-        const meta = this.queuedEnvelopeByWork.get(row.work_key_digest);
-        if (meta?.reservation_id === row.reservation_id) {
-          this.queuedEnvelopeByWork.delete(row.work_key_digest);
-        }
+        this.releaseQueuedEnvelopeLocked(row, input.reason, input.now_ms);
+        return { kind: "released", reservation: structuredClone(row) };
+      }
+      const pool = this.pools.get(row.pool_id);
+      if (pool && row.quantity > 0 && row.state === "held") {
+        this.releaseUnits(pool, row.quantity, input.now_ms);
       }
       this.transitionReservation(row, "released", input.reason, input.now_ms);
       return { kind: "released", reservation: structuredClone(row) };
@@ -790,39 +865,13 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
           (r.state === "held" || r.state === "transferred"),
       );
       for (const row of rows) {
-        const pool = this.pools.get(row.pool_id);
-
         if (row.ledger_kind === "queued_work" && row.work_key_digest) {
-          const otherSubscribers = [...this.reservations.values()].filter(
-            (r) =>
-              r.reservation_id !== row.reservation_id &&
-              r.work_key_digest === row.work_key_digest &&
-              r.ledger_kind === "queued_work" &&
-              r.order_id !== input.order_id &&
-              (r.state === "held" || r.state === "transferred"),
-          );
-          const meta = this.queuedEnvelopeByWork.get(row.work_key_digest);
-          if (otherSubscribers.length > 0) {
-            // Shared envelope remains; do not free units. Reassign owner bookkeeping.
-            if (meta && meta.reservation_id === row.reservation_id) {
-              this.queuedEnvelopeByWork.set(row.work_key_digest, {
-                reservation_id: otherSubscribers[0]!.reservation_id,
-                quantity: meta.quantity,
-              });
-            }
-          } else {
-            // Last subscriber: free the shared envelope quantity exactly once.
-            const qty = meta?.quantity ?? row.quantity;
-            if (pool && qty > 0) {
-              this.releaseUnits(pool, qty, input.now_ms);
-            }
-            this.queuedEnvelopeByWork.delete(row.work_key_digest);
-          }
-          this.transitionReservation(row, "released", input.reason, input.now_ms);
+          this.releaseQueuedEnvelopeLocked(row, input.reason, input.now_ms);
           released += 1;
           continue;
         }
 
+        const pool = this.pools.get(row.pool_id);
         if (pool && row.quantity > 0 && row.state === "held") {
           this.releaseUnits(pool, row.quantity, input.now_ms);
         }
