@@ -324,7 +324,10 @@ resource "aws_cloudwatch_metric_alarm" "byok_firewall_deny" {
     return_data = true
   }
 
-  alarm_actions = var.sns_alarm_topic_arn != "" ? [var.sns_alarm_topic_arn] : []
+  # Fallback to the stack's own alerts topic — with sns_alarm_topic_arn unset
+  # this SSRF detector was structurally deaf (no AlarmActions at all; found by
+  # sensenet's 2026-07-17 deaf-sweep, live-verified: AlarmActions=[] both envs).
+  alarm_actions = var.sns_alarm_topic_arn != "" ? [var.sns_alarm_topic_arn] : [aws_sns_topic.alerts.arn]
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-byok-firewall-deny-alarm"
