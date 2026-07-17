@@ -198,6 +198,15 @@ describe("CR-201A public shared preparation store", () => {
     expect(failed.attempt).toBe(1);
     expect(failed.lease_until_unix_ms).toBeUndefined();
 
+    // Cannot lease while in retry_wait — wake must run first.
+    const leaseDuringRetry = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "worker-retry",
+      lease_duration_ms: 30_000,
+      now_ms: 3_200,
+    });
+    expect(leaseDuringRetry.kind).toBe("not_active");
+
     // Cannot bypass wake / next_attempt_at by transitioning from retry_wait.
     await expect(
       store.transitionToPreparing({
@@ -616,6 +625,68 @@ describe("CR-201A public shared preparation store", () => {
         now_ms: 4,
       }),
     ).rejects.toBeInstanceOf(SharedPreparationStateError);
+  });
+
+  it("rejects child evidence when parent is not preparing", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey({ capability: "collection_identity.v1" });
+    const joined = await store.joinPublicWork({
+      order_id: "ord_parent_state",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1,
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    const lease = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "w",
+      lease_duration_ms: 30_000,
+      now_ms: 2,
+    });
+    if (lease.kind !== "acquired") throw new Error("lease failed");
+    await store.transitionToPreparing({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease.work.lease_epoch,
+      now_ms: 3,
+    });
+    const item = (await store.listWorkItems(joined.work.work_id))[0]!;
+
+    await store.recordRetryableFailure({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease.work.lease_epoch,
+      next_attempt_at_unix_ms: 100,
+      retry_deadline_unix_ms: 604_800_000,
+      failure: { code: "dependency_unavailable", reason: "parent left preparing" },
+      now_ms: 4,
+    });
+    // Children were reset to queued; parent is retry_wait — publish must fail.
+    await expect(
+      store.publishChildEvidence({
+        work_item_id: item.work_item_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        evidence: fixtureReadinessEvidence(workKey.deployment_ids),
+        now_ms: 5,
+      }),
+    ).rejects.toBeInstanceOf(SharedPreparationStateError);
+
+    await store.detachSubscriber({
+      order_id: "ord_parent_state",
+      work_id: joined.work.work_id,
+      now_ms: 6,
+    });
+    const abandoned = await store.getWork(joined.work.work_id);
+    expect(abandoned?.state).toBe("abandoned");
+    await expect(
+      store.publishChildEvidence({
+        work_item_id: item.work_item_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        evidence: fixtureReadinessEvidence(workKey.deployment_ids),
+        now_ms: 7,
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/parent preparing/),
+    });
   });
 
   it("rejects unqualified finalize and does not reuse that row as ready", async () => {

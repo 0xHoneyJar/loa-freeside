@@ -13,6 +13,7 @@ import {
 } from "./shared-preparation-work-key.js";
 import {
   isActivePublicWorkState,
+  isLeasablePublicWorkState,
   type PreparationWorkItemRecord,
   type PublicPreparationWorkKeyMaterial,
   type PublicWorkState,
@@ -446,7 +447,8 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
       | { readonly kind: "not_active" };
     const locked = await this.withWorkIdLock(input.work_id, async (): Promise<LeaseResult> => {
       const work = this.works.get(input.work_id);
-      if (!work || !isActivePublicWorkState(work.state)) {
+      // retry_wait is active but not leasable — wake must run first.
+      if (!work || !isLeasablePublicWorkState(work.state)) {
         return { kind: "not_active" };
       }
       const leaseExpired =
@@ -588,6 +590,13 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     const locked = await this.withWorkIdLock(itemLookup.work_id, async () => {
       const item = this.items.get(input.work_item_id);
       if (!item) throw new SharedPreparationStateError("work item not found");
+      const parent = this.works.get(item.work_id);
+      if (!parent) throw new SharedPreparationStateError("work not found");
+      if (parent.state !== "preparing") {
+        throw new SharedPreparationStateError(
+          `child evidence requires parent preparing, got ${parent.state}`,
+        );
+      }
       if (item.lease_epoch !== input.expected_lease_epoch) {
         throw new SharedPreparationFencingError("stale lease epoch for child evidence");
       }

@@ -20,6 +20,11 @@ export const ACTIVE_PUBLIC_WORK_STATES = [
 
 export type ActivePublicWorkState = (typeof ACTIVE_PUBLIC_WORK_STATES)[number];
 
+/** States that may hold a worker lease. retry_wait is active but not leasable. */
+export const LEASABLE_PUBLIC_WORK_STATES = ["queued", "preparing"] as const;
+
+export type LeasablePublicWorkState = (typeof LEASABLE_PUBLIC_WORK_STATES)[number];
+
 export const PUBLIC_WORK_STATES = [
   ...ACTIVE_PUBLIC_WORK_STATES,
   "ready",
@@ -161,6 +166,12 @@ export interface ReportWorkLinkRecord {
 
 export function isActivePublicWorkState(state: PublicWorkState): state is ActivePublicWorkState {
   return (ACTIVE_PUBLIC_WORK_STATES as readonly string[]).includes(state);
+}
+
+export function isLeasablePublicWorkState(
+  state: PublicWorkState,
+): state is LeasablePublicWorkState {
+  return (LEASABLE_PUBLIC_WORK_STATES as readonly string[]).includes(state);
 }
 
 export function assertPublicPrepCapability(capability: string): asserts capability is PublicPrepCapability {

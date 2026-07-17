@@ -13,7 +13,7 @@ import {
   finalityPolicyVersion,
 } from "./shared-preparation-work-key.js";
 import {
-  isActivePublicWorkState,
+  isLeasablePublicWorkState,
   type PreparationWorkItemRecord,
   type ReadinessEvidenceEnvelope,
   type ReportWorkLinkRecord,
@@ -39,7 +39,29 @@ function isUniqueActiveKeyViolation(err: unknown): boolean {
   );
 }
 
+/** node-pg returns Date for TIMESTAMPTZ; tolerate string/null. */
+function pgTimestampMs(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string" || typeof value === "number") {
+    const ms = typeof value === "number" ? value : Date.parse(value);
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+  return undefined;
+}
+
+function requirePgTimestampMs(value: unknown, field: string): number {
+  const ms = pgTimestampMs(value);
+  if (ms === undefined) {
+    throw new Error(`invalid timestamptz for ${field}`);
+  }
+  return ms;
+}
+
 function rowToWork(row: pg.QueryResultRow): SharedPreparationWorkRecord {
+  const nextAttempt = pgTimestampMs(row.next_attempt_at);
+  const retryDeadline = pgTimestampMs(row.retry_deadline);
+  const leaseUntil = pgTimestampMs(row.lease_until);
   return {
     work_id: row.work_id,
     work_key_digest: row.work_key_digest,
@@ -63,22 +85,16 @@ function rowToWork(row: pg.QueryResultRow): SharedPreparationWorkRecord {
       ? { readiness_evidence: row.readiness_evidence as ReadinessEvidenceEnvelope }
       : {}),
     attempt: Number(row.attempt),
-    ...(row.next_attempt_at != null
-      ? { next_attempt_at_unix_ms: Date.parse(row.next_attempt_at as string) }
-      : {}),
-    ...(row.retry_deadline != null
-      ? { retry_deadline_unix_ms: Date.parse(row.retry_deadline as string) }
-      : {}),
-    ...(row.lease_until != null
-      ? { lease_until_unix_ms: Date.parse(row.lease_until as string) }
-      : {}),
+    ...(nextAttempt !== undefined ? { next_attempt_at_unix_ms: nextAttempt } : {}),
+    ...(retryDeadline !== undefined ? { retry_deadline_unix_ms: retryDeadline } : {}),
+    ...(leaseUntil !== undefined ? { lease_until_unix_ms: leaseUntil } : {}),
     lease_epoch: Number(row.lease_epoch),
     ...(row.failure_reason != null
       ? { failure_reason: row.failure_reason as { code: string; reason: string } }
       : {}),
     sharing_scope_kind: "public",
-    created_at_unix_ms: Date.parse(row.created_at as string),
-    updated_at_unix_ms: Date.parse(row.updated_at as string),
+    created_at_unix_ms: requirePgTimestampMs(row.created_at, "created_at"),
+    updated_at_unix_ms: requirePgTimestampMs(row.updated_at, "updated_at"),
   };
 }
 
@@ -99,19 +115,18 @@ function rowToItem(row: pg.QueryResultRow): PreparationWorkItemRecord {
     ...(row.failure_reason != null
       ? { failure_reason: row.failure_reason as { code: string; reason: string } }
       : {}),
-    created_at_unix_ms: Date.parse(row.created_at as string),
-    updated_at_unix_ms: Date.parse(row.updated_at as string),
+    created_at_unix_ms: requirePgTimestampMs(row.created_at, "created_at"),
+    updated_at_unix_ms: requirePgTimestampMs(row.updated_at, "updated_at"),
   };
 }
 
 function rowToLink(row: pg.QueryResultRow): ReportWorkLinkRecord {
+  const detached = pgTimestampMs(row.detached_at);
   return {
     order_id: row.order_id,
     work_id: row.work_id,
-    joined_at_unix_ms: Date.parse(row.joined_at as string),
-    ...(row.detached_at != null
-      ? { detached_at_unix_ms: Date.parse(row.detached_at as string) }
-      : {}),
+    joined_at_unix_ms: requirePgTimestampMs(row.joined_at, "joined_at"),
+    ...(detached !== undefined ? { detached_at_unix_ms: detached } : {}),
     generation: Number(row.generation),
     order_tenant_scope_digest: row.order_tenant_scope_digest,
     sharing_scope_kind: "public",
@@ -381,7 +396,8 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
         return { kind: "not_active" as const };
       }
       const work = rowToWork(result.rows[0]);
-      if (!isActivePublicWorkState(work.state)) {
+      // retry_wait is active but not leasable — wake must run first.
+      if (!isLeasablePublicWorkState(work.state)) {
         await client.query("ROLLBACK");
         return { kind: "not_active" as const };
       }
@@ -398,10 +414,14 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       const updated = await client.query(
         `UPDATE shared_preparation_work
          SET lease_epoch = $2, lease_until = $3, updated_at = $4
-         WHERE work_id = $1
+         WHERE work_id = $1 AND state IN ('queued', 'preparing')
          RETURNING *`,
         [input.work_id, nextEpoch, leaseUntil, nowIso],
       );
+      if (updated.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { kind: "not_active" as const };
+      }
       await client.query(
         "UPDATE preparation_work_items SET lease_epoch = $2, updated_at = $3 WHERE work_id = $1",
         [input.work_id, nextEpoch, nowIso],
@@ -552,12 +572,15 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     now_ms: number;
   }): Promise<PreparationWorkItemRecord> {
     const result = await this.pool.query(
-      `UPDATE preparation_work_items
+      `UPDATE preparation_work_items AS i
        SET state = 'ready', evidence_envelope = $3, updated_at = $4
-       WHERE work_item_id = $1
-         AND lease_epoch = $2
-         AND state = 'preparing'
-       RETURNING *`,
+       FROM shared_preparation_work AS w
+       WHERE i.work_item_id = $1
+         AND i.work_id = w.work_id
+         AND i.lease_epoch = $2
+         AND i.state = 'preparing'
+         AND w.state = 'preparing'
+       RETURNING i.*`,
       [
         input.work_item_id,
         input.expected_lease_epoch,
@@ -567,13 +590,22 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     );
     if (result.rows.length === 0) {
       const current = await this.pool.query(
-        "SELECT * FROM preparation_work_items WHERE work_item_id = $1",
+        `SELECT i.*, w.state AS parent_state
+         FROM preparation_work_items i
+         LEFT JOIN shared_preparation_work w ON w.work_id = i.work_id
+         WHERE i.work_item_id = $1`,
         [input.work_item_id],
       );
       if (current.rows.length === 0) {
         throw new SharedPreparationStateError("work item not found");
       }
-      const item = rowToItem(current.rows[0]);
+      const row = current.rows[0];
+      const item = rowToItem(row);
+      if (row.parent_state !== "preparing") {
+        throw new SharedPreparationStateError(
+          `child evidence requires parent preparing, got ${row.parent_state ?? "missing"}`,
+        );
+      }
       if (item.lease_epoch !== input.expected_lease_epoch) {
         throw new SharedPreparationFencingError("stale lease epoch for child evidence");
       }

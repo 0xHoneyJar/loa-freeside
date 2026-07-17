@@ -232,6 +232,8 @@ export { mountDependencyLedgerRoutes } from './dependency-ledger-http.js';
 export {
   PUBLIC_PREP_CAPABILITIES,
   PUBLIC_PREP_LIMITS,
+  LEASABLE_PUBLIC_WORK_STATES,
+  isLeasablePublicWorkState,
   type PublicPrepCapability,
   type PublicPreparationWorkKeyMaterial,
   type SharedPreparationWorkRecord,
