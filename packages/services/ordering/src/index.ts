@@ -262,3 +262,38 @@ export {
   createSharedPreparationService,
   type SharedPreparationService,
 } from './shared-preparation-service.js';
+
+export {
+  CAPACITY_LEDGER_KINDS,
+  CAPACITY_RESERVATION_STATES,
+  CapacityUnavailableError,
+  AdmissionIdempotencyConflictError,
+  type CapacityLedgerKind,
+  type CapacityPoolRecord,
+  type CapacityReservationRecord,
+  type RecipeExpansionCertificate,
+  type CapacityUnavailableReason,
+} from './admission-capacity-types.js';
+export {
+  V1_MAX_RECIPE_NODES,
+  DEFAULT_ADMISSION_RATE_LIMIT,
+  DEFAULT_QUEUED_WORK_LIMIT,
+  DEFAULT_ACTIVE_EXECUTION_LIMIT,
+  ACTIVE_EXECUTION_LEASE_MS,
+} from './admission-capacity-constants.js';
+export {
+  buildRecipeExpansionCertificate,
+  fixtureGateLeakCertificate,
+  assertCertificateAdmissible,
+} from './recipe-expansion-certificate.js';
+export {
+  InMemoryAdmissionCapacityStore,
+  type AdmissionCapacityStore,
+  type AdmitOrderInput,
+  type AdmitOrderResult,
+} from './admission-capacity-store.js';
+export { PostgresAdmissionCapacityStore } from './admission-capacity-store-postgres.js';
+export {
+  createAdmissionCapacityService,
+  type AdmissionCapacityService,
+} from './admission-capacity-service.js';
