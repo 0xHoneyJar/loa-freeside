@@ -36,10 +36,14 @@ if (!mountWrites) {
 const resolutionStore = await createResolutionStore({
   orderStore: store instanceof PostgresOrderStore ? store : undefined,
 });
-const httpSonarProbe = sonarResolveProbeFromEnv();
+// COLLECTION_RESOLVE_PROBE_MODE=catalog forces the local catalog even when
+// SONAR_* URLs are set (kitchen image lag / token mismatch). Default: http when
+// configured, else catalog.
+const probeModeOverride = process.env.COLLECTION_RESOLVE_PROBE_MODE?.trim().toLowerCase();
+const httpSonarProbe =
+  probeModeOverride === 'catalog' ? undefined : sonarResolveProbeFromEnv();
 const sonarProbe = httpSonarProbe ?? createCatalogResolveProbePort();
-const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';
-const resolutionService = new CollectionResolutionService({
+const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';const resolutionService = new CollectionResolutionService({
   store: resolutionStore,
   sonar: sonarProbe,
 });
