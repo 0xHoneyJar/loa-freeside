@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryAdmissionCapacityStore } from "../admission-capacity-store.js";
 import {
   isHeldEnvelopeUniqueViolation,
+  isPoolScopeUniqueViolation,
   shouldRetryAdmissionTxn,
 } from "../admission-capacity-pg-errors.js";
 import { fixtureGateLeakCertificate } from "../recipe-expansion-certificate.js";
@@ -281,14 +282,21 @@ describe("CR-201C admission capacity store", () => {
     expect(accounting.queued_work.consumed).toBe(0);
   });
 
-  it("F2: concurrent held-envelope unique violation maps to admission retry", () => {
+  it("F2: concurrent held-envelope / pool-scope unique violations map to admission retry", () => {
     const uniqueErr = {
       code: "23505",
       constraint: "admission_capacity_reservations_work_held_unique_idx",
       detail: "Key (work_key_digest)=(abc) already exists.",
     };
+    const poolUnique = {
+      code: "23505",
+      constraint: "admission_capacity_pools_scope_unique",
+      detail: "Key (ledger_kind, network_ref, capability, community_ref)=(...) already exists.",
+    };
     expect(isHeldEnvelopeUniqueViolation(uniqueErr)).toBe(true);
+    expect(isPoolScopeUniqueViolation(poolUnique)).toBe(true);
     expect(shouldRetryAdmissionTxn(uniqueErr)).toBe(true);
+    expect(shouldRetryAdmissionTxn(poolUnique)).toBe(true);
     expect(shouldRetryAdmissionTxn(new Error("serialization_retry"))).toBe(true);
     expect(shouldRetryAdmissionTxn({ code: "40001" })).toBe(true);
     expect(shouldRetryAdmissionTxn({ code: "23505", constraint: "orders_pkey" })).toBe(false);

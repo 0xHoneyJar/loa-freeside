@@ -31,7 +31,12 @@ import type {
   OrderAdmissionIdempotencyRecord,
 } from "./admission-capacity-types.js";
 import { CapacityUnavailableError } from "./admission-capacity-types.js";
-import { shouldRetryAdmissionTxn } from "./admission-capacity-pg-errors.js";
+import {
+  isPoolScopeUniqueViolation,
+  isPgSerializationFailure,
+  safeRollback,
+  shouldRetryAdmissionTxn,
+} from "./admission-capacity-pg-errors.js";
 import { assertCertificateAdmissible } from "./recipe-expansion-certificate.js";
 import { digestOf } from "./digest.js";
 import { PostgresSharedPreparationStore } from "./shared-preparation-store-postgres.js";
@@ -163,32 +168,67 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
   ): Promise<CapacityPoolRecord> {
     // Sentinel '' for public/default scope — UNIQUE forbids duplicate NULL rows.
     const communityRef = input.community_ref ?? "";
-    const existing = await client.query(
-      `SELECT * FROM admission_capacity_pools
-       WHERE ledger_kind = $1 AND network_ref = $2 AND capability = $3
-         AND community_ref = $4
-       FOR UPDATE`,
-      [input.ledger_kind, input.network_ref, input.capability, communityRef],
-    );
+    const selectForUpdate = () =>
+      client.query(
+        `SELECT * FROM admission_capacity_pools
+         WHERE ledger_kind = $1 AND network_ref = $2 AND capability = $3
+           AND community_ref = $4
+         FOR UPDATE`,
+        [input.ledger_kind, input.network_ref, input.capability, communityRef],
+      );
+
+    const existing = await selectForUpdate();
     if (existing.rows.length > 0) return rowToPool(existing.rows[0]);
     const pool_id = `cap_${input.ledger_kind}_${randomUUID()}`;
-    const inserted = await client.query(
-      `INSERT INTO admission_capacity_pools (
-        pool_id, ledger_kind, network_ref, capability, community_ref,
-        limit_units, consumed_units, version, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,0,0,to_timestamp($7/1000.0))
-      RETURNING *`,
-      [
-        pool_id,
-        input.ledger_kind,
-        input.network_ref,
-        input.capability,
-        communityRef,
-        input.limit_units,
-        input.now_ms,
-      ],
-    );
-    return rowToPool(inserted.rows[0]);
+    try {
+      const inserted = await client.query(
+        `INSERT INTO admission_capacity_pools (
+          pool_id, ledger_kind, network_ref, capability, community_ref,
+          limit_units, consumed_units, version, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,0,0,to_timestamp($7/1000.0))
+        RETURNING *`,
+        [
+          pool_id,
+          input.ledger_kind,
+          input.network_ref,
+          input.capability,
+          communityRef,
+          input.limit_units,
+          input.now_ms,
+        ],
+      );
+      return rowToPool(inserted.rows[0]);
+    } catch (err) {
+      // Concurrent creator won — re-select the existing pool row.
+      if (isPoolScopeUniqueViolation(err)) {
+        const raced = await selectForUpdate();
+        if (raced.rows.length > 0) return rowToPool(raced.rows[0]);
+      }
+      throw err;
+    }
+  }
+
+  /** Bounded SERIALIZABLE retry for mutating capacity methods. */
+  private async withSerializableRetry<T>(fn: () => Promise<T>): Promise<T> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < ADMISSION_TXN_RETRIES; attempt += 1) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastErr = err;
+        if (
+          isPgSerializationFailure(err) ||
+          (err instanceof Error && err.message === "serialization_retry") ||
+          isPoolScopeUniqueViolation(err)
+        ) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error("serialization_retry");
   }
 
   private async consumePool(
@@ -223,15 +263,23 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
 
   async ensurePool(input: EnsurePoolInput & { now_ms: number }): Promise<CapacityPoolRecord> {
     const client = await this.pool.connect();
+    let txnClosed = false;
     try {
       await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
       const pool = await this.lockOrCreatePool(client, input);
       await client.query("COMMIT");
+      txnClosed = true;
       return pool;
     } catch (err) {
-      await client.query("ROLLBACK");
+      if (!txnClosed) {
+        await safeRollback(client);
+        txnClosed = true;
+      }
       throw err;
     } finally {
+      if (!txnClosed) {
+        await safeRollback(client);
+      }
       client.release();
     }
   }
@@ -330,12 +378,24 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
 
   private async admitOrderAttempt(input: AdmitOrderInput): Promise<AdmitOrderResult> {
     const client = await this.pool.connect();
+    /** Tracks whether COMMIT/ROLLBACK already ran — finally always cleans open txns. */
+    let txnClosed = false;
+    const commit = async () => {
+      await client.query("COMMIT");
+      txnClosed = true;
+    };
+    const rollback = async () => {
+      await safeRollback(client);
+      txnClosed = true;
+    };
+
     try {
       await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+
       try {
         assertCertificateAdmissible(input.certificate);
       } catch (err) {
-        await client.query("ROLLBACK");
+        await rollback();
         if (err instanceof CapacityUnavailableError) {
           return { kind: "capacity_unavailable", reason: err.reason };
         }
@@ -352,7 +412,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
       if (prior.rows.length > 0) {
         const row = prior.rows[0];
         if (row.body_digest !== body_digest) {
-          await client.query("ROLLBACK");
+          await rollback();
           return { kind: "idempotency_conflict" };
         }
         const orderRes = await client.query("SELECT * FROM orders WHERE order_id = $1", [
@@ -365,10 +425,11 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
           now_ms: input.now_ms,
         });
         if (join.kind !== "joined") {
-          await client.query("ROLLBACK");
-          return { kind: "capacity_unavailable", reason: "lock_timeout" };
+          // Route through outer admission retry loop (do not bypass as typed deny).
+          await rollback();
+          throw new Error("serialization_retry");
         }
-        await client.query("COMMIT");
+        await commit();
         return {
           kind: "admitted",
           order: rowToOrder(orderRes.rows[0]),
@@ -397,181 +458,187 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
       const workKeyDigest = digestPublicWorkKey(input.work_key);
       const order_id = input.order.order_id ?? `ord_${randomUUID()}`;
 
-      try {
-        await this.consumePool(client, admission, 1, input.now_ms);
+      await this.consumePool(client, admission, 1, input.now_ms);
 
-        const heldEnvelope = await client.query(
-          `SELECT * FROM admission_capacity_reservations
-           WHERE work_key_digest = $1 AND ledger_kind = 'queued_work' AND state = 'held'
-           FOR UPDATE`,
-          [workKeyDigest],
-        );
+      const heldEnvelope = await client.query(
+        `SELECT * FROM admission_capacity_reservations
+         WHERE work_key_digest = $1 AND ledger_kind = 'queued_work' AND state = 'held'
+         FOR UPDATE`,
+        [workKeyDigest],
+      );
 
-        const reservationIds: string[] = [];
-        let queuedQty = 0;
-        let queuedState: "held" | "transferred" = "held";
-        if (heldEnvelope.rows.length > 0) {
-          queuedState = "transferred";
-          queuedQty = 0;
-        } else {
-          await this.consumePool(client, queued, input.certificate.capacity_weight, input.now_ms);
-          queuedQty = input.certificate.capacity_weight;
-        }
-
-        const admissionRsv = `rsv_${randomUUID()}`;
-        const queuedRsv = `rsv_${randomUUID()}`;
-        reservationIds.push(admissionRsv, queuedRsv);
-
-        const identity = (ledger: CapacityLedgerKind, poolId: string, qty: number) =>
-          createHash("sha256")
-            .update(JSON.stringify({ order_id, ledger_kind: ledger, pool_id: poolId, quantity: qty, work_key_digest: workKeyDigest }))
-            .digest("hex");
-
-        const ts = Math.floor(input.now_ms / 1000);
-        const placedEvent: OrderPlaced = {
-          order_id,
-          product: input.order.product,
-          inputs_digest: input.order.inputs_digest,
-        };
-        const orderInsert = await client.query(
-          `INSERT INTO orders (
-            order_id, product, placed_by, inputs, inputs_digest, state,
-            placed_at_unix, created_at_unix, updated_at_unix, ingredients,
-            ingredient_jobs, operator_audit
-          ) VALUES ($1,$2,$3,$4,$5,'placed',$6,$7,$7,$8,'[]'::jsonb,'[]'::jsonb)
-          RETURNING *`,
-          [
-            order_id,
-            input.order.product,
-            input.order.placed_by,
-            JSON.stringify(input.order.inputs),
-            input.order.inputs_digest,
-            input.order.placed_at_unix,
-            ts,
-            null,
-          ],
-        );
-        await client.query(
-          `INSERT INTO order_outbox (order_id, subject, payload, published)
-           VALUES ($1,$2,$3,FALSE)`,
-          [
-            order_id,
-            ORDER_LIFECYCLE_SUBJECTS.placed,
-            JSON.stringify(placedEvent),
-          ],
-        );
-
-        await client.query(
-          `INSERT INTO admission_capacity_reservations (
-            reservation_id, order_id, pool_id, ledger_kind, quantity,
-            reservation_version, state, identity_digest, work_key_digest, created_at
-          ) VALUES
-            ($1,$2,$3,'admission_rate',1,1,'held',$4,NULL,to_timestamp($7/1000.0)),
-            ($5,$2,$6,'queued_work',$8,1,$9,$10,$11,to_timestamp($7/1000.0))`,
-          [
-            admissionRsv,
-            order_id,
-            admission.pool_id,
-            identity("admission_rate", admission.pool_id, 1),
-            queuedRsv,
-            queued.pool_id,
-            input.now_ms,
-            queuedQty,
-            queuedState,
-            identity("queued_work", queued.pool_id, queuedQty),
-            workKeyDigest,
-          ],
-        );
-        await client.query(
-          `INSERT INTO admission_capacity_transfer_log (
-            event_id, reservation_id, from_state, to_state, reason, event_version, created_at
-          ) VALUES
-            ($1,$2,'held','held','created',1,to_timestamp($4/1000.0)),
-            ($3,$5,'held',$6,$7,1,to_timestamp($4/1000.0))`,
-          [
-            `cte_${randomUUID()}`,
-            admissionRsv,
-            `cte_${randomUUID()}`,
-            input.now_ms,
-            queuedRsv,
-            queuedState,
-            queuedState === "transferred" ? "fan_in_share_envelope" : "created",
-          ],
-        );
-
-        const join = await this.preparationStore.joinPublicWorkInTransaction(client, {
-          order_id,
-          order_tenant_scope_digest: input.order_tenant_scope_digest,
-          work_key: input.work_key,
-          now_ms: input.now_ms,
-        });
-        if (join.kind !== "joined") {
-          throw new Error("serialization_retry");
-        }
-
-        // Fold only when another held envelope already exists for this work key.
-        // Never refund/zero the sole held envelope just because join reused work.
-        if (!join.created && queuedState === "held" && queuedQty > 0) {
-          const otherHeld = await client.query(
-            `SELECT reservation_id FROM admission_capacity_reservations
-             WHERE work_key_digest = $1
-               AND ledger_kind = 'queued_work'
-               AND state = 'held'
-               AND reservation_id <> $2
-             FOR UPDATE`,
-            [workKeyDigest, queuedRsv],
-          );
-          if (otherHeld.rows.length > 0) {
-            await client.query(
-              `UPDATE admission_capacity_pools
-               SET consumed_units = consumed_units - $2, version = version + 1
-               WHERE pool_id = $1`,
-              [queued.pool_id, queuedQty],
-            );
-            await client.query(
-              `UPDATE admission_capacity_reservations
-               SET state = 'transferred', quantity = 0, reservation_version = reservation_version + 1
-               WHERE reservation_id = $1`,
-              [queuedRsv],
-            );
-          }
-        }
-
-        await client.query(
-          `INSERT INTO order_admission_idempotency (
-            requester_subject, client_request_id, body_digest, order_id, reservation_ids, stored_at
-          ) VALUES ($1,$2,$3,$4,$5::jsonb,to_timestamp($6/1000.0))`,
-          [
-            input.requester_subject,
-            input.client_request_id,
-            body_digest,
-            order_id,
-            JSON.stringify(reservationIds),
-            input.now_ms,
-          ],
-        );
-
-        await client.query("COMMIT");
-        return {
-          kind: "admitted",
-          order: rowToOrder(orderInsert.rows[0]),
-          created: true,
-          work_created: join.created,
-          work_id: join.work.work_id,
-          reservation_ids: reservationIds,
-          replay: false,
-        };
-      } catch (err) {
-        await client.query("ROLLBACK");
-        if (err instanceof CapacityUnavailableError) {
-          return { kind: "capacity_unavailable", reason: err.reason };
-        }
-        if (shouldRetryAdmissionTxn(err)) {
-          throw new Error("serialization_retry");
-        }
-        throw err;
+      const reservationIds: string[] = [];
+      let queuedQty = 0;
+      let queuedState: "held" | "transferred" = "held";
+      if (heldEnvelope.rows.length > 0) {
+        queuedState = "transferred";
+        queuedQty = 0;
+      } else {
+        await this.consumePool(client, queued, input.certificate.capacity_weight, input.now_ms);
+        queuedQty = input.certificate.capacity_weight;
       }
+
+      const admissionRsv = `rsv_${randomUUID()}`;
+      const queuedRsv = `rsv_${randomUUID()}`;
+      reservationIds.push(admissionRsv, queuedRsv);
+
+      const identity = (ledger: CapacityLedgerKind, poolId: string, qty: number) =>
+        createHash("sha256")
+          .update(
+            JSON.stringify({
+              order_id,
+              ledger_kind: ledger,
+              pool_id: poolId,
+              quantity: qty,
+              work_key_digest: workKeyDigest,
+            }),
+          )
+          .digest("hex");
+
+      const ts = Math.floor(input.now_ms / 1000);
+      const placedEvent: OrderPlaced = {
+        order_id,
+        product: input.order.product,
+        inputs_digest: input.order.inputs_digest,
+      };
+      const orderInsert = await client.query(
+        `INSERT INTO orders (
+          order_id, product, placed_by, inputs, inputs_digest, state,
+          placed_at_unix, created_at_unix, updated_at_unix, ingredients,
+          ingredient_jobs, operator_audit
+        ) VALUES ($1,$2,$3,$4,$5,'placed',$6,$7,$7,$8,'[]'::jsonb,'[]'::jsonb)
+        RETURNING *`,
+        [
+          order_id,
+          input.order.product,
+          input.order.placed_by,
+          JSON.stringify(input.order.inputs),
+          input.order.inputs_digest,
+          input.order.placed_at_unix,
+          ts,
+          null,
+        ],
+      );
+      await client.query(
+        `INSERT INTO order_outbox (order_id, subject, payload, published)
+         VALUES ($1,$2,$3,FALSE)`,
+        [order_id, ORDER_LIFECYCLE_SUBJECTS.placed, JSON.stringify(placedEvent)],
+      );
+
+      await client.query(
+        `INSERT INTO admission_capacity_reservations (
+          reservation_id, order_id, pool_id, ledger_kind, quantity,
+          reservation_version, state, identity_digest, work_key_digest, created_at
+        ) VALUES
+          ($1,$2,$3,'admission_rate',1,1,'held',$4,NULL,to_timestamp($7/1000.0)),
+          ($5,$2,$6,'queued_work',$8,1,$9,$10,$11,to_timestamp($7/1000.0))`,
+        [
+          admissionRsv,
+          order_id,
+          admission.pool_id,
+          identity("admission_rate", admission.pool_id, 1),
+          queuedRsv,
+          queued.pool_id,
+          input.now_ms,
+          queuedQty,
+          queuedState,
+          identity("queued_work", queued.pool_id, queuedQty),
+          workKeyDigest,
+        ],
+      );
+      await client.query(
+        `INSERT INTO admission_capacity_transfer_log (
+          event_id, reservation_id, from_state, to_state, reason, event_version, created_at
+        ) VALUES
+          ($1,$2,'held','held','created',1,to_timestamp($4/1000.0)),
+          ($3,$5,'held',$6,$7,1,to_timestamp($4/1000.0))`,
+        [
+          `cte_${randomUUID()}`,
+          admissionRsv,
+          `cte_${randomUUID()}`,
+          input.now_ms,
+          queuedRsv,
+          queuedState,
+          queuedState === "transferred" ? "fan_in_share_envelope" : "created",
+        ],
+      );
+
+      const join = await this.preparationStore.joinPublicWorkInTransaction(client, {
+        order_id,
+        order_tenant_scope_digest: input.order_tenant_scope_digest,
+        work_key: input.work_key,
+        now_ms: input.now_ms,
+      });
+      if (join.kind !== "joined") {
+        throw new Error("serialization_retry");
+      }
+
+      // Fold only when another held envelope already exists for this work key.
+      if (!join.created && queuedState === "held" && queuedQty > 0) {
+        const otherHeld = await client.query(
+          `SELECT reservation_id FROM admission_capacity_reservations
+           WHERE work_key_digest = $1
+             AND ledger_kind = 'queued_work'
+             AND state = 'held'
+             AND reservation_id <> $2
+           FOR UPDATE`,
+          [workKeyDigest, queuedRsv],
+        );
+        if (otherHeld.rows.length > 0) {
+          await client.query(
+            `UPDATE admission_capacity_pools
+             SET consumed_units = consumed_units - $2, version = version + 1
+             WHERE pool_id = $1`,
+            [queued.pool_id, queuedQty],
+          );
+          await client.query(
+            `UPDATE admission_capacity_reservations
+             SET state = 'transferred', quantity = 0, reservation_version = reservation_version + 1
+             WHERE reservation_id = $1`,
+            [queuedRsv],
+          );
+        }
+      }
+
+      await client.query(
+        `INSERT INTO order_admission_idempotency (
+          requester_subject, client_request_id, body_digest, order_id, reservation_ids, stored_at
+        ) VALUES ($1,$2,$3,$4,$5::jsonb,to_timestamp($6/1000.0))`,
+        [
+          input.requester_subject,
+          input.client_request_id,
+          body_digest,
+          order_id,
+          JSON.stringify(reservationIds),
+          input.now_ms,
+        ],
+      );
+
+      await commit();
+      return {
+        kind: "admitted",
+        order: rowToOrder(orderInsert.rows[0]),
+        created: true,
+        work_created: join.created,
+        work_id: join.work.work_id,
+        reservation_ids: reservationIds,
+        replay: false,
+      };
+    } catch (err) {
+      if (!txnClosed) {
+        await rollback();
+      }
+      if (err instanceof CapacityUnavailableError) {
+        return { kind: "capacity_unavailable", reason: err.reason };
+      }
+      if (shouldRetryAdmissionTxn(err)) {
+        throw new Error("serialization_retry");
+      }
+      throw err;
     } finally {
+      if (!txnClosed) {
+        await safeRollback(client);
+      }
       client.release();
     }
   }
@@ -587,58 +654,66 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     | { readonly kind: "capacity_unavailable"; readonly reason: string }
     | { readonly kind: "order_not_found" }
   > {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-      const order = await client.query("SELECT order_id FROM orders WHERE order_id = $1", [
-        input.order_id,
-      ]);
-      if (order.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { kind: "order_not_found" };
-      }
-      const active = await this.lockOrCreatePool(client, {
-        ledger_kind: "active_execution",
-        ...input.pool_scope,
-        limit_units: this.defaults.active_execution,
-        now_ms: input.now_ms,
-      });
-      const quantity = input.quantity ?? 1;
+    return this.withSerializableRetry(async () => {
+      const client = await this.pool.connect();
+      let txnClosed = false;
       try {
-        await this.consumePool(client, active, quantity, input.now_ms);
-      } catch (err) {
-        await client.query("ROLLBACK");
-        if (err instanceof CapacityUnavailableError) {
-          return { kind: "capacity_unavailable", reason: err.reason };
-        }
-        throw err;
-      }
-      const reservation_id = `rsv_${randomUUID()}`;
-      const leaseUntil = input.now_ms + (input.lease_duration_ms ?? ACTIVE_EXECUTION_LEASE_MS);
-      const inserted = await client.query(
-        `INSERT INTO admission_capacity_reservations (
-          reservation_id, order_id, pool_id, ledger_kind, quantity,
-          reservation_version, state, identity_digest, lease_until, created_at
-        ) VALUES ($1,$2,$3,'active_execution',$4,1,'held',$5,to_timestamp($6/1000.0),to_timestamp($7/1000.0))
-        RETURNING *`,
-        [
-          reservation_id,
+        await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        const order = await client.query("SELECT order_id FROM orders WHERE order_id = $1", [
           input.order_id,
-          active.pool_id,
-          quantity,
-          createHash("sha256").update(`${input.order_id}:active:${quantity}`).digest("hex"),
-          leaseUntil,
-          input.now_ms,
-        ],
-      );
-      await client.query("COMMIT");
-      return { kind: "acquired", reservation: rowToReservation(inserted.rows[0]) };
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+        ]);
+        if (order.rows.length === 0) {
+          await safeRollback(client);
+          txnClosed = true;
+          return { kind: "order_not_found" as const };
+        }
+        const active = await this.lockOrCreatePool(client, {
+          ledger_kind: "active_execution",
+          ...input.pool_scope,
+          limit_units: this.defaults.active_execution,
+          now_ms: input.now_ms,
+        });
+        const quantity = input.quantity ?? 1;
+        try {
+          await this.consumePool(client, active, quantity, input.now_ms);
+        } catch (err) {
+          await safeRollback(client);
+          txnClosed = true;
+          if (err instanceof CapacityUnavailableError) {
+            return { kind: "capacity_unavailable" as const, reason: err.reason };
+          }
+          throw err;
+        }
+        const reservation_id = `rsv_${randomUUID()}`;
+        const leaseUntil = input.now_ms + (input.lease_duration_ms ?? ACTIVE_EXECUTION_LEASE_MS);
+        const inserted = await client.query(
+          `INSERT INTO admission_capacity_reservations (
+            reservation_id, order_id, pool_id, ledger_kind, quantity,
+            reservation_version, state, identity_digest, lease_until, created_at
+          ) VALUES ($1,$2,$3,'active_execution',$4,1,'held',$5,to_timestamp($6/1000.0),to_timestamp($7/1000.0))
+          RETURNING *`,
+          [
+            reservation_id,
+            input.order_id,
+            active.pool_id,
+            quantity,
+            createHash("sha256").update(`${input.order_id}:active:${quantity}`).digest("hex"),
+            leaseUntil,
+            input.now_ms,
+          ],
+        );
+        await client.query("COMMIT");
+        txnClosed = true;
+        return { kind: "acquired" as const, reservation: rowToReservation(inserted.rows[0]) };
+      } catch (err) {
+        if (!txnClosed) await safeRollback(client);
+        txnClosed = true;
+        throw err;
+      } finally {
+        if (!txnClosed) await safeRollback(client);
+        client.release();
+      }
+    });
   }
 
   /**
@@ -754,76 +829,86 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     | { readonly kind: "version_mismatch" }
     | { readonly kind: "not_found" }
   > {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-      const res = await client.query(
-        `SELECT * FROM admission_capacity_reservations WHERE reservation_id = $1 FOR UPDATE`,
-        [input.reservation_id],
-      );
-      if (res.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return { kind: "not_found" };
-      }
-      const row = rowToReservation(res.rows[0]);
-      if (row.state !== "held" && row.state !== "transferred") {
-        await client.query("COMMIT");
-        return { kind: "already_released", reservation: row };
-      }
-      if (row.reservation_version !== input.expected_version) {
-        await client.query("ROLLBACK");
-        return { kind: "version_mismatch" };
-      }
-
-      if (row.ledger_kind === "queued_work" && row.work_key_digest) {
-        const released = await this.releaseQueuedEnvelopeOnClient(
-          client,
-          row,
-          input.reason,
-          input.now_ms,
+    return this.withSerializableRetry(async () => {
+      const client = await this.pool.connect();
+      let txnClosed = false;
+      try {
+        await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        const res = await client.query(
+          `SELECT * FROM admission_capacity_reservations WHERE reservation_id = $1 FOR UPDATE`,
+          [input.reservation_id],
         );
-        await client.query("COMMIT");
-        return { kind: "released", reservation: released };
-      }
+        if (res.rows.length === 0) {
+          await safeRollback(client);
+          txnClosed = true;
+          return { kind: "not_found" as const };
+        }
+        const row = rowToReservation(res.rows[0]);
+        if (row.state !== "held" && row.state !== "transferred") {
+          await client.query("COMMIT");
+          txnClosed = true;
+          return { kind: "already_released" as const, reservation: row };
+        }
+        if (row.reservation_version !== input.expected_version) {
+          await safeRollback(client);
+          txnClosed = true;
+          return { kind: "version_mismatch" as const };
+        }
 
-      if (row.quantity > 0 && row.state === "held") {
+        if (row.ledger_kind === "queued_work" && row.work_key_digest) {
+          const released = await this.releaseQueuedEnvelopeOnClient(
+            client,
+            row,
+            input.reason,
+            input.now_ms,
+          );
+          await client.query("COMMIT");
+          txnClosed = true;
+          return { kind: "released" as const, reservation: released };
+        }
+
+        if (row.quantity > 0 && row.state === "held") {
+          await client.query(
+            `UPDATE admission_capacity_pools
+             SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
+             WHERE pool_id = $1`,
+            [row.pool_id, row.quantity],
+          );
+        }
+        const updated = await client.query(
+          `UPDATE admission_capacity_reservations
+           SET state = 'released',
+               reservation_version = reservation_version + 1,
+               released_at = to_timestamp($2/1000.0)
+           WHERE reservation_id = $1
+           RETURNING *`,
+          [input.reservation_id, input.now_ms],
+        );
         await client.query(
-          `UPDATE admission_capacity_pools
-           SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
-           WHERE pool_id = $1`,
-          [row.pool_id, row.quantity],
+          `INSERT INTO admission_capacity_transfer_log (
+            event_id, reservation_id, from_state, to_state, reason, event_version, created_at
+          ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
+          [
+            `cte_${randomUUID()}`,
+            input.reservation_id,
+            row.state,
+            input.reason,
+            row.reservation_version + 1,
+            input.now_ms,
+          ],
         );
+        await client.query("COMMIT");
+        txnClosed = true;
+        return { kind: "released" as const, reservation: rowToReservation(updated.rows[0]) };
+      } catch (err) {
+        if (!txnClosed) await safeRollback(client);
+        txnClosed = true;
+        throw err;
+      } finally {
+        if (!txnClosed) await safeRollback(client);
+        client.release();
       }
-      const updated = await client.query(
-        `UPDATE admission_capacity_reservations
-         SET state = 'released',
-             reservation_version = reservation_version + 1,
-             released_at = to_timestamp($2/1000.0)
-         WHERE reservation_id = $1
-         RETURNING *`,
-        [input.reservation_id, input.now_ms],
-      );
-      await client.query(
-        `INSERT INTO admission_capacity_transfer_log (
-          event_id, reservation_id, from_state, to_state, reason, event_version, created_at
-        ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
-        [
-          `cte_${randomUUID()}`,
-          input.reservation_id,
-          row.state,
-          input.reason,
-          row.reservation_version + 1,
-          input.now_ms,
-        ],
-      );
-      await client.query("COMMIT");
-      return { kind: "released", reservation: rowToReservation(updated.rows[0]) };
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   }
 
   async releaseOrderCapacity(input: {
@@ -837,85 +922,98 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
      * - queued_work: free shared envelope only when last subscriber leaves;
      *   otherwise reassign held envelope ownership and leave pool units consumed
      */
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-      const rows = await client.query(
-        `SELECT * FROM admission_capacity_reservations
-         WHERE order_id = $1 AND state IN ('held', 'transferred')
-         FOR UPDATE`,
-        [input.order_id],
-      );
-      let released = 0;
-
-      const markReleased = async (
-        reservationId: string,
-        fromState: string,
-        version: number,
-      ) => {
-        await client.query(
-          `UPDATE admission_capacity_reservations
-           SET state = 'released',
-               reservation_version = reservation_version + 1,
-               released_at = to_timestamp($2/1000.0)
-           WHERE reservation_id = $1`,
-          [reservationId, input.now_ms],
+    return this.withSerializableRetry(async () => {
+      const client = await this.pool.connect();
+      let txnClosed = false;
+      try {
+        await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        const rows = await client.query(
+          `SELECT * FROM admission_capacity_reservations
+           WHERE order_id = $1 AND state IN ('held', 'transferred')
+           FOR UPDATE`,
+          [input.order_id],
         );
-        await client.query(
-          `INSERT INTO admission_capacity_transfer_log (
-            event_id, reservation_id, from_state, to_state, reason, event_version, created_at
-          ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
-          [
-            `cte_${randomUUID()}`,
-            reservationId,
-            fromState,
-            input.reason,
-            version + 1,
-            input.now_ms,
-          ],
-        );
-      };
+        let released = 0;
 
-      for (const raw of rows.rows) {
-        const row = rowToReservation(raw);
-
-        if (row.ledger_kind === "queued_work" && row.work_key_digest) {
-          const others = await client.query(
-            `SELECT reservation_id, quantity, state FROM admission_capacity_reservations
-             WHERE work_key_digest = $1
-               AND ledger_kind = 'queued_work'
-               AND order_id <> $2
-               AND state IN ('held', 'transferred')
-               AND reservation_id <> $3
-             FOR UPDATE`,
-            [row.work_key_digest, input.order_id, row.reservation_id],
+        const markReleased = async (
+          reservationId: string,
+          fromState: string,
+          version: number,
+        ) => {
+          await client.query(
+            `UPDATE admission_capacity_reservations
+             SET state = 'released',
+                 reservation_version = reservation_version + 1,
+                 released_at = to_timestamp($2/1000.0)
+             WHERE reservation_id = $1`,
+            [reservationId, input.now_ms],
           );
+          await client.query(
+            `INSERT INTO admission_capacity_transfer_log (
+              event_id, reservation_id, from_state, to_state, reason, event_version, created_at
+            ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
+            [
+              `cte_${randomUUID()}`,
+              reservationId,
+              fromState,
+              input.reason,
+              version + 1,
+              input.now_ms,
+            ],
+          );
+        };
 
-          if (others.rows.length > 0) {
-            // Shared envelope remains — do not free pool units.
-            if (row.state === "held" && row.quantity > 0) {
-              const peer = others.rows[0]!;
-              const envelopeQty = row.quantity;
-              // Demote owner first so unique held-work-key index allows peer promote.
+        for (const raw of rows.rows) {
+          const row = rowToReservation(raw);
+
+          if (row.ledger_kind === "queued_work" && row.work_key_digest) {
+            const others = await client.query(
+              `SELECT reservation_id, quantity, state FROM admission_capacity_reservations
+               WHERE work_key_digest = $1
+                 AND ledger_kind = 'queued_work'
+                 AND order_id <> $2
+                 AND state IN ('held', 'transferred')
+                 AND reservation_id <> $3
+               FOR UPDATE`,
+              [row.work_key_digest, input.order_id, row.reservation_id],
+            );
+
+            if (others.rows.length > 0) {
+              if (row.state === "held" && row.quantity > 0) {
+                const peer = others.rows[0]!;
+                const envelopeQty = row.quantity;
+                await client.query(
+                  `UPDATE admission_capacity_reservations
+                   SET state = 'transferred',
+                       quantity = 0,
+                       reservation_version = reservation_version + 1
+                   WHERE reservation_id = $1`,
+                  [row.reservation_id],
+                );
+                await client.query(
+                  `UPDATE admission_capacity_reservations
+                   SET state = 'held',
+                       quantity = $2,
+                       reservation_version = reservation_version + 1
+                   WHERE reservation_id = $1`,
+                  [peer.reservation_id, envelopeQty],
+                );
+              }
+            } else if (row.quantity > 0) {
               await client.query(
-                `UPDATE admission_capacity_reservations
-                 SET state = 'transferred',
-                     quantity = 0,
-                     reservation_version = reservation_version + 1
-                 WHERE reservation_id = $1`,
-                [row.reservation_id],
-              );
-              await client.query(
-                `UPDATE admission_capacity_reservations
-                 SET state = 'held',
-                     quantity = $2,
-                     reservation_version = reservation_version + 1
-                 WHERE reservation_id = $1`,
-                [peer.reservation_id, envelopeQty],
+                `UPDATE admission_capacity_pools
+                 SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
+                 WHERE pool_id = $1`,
+                [row.pool_id, row.quantity],
               );
             }
-          } else if (row.quantity > 0) {
-            // Last subscriber owns the envelope — free pool units exactly once.
+
+            await markReleased(row.reservation_id, row.state, row.reservation_version);
+            released += 1;
+            continue;
+          }
+
+          if (row.state === "held" && row.quantity > 0) {
             await client.query(
               `UPDATE admission_capacity_pools
                SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
@@ -923,75 +1021,68 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
               [row.pool_id, row.quantity],
             );
           }
-          // Last subscriber with only a transferred marker (qty 0): units already
-          // live on a held peer that was released in the same order's batch, or
-          // ownership was moved onto this row earlier — if still qty 0, nothing to free.
-
           await markReleased(row.reservation_id, row.state, row.reservation_version);
           released += 1;
-          continue;
         }
-
-        if (row.state === "held" && row.quantity > 0) {
-          await client.query(
-            `UPDATE admission_capacity_pools
-             SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
-             WHERE pool_id = $1`,
-            [row.pool_id, row.quantity],
-          );
-        }
-        await markReleased(row.reservation_id, row.state, row.reservation_version);
-        released += 1;
+        await client.query("COMMIT");
+        txnClosed = true;
+        return { released };
+      } catch (err) {
+        if (!txnClosed) await safeRollback(client);
+        txnClosed = true;
+        throw err;
+      } finally {
+        if (!txnClosed) await safeRollback(client);
+        client.release();
       }
-      await client.query("COMMIT");
-      return { released };
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   }
 
   async reconcileExpiredActiveLeases(input: {
     now_ms: number;
   }): Promise<{ readonly expired: number }> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-      const expired = await client.query(
-        `SELECT * FROM admission_capacity_reservations
-         WHERE state = 'held' AND ledger_kind = 'active_execution'
-           AND lease_until IS NOT NULL AND lease_until <= to_timestamp($1/1000.0)
-         FOR UPDATE`,
-        [input.now_ms],
-      );
-      for (const row of expired.rows) {
-        if (Number(row.quantity) > 0) {
+    return this.withSerializableRetry(async () => {
+      const client = await this.pool.connect();
+      let txnClosed = false;
+      try {
+        await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        const expired = await client.query(
+          `SELECT * FROM admission_capacity_reservations
+           WHERE state = 'held' AND ledger_kind = 'active_execution'
+             AND lease_until IS NOT NULL AND lease_until <= to_timestamp($1/1000.0)
+           FOR UPDATE`,
+          [input.now_ms],
+        );
+        for (const row of expired.rows) {
+          if (Number(row.quantity) > 0) {
+            await client.query(
+              `UPDATE admission_capacity_pools
+               SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
+               WHERE pool_id = $1`,
+              [row.pool_id, row.quantity],
+            );
+          }
           await client.query(
-            `UPDATE admission_capacity_pools
-             SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
-             WHERE pool_id = $1`,
-            [row.pool_id, row.quantity],
+            `UPDATE admission_capacity_reservations
+             SET state = 'expired',
+                 reservation_version = reservation_version + 1,
+                 released_at = to_timestamp($2/1000.0)
+             WHERE reservation_id = $1`,
+            [row.reservation_id, input.now_ms],
           );
         }
-        await client.query(
-          `UPDATE admission_capacity_reservations
-           SET state = 'expired',
-               reservation_version = reservation_version + 1,
-               released_at = to_timestamp($2/1000.0)
-           WHERE reservation_id = $1`,
-          [row.reservation_id, input.now_ms],
-        );
+        await client.query("COMMIT");
+        txnClosed = true;
+        return { expired: expired.rows.length };
+      } catch (err) {
+        if (!txnClosed) await safeRollback(client);
+        txnClosed = true;
+        throw err;
+      } finally {
+        if (!txnClosed) await safeRollback(client);
+        client.release();
       }
-      await client.query("COMMIT");
-      return { expired: expired.rows.length };
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   }
 
   async snapshotAccounting(): Promise<{
