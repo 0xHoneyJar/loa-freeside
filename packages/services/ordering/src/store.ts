@@ -187,6 +187,21 @@ export class InMemoryOrderStore implements OrderStore {
     return { created: true, record };
   }
 
+  /**
+   * CR-201C admission txn rollback: remove a just-placed order + its outbox rows.
+   * Not part of OrderStore — only the in-memory backend exposes this for
+   * compensating a failed join/capacity txn.
+   */
+  removePlacedOrder(orderId: string): boolean {
+    const existed = this.orders.delete(orderId);
+    for (let i = this.outbox.length - 1; i >= 0; i -= 1) {
+      if (this.outbox[i]!.order_id === orderId) {
+        this.outbox.splice(i, 1);
+      }
+    }
+    return existed;
+  }
+
   async get(orderId: string): Promise<OrderRecord | undefined> {
     return this.orders.get(orderId);
   }

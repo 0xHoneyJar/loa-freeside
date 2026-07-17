@@ -225,6 +225,28 @@ describe("CR-201C admission capacity store", () => {
     expect(accounting.queued_work.consumed).toBe(0);
   });
 
+  it("join failure rolls back capacity and leaves no orphan order", async () => {
+    const orderStore = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+    const preparationStore = new InMemorySharedPreparationStore();
+    preparationStore.joinPublicWork = async () => ({ kind: "serialization_retry" });
+    const capacity = new InMemoryAdmissionCapacityStore({
+      orderStore,
+      preparationStore,
+    });
+
+    const denied = await capacity.admitOrder(admitInput({ client_request_id: "join-fail" }));
+    expect(denied.kind).toBe("capacity_unavailable");
+    if (denied.kind === "capacity_unavailable") {
+      expect(denied.reason).toBe("lock_timeout");
+    }
+
+    expect(await orderStore.listByState("placed")).toHaveLength(0);
+    expect(await capacity.getIdempotency("subject-alice", "join-fail")).toBeUndefined();
+    const accounting = await capacity.snapshotAccounting();
+    expect(accounting.admission_rate.consumed).toBe(0);
+    expect(accounting.queued_work.consumed).toBe(0);
+  });
+
   it("cancel after fan-in does not strand or double-spend the shared envelope", async () => {
     const { capacity } = makeStore();
     const a = await capacity.admitOrder(admitInput({ client_request_id: "fan-a" }));

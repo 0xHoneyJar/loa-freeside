@@ -1,13 +1,17 @@
 -- CR-201C expand: atomic admission capacity reservation (three ledgers).
 -- Expand-only: no destructive DDL. No separate pre-admission reservation state —
 -- capacity consumption commits in the same transaction as order + work links.
+--
+-- Fan-in markers use state='transferred' with quantity=0 (no pool units).
+-- Held envelopes keep quantity > 0. Public pool scope uses community_ref=''
+-- (NOT NULL) so UNIQUE cannot admit duplicate NULL-scoped rows.
 
 CREATE TABLE IF NOT EXISTS admission_capacity_pools (
   pool_id           TEXT PRIMARY KEY,
   ledger_kind       TEXT NOT NULL,
   network_ref       TEXT NOT NULL DEFAULT '',
   capability        TEXT NOT NULL DEFAULT '',
-  community_ref     TEXT,
+  community_ref     TEXT NOT NULL DEFAULT '',
   limit_units       BIGINT NOT NULL,
   consumed_units    BIGINT NOT NULL DEFAULT 0,
   version           BIGINT NOT NULL DEFAULT 0,
@@ -45,16 +49,25 @@ CREATE TABLE IF NOT EXISTS admission_capacity_reservations (
   CONSTRAINT admission_capacity_reservations_state_check CHECK (
     state IN ('held', 'released', 'transferred', 'expired')
   ),
-  CONSTRAINT admission_capacity_reservations_qty_positive CHECK (quantity > 0)
+  -- Fan-in markers are quantity=0 + state=transferred; held envelopes quantity>0.
+  CONSTRAINT admission_capacity_reservations_qty_nonneg CHECK (quantity >= 0),
+  CONSTRAINT admission_capacity_reservations_held_qty_check CHECK (
+    state <> 'held' OR quantity > 0
+  )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS admission_capacity_reservations_order_ledger_held_idx
   ON admission_capacity_reservations (order_id, ledger_kind)
   WHERE state = 'held' AND ledger_kind IN ('admission_rate', 'queued_work');
 
-CREATE INDEX IF NOT EXISTS admission_capacity_reservations_work_held_idx
+-- At most one held queued envelope per work key (fan-in shares it).
+CREATE UNIQUE INDEX IF NOT EXISTS admission_capacity_reservations_work_held_unique_idx
   ON admission_capacity_reservations (work_key_digest)
-  WHERE state = 'held' AND ledger_kind = 'queued_work';
+  WHERE state = 'held' AND ledger_kind = 'queued_work' AND work_key_digest IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS admission_capacity_reservations_work_active_idx
+  ON admission_capacity_reservations (work_key_digest)
+  WHERE state IN ('held', 'transferred') AND ledger_kind = 'queued_work';
 
 CREATE INDEX IF NOT EXISTS admission_capacity_reservations_lease_idx
   ON admission_capacity_reservations (lease_until)

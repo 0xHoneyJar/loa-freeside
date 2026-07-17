@@ -37,6 +37,7 @@ import {
 import { assertCertificateAdmissible } from "./recipe-expansion-certificate.js";
 import { digestOf } from "./digest.js";
 import type { NewOrder, OrderRecord, OrderStore, OutboxEvent } from "./store.js";
+import { InMemoryOrderStore } from "./store.js";
 import type {
   JoinPublicWorkResult,
   SharedPreparationStore,
@@ -570,22 +571,9 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
           });
           createdReservationIds.push(admissionReservation.reservation_id);
 
-          const placedEvent: OrderPlaced = {
-            order_id,
-            product: input.order.product,
-            inputs_digest: input.order.inputs_digest,
-          };
-          const placed = await this.orderStore.placeOrder(
-            {
-              ...input.order,
-              order_id,
-            },
-            {
-              subject: ORDER_LIFECYCLE_SUBJECTS.placed,
-              payload: placedEvent,
-            } satisfies OutboxEvent,
-          );
-
+          // Join before placeOrder so a failed join never leaves an orphan order.
+          // (Postgres FK requires order-first inside one SERIALIZABLE txn; in-memory
+          // has no FK — join-then-place keeps the logical txn atomic.)
           const join: JoinPublicWorkResult = await this.preparationStore.joinPublicWork({
             order_id,
             order_tenant_scope_digest: input.order_tenant_scope_digest,
@@ -626,29 +614,62 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
             queuedReservation.quantity = 0;
           }
 
-          const reservation_ids = [
-            admissionReservation.reservation_id,
-            queuedReservation.reservation_id,
-          ];
-
-          this.idempotency.set(idemKey, {
-            requester_subject: input.requester_subject,
-            client_request_id: input.client_request_id,
-            body_digest,
+          const placedEvent: OrderPlaced = {
             order_id,
-            reservation_ids,
-            stored_at_unix_ms: input.now_ms,
-          });
-
-          return {
-            kind: "admitted",
-            order: placed.record,
-            created: placed.created,
-            work_created: join.created,
-            work_id: join.work.work_id,
-            reservation_ids,
-            replay: false,
+            product: input.order.product,
+            inputs_digest: input.order.inputs_digest,
           };
+          let placedOrderId: string | undefined;
+          try {
+            const placed = await this.orderStore.placeOrder(
+              {
+                ...input.order,
+                order_id,
+              },
+              {
+                subject: ORDER_LIFECYCLE_SUBJECTS.placed,
+                payload: placedEvent,
+              } satisfies OutboxEvent,
+            );
+            placedOrderId = placed.record.order_id;
+
+            const reservation_ids = [
+              admissionReservation.reservation_id,
+              queuedReservation.reservation_id,
+            ];
+
+            this.idempotency.set(idemKey, {
+              requester_subject: input.requester_subject,
+              client_request_id: input.client_request_id,
+              body_digest,
+              order_id,
+              reservation_ids,
+              stored_at_unix_ms: input.now_ms,
+            });
+
+            return {
+              kind: "admitted",
+              order: placed.record,
+              created: placed.created,
+              work_created: join.created,
+              work_id: join.work.work_id,
+              reservation_ids,
+              replay: false,
+            };
+          } catch (placeErr) {
+            if (
+              placedOrderId &&
+              this.orderStore instanceof InMemoryOrderStore
+            ) {
+              this.orderStore.removePlacedOrder(placedOrderId);
+            }
+            await this.preparationStore.detachSubscriber({
+              order_id,
+              work_id: join.work.work_id,
+              now_ms: input.now_ms,
+            });
+            throw placeErr;
+          }
         } catch (err) {
           // Roll back — no reservation/order survives a rejected or aborted txn.
           pools.admission.consumed_units = snap.admission;
@@ -662,6 +683,10 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
           }
           for (const id of createdReservationIds) {
             this.reservations.delete(id);
+          }
+          // Compensating delete if placeOrder succeeded then a later step failed.
+          if (this.orderStore instanceof InMemoryOrderStore) {
+            this.orderStore.removePlacedOrder(order_id);
           }
           if (err instanceof CapacityUnavailableError) {
             return { kind: "capacity_unavailable", reason: err.reason };

@@ -158,12 +158,14 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     client: pg.PoolClient,
     input: EnsurePoolInput & { now_ms: number },
   ): Promise<CapacityPoolRecord> {
+    // Sentinel '' for public/default scope — UNIQUE forbids duplicate NULL rows.
+    const communityRef = input.community_ref ?? "";
     const existing = await client.query(
       `SELECT * FROM admission_capacity_pools
        WHERE ledger_kind = $1 AND network_ref = $2 AND capability = $3
-         AND community_ref IS NOT DISTINCT FROM $4
+         AND community_ref = $4
        FOR UPDATE`,
-      [input.ledger_kind, input.network_ref, input.capability, input.community_ref ?? null],
+      [input.ledger_kind, input.network_ref, input.capability, communityRef],
     );
     if (existing.rows.length > 0) return rowToPool(existing.rows[0]);
     const pool_id = `cap_${input.ledger_kind}_${randomUUID()}`;
@@ -178,7 +180,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         input.ledger_kind,
         input.network_ref,
         input.capability,
-        input.community_ref ?? null,
+        communityRef,
         input.limit_units,
         input.now_ms,
       ],
@@ -691,18 +693,126 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     reason: "fulfilled" | "terminal_failure" | "cancelled" | "abandoned";
     now_ms: number;
   }): Promise<{ readonly released: number }> {
-    const held = await this.listHeldReservations(input.order_id);
-    let released = 0;
-    for (const r of held) {
-      const result = await this.releaseReservation({
-        reservation_id: r.reservation_id,
-        expected_version: r.reservation_version,
-        reason: input.reason,
-        now_ms: input.now_ms,
-      });
-      if (result.kind === "released") released += 1;
+    /**
+     * Fan-in-aware release (matches in-memory):
+     * - admission_rate / active_execution: free units when held
+     * - queued_work: free shared envelope only when last subscriber leaves;
+     *   otherwise reassign held envelope ownership and leave pool units consumed
+     */
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+      const rows = await client.query(
+        `SELECT * FROM admission_capacity_reservations
+         WHERE order_id = $1 AND state IN ('held', 'transferred')
+         FOR UPDATE`,
+        [input.order_id],
+      );
+      let released = 0;
+
+      const markReleased = async (
+        reservationId: string,
+        fromState: string,
+        version: number,
+      ) => {
+        await client.query(
+          `UPDATE admission_capacity_reservations
+           SET state = 'released',
+               reservation_version = reservation_version + 1,
+               released_at = to_timestamp($2/1000.0)
+           WHERE reservation_id = $1`,
+          [reservationId, input.now_ms],
+        );
+        await client.query(
+          `INSERT INTO admission_capacity_transfer_log (
+            event_id, reservation_id, from_state, to_state, reason, event_version, created_at
+          ) VALUES ($1,$2,$3,'released',$4,$5,to_timestamp($6/1000.0))`,
+          [
+            `cte_${randomUUID()}`,
+            reservationId,
+            fromState,
+            input.reason,
+            version + 1,
+            input.now_ms,
+          ],
+        );
+      };
+
+      for (const raw of rows.rows) {
+        const row = rowToReservation(raw);
+
+        if (row.ledger_kind === "queued_work" && row.work_key_digest) {
+          const others = await client.query(
+            `SELECT reservation_id, quantity, state FROM admission_capacity_reservations
+             WHERE work_key_digest = $1
+               AND ledger_kind = 'queued_work'
+               AND order_id <> $2
+               AND state IN ('held', 'transferred')
+               AND reservation_id <> $3
+             FOR UPDATE`,
+            [row.work_key_digest, input.order_id, row.reservation_id],
+          );
+
+          if (others.rows.length > 0) {
+            // Shared envelope remains — do not free pool units.
+            if (row.state === "held" && row.quantity > 0) {
+              const peer = others.rows[0]!;
+              const envelopeQty = row.quantity;
+              // Demote owner first so unique held-work-key index allows peer promote.
+              await client.query(
+                `UPDATE admission_capacity_reservations
+                 SET state = 'transferred',
+                     quantity = 0,
+                     reservation_version = reservation_version + 1
+                 WHERE reservation_id = $1`,
+                [row.reservation_id],
+              );
+              await client.query(
+                `UPDATE admission_capacity_reservations
+                 SET state = 'held',
+                     quantity = $2,
+                     reservation_version = reservation_version + 1
+                 WHERE reservation_id = $1`,
+                [peer.reservation_id, envelopeQty],
+              );
+            }
+          } else if (row.quantity > 0) {
+            // Last subscriber owns the envelope — free pool units exactly once.
+            await client.query(
+              `UPDATE admission_capacity_pools
+               SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
+               WHERE pool_id = $1`,
+              [row.pool_id, row.quantity],
+            );
+          }
+          // Last subscriber with only a transferred marker (qty 0): units already
+          // live on a held peer that was released in the same order's batch, or
+          // ownership was moved onto this row earlier — if still qty 0, nothing to free.
+
+          await markReleased(row.reservation_id, row.state, row.reservation_version);
+          released += 1;
+          continue;
+        }
+
+        if (row.state === "held" && row.quantity > 0) {
+          await client.query(
+            `UPDATE admission_capacity_pools
+             SET consumed_units = GREATEST(0, consumed_units - $2), version = version + 1
+             WHERE pool_id = $1`,
+            [row.pool_id, row.quantity],
+          );
+        }
+        await markReleased(row.reservation_id, row.state, row.reservation_version);
+        released += 1;
+      }
+      await client.query("COMMIT");
+      return { released };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
-    return { released };
   }
 
   async reconcileExpiredActiveLeases(input: {
