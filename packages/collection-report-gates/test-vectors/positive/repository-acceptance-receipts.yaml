@@ -1,0 +1,24 @@
+schema_version: 1
+receipts:
+  - task_id: ACCEPT-LOA
+    repository: 0xHoneyJar/loa-freeside
+    owner: platform-deployment-owner
+    reviewed_commit: "1111111111111111111111111111111111111111"
+    artifact_uri: https://github.com/0xHoneyJar/loa-freeside/tree/1111111111111111111111111111111111111111
+    artifact_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    state: accepted
+    valid_from: 2026-07-15T00:00:00Z
+    valid_until: 2026-08-15T00:00:00Z
+    key_id: ed25519:e86fa3a9eb8489f93ecd49fc47d7a74ac99ea7324daf9b0d702e17e2afc157fd
+    signature: cJ0URrKSNt77Vzns5u0Y7qhhbhuR1B3uEEnzoH4DJEwlW_oXzJb0t2Bg37LTK9qlNiBgroDSf3kUPwckVCcGAA
+  - task_id: ACCEPT-SONAR
+    repository: 0xHoneyJar/sonar-api
+    owner: sonar-api-maintainer
+    reviewed_commit: "2222222222222222222222222222222222222222"
+    artifact_uri: https://github.com/0xHoneyJar/sonar-api/tree/2222222222222222222222222222222222222222
+    artifact_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    state: accepted
+    valid_from: 2026-07-15T00:00:00Z
+    valid_until: 2026-08-15T00:00:00Z
+    key_id: ed25519:342f9117389fc9c08a1a0238d45a90574f9458828e502263195692451313a724
+    signature: Xi3Wv6V-hKF6TINVA1j0pYEikwOw5jnRs2_EnOb4mWMVxr8GH3b6KN0li98Aj6LgWGCoRvXrUR0ju1gajPzYBA

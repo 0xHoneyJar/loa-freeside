@@ -1,0 +1,5 @@
+name: implicit-suffixed-id
+description: A bare CR-007 must never stand in for CR-007A and CR-007B.
+replace_task: CR-007A
+with_task: CR-007
+expected_code: IMPLICIT_SUFFIX

@@ -1,0 +1,10 @@
+schema_version: 1
+authorities:
+  - repository: 0xHoneyJar/loa-freeside
+    owner: platform-deployment-owner
+    key_id: ed25519:e86fa3a9eb8489f93ecd49fc47d7a74ac99ea7324daf9b0d702e17e2afc157fd
+    public_key: SO-_zEPJl7xVoIrxsBhPpOjEUhnY9vEgxE_AJYVXvTE
+  - repository: 0xHoneyJar/sonar-api
+    owner: sonar-api-maintainer
+    key_id: ed25519:342f9117389fc9c08a1a0238d45a90574f9458828e502263195692451313a724
+    public_key: Zb4uzk82ZZ1uAoPP5gH_aofmnDDVfP0TqFDwV9uVzrc
