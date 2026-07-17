@@ -1,0 +1,44 @@
+{
+  "name": "@freeside/dependency-ledger-protocol",
+  "version": "1.0.0",
+  "description": "CR-012A public Ordering reverse-dependency ledger, inbox closure, quarantine, and reconciliation contracts consumed with CR-009 trust envelopes and CR-013 intake gates.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "@freeside/signing-key-custody-protocol": "file:../signing-key-custody",
+    "@freeside/trust-envelope-protocol": "file:../trust-envelope"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "effect": "^3.21.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

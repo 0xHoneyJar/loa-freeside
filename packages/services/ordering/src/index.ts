@@ -220,3 +220,12 @@ export {
   sonarResolveProbeFromEnv,
 } from './sonar-resolve-probe-client.js';
 export { createCatalogResolveProbePort } from './catalog-resolve-probe.js';
+export {
+  InMemoryDependencyLedgerStore,
+  type DependencyLedgerStore,
+} from './dependency-ledger-store.js';
+export {
+  DependencyLedgerService,
+  createFixtureDependencyLedgerService,
+} from './dependency-ledger-service.js';
+export { mountDependencyLedgerRoutes } from './dependency-ledger-http.js';
