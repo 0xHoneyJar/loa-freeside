@@ -4,6 +4,9 @@ acceptance_scope: technical-boundaries-only
 human_ack: pending
 acceptance_effect: non_gating_conditional_record
 pending_independent_owner: true
+gating: false
+owner_approved: false
+blocks_release: true
 ---
 
 # ACCEPT-LOA — Conditional Technical Owner-Boundary Acceptance
@@ -588,12 +591,13 @@ git grep -n 'export const ProductId\|ProductId =' \
   "$BASE" -- packages/protocol/ordering/src/order.ts
 
 # Candidate-path inventory only. This includes extensionless and arbitrary-
-# extension filenames whose basename starts with CR-000 or contains both
-# "discord" and "policy". The canonical CR-000 path and schema are not
-# ratified, so zero matches is corroboration, never exhaustive absence proof.
+# extension paths containing CR-000; both "discord" and "policy" in either
+# order (including separate path segments); or both "discord" and "viability"
+# in either order. The canonical CR-000 path and schema are not ratified, so
+# zero matches is corroboration, never exhaustive absence proof.
 cr000_candidate_count="$(
   git ls-tree -r --name-only "$BASE" \
-    | rg -i '(^|/)(cr-000[^/]*|[^/]*discord[^/]*policy[^/]*)$' \
+    | rg -i 'cr-000|discord.*policy|policy.*discord|discord.*viability|viability.*discord' \
     | rg -v '(^|/)grimoires/loa/coordination/collection-report/owner-acceptance\.md$' \
     | wc -l \
     | tr -d ' '
