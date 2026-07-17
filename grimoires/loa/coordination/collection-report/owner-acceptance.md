@@ -2,6 +2,8 @@
 status: conditional
 acceptance_scope: technical-boundaries-only
 human_ack: pending
+acceptance_effect: non_gating_conditional_record
+pending_independent_owner: true
 ---
 
 # ACCEPT-LOA — Conditional Technical Owner-Boundary Acceptance
@@ -28,9 +30,13 @@ implement or create CR issues, and **not** a claim that `origin/main` already
 implements collection-report Ordering, shared identity schemas, trust-stream
 dependency ledgers, or restricted Gate Leak evidence.
 
-**Hard non-invention rule (this dispatch):** CR-000 Discord viability Go/No-go
-and privacy/security co-signatures are **absent** on the audited revision.
-This document does **not** invent, forge, backdate, or imply those signatures.
+**Hard non-invention rule (this dispatch):** no signed CR-000 Discord viability
+Go/No-go or privacy/security co-signature was found in the explicitly
+non-exhaustive candidate-filename search in §11, and no such authority record
+is referenced as existing by the audited planning sources. Because the
+canonical CR-000 path and schema are themselves unresolved, this is an author
+observation, not exhaustive absence proof. This document does **not** invent,
+forge, backdate, or imply those signatures.
 
 ---
 
@@ -457,7 +463,7 @@ manifest truth. Discord application owner owns CR-000 renewal.
 | Order lifecycle + outbox exist | `order-state.ts`, `migrations/001_orders.sql`, `lifecycle-publisher.ts` |
 | Shadow Audit k-anon + file RoleSnapshot | `audit-router.ts`, `role-source.ts`, DEPLOY.md |
 | No collection-report protocol symbols | Scoped `packages/` implementation search: zero hits for listed symbols in §2.2 |
-| No signed CR-000 / Discord-policy authority record outside this conditional acceptance artifact | Expected authority surface is a separate versioned CR-000 record signed by the Discord application owner and privacy/security owner, binding verification, `GUILD_MEMBERS` intent, limits, purposes/data classes, effective time, expiry, and emergency revocation; no such signed record is referenced as existing |
+| No signed CR-000 / Discord-policy authority record found outside this conditional acceptance artifact | **Non-exhaustive author observation:** expected authority is a separate versioned record signed by the Discord application owner and privacy/security owner, binding verification, `GUILD_MEMBERS` intent, limits, purposes/data classes, effective time, expiry, and emergency revocation. The candidate-filename search in §11 returned zero, and no such record is referenced as existing; the canonical path/schema remain unresolved, so this cannot prove global absence. |
 | Events envelope is `acvp-l1-v2` | `packages/events/src/envelope.ts` |
 | Order ed25519 signer exists for audit path | `order-signer.ts` |
 | Railway deploy seeds | `packages/services/{ordering,shadow-audit}/DEPLOY.md` |
@@ -573,6 +579,18 @@ git show -s --format='%H %cI %s' "$BASE"
 git grep -n 'export const ProductId\|ProductId =' \
   "$BASE" -- packages/protocol/ordering/src/order.ts
 
+# Candidate-path inventory only. The canonical CR-000 path and schema are not
+# ratified, so zero matches is corroboration, never exhaustive absence proof.
+cr000_candidate_count="$(
+  git ls-tree -r --name-only "$BASE" \
+    | rg -i '(^|/)(cr-000[^/]*|[^/]*discord[^/]*policy[^/]*)\.(md|json|ya?ml)$' \
+    | rg -v '(^|/)grimoires/loa/coordination/collection-report/owner-acceptance\.md$' \
+    | wc -l \
+    | tr -d ' '
+)"
+printf 'candidate signed CR-000 authority filenames (non-exhaustive)\t%s\n' \
+  "$cr000_candidate_count"
+
 printf '%s\n' \
   'search scope: tracked non-binary files under packages/, excluding nested docs/ and grimoires/'
 
@@ -618,6 +636,7 @@ Observed output on 2026-07-16:
 3782fd47e8a20cdaf6325621962bd0443e6781b8 2026-07-14T22:56:10-07:00 feat(governance): project user intent and construct expertise (#468)
 3782fd47e8a20cdaf6325621962bd0443e6781b8:packages/protocol/ordering/src/order.ts:14:export const ProductId = z.enum(['access-risk-audit', 'community-onboarding']);
 3782fd47e8a20cdaf6325621962bd0443e6781b8:packages/protocol/ordering/src/order.ts:15:export type ProductId = z.infer<typeof ProductId>;
+candidate signed CR-000 authority filenames (non-exhaustive)  0
 search scope: tracked non-binary files under packages/, excluding nested docs/ and grimoires/
 CollectionDeploymentRef  0
 collection-report        0
