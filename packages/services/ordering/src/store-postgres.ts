@@ -72,6 +72,7 @@ export class PostgresOrderStore implements OrderStore {
       '001_orders.sql',
       '002_probe_meta.sql',
       '004_collection_resolutions.sql',
+      '005_collection_report_list.sql',
     ]) {
       const sql = readFileSync(join(__dirname, '../migrations', file), 'utf8');
       await this.pool.query(sql);
@@ -276,6 +277,47 @@ export class PostgresOrderStore implements OrderStore {
 
   async listByState(state: OrderState): Promise<OrderRecord[]> {
     const res = await this.pool.query('SELECT * FROM orders WHERE state = $1', [state]);
+    return res.rows.map(rowToRecord);
+  }
+
+  async listCollectionReports(query: {
+    readonly community_ref: string;
+    readonly placed_by: string;
+    readonly limit: number;
+    readonly cursor?: { readonly created_at_unix: number; readonly order_id: string };
+  }): Promise<OrderRecord[]> {
+    if (query.cursor) {
+      const res = await this.pool.query(
+        `SELECT * FROM orders
+         WHERE product = 'collection-report'
+           AND placed_by = $1
+           AND (inputs ->> 'community_ref') = $2
+           AND (
+             created_at_unix < $3
+             OR (created_at_unix = $3 AND order_id < $4)
+           )
+         ORDER BY created_at_unix DESC, order_id DESC
+         LIMIT $5`,
+        [
+          query.placed_by,
+          query.community_ref,
+          query.cursor.created_at_unix,
+          query.cursor.order_id,
+          query.limit,
+        ],
+      );
+      return res.rows.map(rowToRecord);
+    }
+
+    const res = await this.pool.query(
+      `SELECT * FROM orders
+       WHERE product = 'collection-report'
+         AND placed_by = $1
+         AND (inputs ->> 'community_ref') = $2
+       ORDER BY created_at_unix DESC, order_id DESC
+       LIMIT $3`,
+      [query.placed_by, query.community_ref, query.limit],
+    );
     return res.rows.map(rowToRecord);
   }
 }

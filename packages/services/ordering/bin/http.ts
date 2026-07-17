@@ -13,6 +13,7 @@ import {
 import { ReProbeWorker } from '../src/reprobe-worker.js';
 import { createCatalogResolveProbePort } from '../src/catalog-resolve-probe.js';
 import { mountCollectionResolutionRoutes } from '../src/resolution-http.js';
+import { mountCollectionReportRoutes } from '../src/collection-report-http.js';
 import { createResolutionStore } from '../src/resolution-store-factory.js';
 import { CollectionResolutionService } from '../src/resolution-service.js';
 import { sonarResolveProbeFromEnv } from '../src/sonar-resolve-probe-client.js';
@@ -64,6 +65,7 @@ const app = createIntakeApp({
     kitchen_enqueue: Boolean(enqueue),
     write_routes: writeRoutes,
     collection_resolutions: true,
+    collection_reports: true,
     resolve_probe: resolutionProbeMode,
   },
 });
@@ -74,6 +76,13 @@ mountCollectionResolutionRoutes(app, {
   store: resolutionStore,
   sonar: sonarProbe,
   service: resolutionService,
+  serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
+});
+
+// CR-206: authenticated collection-report list/detail projections.
+mountCollectionReportRoutes(app, {
+  store,
+  resolutionStore,
   serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
 });
 
