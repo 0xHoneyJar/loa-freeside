@@ -1,0 +1,179 @@
+{
+  "description": "Representative recorded configuration B (two-deployment EVM logical collection, registry equivalence, second-approver reveal basis). Proves ratify, optimistic-concurrency conflict, single-active refusal, and revoke-then-explicit-relink behavior. Recorded-SHAPE stand-in with synthetic identifiers. Does NOT satisfy the external three-live-community G1 evidence gate; live operator-supplied exports remain the open external evidence.",
+  "authoritative_mapping_source": "shadow-audit.gate-mapping-aggregate",
+  "seed_aggregate": {
+    "schema_version": 1,
+    "community_ref": "acme-club",
+    "guild_ref": "200000000000000002",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+    },
+    "aggregate_version": 0,
+    "versions": [],
+    "audit": []
+  },
+  "ratify_command": {
+    "schema_version": 1,
+    "community_ref": "acme-club",
+    "guild_ref": "200000000000000002",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+    },
+    "deployment_set_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.deployment-set",
+      "major_version": 1,
+      "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+    },
+    "role_ids": [
+      "300000000000000002",
+      "300000000000000003"
+    ],
+    "eligibility_rule": {
+      "schema_version": 1,
+      "kind": "hold_at_least_one",
+      "minimum_balance": 1,
+      "deployment_scope": "any_selected_deployment",
+      "token_scope": "all_collection_tokens"
+    },
+    "provenance": "operator_confirmed",
+    "identity_reveal_basis": {
+      "schema_version": 1,
+      "kind": "second_approver",
+      "approver_subject": "op:dana",
+      "approver_permission": "privacy:approve-gate-audit",
+      "approved_at": "2026-07-16T00:00:00Z"
+    },
+    "ratifier_subject": "op:bob",
+    "ratifier_permissions": [
+      "gate-config:ratify"
+    ],
+    "expected_aggregate_version": 0,
+    "effective_at": "2026-07-16T00:00:00Z",
+    "idempotency_key": "acme-ratify-0001"
+  },
+  "expected_mapping_version_id": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.mapping-version",
+    "major_version": 1,
+    "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+  },
+  "conflict_command": {
+    "schema_version": 1,
+    "community_ref": "acme-club",
+    "guild_ref": "200000000000000002",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+    },
+    "deployment_set_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.deployment-set",
+      "major_version": 1,
+      "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+    },
+    "role_ids": [
+      "300000000000000002",
+      "300000000000000003"
+    ],
+    "eligibility_rule": {
+      "schema_version": 1,
+      "kind": "hold_at_least_one",
+      "minimum_balance": 1,
+      "deployment_scope": "any_selected_deployment",
+      "token_scope": "all_collection_tokens"
+    },
+    "provenance": "operator_confirmed",
+    "identity_reveal_basis": {
+      "schema_version": 1,
+      "kind": "second_approver",
+      "approver_subject": "op:dana",
+      "approver_permission": "privacy:approve-gate-audit",
+      "approved_at": "2026-07-16T00:00:00Z"
+    },
+    "ratifier_subject": "op:bob",
+    "ratifier_permissions": [
+      "gate-config:ratify"
+    ],
+    "expected_aggregate_version": 5,
+    "effective_at": "2026-07-16T00:00:00Z",
+    "idempotency_key": "acme-ratify-0002"
+  },
+  "revoke_command": {
+    "schema_version": 1,
+    "mapping_version_id": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.mapping-version",
+      "major_version": 1,
+      "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+    },
+    "revoker_subject": "op:bob",
+    "revoker_permissions": [
+      "gate-config:ratify"
+    ],
+    "expected_aggregate_version": 1,
+    "revoked_at": "2026-07-16T01:00:00Z",
+    "reason": "role deleted in guild (recorded stand-in)"
+  },
+  "expected_after_revoke": {
+    "aggregate_version": 2,
+    "pending_order_directive": "needs_attention:gate_mapping_revoked"
+  },
+  "relink_command": {
+    "schema_version": 1,
+    "community_ref": "acme-club",
+    "guild_ref": "200000000000000002",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+    },
+    "deployment_set_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.deployment-set",
+      "major_version": 1,
+      "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+    },
+    "role_ids": [
+      "300000000000000002",
+      "300000000000000003"
+    ],
+    "eligibility_rule": {
+      "schema_version": 1,
+      "kind": "hold_at_least_one",
+      "minimum_balance": 1,
+      "deployment_scope": "any_selected_deployment",
+      "token_scope": "all_collection_tokens"
+    },
+    "provenance": "operator_confirmed",
+    "identity_reveal_basis": {
+      "schema_version": 1,
+      "kind": "second_approver",
+      "approver_subject": "op:dana",
+      "approver_permission": "privacy:approve-gate-audit",
+      "approved_at": "2026-07-16T00:00:00Z"
+    },
+    "ratifier_subject": "op:bob",
+    "ratifier_permissions": [
+      "gate-config:ratify"
+    ],
+    "expected_aggregate_version": 2,
+    "effective_at": "2026-07-16T02:00:00Z",
+    "idempotency_key": "acme-relink-0001"
+  },
+  "expected_relinked_mapping_version_id": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.mapping-version",
+    "major_version": 1,
+    "digest": "59d1fdb72aac868bf44d42632feb35f5ab9041eced8a3d0aaf75ea14a5d1730e"
+  }
+}

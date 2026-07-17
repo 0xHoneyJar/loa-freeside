@@ -9,19 +9,40 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "import": "./dist/harness/index.js"
     }
   },
+  "bin": {
+    "collection-protocol-pack": "./scripts/pack-artifact.mjs",
+    "collection-protocol-verify": "./scripts/verify-artifact.mjs"
+  },
   "files": [
-    "dist",
+    "dist/*.js",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
+    "dist/harness",
     "fixtures",
-    "README.md"
+    "scripts/pack-artifact.mjs",
+    "scripts/verify-artifact.mjs",
+    "scripts/lib/isolated-harness.mjs",
+    "pins",
+    "protocol-identity.json",
+    "README.md",
+    "CONSUMER.md"
   ],
   "scripts": {
     "build": "tsc -b",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist .tmp *.tsbuildinfo protocol-identity.json",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:artifact": "node ./scripts/pack-artifact.mjs",
+    "verify:artifact": "node ./scripts/verify-artifact.mjs",
+    "ci:compat": "./scripts/ci-compat.sh"
   },
   "license": "AGPL-3.0",
   "peerDependencies": {

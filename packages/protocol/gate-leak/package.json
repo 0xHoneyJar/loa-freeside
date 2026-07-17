@@ -1,0 +1,54 @@
+{
+  "name": "@freeside/gate-leak-protocol",
+  "version": "1.0.0",
+  "description": "CR-002 ratified Gate Leak recipe: versioned capability readiness, canonical work-key scopes, safe public reason codes, one-directional classification, and disclosure-band contracts.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "README.md",
+    "DECISIONS.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "verify:fixtures": "pnpm run build && node scripts/generate-fixtures.mjs --check",
+    "verify:pack": "node scripts/verify-packed-consumer.mjs"
+  },
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@freeside/collection-protocol": "^1.0.0"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "effect": "^3.21.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pnpm": {
+    "overrides": {
+      "@freeside/collection-protocol": "file:../collection"
+    }
+  }
+}

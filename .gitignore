@@ -10,6 +10,7 @@ tests/fixtures/*_license.json
 
 # Dependencies
 node_modules/
+.repos/effect
 .pnp
 .pnp.js
 
@@ -415,6 +416,9 @@ grimoires/loa/ledger.json.bak*
 
 # Local agent skill installations (per-developer)
 .agents/
+
+# Local Effect source checkout (bootstrapped by scripts/prepare-effect.sh)
+.repos/effect
 
 # TypeScript incremental compile artifacts
 **/tsconfig.tsbuildinfo

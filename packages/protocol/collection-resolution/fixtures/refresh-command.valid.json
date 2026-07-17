@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "expected_confirmation_version": 1,
+  "idempotency_key": "refresh-key-1"
+}

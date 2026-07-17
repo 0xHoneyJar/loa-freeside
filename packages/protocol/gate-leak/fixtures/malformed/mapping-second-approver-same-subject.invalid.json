@@ -1,0 +1,107 @@
+{
+  "mapping_version_id": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.mapping-version",
+    "major_version": 1,
+    "digest": "2e0f54209d05da3f1cfe5f732a370f53d98895056ab4f5cb487fc6eeeb46ddf2"
+  },
+  "schema_version": 1,
+  "community_ref": "acme-club",
+  "guild_ref": "200000000000000002",
+  "collection_id": {
+    "algorithm": "sha-256",
+    "domain": "collection.identity",
+    "major_version": 1,
+    "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+  },
+  "deployment_set_digest": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.deployment-set",
+    "major_version": 1,
+    "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+  },
+  "role_ids": [
+    "300000000000000002",
+    "300000000000000003"
+  ],
+  "eligibility_rule": {
+    "schema_version": 1,
+    "kind": "hold_at_least_one",
+    "minimum_balance": 1,
+    "deployment_scope": "any_selected_deployment",
+    "token_scope": "all_collection_tokens"
+  },
+  "rule_digest": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.gate-rule",
+    "major_version": 1,
+    "digest": "610f88d32ae2e69750ee823347abd707d61712fb73b484b586b91c94562f27b5"
+  },
+  "provenance": "operator_confirmed",
+  "ratifier_subject": "op:bob",
+  "ratifier_permission": "gate-config:ratify",
+  "identity_reveal_basis": {
+    "schema_version": 1,
+    "kind": "second_approver",
+    "approver_subject": "op:bob",
+    "approver_permission": "privacy:approve-gate-audit",
+    "approved_at": "2026-07-16T00:00:00Z"
+  },
+  "effective_at": "2026-07-16T00:00:00Z",
+  "idempotency_key": "acme-ratify-0001",
+  "config_digest": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.mapping-config",
+    "major_version": 1,
+    "digest": "28d6bcb42abcbb94bf902299797533e6ba10188527b167e720df154306014c64"
+  },
+  "command_digest": {
+    "algorithm": "sha-256",
+    "domain": "gate-leak.mapping-command",
+    "major_version": 1,
+    "digest": "e534b361d7c4c63a367f8963d08f92e32dcca7778019a77e0b3fe55f3c6bc2f6"
+  },
+  "command_material": {
+    "schema_version": 1,
+    "community_ref": "acme-club",
+    "guild_ref": "200000000000000002",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "f61628b182a209cfe73cba9b712fa98f79021750418c01ba165bd71375e4382f"
+    },
+    "deployment_set_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.deployment-set",
+      "major_version": 1,
+      "digest": "b058cdf3cdd7958a0c5674e5c076974f0f3e9db6ac95f33af5cbfc6642cd656a"
+    },
+    "role_ids": [
+      "300000000000000002",
+      "300000000000000003"
+    ],
+    "eligibility_rule": {
+      "schema_version": 1,
+      "kind": "hold_at_least_one",
+      "minimum_balance": 1,
+      "deployment_scope": "any_selected_deployment",
+      "token_scope": "all_collection_tokens"
+    },
+    "provenance": "operator_confirmed",
+    "identity_reveal_basis": {
+      "schema_version": 1,
+      "kind": "second_approver",
+      "approver_subject": "op:dana",
+      "approver_permission": "privacy:approve-gate-audit",
+      "approved_at": "2026-07-16T00:00:00Z"
+    },
+    "ratifier_subject": "op:bob",
+    "ratifier_permissions": [
+      "gate-config:ratify"
+    ],
+    "expected_aggregate_version": 0,
+    "effective_at": "2026-07-16T00:00:00Z",
+    "idempotency_key": "acme-ratify-0001"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "network": {
+    "schema_version": 1,
+    "network_namespace": "eip155",
+    "network_reference": "1"
+  },
+  "address": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01"
+}

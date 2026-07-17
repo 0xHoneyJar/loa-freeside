@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "identifier": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+  "environment": "mainnet",
+  "report_type": "gate_leak",
+  "report_version": "gate-leak.v1",
+  "community_ref": "community-alpha",
+  "idempotency_key": "create-key-1"
+}

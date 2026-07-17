@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "discord_user_id": "400000000000000009",
+  "role_id": "300000000000000002",
+  "eligibility_state": "indeterminate",
+  "reason_code": "role_missing",
+  "compared_wallets": []
+}

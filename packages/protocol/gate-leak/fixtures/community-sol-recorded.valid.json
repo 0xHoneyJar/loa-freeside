@@ -1,0 +1,69 @@
+{
+  "description": "Representative recorded configuration C (Solana mainnet collection). Proves migration REFUSAL: the legacy trait-gated configuration cannot map onto V1 and is refused with unsupported_gate_rule, never approximated; and an unauthorized caller cannot ratify. Recorded-SHAPE stand-in with synthetic identifiers. Does NOT satisfy the external three-live-community G1 evidence gate; live operator-supplied exports remain the open external evidence.",
+  "authoritative_mapping_source": "shadow-audit.gate-mapping-aggregate",
+  "seed_aggregate": {
+    "schema_version": 1,
+    "community_ref": "sol-guild",
+    "guild_ref": "200000000000000003",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "8e5e2591cd66b49551c495ff4bd14d98bf6d47ebe1e00844c466cc41ba1e5ba8"
+    },
+    "aggregate_version": 0,
+    "versions": [],
+    "audit": []
+  },
+  "unsupported_legacy_rules": [
+    {
+      "schema_version": 1,
+      "kind": "trait_filter"
+    },
+    {
+      "schema_version": 1,
+      "kind": "quantity_threshold"
+    },
+    {
+      "schema_version": 1,
+      "kind": "composite"
+    }
+  ],
+  "unauthorized_ratify_command": {
+    "schema_version": 1,
+    "community_ref": "sol-guild",
+    "guild_ref": "200000000000000003",
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "8e5e2591cd66b49551c495ff4bd14d98bf6d47ebe1e00844c466cc41ba1e5ba8"
+    },
+    "deployment_set_digest": {
+      "algorithm": "sha-256",
+      "domain": "gate-leak.deployment-set",
+      "major_version": 1,
+      "digest": "bd74db50622ff8850c9f8dfccb1ad54bd79a5278760470e67a0f768c4099a449"
+    },
+    "role_ids": [
+      "300000000000000004"
+    ],
+    "eligibility_rule": {
+      "schema_version": 1,
+      "kind": "hold_at_least_one",
+      "minimum_balance": 1,
+      "deployment_scope": "any_selected_deployment",
+      "token_scope": "all_collection_tokens"
+    },
+    "provenance": "operator_confirmed",
+    "identity_reveal_basis": {
+      "schema_version": 1,
+      "kind": "pending"
+    },
+    "ratifier_subject": "op:mallory",
+    "ratifier_permissions": [],
+    "expected_aggregate_version": 0,
+    "effective_at": "2026-07-16T00:00:00Z",
+    "idempotency_key": "sol-ratify-0001"
+  }
+}

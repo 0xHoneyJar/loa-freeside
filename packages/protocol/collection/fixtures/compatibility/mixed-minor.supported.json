@@ -1,0 +1,12 @@
+{
+  "produced_contract_schema": {
+    "major": 1,
+    "minor": 0
+  },
+  "consumer_support": {
+    "major": 1,
+    "min_minor": 0,
+    "max_minor": 2
+  },
+  "expect": "compatible"
+}

@@ -1,0 +1,15 @@
+# Published artifact exclusions (defense in depth with package.json "files").
+src
+*.tsbuildinfo
+**/*.tsbuildinfo
+dist/__tests__
+dist/__tests__/**
+dist/stale-seed
+dist/stale-seed/**
+dist/__stale_decl.js
+.tmp
+*.tgz
+node_modules
+vitest.config.ts
+tsconfig.json
+pnpm-lock.yaml

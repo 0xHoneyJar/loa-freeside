@@ -1,0 +1,7 @@
+.tmp/
+*.tgz
+!pins/**
+node_modules/
+dist/
+*.tsbuildinfo
+protocol-identity.json

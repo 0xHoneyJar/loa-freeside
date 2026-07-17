@@ -19,10 +19,13 @@
   },
   "license": "AGPL-3.0",
   "dependencies": {
+    "@freeside/collection-protocol": "file:../../protocol/collection",
+    "@freeside/collection-resolution-protocol": "file:../../protocol/collection-resolution",
     "@freeside/ordering-protocol": "file:../../protocol/ordering",
     "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
     "@freeside/shadow-audit-service": "file:../shadow-audit",
     "@hono/node-server": "^1.13.0",
+    "effect": "^3.21.0",
     "hono": "^4.7.0",
     "pg": "^8.16.0",
     "tsx": "^4.19.0",
