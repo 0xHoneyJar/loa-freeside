@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "network": {
+    "schema_version": 1,
+    "network_namespace": "solana",
+    "network_reference": "mainnet-beta"
+  },
+  "address": "So11111111111111111111111111111111111111112",
+  "normalized_address": "So11111111111111111111111111111111111111112",
+  "deployment_id": {
+    "algorithm": "sha-256",
+    "domain": "collection.deployment",
+    "major_version": 1,
+    "digest": "6c57477db4481fa73f6db2061e1ac1de5f6ece0677fdc8a321a4c6d8386437ed"
+  }
+}

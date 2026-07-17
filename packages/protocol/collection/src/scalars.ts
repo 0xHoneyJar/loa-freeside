@@ -1,7 +1,16 @@
 import { Schema } from "effect";
 
 export const COLLECTION_PROTOCOL_VERSION = "1.0.0";
+/** Wire `schema_version` field — integer major only (CR-001). */
 export const COLLECTION_PROTOCOL_SCHEMA_VERSION = 1;
+/** Contract major published in the CR-005 artifact manifest. */
+export const COLLECTION_PROTOCOL_SCHEMA_MAJOR = 1;
+/**
+ * Contract minor for additive, forward-compatible wire changes.
+ * Unknown major fails closed; mixed-minor within a consumer's declared range is
+ * accepted (see `@freeside/collection-protocol/harness`).
+ */
+export const COLLECTION_PROTOCOL_SCHEMA_MINOR = 0;
 
 const EVM_ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const EVM_NORMALIZED_ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/;

@@ -1,0 +1,19 @@
+{
+  "description": "Golden pin for the CR-003/CR-105 temporary pnpm-pack artifact until consumers migrate to the CR-005 sidecar manifest.",
+  "mode": "legacy-sha256",
+  "package_name": "@freeside/collection-protocol",
+  "package_version": "1.0.0",
+  "contract_schema": {
+    "major": 1,
+    "minor": 0
+  },
+  "source_commit": "a688e516e886d29a6aaa1c90fa76c80c0a84d8c1",
+  "artifact_sha256": "b0d0666867988bc67094d9189048f7bca0b89ea1140a7705d6953528f7d5298c",
+  "artifact_filename": "freeside-collection-protocol-1.0.0.tgz",
+  "notes": [
+    "Produced historically via ad-hoc `pnpm pack` from packages/protocol/collection at the CR-001 commit.",
+    "Verify with: collection-protocol-verify --tarball <path> --legacy-sha256 b0d0666867988bc67094d9189048f7bca0b89ea1140a7705d6953528f7d5298c",
+    "Or: COLLECTION_PROTOCOL_TARBALL=... COLLECTION_PROTOCOL_LEGACY_SHA256=b0d066... ./scripts/ci-compat.sh --verify-only",
+    "After migrating, replace this pin with the sidecar *.manifest.json emitted by `pnpm run pack:artifact`."
+  ]
+}

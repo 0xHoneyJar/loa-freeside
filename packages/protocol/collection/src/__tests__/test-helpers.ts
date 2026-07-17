@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { assert } from "vitest";
 
 const fixturesDirectory = join(
@@ -28,9 +28,16 @@ export const expectEffectSuccess = <Value, Error>(
 
 export const expectEffectFailure = <Value, Error>(
   effect: Effect.Effect<Value, Error>,
-): void => {
+): Error => {
   const exit = Effect.runSyncExit(effect);
-  assert.isTrue(Exit.isFailure(exit), "expected Effect failure");
+  if (!Exit.isFailure(exit)) {
+    assert.fail("expected Effect failure");
+  }
+  const failure = Cause.failureOption(exit.cause);
+  if (Option.isNone(failure)) {
+    assert.fail(`expected typed Effect failure, received ${String(exit.cause)}`);
+  }
+  return failure.value;
 };
 
 export const candidateFixtureNames: ReadonlyArray<string> = Object.freeze([

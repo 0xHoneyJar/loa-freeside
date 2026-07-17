@@ -17,10 +17,23 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { LoaFinnStub } from '../stubs/loa-finn-stub.js';
 import type { Redis } from 'ioredis';
-import { BudgetManager, getCurrentMonth } from '../../packages/adapters/agent/budget-manager.js';
+import {
+  BudgetManager,
+  budgetFinalizedKey,
+  budgetLimitKey,
+  budgetReservationKey,
+  getCurrentMonth,
+} from '../../packages/adapters/agent/budget-manager.js';
 import { AgentRateLimiter, TIER_LIMITS } from '../../packages/adapters/agent/agent-rate-limiter.js';
+import {
+  AgentGateway,
+  AgentGatewayError,
+  type ReconciliationQueue,
+} from '../../packages/adapters/agent/agent-gateway.js';
+import { LoaFinnClient, LoaFinnError } from '../../packages/adapters/agent/loa-finn-client.js';
 import { JwtService, type KeyLoader, type PreviousKeyConfig } from '../../packages/adapters/agent/jwt-service.js';
 import { TierAccessMapper, DEFAULT_TIER_MAP } from '../../packages/adapters/agent/tier-access-mapper.js';
+import type { AgentInvokeRequest, AgentStreamEvent } from '../../packages/core/ports/agent-gateway.js';
 import { generateKeyPairSync, createPublicKey } from 'node:crypto';
 import { exportJWK, importPKCS8, jwtVerify, createRemoteJWKSet } from 'jose';
 import fc from 'fast-check';
@@ -200,6 +213,11 @@ describe('Rate Limiting - Multi-dimensional', () => {
     for (let i = 0; i < 10; i++) {
       const result = await rateLimiter.check(params);
       expect(result.allowed).toBe(true);
+
+      // Isolate the user sliding-window contract from the stricter free-tier
+      // burst capacity (3). The 11th request must be denied by the user
+      // dimension, not masked by an orthogonal burst-bucket denial.
+      await redis.del(`agent:rl:burst:${params.userId}`);
     }
 
     // 11th request should be denied
@@ -337,6 +355,52 @@ describe('Budget Concurrent', () => {
 // --------------------------------------------------------------------------
 
 describe('SSE Streaming Proxy', () => {
+  function createStreamingGateway(reconciliationQueue?: ReconciliationQueue): AgentGateway {
+    return new AgentGateway({
+      budgetManager: new BudgetManager(redis, mockLogger),
+      rateLimiter: new AgentRateLimiter(redis, mockLogger),
+      loaFinnClient: new LoaFinnClient({
+        config: {
+          baseUrl: stub.getBaseUrl(),
+          timeoutMs: 5_000,
+          circuitBreakerThreshold: 5,
+          circuitBreakerResetMs: 30_000,
+        },
+        logger: mockLogger,
+        mintJwt: async () => 'test-jwt',
+      }),
+      tierMapper: new TierAccessMapper(DEFAULT_TIER_MAP),
+      redis,
+      logger: mockLogger,
+      reconciliationQueue,
+    });
+  }
+
+  function createStreamRequest(params: {
+    communityId: string;
+    userId: string;
+    idempotencyKey: string;
+    traceId: string;
+  }): AgentInvokeRequest {
+    return {
+      context: {
+        tenantId: params.communityId,
+        userId: params.userId,
+        nftId: `nft-${params.idempotencyKey}`,
+        tier: 4,
+        accessLevel: 'pro',
+        allowedModelAliases: ['cheap', 'fast-code', 'reviewer'],
+        platform: 'discord',
+        channelId: `ch-${params.idempotencyKey}`,
+        idempotencyKey: params.idempotencyKey,
+        traceId: params.traceId,
+      },
+      agent: 'test',
+      messages: [{ role: 'user', content: 'hi' }],
+      modelAlias: 'cheap',
+    };
+  }
+
   it('events forwarded correctly, usage triggers finalization', async () => {
     stub.setStreamBehavior({
       events: [{ text: 'Hello ' }, { text: 'world!' }],
@@ -359,24 +423,170 @@ describe('SSE Streaming Proxy', () => {
     expect(text).toContain('event: done');
   });
 
-  it('drop recovery: stub drops stream → reconciliation fires', async () => {
+  it('drop recovery: gateway forwards partial events and schedules reconciliation', async () => {
     stub.setStreamBehavior({
       events: [{ text: 'partial ' }, { text: 'response' }, { text: ' here' }],
       usage: { promptTokens: 50, completionTokens: 30, costUsd: 0.002 },
       dropAfterEvents: 2, // Drops after 2 events, no usage/done
     });
 
-    const response = await fetch(`${stub.getBaseUrl()}/v1/agents/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent: 'test', messages: [{ role: 'user', content: 'hi' }] }),
+    const communityId = 'comm-stream-drop';
+    const userId = 'user-stream-drop';
+    const idempotencyKey = 'idem-stream-drop';
+    const traceId = 'trace-stream-drop';
+    await redis.set(budgetLimitKey(communityId), '1000');
+
+    const reconciliationCalls: Array<{
+      name: Parameters<ReconciliationQueue['add']>[0];
+      data: Parameters<ReconciliationQueue['add']>[1];
+      options: Parameters<ReconciliationQueue['add']>[2];
+    }> = [];
+    const reconciliationQueue: ReconciliationQueue = {
+      async add(name, data, options) {
+        reconciliationCalls.push({ name, data, options });
+      },
+    };
+    const gateway = createStreamingGateway(reconciliationQueue);
+    const request = createStreamRequest({
+      communityId,
+      userId,
+      idempotencyKey,
+      traceId,
     });
 
-    // Connection drops — no usage event
-    const text = await response.text();
-    expect(text).toContain('event: content');
-    expect(text).not.toContain('event: usage');
-    expect(text).not.toContain('event: done');
+    const events: AgentStreamEvent[] = [];
+    let streamError: unknown;
+
+    try {
+      for await (const event of gateway.stream(request)) {
+        events.push(event);
+      }
+    } catch (error) {
+      streamError = error;
+    }
+
+    expect(events).toEqual([
+      { type: 'content', data: { text: 'partial ' } },
+      { type: 'content', data: { text: 'response' } },
+    ]);
+    expect(streamError).toBeInstanceOf(AgentGatewayError);
+    expect(streamError).toMatchObject({
+      code: 'STREAM_INTERRUPTED',
+      statusCode: 502,
+    });
+    if (!(streamError instanceof AgentGatewayError)) {
+      throw new Error('Expected AgentGatewayError');
+    }
+    expect(streamError.cause).toBeInstanceOf(TypeError);
+    expect(reconciliationCalls).toHaveLength(1);
+    expect(reconciliationCalls[0]).toEqual({
+      name: 'stream-reconcile',
+      data: {
+        idempotencyKey,
+        communityId,
+        userId,
+        traceId,
+        reservedAt: expect.any(Number),
+      },
+      options: {
+        delay: 30_000,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 10_000 },
+      },
+    });
+
+    const pendingReservation = await redis.hgetall(
+      budgetReservationKey(communityId, userId, idempotencyKey),
+    );
+    expect(pendingReservation).toMatchObject({
+      community_id: communityId,
+      user_id: userId,
+      idempotency_key: idempotencyKey,
+      model_alias: 'cheap',
+    });
+    expect(
+      await redis.exists(budgetFinalizedKey(communityId, userId, idempotencyKey)),
+    ).toBe(0);
+  });
+
+  it('preserves loa-finn domain errors for HTTP failures', async () => {
+    stub.setStreamBehavior({
+      events: [],
+      usage: { promptTokens: 0, completionTokens: 0, costUsd: 0 },
+      statusCode: 503,
+    });
+
+    const request = createStreamRequest({
+      communityId: 'comm-stream-http-error',
+      userId: 'user-stream-http-error',
+      idempotencyKey: 'idem-stream-http-error',
+      traceId: 'trace-stream-http-error',
+    });
+    await redis.set(budgetLimitKey(request.context.tenantId), '1000');
+
+    const reconciliationCalls: Array<Parameters<ReconciliationQueue['add']>[1]> = [];
+    const reconciliationQueue: ReconciliationQueue = {
+      async add(_name, data) {
+        reconciliationCalls.push(data);
+      },
+    };
+    let streamError: unknown;
+    try {
+      for await (const _event of createStreamingGateway(reconciliationQueue).stream(request)) {
+        // A non-2xx response must fail before any stream event is produced.
+      }
+    } catch (error) {
+      streamError = error;
+    }
+
+    expect(streamError).toBeInstanceOf(LoaFinnError);
+    expect(streamError).toMatchObject({
+      code: 'UPSTREAM_ERROR',
+      statusCode: 503,
+    });
+    expect(reconciliationCalls).toEqual([]);
+  });
+
+  it('preserves the transport failure when reconciliation enqueue fails', async () => {
+    stub.setStreamBehavior({
+      events: [{ text: 'partial' }],
+      usage: { promptTokens: 50, completionTokens: 30, costUsd: 0.002 },
+      dropAfterEvents: 1,
+    });
+
+    const request = createStreamRequest({
+      communityId: 'comm-stream-reconcile-failure',
+      userId: 'user-stream-reconcile-failure',
+      idempotencyKey: 'idem-stream-reconcile-failure',
+      traceId: 'trace-stream-reconcile-failure',
+    });
+    await redis.set(budgetLimitKey(request.context.tenantId), '1000');
+    const reconciliationFailure = new Error('queue unavailable');
+    const reconciliationQueue: ReconciliationQueue = {
+      async add() {
+        throw reconciliationFailure;
+      },
+    };
+
+    let streamError: unknown;
+    try {
+      for await (const _event of createStreamingGateway(reconciliationQueue).stream(request)) {
+        // Consume until the simulated transport drop.
+      }
+    } catch (error) {
+      streamError = error;
+    }
+
+    expect(streamError).toBeInstanceOf(AgentGatewayError);
+    expect(streamError).toMatchObject({
+      code: 'STREAM_INTERRUPTED',
+      statusCode: 502,
+    });
+    if (!(streamError instanceof AgentGatewayError)) {
+      throw new Error('Expected AgentGatewayError');
+    }
+    expect(streamError.cause).toBeInstanceOf(TypeError);
+    expect(streamError).not.toBe(reconciliationFailure);
   });
 });
 
