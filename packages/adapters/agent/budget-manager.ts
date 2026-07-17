@@ -75,6 +75,46 @@ export interface AuditLogEntry {
 }
 
 // --------------------------------------------------------------------------
+// Redis Key Builders
+// --------------------------------------------------------------------------
+
+export function budgetCommittedKey(communityId: string, month: string): string {
+  return `agent:budget:committed:${communityId}:${month}`;
+}
+
+export function budgetReservedKey(communityId: string, month: string): string {
+  return `agent:budget:reserved:${communityId}:${month}`;
+}
+
+export function budgetLimitKey(communityId: string): string {
+  return `agent:budget:limit:${communityId}`;
+}
+
+export function budgetReservationKey(
+  communityId: string,
+  userId: string,
+  idempotencyKey: string,
+): string {
+  return `agent:budget:reservation:${communityId}:${userId}:${idempotencyKey}`;
+}
+
+export function budgetReservationPrefix(communityId: string): string {
+  return `agent:budget:reservation:${communityId}:`;
+}
+
+export function budgetExpiryKey(communityId: string, month: string): string {
+  return `agent:budget:expiry:${communityId}:${month}`;
+}
+
+export function budgetFinalizedKey(
+  communityId: string,
+  userId: string,
+  idempotencyKey: string,
+): string {
+  return `agent:budget:finalized:${communityId}:${userId}:${idempotencyKey}`;
+}
+
+// --------------------------------------------------------------------------
 // Lua Script Loading
 // --------------------------------------------------------------------------
 
@@ -113,11 +153,11 @@ export class BudgetManager {
     const nowMs = Date.now();
 
     const keys = [
-      `agent:budget:committed:${params.communityId}:${month}`,
-      `agent:budget:reserved:${params.communityId}:${month}`,
-      `agent:budget:limit:${params.communityId}`,
-      `agent:budget:reservation:${params.communityId}:${params.userId}:${params.idempotencyKey}`,
-      `agent:budget:expiry:${params.communityId}:${month}`,
+      budgetCommittedKey(params.communityId, month),
+      budgetReservedKey(params.communityId, month),
+      budgetLimitKey(params.communityId),
+      budgetReservationKey(params.communityId, params.userId, params.idempotencyKey),
+      budgetExpiryKey(params.communityId, month),
     ];
     const argv = [
       String(normalizeCostCents(params.estimatedCost)),
@@ -157,11 +197,11 @@ export class BudgetManager {
     const expiryMember = `${params.userId}:${params.idempotencyKey}`;
 
     const keys = [
-      `agent:budget:committed:${params.communityId}:${month}`,
-      `agent:budget:reserved:${params.communityId}:${month}`,
-      `agent:budget:reservation:${params.communityId}:${params.userId}:${params.idempotencyKey}`,
-      `agent:budget:expiry:${params.communityId}:${month}`,
-      `agent:budget:finalized:${params.communityId}:${params.userId}:${params.idempotencyKey}`,
+      budgetCommittedKey(params.communityId, month),
+      budgetReservedKey(params.communityId, month),
+      budgetReservationKey(params.communityId, params.userId, params.idempotencyKey),
+      budgetExpiryKey(params.communityId, month),
+      budgetFinalizedKey(params.communityId, params.userId, params.idempotencyKey),
     ];
     const argv = [
       String(normalizeCostCents(params.actualCost)),
@@ -231,11 +271,11 @@ export class BudgetManager {
   async reap(communityId: string): Promise<ReaperResult> {
     const month = getCurrentMonth();
     const nowMs = Date.now();
-    const prefix = `agent:budget:reservation:${communityId}:`;
+    const prefix = budgetReservationPrefix(communityId);
 
     const keys = [
-      `agent:budget:reserved:${communityId}:${month}`,
-      `agent:budget:expiry:${communityId}:${month}`,
+      budgetReservedKey(communityId, month),
+      budgetExpiryKey(communityId, month),
     ];
     const argv = [String(nowMs), prefix];
 

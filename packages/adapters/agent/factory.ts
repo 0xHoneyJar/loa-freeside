@@ -15,7 +15,7 @@ import { TierAccessMapper } from './tier-access-mapper.js';
 import { AgentRateLimiter } from './agent-rate-limiter.js';
 import { BudgetManager } from './budget-manager.js';
 import { LoaFinnClient } from './loa-finn-client.js';
-import { AgentGateway } from './agent-gateway.js';
+import { AgentGateway, type ReconciliationQueue } from './agent-gateway.js';
 import { loadAgentGatewayConfig } from './config.js';
 import type { TierOverrideProvider } from './tier-access-mapper.js';
 
@@ -89,6 +89,10 @@ export async function createAgentGateway(
     },
   });
 
+  // Keep the facade's narrow queue port structurally compatible with the real
+  // BullMQ Queue supplied by production wiring.
+  const gatewayReconciliationQueue: ReconciliationQueue | undefined = reconciliationQueue;
+
   // 6. Gateway Facade
   const gateway = new AgentGateway({
     budgetManager,
@@ -97,7 +101,7 @@ export async function createAgentGateway(
     tierMapper,
     redis,
     logger,
-    reconciliationQueue,
+    reconciliationQueue: gatewayReconciliationQueue,
   });
 
   return {
