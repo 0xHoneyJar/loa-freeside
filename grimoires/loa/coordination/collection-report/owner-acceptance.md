@@ -341,8 +341,9 @@ ops **0.25 FTE** post-rehearsal (re-estimate after CR-404).
 |---|---|
 | Central estimate | **~280 eng-days** (arithmetic midpoint of the component range; any different planning anchor requires an explicit U-14 derivation) |
 | Range | **~216–344 eng-days** |
-| Assumed peak headcount | **3.0–4.0 planned FTE** during S2/S3, assuming protocol, Ordering, and Shadow Audit upper-bound peaks do not overlap; the coincident upper envelope is approximately **5.0 FTE** |
-| Assumptions | Upstream Sonar/Inventory/Identity/Storage ACCEPT conditions close without redesign; CR-000 resolves within 10 business days once started; protocol, Ordering, and Shadow Audit upper-bound peaks are staggered; no second queue invented; Railway Ordering/Shadow Audit remain deployable seeds |
+| Assumed steady headcount | **3.5–5.0 FTE**: protocol 0.5–1.0 + Ordering 1.5–2.0 + Shadow Audit 0.5–1.0 + platform 0.5 + coordinator 0.25 + ops 0.25 |
+| Ordering peak headcount | **4.0–5.5 FTE** while the additional 0.5 FTE for CR-201B/205/209 overlaps the steady envelope; **5.5 FTE** is the fully coincident upper bound, not the staffing commitment |
+| Assumptions | Upstream Sonar/Inventory/Identity/Storage ACCEPT conditions close without redesign; CR-000 resolves within 10 business days once started; component ranges are planning envelopes and the Ordering surge is modeled separately; no second queue invented; Railway Ordering/Shadow Audit remain deployable seeds |
 | Retention / capacity fixtures Loa must meet (V1 thresholds) | 50k subjects; 500-subject pages; ≤1k Gateway deltas / 5m; ≤60s auth projection lag; ≤30s lease; ≤2s DB skew; 500 rows/page; 1 MiB ceilings; 30-day max restricted retention; disclosure bands per sprint; 20 demands/subject; 500/community — **none measured for collection-report on `main`** |
 
 An issue without a reconfirmed estimate at creation remains **not ready**
@@ -470,12 +471,12 @@ satisfy G0/G1/G1B/G3/G4/G4A/G4B or any collection-report CR verification.
 
 | Check | Result |
 |---|---|
-| Branch is `coord/collection-report-coordinator-f09.9` | Pass |
-| Audited worktree matched `origin/main` @ `3782fd47` before the authoring commit | Pass (verified 2026-07-16) |
-| Required sections present in this artifact (verdicts, interfaces, boundaries, forbidden inferences, capacity, mixed-version/flags/rollback, ops, evidence, unresolved, closure) | Pass (author checklist) |
-| Claim spot-check: `ProductId` enum contents | Pass |
-| Claim spot-check: absence of `CollectionDeploymentRef` / `capability.demand` / trust-envelope symbols | Pass |
-| Claim spot-check: no CR-000 signature file invented or referenced as existing | Pass |
+| Branch is `coord/collection-report-coordinator-f09.9` | Author-observed pass (advisory) |
+| Audited worktree matched `origin/main` @ `3782fd47` before the authoring commit | Author-observed pass (advisory; verified 2026-07-16) |
+| Required sections present in this artifact (verdicts, interfaces, boundaries, forbidden inferences, capacity, mixed-version/flags/rollback, ops, evidence, unresolved, closure) | Author-observed pass (advisory checklist) |
+| Claim spot-check: `ProductId` enum contents | Author-observed pass (advisory) |
+| Claim spot-check: absence of `CollectionDeploymentRef` / `capability.demand` / trust-envelope symbols | Author-observed pass (advisory) |
+| Claim spot-check: no CR-000 signature file invented or referenced as existing | Author-observed pass (advisory) |
 | Package vitest execution in this worktree | **Not run** — `vitest` binary not installed in package/`node_modules` here; docs-only dispatch does not claim suite green |
 
 ---
