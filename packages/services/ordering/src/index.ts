@@ -229,3 +229,36 @@ export {
   createFixtureDependencyLedgerService,
 } from './dependency-ledger-service.js';
 export { mountDependencyLedgerRoutes } from './dependency-ledger-http.js';
+export {
+  PUBLIC_PREP_CAPABILITIES,
+  PUBLIC_PREP_LIMITS,
+  LEASABLE_PUBLIC_WORK_STATES,
+  isLeasablePublicWorkState,
+  type PublicPrepCapability,
+  type PublicPreparationWorkKeyMaterial,
+  type SharedPreparationWorkRecord,
+  type PreparationWorkItemRecord,
+  type ReportWorkLinkRecord,
+  type ReadinessEvidenceEnvelope,
+} from './shared-preparation-types.js';
+export {
+  buildPublicWorkKeyMaterial,
+  digestPublicWorkKey,
+  deploymentSetDigest,
+} from './shared-preparation-work-key.js';
+export {
+  InMemorySharedPreparationStore,
+  SharedPreparationFencingError,
+  SharedPreparationStateError,
+  assertReadinessEvidenceQualified,
+  type SharedPreparationStore,
+  type JoinPublicWorkInput,
+  type JoinPublicWorkResult,
+} from './shared-preparation-store.js';
+export {
+  PostgresSharedPreparationStore,
+} from './shared-preparation-store-postgres.js';
+export {
+  createSharedPreparationService,
+  type SharedPreparationService,
+} from './shared-preparation-service.js';

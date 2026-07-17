@@ -74,6 +74,7 @@ export class PostgresOrderStore implements OrderStore {
       '004_collection_resolutions.sql',
       '005_collection_report_list.sql',
       '006_report_attention_receipts.sql',
+      '007_shared_preparation_work.sql',
     ]) {
       const sql = readFileSync(join(__dirname, '../migrations', file), 'utf8');
       await this.pool.query(sql);
