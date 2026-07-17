@@ -557,6 +557,19 @@ external real artifacts** — absence here is evidence, not permission to invent
 | Coordinator / CR-019 | **pending** |
 | Operator confirmation of §4 capacity | **pending** (U-14) |
 
+Any later human acknowledgment must be recorded in a superseding, commit-bound
+artifact using this receipt shape; null fields remain pending and confer no
+authority:
+
+```yaml
+role: <owner role>
+acknowledger: null
+acknowledged_at: null
+commit: null
+evidence_artifact: null
+scope: null
+```
+
 **Strongest caveat:** `origin/main` already has a persuasive Ordering outbox
 lifecycle and a Shadow Audit k-anon Gate-Leak-*shaped* lead magnet, which makes
 it dangerously easy to treat those seeds as the collection-report system — while
@@ -577,6 +590,11 @@ intentionally use `rg`.
 
 ```bash
 BASE=3782fd47e8a20cdaf6325621962bd0443e6781b8
+
+command -v rg >/dev/null 2>&1 || {
+  printf 'missing required command: rg\n' >&2
+  exit 1
+}
 
 # A shallow or stale clone may not contain the audited object. If this fails,
 # run `git fetch origin main` and retry before accepting any output below.
@@ -601,7 +619,7 @@ cr000_candidate_count="$(
     | wc -l \
     | tr -d ' '
 )"
-printf 'candidate signed CR-000 authority filenames (non-exhaustive)\t%s\n' \
+printf 'candidate signed CR-000 authority filenames (non-exhaustive)  %s\n' \
   "$cr000_candidate_count"
 
 printf '%s\n' \
@@ -626,7 +644,7 @@ do
       | wc -l \
       | tr -d ' '
   )"
-  printf '%s\t%s\n' "$needle" "$count"
+  printf '%s  %s\n' "$needle" "$count"
 done
 
 git ls-tree -r --name-only "$BASE" \
