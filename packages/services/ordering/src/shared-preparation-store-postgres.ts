@@ -197,120 +197,130 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     throw new SharedPreparationStateError(`cannot ${context} from ${current.state}`);
   }
 
-  async joinPublicWork(input: JoinPublicWorkInput): Promise<JoinPublicWorkResult> {
+  /**
+   * CR-201C seam: join/create/link inside an already-open serializable transaction.
+   * Caller owns BEGIN/COMMIT/ROLLBACK and must hold capacity locks first.
+   */
+  async joinPublicWorkInTransaction(
+    client: pg.PoolClient,
+    input: JoinPublicWorkInput,
+  ): Promise<JoinPublicWorkResult> {
     const workKeyDigest = digestPublicWorkKey(input.work_key);
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await this.advisoryLock(client, workKeyDigest);
+    await this.advisoryLock(client, workKeyDigest);
 
-      const readyResult = await client.query(
-        `SELECT * FROM shared_preparation_work
-         WHERE work_key_digest = $1
-           AND state = 'ready'
-           AND readiness_policy_version = $2
-           AND readiness_evidence IS NOT NULL
-           AND (readiness_evidence->'freshness'->>'qualified')::boolean = true
-         ORDER BY generation DESC
-         LIMIT 1`,
-        [workKeyDigest, input.work_key.readiness_policy_version],
-      );
-      if (readyResult.rows.length > 0) {
-        const work = rowToWork(readyResult.rows[0]);
-        await this.insertLink(client, input, work.work_id, work.generation);
-        const links = await this.fetchActiveLinks(client, work.work_id);
-        await client.query("COMMIT");
-        return {
-          kind: "joined",
-          work,
-          links,
-          created: false,
-          reused_ready: true,
-        };
-      }
+    const readyResult = await client.query(
+      `SELECT * FROM shared_preparation_work
+       WHERE work_key_digest = $1
+         AND state = 'ready'
+         AND readiness_policy_version = $2
+         AND readiness_evidence IS NOT NULL
+         AND (readiness_evidence->'freshness'->>'qualified')::boolean = true
+       ORDER BY generation DESC
+       LIMIT 1`,
+      [workKeyDigest, input.work_key.readiness_policy_version],
+    );
+    if (readyResult.rows.length > 0) {
+      const work = rowToWork(readyResult.rows[0]);
+      await this.insertLink(client, input, work.work_id, work.generation);
+      const links = await this.fetchActiveLinks(client, work.work_id);
+      return {
+        kind: "joined",
+        work,
+        links,
+        created: false,
+        reused_ready: true,
+      };
+    }
 
-      const activeResult = await client.query(
-        `SELECT * FROM shared_preparation_work
-         WHERE work_key_digest = $1 AND state IN ('queued', 'preparing', 'retry_wait')
-         LIMIT 1`,
-        [workKeyDigest],
-      );
-      if (activeResult.rows.length > 0) {
-        const work = rowToWork(activeResult.rows[0]);
-        await this.insertLink(client, input, work.work_id, work.generation);
-        const links = await this.fetchActiveLinks(client, work.work_id);
-        await client.query("COMMIT");
-        return {
-          kind: "joined",
-          work,
-          links,
-          created: false,
-          reused_ready: false,
-        };
-      }
+    const activeResult = await client.query(
+      `SELECT * FROM shared_preparation_work
+       WHERE work_key_digest = $1 AND state IN ('queued', 'preparing', 'retry_wait')
+       LIMIT 1`,
+      [workKeyDigest],
+    );
+    if (activeResult.rows.length > 0) {
+      const work = rowToWork(activeResult.rows[0]);
+      await this.insertLink(client, input, work.work_id, work.generation);
+      const links = await this.fetchActiveLinks(client, work.work_id);
+      return {
+        kind: "joined",
+        work,
+        links,
+        created: false,
+        reused_ready: false,
+      };
+    }
 
-      const maxGen = await client.query(
-        "SELECT COALESCE(MAX(generation), 0) AS max_generation FROM shared_preparation_work WHERE work_key_digest = $1",
-        [workKeyDigest],
-      );
-      const generation = Number(maxGen.rows[0].max_generation) + 1;
-      const workId = `spw_${randomUUID()}`;
-      const nowIso = msToIso(input.now_ms);
+    const maxGen = await client.query(
+      "SELECT COALESCE(MAX(generation), 0) AS max_generation FROM shared_preparation_work WHERE work_key_digest = $1",
+      [workKeyDigest],
+    );
+    const generation = Number(maxGen.rows[0].max_generation) + 1;
+    const workId = `spw_${randomUUID()}`;
+    const nowIso = msToIso(input.now_ms);
+    await client.query(
+      `INSERT INTO shared_preparation_work (
+        work_id, work_key_digest, deployment_set_digest, capability, capability_version,
+        scope_digest, source_identity, readiness_policy_version, evidence_boundary_kind,
+        evidence_boundary_digest, adapter_version, finality_policy_version, state, generation,
+        attempt, lease_epoch, created_at, updated_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'queued',$13,0,0,$14,$14
+      )`,
+      [
+        workId,
+        workKeyDigest,
+        deploymentSetDigest(input.work_key.deployment_ids),
+        input.work_key.capability,
+        input.work_key.capability_version,
+        input.work_key.scope_digest,
+        JSON.stringify(input.work_key.source_identity),
+        input.work_key.readiness_policy_version,
+        input.work_key.evidence_boundary_kind,
+        input.work_key.evidence_boundary_digest ?? null,
+        input.work_key.adapter_version,
+        finalityPolicyVersion(input.work_key.finality_policies),
+        generation,
+        nowIso,
+      ],
+    );
+    for (const deploymentId of input.work_key.deployment_ids) {
       await client.query(
-        `INSERT INTO shared_preparation_work (
-          work_id, work_key_digest, deployment_set_digest, capability, capability_version,
-          scope_digest, source_identity, readiness_policy_version, evidence_boundary_kind,
-          evidence_boundary_digest, adapter_version, finality_policy_version, state, generation,
-          attempt, lease_epoch, created_at, updated_at
-        ) VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'queued',$13,0,0,$14,$14
-        )`,
+        `INSERT INTO preparation_work_items (
+          work_item_id, work_id, deployment_id, capability, adapter_version, state, attempt, lease_epoch, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,'queued',0,0,$6,$6)`,
         [
+          `pwi_${randomUUID()}`,
           workId,
-          workKeyDigest,
-          deploymentSetDigest(input.work_key.deployment_ids),
+          JSON.stringify(deploymentId),
           input.work_key.capability,
-          input.work_key.capability_version,
-          input.work_key.scope_digest,
-          JSON.stringify(input.work_key.source_identity),
-          input.work_key.readiness_policy_version,
-          input.work_key.evidence_boundary_kind,
-          input.work_key.evidence_boundary_digest ?? null,
           input.work_key.adapter_version,
-          finalityPolicyVersion(input.work_key.finality_policies),
-          generation,
           nowIso,
         ],
       );
-      for (const deploymentId of input.work_key.deployment_ids) {
-        await client.query(
-          `INSERT INTO preparation_work_items (
-            work_item_id, work_id, deployment_id, capability, adapter_version, state, attempt, lease_epoch, created_at, updated_at
-          ) VALUES ($1,$2,$3,$4,$5,'queued',0,0,$6,$6)`,
-          [
-            `pwi_${randomUUID()}`,
-            workId,
-            JSON.stringify(deploymentId),
-            input.work_key.capability,
-            input.work_key.adapter_version,
-            nowIso,
-          ],
-        );
-      }
-      await this.insertLink(client, input, workId, generation);
-      const workRow = await client.query(
-        "SELECT * FROM shared_preparation_work WHERE work_id = $1",
-        [workId],
-      );
-      const links = await this.fetchActiveLinks(client, workId);
+    }
+    await this.insertLink(client, input, workId, generation);
+    const workRow = await client.query(
+      "SELECT * FROM shared_preparation_work WHERE work_id = $1",
+      [workId],
+    );
+    const links = await this.fetchActiveLinks(client, workId);
+    return {
+      kind: "joined",
+      work: rowToWork(workRow.rows[0]),
+      links,
+      created: true,
+      reused_ready: false,
+    };
+  }
+
+  async joinPublicWork(input: JoinPublicWorkInput): Promise<JoinPublicWorkResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await this.joinPublicWorkInTransaction(client, input);
       await client.query("COMMIT");
-      return {
-        kind: "joined",
-        work: rowToWork(workRow.rows[0]),
-        links,
-        created: true,
-        reused_ready: false,
-      };
+      return result;
     } catch (err) {
       await client.query("ROLLBACK");
       if (isUniqueActiveKeyViolation(err)) {
