@@ -109,7 +109,7 @@ SDD §11 subject/resource/action authorization model for collection-report.
 
 ### 2.2 Required by plan; absent on `3782fd47`
 
-Zero matches on audited tree for:
+Zero matches across all tracked non-binary files in the audited tree for:
 `CollectionDeploymentRef`, `collection-report`, `collection_resolver`,
 `TrustEnvelope` / CR-009 Ordering envelope, `dependency.ledger`,
 `capability.demand`, `gate_mapping`, hierarchical `artifact_manifest` /
@@ -556,7 +556,7 @@ G1B-3, and every T2 release claim that depends on them.
 
 Run these commands from the repository root. They inspect the immutable audited
 tree directly, so the result does not depend on the caller's checked-out branch.
-Prerequisites are Git, a POSIX shell with the standard `wc`, `tr`, and `awk`
+Prerequisites are Git, a POSIX shell, POSIX `awk`, the standard `wc` and `tr`
 utilities, and `ripgrep` (`rg`) on `PATH`; the two test-inventory filters
 intentionally use `rg`.
 
@@ -578,11 +578,7 @@ for needle in \
   artifact_manifest
 do
   count="$(
-    git grep -I -F "$needle" "$BASE" -- \
-      'packages/**/*.ts' \
-      'packages/**/*.tsx' \
-      'packages/**/*.json' \
-      'packages/**/*.sql' 2>/dev/null \
+    git grep -I -F "$needle" "$BASE" -- . 2>/dev/null \
       | wc -l \
       | tr -d ' '
   )"
