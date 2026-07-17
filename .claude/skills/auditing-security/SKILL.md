@@ -1,7 +1,15 @@
 ---
 name: audit
 description: Security and quality audit of application codebase
+role: review
+effort: high  # cycle-114 FR-3: deep-reasoning skill — override baseline /effort
 allowed-tools: Read, Grep, Glob, WebFetch, WebSearch
+# cycle-114 FR-4: pure-review skill (write_files: false) — harness removes the
+# write tools while active, mechanically enforcing C-PROC-001.
+disallowed-tools:
+  - Write
+  - Edit
+  - NotebookEdit
 capabilities:
   schema_version: 1
   read_files: true
@@ -481,7 +489,7 @@ Check for stored data that becomes dangerous when retrieved:
 
 ## Phase 1C: Security Dissenter Analysis
 
-**Condition**: Only runs if `flatline_protocol.security_audit.enabled: true` in `.loa.config.yaml`.
+**MANDATORY when enabled.** Runs if `flatline_protocol.security_audit.enabled: true` in `.loa.config.yaml`. Skipping this phase triggers a `PreToolUse:Write` gate block at `COMPLETED` marker write time (see `.claude/hooks/safety/adversarial-review-gate.sh`). Emergency override only via `LOA_ADVERSARIAL_REVIEW_ENFORCE=false` — document in sprint notes.
 
 **Objective**: Run independent security-focused cross-model review. The dissenter does NOT receive any Phase 1A/1B findings — it evaluates the code independently to prevent anchoring bias (per FR-2.5).
 
@@ -504,7 +512,7 @@ Check for stored data that becomes dangerous when retrieved:
 
 **Output**: Findings written to `grimoires/loa/a2a/{sprint_id}/adversarial-audit.json`
 
-**Failure mode**: If unavailable (timeout, API error, budget exceeded), proceed with single-model audit. Set `DEGRADED_SECURITY_REVIEW` marker if sprint completes without dissenter input (per FR-6.4). Empty findings = normal success, no DEGRADED marker.
+**Failure mode**: If unavailable (timeout, API error, budget exceeded), write `grimoires/loa/a2a/{sprint_id}/adversarial-audit.json` with `{"findings": [], "metadata": {"status": "failed", "reason": "..."}}` BEFORE proceeding — the gate hook checks for the file's presence, not its contents, so a failure record satisfies the gate while preserving the audit trail. Set `DEGRADED_SECURITY_REVIEW` marker if sprint completes without dissenter input (per FR-6.4). Empty findings = normal success, no DEGRADED marker.
 
 ## Phase 1: Systematic Audit
 
@@ -715,7 +723,7 @@ Generate a JSONL record with:
   "score": 2,
   "file": "src/path/to/file.ts",
   "line": 42,
-  "reasoning_trace": "How the issue was discovered...",
+  "evidence": "Observed data-flow / vulnerable pattern, with file:line references",
   "finding": "Description of the issue",
   "critique": "Specific guidance for improvement",
   "remediation": "Exact fix with code example",
@@ -724,15 +732,15 @@ Generate a JSONL record with:
 }
 ```
 
-### Reasoning Trace Requirements
+### Evidence Requirements
 
-Each finding MUST include a `reasoning_trace` explaining:
-1. What code/files were analyzed
-2. What patterns triggered the finding
-3. Evidence chain from input to vulnerability
-4. Why this score was assigned
+Each finding MUST include an `evidence` field citing the observable basis:
+1. The code/files inspected (paths)
+2. The vulnerable pattern found
+3. The data-flow from input (source) to sink, with file:line
+4. The observable basis for the assigned score
 
-**Example reasoning_trace**:
+**Example evidence**:
 ```
 "Traced user input from req.params.userId at controllers/user.ts:23 through 
 to database query at repositories/user.ts:42. Found string interpolation 

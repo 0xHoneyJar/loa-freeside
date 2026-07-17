@@ -15,15 +15,15 @@ import type { Logger } from 'pino';
 import type {
   INamespacedRoleManager,
   TierRoleConfig,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   NamespacedRoleConfig,
   RoleSyncResult,
   RoleSyncError,
   MemberEligibility,
   DiscordRole,
-} from '@arrakis/core/domain';
-import { DEFAULT_NAMESPACED_ROLE_CONFIG } from '@arrakis/core/domain';
+} from '@freeside/core/domain';
+import { DEFAULT_NAMESPACED_ROLE_CONFIG } from '@freeside/core/domain';
 
 // =============================================================================
 // Dependency Interfaces

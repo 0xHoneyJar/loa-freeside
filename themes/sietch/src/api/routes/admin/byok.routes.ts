@@ -17,7 +17,7 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import type { BYOKManager, BYOKManagerError } from '@arrakis/adapters/agent/byok-manager';
+import type { BYOKManager, BYOKManagerError } from '@freeside/adapters/agent/byok-manager';
 
 // --------------------------------------------------------------------------
 // Zod Schemas

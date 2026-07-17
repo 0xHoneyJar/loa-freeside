@@ -46,10 +46,10 @@ describe('PartitionManager.checkPartitionHealth()', () => {
       '../../packages/adapters/storage/partition-manager.js'
     );
 
-    const pm = new PartitionManager(
-      { connect: mockConnect } as any,
-      { warn: vi.fn(), info: vi.fn() } as any,
-    );
+    const pm = new PartitionManager({
+      pool: { connect: mockConnect } as any,
+      logger: { warn: vi.fn(), info: vi.fn() } as any,
+    });
 
     const result = await pm.checkPartitionHealth();
 
@@ -81,10 +81,10 @@ describe('PartitionManager.checkPartitionHealth()', () => {
       '../../packages/adapters/storage/partition-manager.js'
     );
 
-    const pm = new PartitionManager(
-      { connect: mockConnect } as any,
-      { warn: vi.fn(), info: vi.fn() } as any,
-    );
+    const pm = new PartitionManager({
+      pool: { connect: mockConnect } as any,
+      logger: { warn: vi.fn(), info: vi.fn() } as any,
+    });
 
     const result = await pm.checkPartitionHealth();
 

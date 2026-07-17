@@ -35,11 +35,11 @@ import { pricingRouter } from './routes/pricing.routes.js';
 import { createChatWebSocket, drainChatWebSocket } from './websocket/chat-ws.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { S2SJwtValidator } from '@arrakis/adapters/agent/s2s-jwt-validator';
-import { UsageReceiver } from '@arrakis/adapters/agent/usage-receiver';
-import { createS2SAuthMiddleware } from '@arrakis/adapters/agent/s2s-auth-middleware';
-import { buildS2SJwtValidatorConfig, loadAgentGatewayConfig } from '@arrakis/adapters/agent/config';
-import { JwtService } from '@arrakis/adapters/agent';
+import { S2SJwtValidator } from '@freeside/adapters/agent/s2s-jwt-validator';
+import { UsageReceiver } from '@freeside/adapters/agent/usage-receiver';
+import { createS2SAuthMiddleware } from '@freeside/adapters/agent/s2s-auth-middleware';
+import { buildS2SJwtValidatorConfig, loadAgentGatewayConfig } from '@freeside/adapters/agent/config';
+import { JwtService } from '@freeside/adapters/agent';
 import { createRequire as createRequireHounfour } from 'module';
 const requireHounfour = createRequireHounfour(import.meta.url);
 const IoRedis = requireHounfour('ioredis');
@@ -66,6 +66,15 @@ import {
   IdentityAlreadyExistsError,
   WalletAlreadyLinkedError,
 } from '../services/user-registry/index.js';
+// T4.3 (arrakis-vjjz): identity-api parallel-write — the cycle-c redirect target.
+// True lazy-singleton (BB F-003): built once on first verify event, reused
+// thereafter. Failure-isolated per cycle-c NFR-3.
+import {
+  getIdentityApiIdentityLink,
+  IdentityApiConfigError,
+  IdentityApiCrossUserCollisionError,
+  IdentityApiTransientError,
+} from '../services/identity-api-link.js';
 import { discordService } from '../services/discord.js';
 import { onboardingService } from '../services/onboarding.js';
 import { profileService } from '../services/profile.js';
@@ -401,6 +410,107 @@ function createApp(): Application {
               }
               // Don't fail the overall verification - registry is supplementary
             }
+          }
+
+          // ─── T4.3 (arrakis-vjjz): parallel-write to identity-api ────────────
+          //
+          // cycle-c redirect: same data ALSO writes to identity-api's
+          // /v1/link/verified-wallet so the canonical spine grows. Runs in
+          // PARALLEL with UserRegistryService for safe cutover — when
+          // operator flips the kill-switch, the legacy UserRegistry write
+          // can be removed in a follow-up.
+          //
+          // Failure isolation (cycle-c NFR-3): NEVER throws out of the
+          // onWalletLinked callback. A 409 cross_user_collision is logged
+          // as a real conflict (operator surface); 5xx/network is logged
+          // as transient (no retry here — caller will eventually re-verify
+          // and the orchestrator's idempotent path catches the rerun);
+          // 4xx/auth is logged as config (ops surface).
+          //
+          // BB F-002: worldSlug MUST come from env (`IDENTITY_API_WORLD_
+          // SLUG`), not be hardcoded. A hardcoded 'mibera' would silently
+          // corrupt identity-api's spine the moment this build runs against
+          // a non-mibera community. If the env var is unset, SKIP the
+          // parallel-write entirely + warn — the operator must explicitly
+          // declare the world this deployment binds to.
+          //
+          // BB F-003: identity-api link is a TRUE lazy-singleton — built
+          // once on first call, reused thereafter (connection pool + no
+          // per-call construction cost).
+          try {
+            const worldSlug = process.env.IDENTITY_API_WORLD_SLUG;
+            if (!worldSlug) {
+              logger.warn(
+                { communityId, discordUserId, walletAddress },
+                'identity-api: parallel-write SKIPPED — IDENTITY_API_WORLD_SLUG env unset (operator must declare the world this deployment binds to; previously hardcoded "mibera" caused silent multi-tenant corruption risk per BB F-002)'
+              );
+            } else {
+              const identityApiLink = getIdentityApiIdentityLink();
+              if (identityApiLink) {
+                const result = await identityApiLink.recordVerifiedWalletLink({
+                  worldSlug,
+                  discordId: discordUserId,
+                  walletAddress,
+                });
+                logger.info(
+                  {
+                    communityId,
+                    worldSlug,
+                    discordUserId,
+                    walletAddress,
+                    identityApiUserId: result.userId,
+                    idempotent: result.idempotent,
+                    conflictResolved: result.conflictResolved,
+                  },
+                  'identity-api: linkage recorded (parallel-write)'
+                );
+              } else {
+                logger.debug(
+                  'identity-api: parallel-write skipped (IDENTITY_API_URL or IDENTITY_API_SERVICE_TOKEN unset)'
+                );
+              }
+            }
+          } catch (identityApiError) {
+            if (identityApiError instanceof IdentityApiCrossUserCollisionError) {
+              logger.warn(
+                {
+                  discordUserId,
+                  walletAddress,
+                  message: identityApiError.message,
+                },
+                'identity-api: cross_user_collision (DO-NOT-RETRY; operator surface)'
+              );
+            } else if (identityApiError instanceof IdentityApiTransientError) {
+              logger.warn(
+                {
+                  discordUserId,
+                  walletAddress,
+                  message: identityApiError.message,
+                  statusCode: identityApiError.statusCode,
+                },
+                'identity-api: transient failure (will be re-attempted on next verify)'
+              );
+            } else if (identityApiError instanceof IdentityApiConfigError) {
+              logger.error(
+                {
+                  discordUserId,
+                  walletAddress,
+                  message: identityApiError.message,
+                },
+                'identity-api: config error (ops surface — check IDENTITY_API_* env)'
+              );
+            } else {
+              logger.error(
+                {
+                  error: identityApiError,
+                  discordUserId,
+                  walletAddress,
+                },
+                'identity-api: unexpected error in parallel-write'
+              );
+            }
+            // CRITICAL: do NOT throw. Verify must complete regardless of
+            // identity-api state (cycle-c NFR-3 failure isolation).
           }
 
           // Send Discord DM notification to user with eligibility status

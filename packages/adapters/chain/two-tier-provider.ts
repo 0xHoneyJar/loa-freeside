@@ -26,8 +26,8 @@ import type {
   CrossChainScore,
   ActionHistoryConfig,
   EligibilityResult,
-} from '@arrakis/core/ports';
-import type { IScoreServiceClient } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import type { IScoreServiceClient } from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // Types

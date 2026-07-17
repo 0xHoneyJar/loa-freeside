@@ -15,7 +15,7 @@ import {
   type ICommunityTierRepository,
   type IFeatureOverrideStore,
 } from './feature-gate.js';
-import type { Feature, VerificationTier, FeatureOverride } from '@arrakis/core/domain';
+import type { Feature, VerificationTier, FeatureOverride } from '@freeside/core/domain';
 
 // =============================================================================
 // Mock Helpers
@@ -653,7 +653,7 @@ describe('Verification Tiers Domain', () => {
   describe('getFeaturesForTier', () => {
     it('should return only Tier 1 features for incumbent_only', async () => {
       // Import dynamically to test
-      const { getFeaturesForTier } = await import('@arrakis/core/domain');
+      const { getFeaturesForTier } = await import('@freeside/core/domain');
 
       const features = getFeaturesForTier('incumbent_only');
 
@@ -664,7 +664,7 @@ describe('Verification Tiers Domain', () => {
     });
 
     it('should include inherited features for arrakis_basic', async () => {
-      const { getFeaturesForTier } = await import('@arrakis/core/domain');
+      const { getFeaturesForTier } = await import('@freeside/core/domain');
 
       const features = getFeaturesForTier('arrakis_basic');
 
@@ -676,7 +676,7 @@ describe('Verification Tiers Domain', () => {
     });
 
     it('should include all features for arrakis_full', async () => {
-      const { getFeaturesForTier } = await import('@arrakis/core/domain');
+      const { getFeaturesForTier } = await import('@freeside/core/domain');
 
       const features = getFeaturesForTier('arrakis_full');
 
@@ -692,7 +692,7 @@ describe('Verification Tiers Domain', () => {
 
   describe('isFeatureAvailable', () => {
     it('should correctly check feature availability', async () => {
-      const { isFeatureAvailable } = await import('@arrakis/core/domain');
+      const { isFeatureAvailable } = await import('@freeside/core/domain');
 
       expect(isFeatureAvailable('shadow_tracking', 'incumbent_only')).toBe(true);
       expect(isFeatureAvailable('profile_view', 'incumbent_only')).toBe(false);
@@ -704,7 +704,7 @@ describe('Verification Tiers Domain', () => {
 
   describe('getMinimumTierForFeature', () => {
     it('should return correct minimum tier', async () => {
-      const { getMinimumTierForFeature } = await import('@arrakis/core/domain');
+      const { getMinimumTierForFeature } = await import('@freeside/core/domain');
 
       expect(getMinimumTierForFeature('shadow_tracking')).toBe('incumbent_only');
       expect(getMinimumTierForFeature('profile_view')).toBe('arrakis_basic');
@@ -714,7 +714,7 @@ describe('Verification Tiers Domain', () => {
 
   describe('compareTiers', () => {
     it('should correctly compare tiers', async () => {
-      const { compareTiers } = await import('@arrakis/core/domain');
+      const { compareTiers } = await import('@freeside/core/domain');
 
       expect(compareTiers('incumbent_only', 'arrakis_basic')).toBeLessThan(0);
       expect(compareTiers('arrakis_full', 'arrakis_basic')).toBeGreaterThan(0);

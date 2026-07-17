@@ -25,6 +25,10 @@
 
 set -euo pipefail
 
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNS_DIR="$PROJECT_ROOT/.flatline/runs"
@@ -83,7 +87,7 @@ log_trajectory() {
 calculate_hash() {
     local file="$1"
     if [[ -f "$file" ]]; then
-        sha256sum "$file" | cut -d' ' -f1
+        sha256_portable "$file" | cut -d' ' -f1
     else
         echo ""
     fi
@@ -326,9 +330,9 @@ rollback_run() {
         log "Rolling back: $integration_id"
 
         if rollback_single "$integration_id" "$run_id" "$dry_run" "$force"; then
-            ((rolled_back++))
+            rolled_back=$((rolled_back + 1))
         else
-            ((failed++))
+            failed=$((failed + 1))
             if [[ "$force" != "true" ]]; then
                 error "Rollback failed for $integration_id, stopping"
                 break

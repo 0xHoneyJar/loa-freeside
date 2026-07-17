@@ -22,7 +22,7 @@ import type {
   RankedHolder,
   CrossChainScore,
   ActionHistoryConfig,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   DuneSimConfig,
   ResolvedDuneSimConfig,

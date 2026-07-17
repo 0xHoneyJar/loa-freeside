@@ -1,0 +1,11 @@
+{
+  "description": "201 tokens of pure whitespace text deltas, no CoT prefix; first 200 tokens trigger empty_content_window.",
+  "expected": {
+    "reason": "empty_content_window",
+    "tokens_before_abort": 200,
+    "triggered": true
+  },
+  "name": "abort-empty-content-window",
+  "notes": "",
+  "reasoning_class": false
+}

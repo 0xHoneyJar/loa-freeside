@@ -64,13 +64,16 @@ resource "aws_ecs_task_definition" "world" {
         }
       }
 
-      healthCheck = {
-        command     = ["CMD-SHELL", "node -e \"require('http').get('http://localhost:${var.port}${var.health_check_path}',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
+      # No container-level health check. Observed on Honey Road (mibera-
+      # honeyroad Next.js, 2026-04-17): both HTTP (via node -e http.get) and
+      # TCP (via node -e net.connect) probes failed despite ALB target group
+      # health checks at the same port succeeding externally. Root cause
+      # unclear but consistently killed tasks ~2 min after start.
+      #
+      # Task health is now determined entirely by the ALB target group health
+      # check at `var.health_check_path` — ECS considers task healthy iff the
+      # target is healthy in the ALB. Same reliability, simpler mental model,
+      # no duplicated health check logic.
     }
   ])
 

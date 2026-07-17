@@ -12,7 +12,7 @@
  * @see Hounfour RFC #31 §12 Agent Distribution via Arrakis — tier routing
  */
 
-import type { AccessLevel, ModelAlias } from '@arrakis/core/ports';
+import type { AccessLevel, ModelAlias } from '@freeside/core/ports';
 import type { RoutingPolicy, TaskType } from '@0xhoneyjar/loa-hounfour';
 import {
   POOL_IDS as HOUNFOUR_POOL_IDS,

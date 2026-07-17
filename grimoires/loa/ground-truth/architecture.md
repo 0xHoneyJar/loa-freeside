@@ -1,69 +1,35 @@
-# Architecture
+# Architecture — Ground Truth
 
-> SHA: 39be5b7 | Generated: 2026-02-13
+> Refreshed 2026-07-06 by /ride. Source: `reality/architecture-overview.md`, `reality/structure.md`.
 
-## Hexagonal (Ports & Adapters)
+## Federation (ADR-007 absorption, ADR-009 hexagonal, ADR-012 health contract)
+- **L1 registry** `packages/freeside-registry/registry.yaml` is source-of-truth for 11 cells; served as `/federation.json`. Schema/validation `packages/freeside-registry/src/registry.ts` (Effect).
+- **8 canonical `*-api` cells** are EXTERNAL repos (`github.com/0xHoneyJar/{sonar,storage,mint,activities,inventory,score,identity,mediums}`). `events`/`mint` have in-repo components.
+- **Discovery/orientation**: `freeside-cli doctor` (`packages/freeside-cli/src/verbs/doctor.ts`) + `apps/mcp-gateway`; BeaconV3 identities validated against sealed-schema sha256 + ACVP invariants.
+- **Immune system**: `governance-doctor.sh` quarantines stale artifacts; ADR-012 cadence ledger (`expectations[]`).
 
-Core defines interfaces in `packages/core/ports/` (src: packages/core/ports/index.ts:L1). Adapters implement them in `packages/adapters/`. Dependencies flow inward: adapters→core, never reverse.
+## Hexagonal layering (in-repo)
+`packages/core` **ports** (`IChainProvider`, `IStorageProvider`, `IAgentGateway`) ← `packages/adapters` **implementations** (sonar/score/chain/storage/themes/wizard/synthesis/security/coexistence/agent) ← `packages/services` (shadow-mode, shadow-audit, ordering) + `themes/sietch` monolith + `apps/*` runtimes.
 
-### Port → Adapter Map
+## WHO × WHAT product frame
+- **WHO** (identity stack): PERSON (auth: identity-api/SIWE) → ACCOUNT (per-world spine → ERC-6551 TBA) → INVENTORY (badges/roles/items).
+- **WHAT** (building stack): L0 **sonar** (on-chain raw) → L1 **score** (member value/tiers) → L2 **shadow-mode** (member-graph spine, #316) → L3 **shadow-audit** (Access-Risk Audit product).
+- World = deployed instance; CM = person in the admin hat.
 
-| Port | Port Location | Adapter | Adapter Location |
-|------|--------------|---------|-----------------|
-| IChainProvider | (src: packages/core/ports/chain-provider.ts:L144) | NativeBlockchainReader | (src: packages/adapters/chain/native-reader.ts:L185) |
-| IChainProvider | (src: packages/core/ports/chain-provider.ts:L144) | HybridChainProvider | (src: packages/adapters/chain/hybrid-provider.ts) |
-| IChainProvider | (src: packages/core/ports/chain-provider.ts:L144) | TwoTierChainProvider | (src: packages/adapters/chain/two-tier-provider.ts) |
-| IStorageProvider | (src: packages/core/ports/storage-provider.ts:L203) | DrizzleStorageAdapter | (src: packages/adapters/storage/drizzle-storage-adapter.ts:L69) |
-| IAgentGateway | (src: packages/core/ports/agent-gateway.ts:L181) | AgentGateway | (src: packages/adapters/agent/agent-gateway.ts:L65) |
-| ISynthesisEngine | (src: packages/core/ports/synthesis-engine.ts:L242) | SynthesisEngine | (src: packages/adapters/synthesis/engine.ts:L156) |
-| IWizardEngine | (src: packages/core/ports/wizard-engine.ts:L199) | WizardEngine | (src: packages/adapters/wizard/engine.ts:L84) |
-| IShadowLedger | (src: packages/core/ports/shadow-ledger.ts) | ScyllaDBShadowLedger | (src: packages/adapters/coexistence/shadow-ledger.ts) |
-| IFeatureGate | (src: packages/core/ports/feature-gate.ts) | FeatureGate | (src: packages/adapters/coexistence/feature-gate.ts) |
+## Runtimes & messaging
+- `apps/gateway` (Rust, Twilight+tokio) — Discord shards → NATS.
+- `apps/worker` (`main-nats.ts`) — 4 NATS consumers (command/event/eligibility/usage) + agent gateway.
+- `apps/ingestor` — Discord → RabbitMQ (no business logic).
+- `apps/mcp-gateway` (Hono) — MCP federation v0.3.
+- `themes/sietch` (Express 5) — incumbent Discord + web + REST.
+- In-repo services on Hono (shadow-audit, ordering, shadow-mode).
+- Cross-cell events: `@0xhoneyjar/events` (RFC 8785 JCS + Ed25519, Hounfour 3-segment topics, NATS JetStream; verify-before-route).
 
-### Package Structure
+## Auth
+ES256 JWT internal (ADR-002, JWKS `/.well-known/jwks.json`); end-user Discord OAuth + wallet signature. Cluster cells: 3 real + 1 ghost (HS256 activities, static-key score, none sonar; ES256 svc-JWT ghost). See behaviors.md.
 
-Monorepo with 4 workspace packages (src: packages/core/ports/index.ts:L1):
+## Persistence & infra
+PostgreSQL + Drizzle + RLS (per `community_id`); SQLite (sietch v1 eligibility); Redis 7 (Lua atomic budget); Terraform/AWS (ECS/RDS/ElastiCache/ALB/EFS/S3/DynamoDB/CloudWatch); Prometheus/Grafana/CloudWatch + Pino.
 
-| Package | Contents | Ref |
-|---------|----------|-----|
-| core/ports/ | 15 port interface files | (src: packages/core/ports/index.ts:L1) |
-| adapters/agent/ | AgentGateway, BudgetManager, rate limiting, BYOK | (src: packages/adapters/agent/index.ts:L1) |
-| adapters/chain/ | RPC, Dune Sim, hybrid, two-tier provider | (src: packages/adapters/chain/index.ts:L1) |
-| adapters/storage/ | Drizzle ORM + PostgreSQL + RLS | (src: packages/adapters/storage/index.ts:L1) |
-| adapters/synthesis/ | BullMQ job processor for Discord API | (src: packages/adapters/synthesis/engine.ts:L156) |
-| adapters/wizard/ | 8-step onboarding orchestrator | (src: packages/adapters/wizard/engine.ts:L84) |
-| adapters/themes/ | ThemeRegistry, BasicTheme, SietchTheme | (src: packages/adapters/themes/theme-registry.ts:L96) |
-| adapters/security/ | Vault, KillSwitch, MFA, wallet verification | (src: packages/adapters/coexistence/shadow-ledger.ts) |
-| adapters/coexistence/ | Shadow mode, parallel mode, migration | (src: packages/adapters/coexistence/feature-gate.ts) |
-| cli/ | Auth, user, sandbox, server IaC commands | (src: packages/cli/src/commands/index.ts:L24) |
-
-### Key Services
-
-| Service | Responsibilities | Ref |
-|---------|-----------------|-----|
-| AgentGateway | Request lifecycle: RECEIVED→RESERVED→EXECUTING→FINALIZED | (src: packages/adapters/agent/agent-gateway.ts:L65) |
-| BudgetManager | Two-counter (committed+reserved), Lua atomicity | (src: packages/adapters/agent/budget-manager.ts:L89) |
-| BudgetReaperJob | Reclaims expired reservations every 60s | (src: packages/adapters/agent/budget-reaper-job.ts:L46) |
-| StreamReconciliation | Finalizes dropped SSE streams | (src: packages/adapters/agent/stream-reconciliation-worker.ts:L47) |
-| ThemeRegistry | Theme registration, tier filtering, hot-reload | (src: packages/adapters/themes/theme-registry.ts:L96) |
-| TenantContext | Multi-tenancy RLS via set_tenant_context() | (src: packages/adapters/storage/tenant-context.ts:L120) |
-
-### Dependency Injection
-
-AgentGateway ← BudgetManager, AgentRateLimiter, LoaFinnClient, TierAccessMapper, Redis, Logger (src: packages/adapters/agent/agent-gateway.ts:L79).
-DrizzleStorageAdapter ← PostgresJsDatabase, postgres.Sql, tenantId, options (src: packages/adapters/storage/drizzle-storage-adapter.ts:L84).
-WizardEngine ← sessionStore, synthesisEngine, stepHandlers, analyticsRedis, logger (src: packages/adapters/wizard/engine.ts:L92).
-
-### Chain Provider Modes
-
-Factory: `createChainProvider(logger)` (src: packages/adapters/chain/provider-factory.ts:L103). Config: `loadChainProviderConfig()` (src: packages/adapters/chain/config.ts:L98).
-
-| Mode | Provider | Ref |
-|------|----------|-----|
-| `rpc` (default) | NativeBlockchainReader — direct viem RPC | (src: packages/adapters/chain/provider-factory.ts:L127) |
-| `dune_sim` | DuneSimClient — Dune Sim API only | (src: packages/adapters/chain/provider-factory.ts:L108) |
-| `hybrid` | HybridChainProvider — Dune Sim + RPC fallback | (src: packages/adapters/chain/provider-factory.ts:L116) |
-
-### Application Entry
-
-Main: `await startServer()` (src: themes/sietch/src/index.ts:L22). Server module: (src: themes/sietch/src/api/index.ts:L5).
+## Not this
+Not a single-tenant bot (multi-community, RLS). Not a pure monolith (federation). Not `@arrakis` (migrated to `@freeside`/`@0xhoneyjar`).

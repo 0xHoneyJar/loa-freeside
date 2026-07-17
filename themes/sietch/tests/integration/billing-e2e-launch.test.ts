@@ -217,7 +217,7 @@ describe('Task 13.1: E2E Scenarios', () => {
       const payoutResult = payoutService.requestPayout({
         accountId: 'referrer-alice',
         amountMicro: earningAmount, // $10 payout
-        payoutAddress: '0xAlicePayoutAddress',
+        payoutAddress: '0x1111111111111111111111111111111111111111', // valid EIP-55 (all-lowercase); requestPayout validates the address
       });
 
       expect(payoutResult.success).toBe(true);
@@ -257,7 +257,7 @@ describe('Task 13.1: E2E Scenarios', () => {
       const result = payoutService.requestPayout({
         accountId: 'fail-referrer',
         amountMicro: 5_000_000,
-        payoutAddress: '0xFailAddr',
+        payoutAddress: '0x2222222222222222222222222222222222222222', // valid EIP-55 (all-lowercase)
       });
       expect(result.success).toBe(true);
 
@@ -284,7 +284,7 @@ describe('Task 13.1: E2E Scenarios', () => {
       const result = payoutService.requestPayout({
         accountId: 'cancel-referrer',
         amountMicro: 3_000_000,
-        payoutAddress: '0xCancelAddr',
+        payoutAddress: '0x3333333333333333333333333333333333333333', // valid EIP-55 (all-lowercase)
       });
 
       const stateMachine = new PayoutStateMachine(db);
@@ -587,7 +587,7 @@ describe('Task 13.2: Treasury Invariant Stress Test', () => {
       const result = payoutService.requestPayout({
         accountId: 'stress-referrer',
         amountMicro: payoutAmount,
-        payoutAddress: `0xStressAddr${i}`,
+        payoutAddress: `0x${String(i).padStart(40, '0')}`, // valid EIP-55 (all-lowercase hex)
       });
 
       // First payout should succeed, subsequent may be rate-limited

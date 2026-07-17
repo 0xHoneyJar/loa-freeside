@@ -28,12 +28,12 @@ import {
   type IMigrationNotificationService,
   type IMigrationMetrics,
 } from './migration-manager.js';
-import type { MigrationConfig, MigrationState } from '@arrakis/core/domain';
+import type { MigrationConfig, MigrationState } from '@freeside/core/domain';
 import {
   MIN_SHADOW_DAYS_FOR_MIGRATION,
   MIN_ACCURACY_FOR_MIGRATION,
   MAX_DIVERGENCE_RATE_FOR_MIGRATION,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Test Fixtures

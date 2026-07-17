@@ -1,0 +1,10 @@
+# Test registry — a single module serving a legacy BeaconV2 (G-4: migration warn).
+version: 1
+modules:
+  legacy-api:
+    git_url: https://github.com/0xHoneyJar/legacy-api.git
+    beacon_url: https://legacy.0xhoneyjar.xyz/.well-known/beacon.json
+    beacon_fixture: beacon-legacy-v2.yaml
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-30"

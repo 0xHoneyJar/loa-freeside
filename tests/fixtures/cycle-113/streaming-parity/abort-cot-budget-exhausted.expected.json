@@ -1,0 +1,11 @@
+{
+  "description": "501 tokens of CoT-shaped prose (`thinking ...`) with no structured-answer marker; reasoning-class triggers cot_budget_exhausted at token 501.",
+  "expected": {
+    "reason": "cot_budget_exhausted",
+    "tokens_before_abort": 501,
+    "triggered": true
+  },
+  "name": "abort-cot-budget-exhausted",
+  "notes": "",
+  "reasoning_class": true
+}

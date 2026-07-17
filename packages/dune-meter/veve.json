@@ -1,0 +1,78 @@
+{
+  "veve_version": "0.2.0",
+  "name": "dune-meter",
+  "version": "0.1.0",
+  "summary": "Cost-aware Dune adapter: estimate (probe heuristic) / run (CostAtom + post-spend audit) / budget. --cap is a post-spend audit signal; set the account-level Dune Query Cost Cap in your Dune dashboard for the pre-spend hard-abort.",
+  "binary": {
+    "entry": "bin/dune-meter.mjs",
+    "runtime": "node",
+    "subcommands": [
+      "estimate",
+      "run",
+      "budget"
+    ]
+  },
+  "determinism": {
+    "class": "attestable",
+    "declared_by": "author",
+    "ambient": [
+      "network",
+      "clock",
+      "randomness"
+    ]
+  },
+  "rel_required": "casual",
+  "liveness": {
+    "timeout_s": 300,
+    "expected_p95_s": 30,
+    "mode": "oneshot"
+  },
+  "io": {
+    "input": "argv",
+    "output": "stdout_json",
+    "exit_codes": {
+      "0": "ok",
+      "2": "caller error (bad args, missing key, malformed target)",
+      "3": "budget refuse (estimate exceeds remaining budget)",
+      "4": "cap aborted (Dune cost-cap hard-abort, or reported spend over --cap)"
+    }
+  },
+  "vectors": [
+    {
+      "name": "help-usage (ambient-free: static usage text; no network/clock/env/ledger touched — replays byte-stable on any host)",
+      "argv": [
+        "--help"
+      ],
+      "stdin": null,
+      "expect_output_hash": "sha256:1de550dd2ceccd9398c9fb3e3c292e2f54b155108ba162b9592f1985cdf6f4e7",
+      "expect_exit": 0
+    },
+    {
+      "name": "run-requires-cap (ambient-free: the cost-cap mandate — `run` errors exit 2 before any ledger/network I/O; empty stdout, deterministic)",
+      "argv": [
+        "run",
+        "12345"
+      ],
+      "stdin": null,
+      "expect_output_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expect_exit": 2
+    }
+  ],
+  "ladder": {
+    "level": 2,
+    "promoted_from": "grimoires/loa/context/dune-meter-cost-aware-adapter.md",
+    "evidence_runs": [
+      "run:exp-002-budget-blowout:postmortem",
+      "run:dune-meter-0612a:build"
+    ]
+  },
+  "attestation": {
+    "tree_hash": "sha256:667e52ef6fee98307a2bfc2b72e845e499edf30caae82e9b5d3d02fbc38e4d1d",
+    "git_commit": "771e5fcb8bc312bd5f559a85b7b65b3311c47c7b",
+    "signed_by_key_id": "436c1bd81f70aefa6739230657cafadd4b9181c9ea0517cb77124ae4ad270871",
+    "signature_type": "dev_signature",
+    "ts": "2026-06-12T20:38:27.762Z",
+    "signature": "GY7ccXg+3FjpM2M0B8RYkW2Q0irEkQQ13wrtW5hS1ENHro0Ox8Sg6bP6sD0AkmL4OrnKMn63u5KXEX95Bud6Bw==",
+    "public_key": {}
+  }
+}

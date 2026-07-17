@@ -14,7 +14,7 @@ import type {
   IMfaVerifier,
   IVaultClient,
   MfaVerificationResult,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 
 // =============================================================================
 // Types

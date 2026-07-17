@@ -280,3 +280,359 @@ cost-profile: lightweight
     [ "$status" -eq 0 ]
     [[ "$output" == *"correlation mismatch"* ]]
 }
+
+# =========================================================================
+# SC-T-AGENT-1: write_files true + agent: Plan → ERROR (Issue #553)
+# =========================================================================
+
+@test "write_files true with agent: Plan is ERROR" {
+    create_skill "plan-write-conflict" "---
+name: planwrite
+description: Plan agent with write capability
+agent: Plan
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# Plan Write Conflict"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill plan-write-conflict
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"agent type 'Plan'"* ]]
+    [[ "$output" == *"Write"* ]]
+}
+
+# =========================================================================
+# SC-T-AGENT-2: write_files true + agent: Explore → ERROR (Issue #553)
+# =========================================================================
+
+@test "write_files true with agent: Explore is ERROR" {
+    create_skill "explore-write-conflict" "---
+name: explorewrite
+description: Explore agent with write capability
+agent: Explore
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# Explore Write Conflict"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill explore-write-conflict
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"agent type 'Explore'"* ]]
+    [[ "$output" == *"excludes Write/Edit"* ]]
+}
+
+# =========================================================================
+# SC-T-AGENT-3: write_files true + agent: general-purpose → PASS
+# =========================================================================
+
+@test "write_files true with agent: general-purpose passes" {
+    create_skill "gp-write-ok" "---
+name: gpwrite
+description: General-purpose agent with write capability
+agent: general-purpose
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# GP Write OK"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill gp-write-ok
+    [ "$status" -eq 0 ]
+}
+
+# =========================================================================
+# SC-T-AGENT-4: write_files true + no agent key → PASS (foreground has Write)
+# =========================================================================
+
+@test "write_files true with no agent key passes" {
+    create_skill "no-agent-write-ok" "---
+name: noagent
+description: No agent type declared
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# No Agent Write OK"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill no-agent-write-ok
+    [ "$status" -eq 0 ]
+}
+
+# =========================================================================
+# SC-T-AGENT-5: write_files false + agent: Plan → PASS (no contradiction)
+# =========================================================================
+
+@test "write_files false with agent: Plan passes" {
+    create_skill "plan-read-only" "---
+name: planro
+description: Plan agent read-only
+agent: Plan
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# Plan Read Only"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill plan-read-only
+    [ "$status" -eq 0 ]
+}
+
+# =========================================================================
+# SC-T-AGENT-6: allowed-tools: Write + agent: Plan → ERROR
+# =========================================================================
+
+@test "allowed-tools contains Write with agent: Plan is ERROR" {
+    create_skill "plan-allowed-tools-write" "---
+name: planallowedwrite
+description: Plan agent with Write in allowed-tools
+agent: Plan
+allowed-tools: Read, Grep, Write
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# Plan Allowed-Tools Write Conflict"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill plan-allowed-tools-write
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"agent type 'Plan'"* ]]
+    [[ "$output" == *"excludes Write/Edit"* ]]
+}
+
+# =========================================================================
+# SC-T-AGENT-7: allowed-tools: Edit + agent: Plan → ERROR (DISS-001 coverage)
+# =========================================================================
+# Addresses Phase 2.5 advisory: SC-T-AGENT-6 exercises the Write path. This
+# test covers the symmetric Edit path and asserts the agent-type error
+# message specifically (distinct from the existing write_files-vs-allowed-tools
+# security-violation message), proving the new invariant check fires
+# regardless of which write-capable tool is declared.
+
+@test "allowed-tools contains Edit with agent: Plan is ERROR (agent-invariant)" {
+    create_skill "plan-allowed-tools-edit" "---
+name: planallowededit
+description: Plan agent with Edit in allowed-tools
+agent: Plan
+allowed-tools: Read, Grep, Edit
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+---
+# Plan Allowed-Tools Edit Conflict"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill plan-allowed-tools-edit
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"agent type 'Plan'"* ]]
+    [[ "$output" == *"excludes Write/Edit"* ]]
+}
+
+# =========================================================================
+# cycle-114 FR-3: optional `effort:` frontmatter validation
+# =========================================================================
+
+@test "c114-FR3: valid effort: high passes" {
+    create_skill "effort-good" "---
+name: effort-good
+description: skill with valid effort
+role: review
+effort: high
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+# Effort Good"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill effort-good
+    [ "$status" -eq 0 ]
+}
+
+@test "c114-FR3: invalid effort value is ERROR" {
+    create_skill "effort-bad" "---
+name: effort-bad
+description: skill with bogus effort
+role: review
+effort: turbo
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+# Effort Bad"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill effort-bad
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Invalid effort 'turbo'"* ]]
+}
+
+@test "c114-FR3: lightweight cost-profile + effort xhigh WARNs (not error)" {
+    create_skill "effort-mismatch" "---
+name: effort-mismatch
+description: cheap-tier skill asking for deepest reasoning
+role: review
+effort: xhigh
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: lightweight
+---
+# Effort Mismatch"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill effort-mismatch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"effort: xhigh"* ]]
+}
+
+@test "c114-FR3: real red-team skill (effort: xhigh) validates clean" {
+    run "$VALIDATOR" --skill red-teaming
+    [ "$status" -eq 0 ]
+}
+
+# =========================================================================
+# cycle-114 FR-4: review skills must mechanically disallow Write (C-PROC-001)
+# =========================================================================
+
+@test "c114-FR4: review + write_files:true + Write NOT disallowed + not excepted → WARN" {
+    create_skill "leaky-review" "---
+name: leaky-review
+description: review skill that can write but does not disallow it
+role: review
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+# Leaky Review"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill leaky-review
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"C-PROC-001 is enforced only by prose"* ]]
+}
+
+@test "c114-FR4: review + write_files:true + Write disallowed → no WARN" {
+    create_skill "tight-review" "---
+name: tight-review
+description: review skill that disallows Write
+role: review
+disallowed-tools:
+  - Write
+  - Edit
+  - NotebookEdit
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+# Tight Review"
+
+    SKILLS_DIR="$FIXTURE_DIR" run "$VALIDATOR" --skill tight-review
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"C-PROC-001 is enforced only by prose"* ]]
+}
+
+@test "c114-FR4: real pure-review skills declare disallowed Write" {
+    grep -q 'disallowed-tools' "$PROJECT_ROOT/.claude/skills/reviewing-code/SKILL.md"
+    grep -q 'Write' "$PROJECT_ROOT/.claude/skills/reviewing-code/SKILL.md"
+    grep -q 'disallowed-tools' "$PROJECT_ROOT/.claude/skills/auditing-security/SKILL.md"
+}
+
+@test "c114-FR4: real write-exception review skills (red-team/BB) validate clean" {
+    run "$VALIDATOR" --skill red-teaming
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"C-PROC-001 is enforced only by prose"* ]]
+    run "$VALIDATOR" --skill bridgebuilder-review
+    [ "$status" -eq 0 ]
+}

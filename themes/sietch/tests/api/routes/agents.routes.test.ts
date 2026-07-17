@@ -10,8 +10,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { createAgentRoutes, type AgentRoutesDeps } from '../../../src/api/routes/agents.routes.js';
-import type { IAgentGateway } from '@arrakis/core/ports';
-import { AGENT_MAX_IDEMPOTENCY_KEY_LENGTH } from '@arrakis/adapters/agent/config';
+import type { IAgentGateway } from '@freeside/core/ports';
+import { AGENT_MAX_IDEMPOTENCY_KEY_LENGTH } from '@freeside/adapters/agent/config';
 
 // =============================================================================
 // Helpers

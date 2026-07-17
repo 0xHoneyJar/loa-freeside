@@ -699,7 +699,16 @@ function parseConfig() {
     const errors = result.error.issues.map(
       (issue) => `  - ${issue.path.join('.')}: ${issue.message}`
     );
-    logger.fatal({ errors: result.error.issues }, 'Configuration validation failed');
+    // bug 20260530-ecc0b3: this import-time throw path must not depend on
+    // logger.fatal. Under test, utils/logger.js may be mocked without `fatal`
+    // (mock leaks across vitest workers); calling logger.fatal then TypeError'd
+    // here and masked the real validation error (CI-only, since .env.local
+    // satisfies validation locally). Fall back fatal -> error -> console.
+    (logger.fatal ?? logger.error ?? console.error).call(
+      logger,
+      { errors: result.error.issues },
+      'Configuration validation failed'
+    );
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
   }
 

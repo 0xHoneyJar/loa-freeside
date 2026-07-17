@@ -159,7 +159,7 @@ describe('Task 10.1: Webhook handler', () => {
     const sm = new PayoutStateMachine(db);
 
     // Create and approve payout
-    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-payout-123');
 
@@ -182,7 +182,7 @@ describe('Task 10.1: Webhook handler', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-payout-456');
 
@@ -204,7 +204,7 @@ describe('Task 10.1: Webhook handler', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-payout-789');
 
@@ -238,7 +238,7 @@ describe('Task 10.2: Reconciliation cron', () => {
     createSettledEarnings(db, 'alice', 50_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-stalled-1');
 
@@ -262,7 +262,7 @@ describe('Task 10.2: Reconciliation cron', () => {
     createSettledEarnings(db, 'alice', 50_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 10_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
 
     // Force to processing without provider ID
@@ -294,7 +294,7 @@ describe('Task 10.3: Payout cancellation', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     const result = sm.cancel(payoutId);
 
     expect(result.success).toBe(true);
@@ -306,7 +306,7 @@ describe('Task 10.3: Payout cancellation', () => {
     const sm = new PayoutStateMachine(db);
     const service = new CreatorPayoutService(db);
 
-    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
 
     // Escrow should exist
@@ -325,7 +325,7 @@ describe('Task 10.3: Payout cancellation', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-123');
 
@@ -338,7 +338,7 @@ describe('Task 10.3: Payout cancellation', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-123');
     sm.complete(payoutId);
@@ -405,7 +405,7 @@ describe('Task 10.4: Idempotency matrix', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
 
     // First approve creates escrow
     const result1 = sm.approve(payoutId);
@@ -427,7 +427,7 @@ describe('Task 10.4: Idempotency matrix', () => {
     createSettledEarnings(db, 'alice', 20_000_000);
     const sm = new PayoutStateMachine(db);
 
-    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xAlice');
+    const { payoutId } = sm.createRequest('alice', 5_000_000, 0, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     sm.approve(payoutId);
     sm.markProcessing(payoutId, 'provider-123');
 
@@ -468,7 +468,7 @@ describe('Task 10.4: Idempotency matrix', () => {
     const result1 = service.requestPayout({
       accountId: 'alice',
       amountMicro: 5_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result1.success).toBe(true);
 
@@ -492,7 +492,7 @@ describe('Task 10.5: E2E payout lifecycle', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 10_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       currency: 'usdc',
     });
     expect(result.success).toBe(true);
@@ -536,7 +536,7 @@ describe('Task 10.5: E2E payout lifecycle', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 10_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result.success).toBe(true);
     const payoutId = result.payoutId!;
@@ -572,7 +572,7 @@ describe('Task 10.5: E2E payout lifecycle', () => {
     const result = service.requestPayout({
       accountId: 'alice',
       amountMicro: 10_000_000,
-      payoutAddress: '0xAlice',
+      payoutAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
     expect(result.success).toBe(true);
     const payoutId = result.payoutId!;

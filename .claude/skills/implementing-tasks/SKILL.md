@@ -1,6 +1,7 @@
 ---
 name: implement
 description: "Execute sprint tasks with production-quality code and tests"
+role: implementation
 capabilities:
   schema_version: 1
   read_files: true
@@ -198,7 +199,7 @@ Agents SHOULD proactively run CLI tools from the approved allowlist without aski
 |------|-----------------|-------|
 | `git` | `status`, `log`, `diff`, `branch`, `show` | Local only, no network |
 | `gh` | `issue list`, `issue view`, `pr list`, `pr view`, `pr checks` | Use `--json` + field filtering to avoid leaking secrets from PR bodies |
-| `npm`/`bun` | `test`, `run lint`, `run typecheck` | Build/check commands |
+| `npm`/`bun` | `test`, `run lint`, `run typecheck`, `run format` | Build/check + format-check commands (#1086) |
 | `cargo` | `check`, `test`, `clippy` | Build/check commands |
 
 ### Require Confirmation
@@ -345,7 +346,7 @@ Implement sprint tasks from `grimoires/loa/sprint.md` with production-grade code
 - **Desired state**: Working, tested implementation + comprehensive report
 
 ## Constraints (E - Explicit)
-<!-- @constraint-generated: start implementing_tasks_constraints | hash:14f0ec969f05599d -->
+<!-- @constraint-generated: start implementing_tasks_constraints | hash:5b15ea042277c84d -->
 <!-- DO NOT EDIT — generated from .claude/data/constraints.json -->
 1. DO NOT start new work without checking for audit feedback FIRST (highest priority)
 2. DO NOT start new work without checking for engineer feedback SECOND
@@ -357,13 +358,15 @@ Implement sprint tasks from `grimoires/loa/sprint.md` with production-grade code
 8. DO update relevant documentation if specified in integration context
 9. DO format commits per org standards if defined
 10. DO follow SemVer for version updates
+11. DO walk the YAGNI ladder before writing code — stop at the first rung that holds (need it? → stdlib → native → installed dependency → one line → minimum code); reinventing stdlib/native features is a dominant over-engineering class
 <!-- @constraint-generated: end implementing_tasks_constraints -->
 
 ## Verification (E - Easy to Verify)
 **Success** = All acceptance criteria met + comprehensive tests pass + detailed report at expected path
 
-Report MUST include:
+Report MUST include (in this order, enforced):
 - Executive Summary
+- **AC Verification** (REQUIRED — Issue #475, see structural rule below)
 - Tasks Completed (files/lines modified, approach, test coverage)
 - Technical Highlights (architecture, performance, security, integrations)
 - Testing Summary (test files, scenarios, how to run)
@@ -371,11 +374,57 @@ Report MUST include:
 - Verification Steps for reviewer
 - Feedback Addressed section (if iteration after feedback)
 
+### AC Verification Gate (cycle-057, closes #475)
+
+Before writing the `COMPLETED` marker for a sprint, the implementation report
+MUST contain an `## AC Verification` section that walks every acceptance
+criterion from `grimoires/loa/sprint.md`. Each AC requires:
+
+1. **Verbatim quote** — copy the AC text from sprint.md, not a paraphrase
+2. **Status marker** — one of `✓ Met` / `✗ Not met` / `⚠ Partial` / `⏸ [ACCEPTED-DEFERRED]`
+3. **File:line evidence** — for every `Met` claim, a specific path and line
+   pointing to the symbol, assertion, or test that proves the AC is honored
+4. **Deferral rationale** — `[ACCEPTED-DEFERRED]` requires a matching entry
+   in `grimoires/loa/NOTES.md` under the Decision Log
+
+**Skill behavior enforcement**:
+
+- **DO NOT** write a `COMPLETED` marker if any AC has status `✗ Not met` or
+  `⚠ Partial` without an accompanying scope-split to a follow-up sprint task
+- **DO NOT** silently mark ACs as deferred — always pair with a NOTES.md entry
+- **DO NOT** write generic evidence like "implemented in src/batch/" — provide
+  specific file:line references with enough context that the reviewer can
+  verify the AC is honored without re-reading the whole implementation
+
+This gate catches SDD-implementation drift at implement time rather than
+letting it slip through to `/review-sprint`, saving the fix-loop round trip.
+Karpathy-aligned: goal-driven verification, not just code written.
+
+See `resources/templates/implementation-report.md` for the structured
+`## AC Verification` template.
+
 ## Reproducibility (R - Reproducible Results)
 - Write tests with specific assertions: NOT "it works" → "returns 200 status, response includes user.id field"
 - Document specific file paths and line numbers: NOT "updated auth" → "src/auth/middleware.ts:42-67"
 - Include exact commands to reproduce: NOT "run tests" → "npm test -- --coverage --watch=false"
 - Reference specific commits or branches when relevant
+
+## Pre-Handoff Verification Gate — match CI's fast gate (#1086)
+
+Before marking a task done, run the SAME fast checks CI will run — not just a
+linter + tests. When the project configures them (detect from `pyproject.toml`,
+`package.json` scripts, `.golangci.yml`, `Cargo.toml`, or the `.github/workflows`
+files), ALSO run, in addition to the linter and tests:
+
+- the **formatter in check mode** — `ruff format --check`, `prettier --check`,
+  `gofmt -l`, `cargo fmt --check`, … (a formatter that would *rewrite* files is
+  a red CI waiting to happen), and
+- the **type checker** — `mypy`, `tsc --noEmit`, `pyright`, `go vet`, ….
+
+Treat a format-check or type-check failure exactly like a lint/test failure: fix
+it before handoff. Goal: **the agent's self-check == CI's fast gate**, so work
+marked done doesn't bounce on formatting/types after it's otherwise approved.
+Tool-agnostic — the above are examples; run whatever the project configures.
 </kernel_framework>
 
 <uncertainty_protocol>
@@ -449,6 +498,68 @@ Before implementing:
 - Quote feedback items when addressing them
 - Reference test file paths and coverage metrics
 </citation_requirements>
+
+<karpathy_goal_driven_gate>
+## Goal-Driven Gate (Karpathy principle 4 — applies before any tool call)
+
+Karpathy principle 4 (Goal-Driven Execution) requires testable verification
+before implementation. Tasks without written success criteria invite scope
+drift and unverifiable completion claims. This gate enforces the principle at
+the /implement entry point.
+
+### When the gate fires
+
+Before Phase -2 (Beads-First Integration) runs:
+
+1. Read `grimoires/loa/sprint.md`
+2. Check for a section heading matching one of:
+   - "Success criteria" (case-insensitive)
+   - "Acceptance criteria" (case-insensitive)
+   - "Verification" (case-insensitive)
+3. Section body MUST be non-empty (a heading with no follow-up content fails the check)
+4. Read config: `yq eval '.karpathy_principles.require_success_criteria // true' .loa.config.yaml`
+
+### Gate decision
+
+| Section present | Config `require_success_criteria` | Action |
+|---|---|---|
+| Yes | any | Proceed to Phase -2 normally |
+| No  | `false` | Proceed (operator opted out) — log to trajectory: `{"phase":"karpathy_check","principle":"goal_driven","verdict":"skipped_by_config",...}` |
+| No  | `true` (default) | **AskUserQuestion** before any tool call |
+
+### AskUserQuestion shape
+
+When the gate fires, present these 3 options:
+
+| Option | Effect |
+|---|---|
+| **Provide criteria now** | Operator dictates the criteria; agent appends a "Success Criteria" section to sprint.md, then proceeds |
+| **Skip with rationale** | Operator provides a 1-line rationale; agent logs to trajectory and proceeds |
+| **Abort** | Exit cleanly (no tool calls); operator can re-invoke /implement after updating sprint.md |
+
+### Trajectory log
+
+Every gate decision emits a single event to `grimoires/loa/a2a/trajectory/karpathy-{date}.jsonl`:
+
+```jsonl
+{"phase":"karpathy_check","principle":"goal_driven","verdict":"passed|skipped_by_config|skipped_by_operator|aborted","timestamp":"...","sprint_path":"..."}
+```
+
+The schema at `.claude/data/trajectory-schemas/karpathy-check.payload.schema.json`
+permits `principle: goal_driven` alongside the `surgical_changes` events from
+the K-1 hook.
+
+### Why this is a hard precondition
+
+This gate is intentionally NOT a "remind once and proceed" check — it's a
+precondition. Even autonomous /run cycles MUST satisfy it, either via
+config-driven opt-out (`require_success_criteria: false` for trusted batch
+runs) or via per-invocation skip with rationale. The rationale itself is the
+audit trail.
+
+See: #961 K-3 / FR-4, PR #960 (companion: inline Karpathy in CLAUDE.loa.md),
+`.claude/protocols/karpathy-principles.md` (full protocol doc).
+</karpathy_goal_driven_gate>
 
 <workflow>
 ## Phase -2: Beads-First Integration (v1.29.0)

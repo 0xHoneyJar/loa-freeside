@@ -35,7 +35,6 @@ resource "aws_apigatewayv2_api" "auth_proxy" {
     allow_origins = [
       "https://0xhoneyjar.xyz",
       "https://moneycomb.0xhoneyjar.xyz",
-      "https://honey.0xhoneyjar.xyz",
       "https://hub.0xhoneyjar.xyz",
       "https://midi.0xhoneyjar.xyz",
       "https://mibera.0xhoneyjar.xyz",

@@ -8,6 +8,13 @@ setup() {
     SCRIPT="$PROJECT_ROOT/.claude/scripts/butterfreezone-validate.sh"
     GEN_SCRIPT="$PROJECT_ROOT/.claude/scripts/butterfreezone-gen.sh"
 
+    # Lower the word-count minimum for tests. The mock repo has trivial
+    # content, so butterfreezone-gen naturally produces ~150-word output
+    # — well below the production 500-word quality gate. Override keeps
+    # tests exercising the validator logic without requiring a large
+    # synthetic repo.
+    export LOA_BUTTERFREEZONE_MIN_WORDS=50
+
     export BATS_TMPDIR="${BATS_TMPDIR:-/tmp}"
     export TEST_TMPDIR="$BATS_TMPDIR/butterfreezone-validate-test-$$"
     mkdir -p "$TEST_TMPDIR"
@@ -33,9 +40,30 @@ teardown() {
     fi
 }
 
-# Helper: generate a valid BUTTERFREEZONE.md
+# Helper: generate a valid BUTTERFREEZONE.md.
+#
+# Also seeds two fixtures the generator doesn't produce for a trivial
+# mock repo:
+#   - .claude/data/core-skills.json (validator warns if missing)
+#   - "## Key Capabilities" section (generator skips for repos with
+#     no real capabilities to describe)
+#
+# Without these, validate exits 2 (warnings) and tests that assert
+# exit 0 fail. The additions make the fixture meet the validator's
+# "clean pass" criteria without requiring a rich synthetic repo.
 generate_valid() {
+    mkdir -p "$MOCK_REPO/.claude/data"
+    echo '{"skills":[]}' > "$MOCK_REPO/.claude/data/core-skills.json"
     "$GEN_SCRIPT" --output "$MOCK_REPO/BUTTERFREEZONE.md" 2>/dev/null
+    if ! grep -q "^## Key Capabilities" "$MOCK_REPO/BUTTERFREEZONE.md"; then
+        cat >> "$MOCK_REPO/BUTTERFREEZONE.md" <<'EOF'
+
+## Key Capabilities
+<!-- provenance: DERIVED -->
+
+- **Test fixture capability**: Placeholder capability for validator tests.
+EOF
+    fi
 }
 
 # =============================================================================
@@ -263,4 +291,34 @@ EOF
     [ "$status" -eq 0 ]
     # Should have no PASS/FAIL output
     [[ "$output" != *"PASS"* ]]
+}
+
+# =============================================================================
+# Check 5b: Freshness portability (#1034) — GNU-only `date -d` regression
+# =============================================================================
+
+@test "validate: freshness survives BSD-style date without -d (#1034)" {
+    # generate_valid stamps a FRESH generated_at (gen.sh uses date -u).
+    generate_valid
+
+    # Simulate BSD/macOS: a `date` with no `-d` support (exits non-zero on it),
+    # passing every other form through to the real date. Pre-fix, validate's raw
+    # `date -d "$generated_at"` failed -> `|| echo 0` -> epoch 0 -> a bogus
+    # ~20000-day staleness WARN even on a freshly generated file. Post-fix,
+    # _date_to_epoch falls through to its perl tier and resolves the stamp.
+    local shimdir="$MOCK_REPO/bin-shim"
+    mkdir -p "$shimdir"
+    cat > "$shimdir/date" <<'SHIM'
+#!/usr/bin/env bash
+if [[ "$1" == "-d" ]]; then exit 1; fi
+exec /usr/bin/date "$@"
+SHIM
+    chmod +x "$shimdir/date"
+
+    PATH="$shimdir:$PATH" run "$SCRIPT" --file "$MOCK_REPO/BUTTERFREEZONE.md"
+    [ "$status" -eq 0 ]
+    # The fix routes through _date_to_epoch -> perl, so a fresh file is fresh:
+    [[ "$output" == *"Freshness check passed"* ]]
+    # The bug signature (bogus multi-thousand-day staleness) must NOT appear:
+    [[ "$output" != *"is 2"[0-9][0-9][0-9][0-9]" days old"* ]]
 }

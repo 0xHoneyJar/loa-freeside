@@ -22,8 +22,8 @@ import type {
   IMfaVerifier,
   KillSwitchRequest,
   MfaVerificationResult,
-} from '@arrakis/core/ports';
-import { KILL_SWITCH_KEYS } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import { KILL_SWITCH_KEYS } from '@freeside/core/ports';
 import type { VaultMetrics } from '../metrics.js';
 import { createNoOpVaultMetrics } from '../metrics.js';
 import type { Logger } from 'pino';

@@ -1,0 +1,71 @@
+schema_version: "2"
+
+cli:
+  binary: micodex
+  entry: bin/micodex.ts
+  install: npx @0xhoneyjar/construct-mibera-codex
+  subcommands:
+    - micodex lookup zone <slug>
+    - micodex lookup archetype <name>
+    - micodex lookup factor <factor-id>
+    - micodex lookup grail <id|slug|name> [--field=<name>]
+    - micodex lookup mibera <token-id>
+    - micodex list zones
+    - micodex list archetypes
+    - micodex validate <type> <value> [--consumer-hint=<id>]
+  output: stdout JSON (compact JSON via --field=<name> for raw text)
+  exit_codes:
+    "0": success
+    "1": not_found
+    "2": usage_error
+
+mcp:
+  shape: data
+  paths:
+    - stdio
+    - remote-http
+  remote:
+    transport: streamable-http
+    endpoint: ${MCP_REMOTE_ENDPOINT}
+  auth:
+    kind: none
+  capabilities:
+    - tools
+  tools:
+    - lookup_zone
+    - lookup_archetype
+    - lookup_factor
+    - lookup_grail
+    - lookup_mibera
+    - list_zones
+    - list_archetypes
+    - validate_world_element
+  source_of_truth:
+    type: git_repo
+    files:
+      - core-lore/festival-zones-vocabulary.md
+      - core-lore/archetypes.md
+      - core-lore/factor-lore.md
+      - _codex/data/grails.jsonl
+      - _codex/data/miberas.jsonl
+  tiers:
+    hard:
+      - zone.slug
+      - archetype.name
+      - mibera.id
+      - grail.id
+    soft:
+      - zone.essence
+      - archetype.events
+      - factor.lore
+    llm_owned:
+      - narrator_voice
+      - closing_observation
+  pricing:
+    model: free
+    description: free as in libre — read-only canon
+  publisher: 0xHoneyJar
+  documentation: https://codex.0xhoneyjar.xyz
+
+payment:
+  enabled: false

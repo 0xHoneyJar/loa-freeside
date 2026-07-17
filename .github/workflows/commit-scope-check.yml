@@ -1,0 +1,84 @@
+# Commit Scope Check — ADR-007 §D-3 conventional-commit discipline
+#
+# Validates that PR commits use the platform/<x>, network/<x>, or shared/<x>
+# scope convention. Phased rollout: warn on missing scope today, escalate
+# to fail in a future cycle once the convention is established.
+#
+# Reference: decisions/007-loa-freeside-absorption.md §D-3 + Implementation step 3
+
+name: Commit Scope Check (ADR-007 §D-3)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit scopes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Phased enforcement (per ADR-007 §D-3):
+          #   PHASE 1 (current): warn on missing scope, hard-fail only on
+          #                      explicit cross-domain scope mismatch.
+          #   PHASE 2 (future):  hard-fail on any missing scope.
+          # Bump STRICT to enable phase 2.
+          STRICT="${COMMIT_SCOPE_STRICT:-false}"
+
+          warnings=0
+          errors=0
+
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            subject=$(git log -1 --format=%s "$sha")
+
+            # Exempt patterns
+            case "$subject" in
+              "Merge "*|"Revert "*) continue ;;
+              "chore(deps)"*|"chore(deps-dev)"*) continue ;;
+              "chore(release)"*) continue ;;
+              "build(deps)"*|"build(deps-dev)"*) continue ;;
+            esac
+
+            # Strict ADR scope pattern: type(platform/x), type(network/x), type(shared/x)
+            if echo "$subject" | grep -qE '^[a-z]+\((platform|network|shared)/[a-z0-9-]+\)(!)?: '; then
+              continue  # explicit ADR scope — pass
+            fi
+
+            # Loose pattern: any type(scope): subject — pass but warn during phase 1
+            if echo "$subject" | grep -qE '^[a-z]+\([a-z0-9-]+(/[a-z0-9-]+)?\)(!)?: '; then
+              echo "::warning::Commit $(echo "$sha" | cut -c1-8) uses non-ADR scope: $subject"
+              echo "  Suggestion: use platform/<x>, network/<x>, or shared/<x> per ADR-007 §D-3"
+              warnings=$((warnings + 1))
+              continue
+            fi
+
+            # Bare commit (no scope at all)
+            if [ "$STRICT" = "true" ]; then
+              echo "::error::Commit $(echo "$sha" | cut -c1-8) missing scope: $subject"
+              errors=$((errors + 1))
+            else
+              echo "::warning::Commit $(echo "$sha" | cut -c1-8) missing scope: $subject"
+              warnings=$((warnings + 1))
+            fi
+          done < <(git rev-list "${BASE_SHA}..${HEAD_SHA}")
+
+          echo ""
+          echo "Summary: ${errors} errors, ${warnings} warnings"
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::STRICT mode rejected ${errors} commits."
+            exit 1
+          fi
+
+          echo "✓ Commit scopes acceptable (phase 1)"

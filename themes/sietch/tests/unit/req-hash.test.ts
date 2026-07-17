@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
-import { computeReqHash } from '@arrakis/adapters/agent';
+import { computeReqHash } from '@freeside/adapters/agent';
 
 /** Helper: convert string to Buffer for computeReqHash */
 function toBuffer(s: string): Buffer {

@@ -10,13 +10,13 @@
  */
 
 import type { Logger } from 'pino';
-import type { StepContext, StepInput, StepResult } from '@arrakis/core/ports';
+import type { StepContext, StepInput, StepResult } from '@freeside/core/ports';
 import type {
   WizardSession,
   ChannelTemplate,
   ChannelConfig,
-} from '@arrakis/core/domain';
-import { WizardState } from '@arrakis/core/domain';
+} from '@freeside/core/domain';
+import { WizardState } from '@freeside/core/domain';
 import {
   BaseStepHandler,
   createButton,

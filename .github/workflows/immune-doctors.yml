@@ -1,0 +1,298 @@
+# Immune Doctors — INFORMATIONAL teeth for the estate immune kit (G-DOOR).
+#
+# Runs the read-only gate-freeze-sensor against THIS repo's merge gate on every PR
+# and on a daily schedule, and reports the freeze verdict. This makes G-DOOR's
+# "re-freeze auto-detected" mechanical — the door can no longer silently re-freeze
+# without a loud signal on every PR and every day.
+#
+# DESIGN — informational, NEVER a new required gate (bead arrakis-estate-immune-epic-4xw6.1):
+# the door is ALREADY frozen behind too many required checks ('Unit Tests' red on the whole
+# backlog). Adding a NEW blocking/required check would deepen the freeze — the exact disease
+# this campaign exists to cure. So this job is SOFT by construction:
+#   - it ALWAYS exits 0 (the check is green even when the door is FROZEN),
+#   - the verdict is surfaced LOUD via the job summary + a ::warning:: annotation, not a red X,
+#   - do NOT add this job's check to branch protection's required list.
+# A red-on-every-PR check would be just another numb gate ([[ci-sensors-must-not-be-numb]]);
+# a green-with-a-loud-summary check carries the signal without freezing flow.
+#
+# The OTHER immune doctor (instrument-truth-sensor) reads LOCAL .run/model-invoke.jsonl, which
+# does not exist in CI — it cannot run here. Its teeth are the local banner tools/immune-check.sh.
+#
+# Read-only: `gh` reads only (PR list, status rollups, branch protection). No mutation, no merge.
+
+name: Immune Doctors
+
+on:
+  pull_request:
+  schedule:
+    - cron: '17 13 * * *'   # daily at 13:17 UTC — catches a re-freeze between PRs
+  workflow_dispatch:
+
+# Least privilege, all READ.
+#
+# HONEST LIMITATION: the sensor confirms a freeze by reading branch-protection
+# required_status_checks, which requires ADMIN read. `administration` is NOT a grantable
+# GITHUB_TOKEN permission key (the workflow `permissions:` vocabulary has no such scope), so
+# the default token CANNOT read protection — the sensor then degrades to "UNGATED?" (it never
+# false-asserts FROZEN). To get the full freeze verdict, add a repo/org secret
+# IMMUNE_DOCTOR_GH_TOKEN = a fine-grained PAT with "Administration: read". For security it is
+# exposed ONLY when the checked-out ref is the default branch (refs/heads/main) — see the probe
+# step's GH_TOKEN guard. The daily schedule always runs there; a workflow_dispatch off a feature
+# branch and any PR run execute potentially-modified sensor code and deliberately fall back to the
+# read-only default token. So the DAILY run is the real "re-freeze auto-detected" teeth; PR runs
+# (and off-default dispatches) give a lighter signal.
+# The local teeth (tools/immune-check.sh, run with the operator's admin `gh` auth) get the full
+# verdict regardless.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+
+# Newer pushes to the SAME PR supersede that PR's in-flight run. Every non-PR run (schedule,
+# workflow_dispatch) gets a UNIQUE group (github.run_id) so a manual dispatch and the daily
+# schedule never cancel each other — they resolve to the same ref (refs/heads/main) and would
+# otherwise collide under a ref-keyed group.
+concurrency:
+  group: immune-doctors-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  gate-freeze:
+    name: gate-freeze (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Probe the merge gate (read-only; never blocks)
+        id: probe
+        env:
+          # The admin-read PAT (full freeze verdict) is gated on the REF being executed, not just the
+          # event name: it is exposed ONLY when the checked-out ref is the trusted default branch
+          # (refs/heads/main). schedule always runs there; workflow_dispatch CAN target an arbitrary
+          # ref, and any pull_request checks out and executes PR-AUTHORED code (the sensor itself) —
+          # in both of those cases a modified sensor could exfiltrate the PAT (the "pwn request"
+          # class), so they fall back to the read-only default token (the sensor degrades to UNGATED?,
+          # never false-FROZEN). Trust derives from the ref, so the comment matches the mechanism.
+          GH_TOKEN: ${{ (github.event_name != 'pull_request' && github.ref == 'refs/heads/main') && secrets.IMMUNE_DOCTOR_GH_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e   # the sensor exits 2 when FROZEN — we report it, we do NOT fail on it.
+          node tools/gate-freeze-sensor.mjs "$REPO" --json > gate.json 2> gate.err
+          sensor_exit=$?
+          echo "sensor_exit=$sensor_exit" >> "$GITHUB_OUTPUT"
+
+          # Guarantee a valid-JSON artifact even if the sensor crashed — surface the crash,
+          # never silently bank a green. (cluster-compliance FAGAN iter-2 pattern.)
+          if ! jq -e . gate.json >/dev/null 2>&1; then
+            jq -n --arg err "$(tail -c 2000 gate.err 2>/dev/null)" --argjson ex "${sensor_exit:-1}" \
+              '{verdict:"ERROR", sensor_exit:$ex, stderr:$err, openPRs:0, frozenChecks:[], requiredChecks:null}' \
+              > gate.json
+          fi
+
+          VERDICT=$(jq -r '.verdict // "ERROR"' gate.json)
+          ROOT=$(jq -r '.root // "—"' gate.json)
+          OPEN=$(jq -r '.openPRs // 0' gate.json)
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          echo "root=$ROOT"       >> "$GITHUB_OUTPUT"
+
+          # Compact one-line tile in the log (mirrors the local banner row), derived from the
+          # SAME gate.json — not a second live `gh` probe, which could race PR-status changes.
+          jq -r '"  ☾ gate-freeze " + .repo + " · " + .verdict
+                 + (if .root then ": " + .root else "" end)
+                 + " · " + (.openPRs|tostring) + " open PRs"' gate.json || true
+
+          {
+            echo "## Immune Doctors · gate-freeze — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "**Repo:** \`$REPO\` · **verdict:** \`$VERDICT\` · **open PRs:** $OPEN · **root:** \`$ROOT\`"
+            echo ""
+            echo "> Informational, non-required. This check is **always green** by design — a frozen"
+            echo "> door is surfaced here as a warning, not a red X, so it never deepens the freeze it"
+            echo "> reports. (bead arrakis-estate-immune-epic-4xw6.1 · G-DOOR teeth)"
+            echo ""
+            if [ "$VERDICT" = "FROZEN" ]; then
+              echo "### ⚠ The merge gate is FROZEN"
+              echo ""
+              echo "Root required check freezing the backlog: \`$ROOT\`"
+              echo ""
+              echo "| required check | red | pending | missing | of PRs | not-green % |"
+              echo "|----------------|-----|---------|---------|--------|-------------|"
+              jq -r '.frozenChecks[]? | "| \(.name) | \(.failOn) | \(.pendingOn) | \(.missingOn) | \(.ofPRs) | \(.freezePct)% |"' gate.json
+            elif [ "$VERDICT" = "FLOWING" ]; then
+              echo "### ✓ The door flows — no required check is frozen across the backlog."
+            else
+              echo "### · $VERDICT"
+              echo ""
+              echo "(No frozen required check could be confirmed. \`UNGATED?\` = branch protection"
+              echo "unreadable from CI; \`UNGATED\` = no required checks; \`EMPTY\` = no open PRs.)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A loud-but-non-failing annotation when frozen (visible in the Checks/Files tabs).
+          if [ "$VERDICT" = "FROZEN" ]; then
+            echo "::warning title=Merge gate FROZEN::root required check '$ROOT' is red across the open-PR backlog — see job summary. (informational; does not block this PR)"
+          fi
+
+          # ALWAYS green — informational by design. (No artifact upload step: the verdict lives
+          # in the job summary + annotation + logs; an upload step is one more way to redden an
+          # invariantly-green job for zero added signal.)
+          exit 0
+
+  # Unlike the informational gate-freeze job above, THIS job is a REAL gate (it can go red): it runs
+  # the doctors' fixture tests so a regression in the pure cores turns this check red without a human
+  # looking — moving the tests from "exists" to "runs" ([[verification-ladder-exists-to-verified]]).
+  # The tests are pure (no live `gh`, no audit log) → CI-safe and deterministic.
+  tests:
+    name: immune doctor unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the immune doctors' fixture tests (each gates on failure)
+        run: |
+          node tools/gate-freeze-sensor.test.mjs
+          node tools/instrument-truth-sensor.test.mjs
+          bash tools/immune-check.test.sh
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The M0 / G-IMMUNE enforcing lint (check-instrument-ground-truth.sh). Unlike
+  # the instrument-truth doctor (needs a local .run/model-invoke.jsonl), this one
+  # IS CI-runnable — it only reads checked-in files. Same SOFT design as gate-freeze:
+  # ALWAYS green, the verdict surfaced LOUD via summary + annotation, never a new
+  # required check (a violation here is rare + actionable, but a new blocking gate
+  # would deepen the very freeze this campaign cures). The teeth are the
+  # reviewer-visible registry diff + the local banner tools/immune-check.sh.
+  # ───────────────────────────────────────────────────────────────────────────
+  ground-truth-lint:
+    name: ground-truth-lint (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint immune instruments against their ground sources (read-only; never blocks)
+        run: |
+          set +e   # the lint exits 1 on a violation — we report it, we do NOT fail on it.
+          out="$(bash tools/check-instrument-ground-truth.sh 2>&1)"; lint_exit=$?
+          printf '%s\n' "$out"
+
+          {
+            echo "## Immune Doctors · ground-truth-lint — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "> Informational, non-required. M0 / G-IMMUNE: every verdict/health/sensor instrument"
+            echo "> must register its ground source in \`tools/immune-instruments.yaml\`. This check is"
+            echo "> **always green** by design so it never deepens the freeze it guards against; the"
+            echo "> registry diff + \`tools/immune-check.sh\` are the teeth. (bead arrakis-estate-immune-epic-4xw6.1)"
+            echo ""
+            if [ "$lint_exit" -eq 0 ]; then
+              echo "### ✓ Every immune instrument re-derives from a registered ground source."
+            elif [ "$lint_exit" -eq 1 ]; then
+              echo "### ⚠ An immune instrument is unregistered or its declared ground-source token is missing"
+              echo ""
+              echo "Register the instrument (path + literal ground-source token) in \`tools/immune-instruments.yaml\`,"
+              echo "or mark a non-instrument file with \`# immune-lint:allow <reason>\`."
+            else
+              echo "### · The lint could not run (exit $lint_exit) — a misconfiguration, not a verdict."
+            fi
+            echo ""
+            echo '```'
+            printf '%s\n' "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$lint_exit" -eq 1 ]; then
+            echo "::warning title=Immune instrument ungrounded::a new immune instrument is unregistered or its ground-source token is missing — see job summary. (informational; does not block this PR)"
+          elif [ "$lint_exit" -ne 0 ]; then
+            echo "::warning title=Ground-truth lint misconfigured::the lint exited $lint_exit (argument/IO error) and could not run — see job summary. (informational; does not block this PR)"
+          fi
+
+          # ALWAYS green — informational by design (same rationale as the gate-freeze job).
+          exit 0
+
+      - name: Exercise the M0 acceptance fixture (informational — proves the lint still catches a planted liar)
+        run: |
+          # The lint's M0 acceptance criterion is "a planted self-reporting instrument fails the
+          # lint." Run that fixture here so the proof is exercised on every PR — but SOFT: a fixture
+          # failure means the lint's own logic regressed (rare + actionable), surfaced LOUD via the
+          # summary + a warning, never a red X (this job stays always-green by design).
+          set +e
+          test_out="$(bash tools/check-instrument-ground-truth.test.sh 2>&1)"; test_exit=$?
+          printf '%s\n' "$test_out"
+          {
+            echo "## Immune Doctors · ground-truth-lint · M0 fixture — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            if [ "$test_exit" -eq 0 ]; then
+              echo "### ✓ The planted self-reporting instrument still fails the lint (M0 acceptance holds)."
+            else
+              echo "### ⚠ The M0 acceptance fixture FAILED — the lint's own logic may have regressed."
+            fi
+            echo ""
+            echo '```'
+            printf '%s\n' "$test_out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$test_exit" -ne 0 ]; then
+            echo "::warning title=M0 fixture regressed::tools/check-instrument-ground-truth.test.sh failed — the lint may no longer catch a planted liar. (informational; does not block this PR)"
+          fi
+          exit 0
+
+  # ── Autopoiesis S1: scoped-required-checks sensor (advisory, NEVER a required gate) ──
+  # Reports which packages + transitive dependents a PR actually touches, and the concrete
+  # `pnpm --filter` commands that would exercise them — or fallback-to-full on a cross-cutting
+  # change. SOFT by design (same rationale as gate-freeze): a NEW blocking check would deepen
+  # the very freeze this campaign cures. The verdict rides the summary + a ::notice::, never a red X.
+  scope-checks:
+    name: scope-checks (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history so the sensor can diff base...head
+
+      - name: Probe the scoped required-check set (read-only; never blocks)
+        run: |
+          set +e   # advisory: the sensor's exit is reported, never fails the job
+          BASE="origin/${{ github.base_ref || 'main' }}"
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref || 'main' }}" 2>/dev/null || true
+          tools/scope-checks-sensor.sh --base "$BASE" --json > scope.json 2> scope.err
+          sensor_exit=$?
+
+          # Guarantee a valid-JSON artifact even if the sensor crashed (surface it, never bank a silent green).
+          if ! jq -e . scope.json >/dev/null 2>&1; then
+            jq -n --arg err "$(tail -c 2000 scope.err 2>/dev/null)" --argjson ex "${sensor_exit:-1}" \
+              '{sensor:"scope-checks", verdict:"ERROR", exit_code:$ex, evidence:{stderr:$err}}' > scope.json
+          fi
+
+          VERDICT=$(jq -r '.verdict // "ERROR"' scope.json)
+          NPKG=$(jq -r '.evidence.packages | length' scope.json 2>/dev/null || echo 0)
+          {
+            echo "## Immune Doctors · scope-checks — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "**verdict=$VERDICT** (exit $sensor_exit) · $NPKG package(s) in scope"
+            echo ""
+            echo '```json'
+            jq '.evidence' scope.json 2>/dev/null || cat scope.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Scoped checks::verdict=$VERDICT · $NPKG package(s) in scope (informational; does not block this PR)"
+
+          # Validate the record against the shared schema (NFR-7) — informational.
+          if node tools/validate-immune-verdict.mjs "$(cat scope.json)" >/dev/null 2>&1; then
+            echo "::notice::scope-checks record conforms to immune-verdict.schema.json"
+          else
+            echo "::warning title=Verdict schema drift::scope-checks --json did not validate against immune-verdict.schema.json"
+          fi
+
+          exit 0

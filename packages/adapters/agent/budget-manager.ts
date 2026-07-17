@@ -19,7 +19,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import type { ModelAlias, UsageInfo } from '@arrakis/core/ports';
+import type { ModelAlias, UsageInfo } from '@freeside/core/ports';
 import { RESERVATION_TTL_MS } from './config.js';
 
 // --------------------------------------------------------------------------

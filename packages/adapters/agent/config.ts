@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { MODEL_ALIAS_VALUES } from '@arrakis/core/ports';
+import { MODEL_ALIAS_VALUES } from '@freeside/core/ports';
 import type { JwtServiceConfig } from './jwt-service.js';
 import type { S2SJwtValidatorConfig } from './s2s-jwt-validator.js';
 import type { TierMappingConfig } from './tier-access-mapper.js';

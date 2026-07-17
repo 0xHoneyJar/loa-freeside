@@ -1,0 +1,35 @@
+{
+  "name": "@freeside/freeside-cli",
+  "version": "0.1.0",
+  "description": "Ecosystem CLI for the freeside-* module network. `loa freeside doctor|list|inspect` verbs per ADR-007 §D-6.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "freeside-cli": "./dist/bin/freeside-cli.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b && chmod +x dist/bin/freeside-cli.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@freeside/freeside-registry": "file:../freeside-registry",
+    "@freeside/beacon-schema": "file:../beacon-schema",
+    "@noble/hashes": "^1.6.0",
+    "canonicalize": "^2.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^22.0.0"
+  }
+}

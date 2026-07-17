@@ -1,0 +1,1 @@
+../constructs/packs/fagan/commands/fagan.md

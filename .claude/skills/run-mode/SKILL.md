@@ -1,6 +1,8 @@
 ---
 name: run
 description: "Autonomous sprint execution mode"
+role: review
+primary_role: review
 capabilities:
   schema_version: 1
   read_files: true
@@ -13,6 +15,15 @@ capabilities:
   task_management: true
 cost-profile: unbounded
 ---
+
+## Cost
+
+**Estimated per invocation**: Run Mode itself is low-cost (orchestration only). Cost comes from the sub-skills it invokes: Flatline Protocol (~$15–25/planning cycle), Bridgebuilder review (~$10–20/run), and implementation sessions (see [Cost Matrix](../../../docs/CONFIG_REFERENCE.md#cost-matrix)).
+**External providers called**: None directly — delegates to Flatline (Opus 4.7 + GPT-5.3-codex) and Bridgebuilder (Opus 4.7 + GPT-5.3-codex) when those features are enabled.
+**To cap spend**: Set `run_mode.defaults.max_cycles` and `hounfour.metering.budget.daily_micro_usd` in `.loa.config.yaml`. Budget enforcement is active when `hounfour.metering.enabled: true`.
+**If cost is a concern**: Run `/loa setup` — the wizard will guide you to a budget-appropriate configuration.
+
+_Pricing verified: 2026-04-15. Prices change — recheck before large commitments._
 
 <input_guardrails>
 ## Pre-Execution Validation
@@ -624,6 +635,9 @@ run_mode:
   git:
     branch_prefix: "feature/"
     create_draft_pr: true
+    # Git-aware sync fallback (Issue #474, cycle-056)
+    base_branch: "main"                     # Branch to diff against
+    sprint_commit_pattern: '^feat\(sprint-' # grep -E pattern for sprint commits
 ```
 
 ## Error Recovery
@@ -634,3 +648,48 @@ On any error:
 3. Use `/run-resume` to continue
 4. Use `/run-resume --reset-ice` if circuit breaker tripped
 5. Clean up with `rm -rf .run/` to start fresh
+
+### Git-Aware State Sync (cycle-056, Issue #474)
+
+When context compaction or session loss leaves `.run/sprint-plan-state.json`
+stuck at `state: "RUNNING"` with `0` completed sprints — even though git
+history shows all sprint commits already landed — `simstim-orchestrator.sh
+--sync-run-mode` now cross-references git as a secondary source of truth
+before returning `still_running`.
+
+**When the fallback fires** (all three conditions must hold):
+
+1. `sprint-plan-state.json` shows `state: "RUNNING"` (the normal trigger)
+2. `sprints.total` (or `sprints.list` length) resolves to a positive integer
+3. `git log ${base_branch}..HEAD` shows at least `sprints.total` commits
+   matching `run_mode.git.sprint_commit_pattern`
+
+When satisfied, the fallback:
+
+- Updates `.run/sprint-plan-state.json` to `state: "JACKED_OUT"` with
+  `git_inferred: true` and an ISO-8601 `git_inferred_at` timestamp
+- Returns `{ "synced": true, "reason": "git_inferred_completion",
+  "commits_found": N, "commits_expected": M, "base_branch": "main" }`
+
+**When the fallback does NOT fire**:
+
+- In-flight runs with no commits yet → existing `still_running` preserved
+- Partial runs (`commits_found < commits_expected`) → existing `still_running` preserved
+- State field already shows `JACKED_OUT`/`HALTED` → existing validation flow (not the RUNNING branch)
+
+**Configuration** (under `run_mode.git`):
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `base_branch` | `"main"` | Branch to diff against |
+| `sprint_commit_pattern` | `'^feat\(sprint-'` | `grep -E` pattern. Override if your project uses a different convention. |
+
+**Known limitation**: counts matching commits, so a sprint that produced
+multiple matching commits (e.g., review-feedback fix commits with the same
+prefix) can cause early satisfaction. Empirically rare — squash-merge
+workflows produce one commit per sprint. Consider using beads
+(`br list --status closed`) as an authoritative alternative in a future
+enhancement if this becomes a problem.
+
+Replaces the previous requirement to use `--force-phase complete --yes` as
+a last-resort escape hatch after session loss.

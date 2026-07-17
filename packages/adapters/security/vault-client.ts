@@ -20,11 +20,11 @@ import type {
   VaultConfig,
   VaultHealthStatus,
   TransitKeyInfo,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import {
   VAULT_CONFIG_DEFAULTS,
   VAULT_METRICS_PREFIX,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type { VaultMetrics } from './metrics.js';
 
 // =============================================================================

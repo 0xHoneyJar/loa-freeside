@@ -15,7 +15,7 @@ import {
   HybridChainProvider,
   createChainProvider,
   type BalanceWithUSD,
-} from '@arrakis/adapters/chain';
+} from '@freeside/adapters/chain';
 
 /**
  * Transfer event ABI from BGT token

@@ -1,25 +1,54 @@
 {
   "schema_version": 1,
-  "git_sha": "39be5b7",
-  "git_sha_full": null,
-  "branch": "main",
-  "generated_at": "2026-02-13T13:30:00Z",
-  "generator": "manual-ride-equivalent",
-  "files": {
-    "index.md": { "words": 195, "estimated_tokens": 260, "status": "required" },
-    "structure.md": { "words": 364, "estimated_tokens": 485, "status": "required" },
-    "api.md": { "words": 332, "estimated_tokens": 442, "status": "required" },
-    "services.md": { "words": 417, "estimated_tokens": 556, "status": "required" },
-    "database.md": { "words": 397, "estimated_tokens": 529, "status": "required" },
-    "commands.md": { "words": 245, "estimated_tokens": 326, "status": "required" },
-    "environment.md": { "words": 389, "estimated_tokens": 518, "status": "required" },
-    "triggers.md": { "words": 295, "estimated_tokens": 393, "status": "optional" }
+  "git_sha": "9b0f4a12",
+  "git_sha_full": "9b0f4a129c1c04d97298015d1e07c69435c971bf",
+  "branch": "feat/spiral-spiral-20260706-359e28-cycle-1",
+  "generated_at": "2026-07-06T23:15:55Z",
+  "generator": "/ride reality+ground-truth refresh v1.180.0",
+  "scope": "reality + ground-truth refresh (PRD/SDD preserved)",
+  "integrity_gate": "override (benign stale checksums 2026-01-17 vs framework 1.180.0; user-authorized)",
+  "supersedes": {
+    "previous_generated_at": "2026-05-18T00:00:00Z",
+    "previous_status": "CORPSE (monolith capture, quarantined by governance-doctor.sh)",
+    "preserved": true
   },
-  "total_estimated_tokens": 3509,
+  "files": {
+    "index.md": { "status": "required", "regenerated": true },
+    "structure.md": { "status": "required", "regenerated": true },
+    "architecture-overview.md": { "status": "required", "regenerated": true },
+    "api-surface.md": { "status": "required", "regenerated": true },
+    "entry-points.md": { "status": "required", "regenerated": true },
+    "hygiene-report.md": { "status": "required", "regenerated": true },
+    "types.md": { "status": "required", "regenerated": true },
+    "api.md": { "status": "preserved", "regenerated": false },
+    "services.md": { "status": "preserved", "regenerated": false },
+    "database.md": { "status": "preserved", "regenerated": false },
+    "commands.md": { "status": "preserved", "regenerated": false },
+    "environment.md": { "status": "preserved", "regenerated": false },
+    "triggers.md": { "status": "preserved", "regenerated": false },
+    "interfaces.md": {
+      "status": "preserved",
+      "regenerated": false,
+      "note": "Interface extraction intentionally OUT of scope for this reality+ground-truth refresh; current contracts are covered in types.md. Run a dedicated interfaces pass if interface drift is suspected."
+    }
+  },
   "validation": {
-    "required_surfaces": ["structure.md", "api.md", "services.md", "database.md", "commands.md", "environment.md"],
-    "all_required_present": true,
-    "optional_surfaces": ["triggers.md"],
-    "sha_on_main": true
-  }
+    "required_surfaces": ["index.md", "structure.md", "architecture-overview.md", "api-surface.md", "types.md", "entry-points.md", "hygiene-report.md"],
+    "preserved_surfaces": ["api.md", "services.md", "database.md", "commands.md", "environment.md", "triggers.md", "interfaces.md"],
+    "preserved_rationale": "Legacy Feb-May spokes not regenerated this refresh. interfaces.md is preserved by EXPLICIT exception (see files.interfaces.md.note) rather than silent downgrade. The superseded 2026-05-18 corpse is retired per the supersedes block. Checksums (ground-truth/checksums.json) cover the required_surfaces + ground-truth spokes only.",
+    "checksums_manifest": "grimoires/loa/ground-truth/checksums.json"
+  },
+  "outputs": {
+    "reality": "grimoires/loa/reality/",
+    "ground_truth": "grimoires/loa/ground-truth/",
+    "drift_report": "grimoires/loa/drift-report.md (local/gitignored; summary in NOTES.md)",
+    "claims_to_verify": "grimoires/loa/context/claims-to-verify.md (local/gitignored)"
+  },
+  "key_findings": [
+    "Namespace migrated @arrakis/* -> @freeside/* (0 @arrakis refs remain); AGENTS.md example imports fixed this refresh",
+    "Monolith -> hexagonal federation (registry cells; 8 canonical external *-api + ledger-api + events-api)",
+    "9 PostgreSQL tables (Drizzle RLS) + 8 legacy SQLite; 68 TS + 19 SQL migrations",
+    "New surfaces: freeside-cli, mcp-gateway, operator-dash, BeaconV3, @0xhoneyjar/events",
+    "No CI canary yet for cluster secret-parity (plan: specs/cluster-secret-parity-canary/)"
+  ]
 }

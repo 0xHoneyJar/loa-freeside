@@ -1,6 +1,8 @@
 ---
 name: run-bridge
 description: "Run Bridge — Autonomous Excellence Loop"
+role: review
+primary_role: review
 capabilities:
   schema_version: 1
   read_files: true
@@ -42,6 +44,15 @@ Each iteration leaves a GitHub trail (PR comments, vision links) and captures
 speculative insights in the Vision Registry. On completion, Grounded Truth is
 regenerated and RTFM validation runs as a final gate.
 
+
+## Cost
+
+**Estimated per invocation**: $10–$20/depth-5 run (see [Cost Matrix](../../../docs/CONFIG_REFERENCE.md#cost-matrix))
+**External providers called**: Claude Opus 4.7 (Bridgebuilder review), GPT-5.3-codex (cross-review dissent)
+**To cap spend**: Set `hounfour.metering.budget.daily_micro_usd` in `.loa.config.yaml`. Budget enforcement is active when `hounfour.metering.enabled: true`.
+**If cost is a concern**: Run `/loa setup` — the wizard will guide you to a budget-appropriate configuration.
+
+_Pricing verified: 2026-04-15. Prices change — recheck before large commitments._
 ## Workflow
 
 ### Phase 0: Input Guardrails
@@ -58,6 +69,24 @@ Check danger level (high) — requires explicit opt-in:
 | per_sprint | `--per-sprint` | false |
 | resume | `--resume` | false |
 | from | `--from PHASE` | — |
+| single_iteration | `--single-iteration` | false (Issue #473) |
+| no_silent_noop_detect | `--no-silent-noop-detect` | false (Issue #473) |
+
+**`--single-iteration`** (cycle-058, Issue #473): processes exactly one
+iteration body and exits. State is preserved so `--resume --single-iteration`
+picks up the next iteration. Use this when the calling skill wants to act
+on the SIGNAL:* lines from each iteration before the next one starts —
+rather than letting all iterations fire in one shell invocation where the
+skill has no chance to intercept.
+
+**Silent-no-op detection** (cycle-058, Issue #473): at the end of a
+completed run, the orchestrator checks `.run/bridge-reviews/` for findings
+files. If zero were produced across all iterations, it fails loud with
+exit 3 and an actionable error message. This prevents the scenario where
+SIGNAL:* lines fire via shell pipe but no skill acts on them, leading to
+silent JACKED_OUT with 0 findings. Pass `--no-silent-noop-detect` to opt
+out (intended for tests and CI scenarios where you want to validate flag
+parsing without producing real reviews).
 
 ### Phase 2: Orchestrator Invocation
 

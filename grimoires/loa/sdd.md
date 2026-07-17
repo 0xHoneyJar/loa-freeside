@@ -1,2103 +1,595 @@
-# SDD: Armitage Platform — Terraform Consolidation & DNS Authority
+# Software Design Document — Cadence Ledger: the Liveness Expectation Record
 
-> **Version**: 1.1.0 (Flatline SDD: 4 BLOCKERs + 10 DISPUTED integrated)
-> **Cycle**: cycle-046
-> **Date**: 2026-02-28
-> **PRD**: `grimoires/loa/prd.md`
-> **Issues**: #105, #106
+> Cycle: **cadence-ledger**. This SDD designs the loa-freeside slice only: the
+> declaration layer in `packages/freeside-registry`. ADR-012 Phase 0, extended
+> with the staleness dimension (`expectations[]`).
 
-## 1. Executive Summary
+---
+status: draft
+created: 2026-07-04
+domain: network (packages/freeside-registry only; a CI workflow file is domain-unclassified and does not trip the ADR-007 firewall — verified against `tools/lib/domain-classify.sh:20-21`)
+prd: grimoires/loa/prd.md
+relates: decisions/012-unify-cluster-liveness.md (Proposed — this cycle IS its Phase 0, extended)
+source_brief: grimoires/loa/context/cadence-ledger-rehomed-brief.md
+---
 
-Armitage Platform consolidates three competing Terraform configurations (Freeside, Finn, Dixie) into a single canonical root and migrates DNS authority for `0xhoneyjar.xyz` from Gandi to Route 53 under IaC. The architecture uses a **two-root Terraform layout**: a compute root (existing, extended with 8 new files) and a DNS root (new, 11 files). State backends are isolated — DNS changes cannot risk compute resources.
+## 1. System Overview
 
-The design prioritizes safety: stateful resources (S3 Object Lock, KMS, DynamoDB) are imported with `lifecycle { prevent_destroy = true }`, applies are phased (networking/IAM first, then compute), and all deploys pass SLO-aligned health gates before proceeding. The Finn cutover uses a scale-to-zero + recreate pattern to prevent duplicate ECS services.
+### 1.1 What this cycle builds
 
-**Key constraints:**
-- Zero-downtime DNS migration (NFR-1)
-- No `terraform destroy` on legacy stacks until imports verified (PRD safety invariant)
-- Serialized CI execution during migration period (IMP-004)
-- SLO-aligned health gates: latency < 2s p99, 0 5xx errors, 10 consecutive checks (IMP-008)
+One package changes: `packages/freeside-registry`. Two additive schema blocks on
+`ModuleEntry`, a populated `registry.yaml`, and validation with teeth. Nothing
+else in the cluster changes behavior this cycle — the design's entire job is to
+make the *declaration* correct, verifiable, and safe for every existing decoder.
 
-## 2. System Architecture
+> From prd.md §2: "The lane spans three repos in strict order; **this cycle
+> delivers only the loa-freeside slice** — the declaration layer."
 
-### 2.1 Two-Root Terraform Layout
+### 1.2 System context
 
-```
-infrastructure/terraform/           ← COMPUTE ROOT (existing, extended)
-├── main.tf                         ← Backend: s3://arrakis-tfstate-891376933289
-├── environments/
-│   ├── staging/
-│   │   ├── terraform.tfvars
-│   │   └── backend.tfvars          ← key = "staging.tfstate"
-│   └── production/
-│       ├── terraform.tfvars
-│       └── backend.tfvars          ← key = "production.tfstate"
-├── ecs-finn.tf                     ← EXISTING: Finn ECS service, task def, SGs
-├── ecs-dixie.tf                    ← EXISTING: Dixie ECS service, task def, SGs
-├── elasticache-finn.tf             ← NEW: Dedicated Redis (noeviction, AOF)
-├── dynamodb-finn.tf                ← NEW: 2 DynamoDB tables + GSI
-├── s3-finn.tf                      ← NEW: 2 S3 buckets (Object Lock + calibration)
-├── kms-finn.tf                     ← NEW: KMS audit signing key
-├── env-finn.tf                     ← NEW: 13 SSM SecureString parameters
-├── monitoring-finn.tf              ← NEW: 6 CloudWatch alarms + metric filters
-├── monitoring-dixie.tf             ← NEW: 4 CloudWatch alarms + 2 metric filters
-└── autoscaling-dixie.tf            ← NEW: AppAutoScaling target + CPU policy
+```mermaid
+graph TD
+    subgraph "loa-freeside · network domain (THIS CYCLE)"
+        Y[registry.yaml<br/>+ service blocks<br/>+ expectations arrays]
+        S[src/registry.ts<br/>Effect Schema<br/>ModuleEntry + ServiceBlock + Expectation]
+        T[tests/<br/>fixture decode tests<br/>full-registry decode test]
+        Y -->|decoded by| S
+        S -->|gated by| T
+    end
 
-infrastructure/terraform/dns/       ← DNS ROOT (new, separate state)
-├── main.tf                         ← Backend: s3://arrakis-tfstate-891376933289
-│                                      key via -backend-config
-├── variables.tf
-├── outputs.tf
-├── honeyjar-xyz.tf                 ← Zone + apex A records
-├── honeyjar-xyz-email.tf           ← MX, SPF, DKIM, DMARC
-├── honeyjar-xyz-vercel.tf          ← Wildcard CNAME, ACME delegation
-├── honeyjar-xyz-agents.tf          ← *.agents wildcard + ACME
-├── honeyjar-xyz-backend.tf         ← api.0xhoneyjar.xyz → ALB alias
-├── security.tf                     ← CAA, DNSSEC (feature-flagged)
-└── environments/
-    ├── staging/
-    │   ├── terraform.tfvars        ← Env-specific variables
-    │   └── backend.tfvars          ← key = "dns/staging.tfstate"
-    └── production/
-        ├── terraform.tfvars
-        └── backend.tfvars          ← key = "dns/production.tfstate"
+    subgraph "Consumers (ZERO source changes this cycle)"
+        CLI[packages/freeside-cli<br/>doctor · beacon auditor<br/>file: dep on registry]
+        PROBE[loa-cli/lib/probe.mjs<br/>reads service.* — un-orphaned by G-1<br/>probe_kind dispatch = NEXT cycle]
+        GW[apps/mcp-gateway probeTenant<br/>ADR-012 Phase 1 — later PR]
+        DASH[operator-dash probe.ts<br/>ADR-012 Phase 2 — later PR]
+    end
+
+    S -->|loadRegistry decode stays green G-4| CLI
+    Y -.->|declared contract, read later| PROBE
+    Y -.->|Phase 1| GW
+    Y -.->|Phase 2| DASH
 ```
 
-**Dual justification**: The two-root layout serves both safety (blast-radius isolation between DNS and compute) and evolutionary independence (DNS can evolve into a programmable agent routing layer without affecting compute). See `infrastructure/terraform/DEPLOYMENT.md` § "Architectural Intent: Two-Root Pattern" for the full rationale.
-
-### 2.2 State Backend Isolation
-
-Both roots share the same S3 bucket but use different key prefixes:
-
-| Root | State Key | Lock Table | Purpose |
-|------|-----------|------------|---------|
-| Compute | `{env}.tfstate` | `arrakis-terraform-locks` | ECS, ALB, SGs, data stores |
-| DNS | `dns/{env}.tfstate` | `arrakis-terraform-locks` | Route 53 zones, records |
-
-**State backend hardening (per PRD NFR-2):**
-- S3 bucket: versioning enabled, SSE-KMS encryption (`aws_kms_key.secrets`), bucket policy denying unencrypted uploads
-- DynamoDB lock table: point-in-time recovery enabled
-- IAM: only CI service role (`github-actions-terraform`) and designated operators may read/write state
-- Prohibition of local state files in CI — all runs must use remote backend
-- State bucket access logging enabled (existing `arrakis-tfstate-891376933289` already has versioning)
-
-### 2.3 Cross-Root References
-
-The DNS root needs to reference the compute ALB for `api.0xhoneyjar.xyz`. Two approaches:
-
-**Selected: `data.aws_lbs` with tag filter → `data.aws_lb` by ARN** (avoids cross-state coupling)
-
-```hcl
-# dns/honeyjar-xyz-backend.tf
-data "aws_lbs" "compute" {
-  count = var.enable_production_api ? 1 : 0
-
-  tags = {
-    Name = "arrakis-${var.environment}-alb"
-  }
-
-  lifecycle {
-    postcondition {
-      condition     = length(self.arns) == 1
-      error_message = "Expected exactly one ALB matching arrakis-${var.environment}-alb, got ${length(self.arns)}"
-    }
-  }
-}
-
-data "aws_lb" "compute_alb" {
-  count = var.enable_production_api ? 1 : 0
-  arn   = one(data.aws_lbs.compute[0].arns)
-}
-```
-
-**Why `aws_lbs` → `aws_lb`**: The `aws_lb` data source does not support `tags` filtering in AWS provider ~> 5.x. The `aws_lbs` data source supports tag filtering and returns ARN lists; `one()` enforces exactly one match, then `aws_lb` reads `dns_name`/`zone_id` from the selected ARN.
-
-**Why not `terraform_remote_state`**: Avoids tight coupling between roots. The compute root doesn't need to know about DNS, and DNS doesn't need read access to compute state files.
-
-## 3. Component Design — Compute Root Extensions
-
-### 3.1 `elasticache-finn.tf` — Dedicated Finn Redis
-
-```hcl
-resource "aws_elasticache_replication_group" "finn_dedicated" {
-  replication_group_id = "${local.name_prefix}-finn-redis"
-  description          = "Dedicated Redis for Finn billing (noeviction + AOF)"
-
-  node_type            = var.finn_redis_node_type
-  num_cache_clusters   = 1
-  engine_version       = "7.1"
-  port                 = 6379
-  parameter_group_name = aws_elasticache_parameter_group.finn_redis.name
-
-  at_rest_encryption_enabled = true
-  transit_encryption_enabled = true
-
-  # SKP-003: Do NOT set auth_token in Terraform to avoid storing it in state.
-  # Auth token is managed out-of-band via:
-  #   scripts/bootstrap-redis-auth.sh → aws elasticache modify-replication-group
-  # See §3.1 external secret provisioning notes below.
-
-  subnet_group_name  = aws_elasticache_subnet_group.main.name  # reuse existing
-  security_group_ids = [aws_security_group.finn_redis.id]
-
-  snapshot_retention_limit = 7
-  snapshot_window          = "02:00-03:00"
-  maintenance_window       = "sun:04:00-sun:05:00"
-
-  apply_immediately = false
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [auth_token]  # Managed externally after bootstrap
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "billing-ledger"
-  })
-}
-
-resource "aws_elasticache_parameter_group" "finn_redis" {
-  family = "redis7"
-  name   = "${local.name_prefix}-finn-redis-params"
-
-  parameter {
-    name  = "maxmemory-policy"
-    value = "noeviction"
-  }
-
-  parameter {
-    name  = "appendonly"
-    value = "yes"
-  }
-
-  parameter {
-    name  = "appendfsync"
-    value = "everysec"
-  }
-}
-
-resource "aws_security_group" "finn_redis" {
-  name_prefix = "${local.name_prefix}-finn-redis-"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress {
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.finn.id]
-    description     = "Redis from Finn service only"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(local.common_tags, { Name = "${local.name_prefix}-finn-redis" })
-}
-
-# SKP-003: Redis auth token provisioned externally (not in TF state).
-# A bootstrap script or rotation Lambda generates the auth token and stores it
-# in Secrets Manager. Terraform only references the secret, never the plaintext.
-resource "aws_secretsmanager_secret" "finn_redis" {
-  name       = "${local.name_prefix}/finn/redis"
-  kms_key_id = aws_kms_key.secrets.arn
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "redis-credentials"
-  })
-}
-
-# Secret value is populated by scripts/bootstrap-redis-auth.sh:
-#   1. Generate 32-char alphanumeric token
-#   2. aws secretsmanager put-secret-value --secret-id <secret_arn> --secret-string '{"host":..., "auth":...}'
-#   3. aws elasticache modify-replication-group --auth-token <token> --auth-token-update-strategy ROTATE
-# This ensures plaintext credentials never appear in Terraform state.
-```
-
-### 3.2 `dynamodb-finn.tf` — Audit & Settlement Tables
-
-```hcl
-resource "aws_dynamodb_table" "finn_scoring_path_log" {
-  name         = "${local.name_prefix}-finn-scoring-path-log"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "pk"
-  range_key    = "sk"
-
-  attribute {
-    name = "pk"
-    type = "S"
-  }
-
-  attribute {
-    name = "sk"
-    type = "S"
-  }
-
-  attribute {
-    name = "gsi1pk"
-    type = "S"
-  }
-
-  attribute {
-    name = "gsi1sk"
-    type = "S"
-  }
-
-  global_secondary_index {
-    name            = "gsi1"
-    hash_key        = "gsi1pk"
-    range_key       = "gsi1sk"
-    projection_type = "ALL"
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.finn_audit_signing.arn
-  }
-
-  lifecycle {
-    prevent_destroy = true
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "audit-log"
-  })
-}
-
-resource "aws_dynamodb_table" "finn_x402_settlements" {
-  name         = "${local.name_prefix}-finn-x402-settlements"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "pk"
-  range_key    = "sk"
-
-  attribute {
-    name = "pk"
-    type = "S"
-  }
-
-  attribute {
-    name = "sk"
-    type = "S"
-  }
-
-  attribute {
-    name = "gsi1pk"
-    type = "S"
-  }
-
-  attribute {
-    name = "gsi1sk"
-    type = "S"
-  }
-
-  global_secondary_index {
-    name            = "gsi1"
-    hash_key        = "gsi1pk"
-    range_key       = "gsi1sk"
-    projection_type = "ALL"
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.finn_audit_signing.arn
-  }
-
-  lifecycle {
-    prevent_destroy = true
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "x402-settlements"
-  })
-}
-```
-
-### 3.3 `s3-finn.tf` — Audit Anchors & Calibration
-
-```hcl
-resource "aws_s3_bucket" "finn_audit_anchors" {
-  bucket              = "${local.name_prefix}-finn-audit-anchors"
-  object_lock_enabled = true  # Must match existing bucket; Object Lock is immutable at creation
-
-  lifecycle {
-    prevent_destroy = true
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "audit-anchors"
-  })
-}
-
-resource "aws_s3_bucket_object_lock_configuration" "finn_audit_anchors" {
-  bucket = aws_s3_bucket.finn_audit_anchors.id
-
-  rule {
-    default_retention {
-      mode = "COMPLIANCE"
-      days = 365
-    }
-  }
-}
-
-resource "aws_s3_bucket_versioning" "finn_audit_anchors" {
-  bucket = aws_s3_bucket.finn_audit_anchors.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "finn_audit_anchors" {
-  bucket = aws_s3_bucket.finn_audit_anchors.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = aws_kms_key.finn_audit_signing.arn
-    }
-    bucket_key_enabled = true
-  }
-}
-
-resource "aws_s3_bucket" "finn_calibration" {
-  bucket = "${local.name_prefix}-finn-calibration"
-
-  lifecycle {
-    prevent_destroy = true
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "calibration-data"
-  })
-}
-
-resource "aws_s3_bucket_versioning" "finn_calibration" {
-  bucket = aws_s3_bucket.finn_calibration.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "finn_calibration" {
-  bucket = aws_s3_bucket.finn_calibration.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = aws_kms_key.finn_audit_signing.arn
-    }
-    bucket_key_enabled = true
-  }
-}
-```
-
-### 3.4 `kms-finn.tf` — Audit Signing Key
-
-```hcl
-resource "aws_kms_key" "finn_audit_signing" {
-  description             = "Finn audit signing and encryption key"
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
-
-  policy = data.aws_iam_policy_document.finn_kms_policy.json
-
-  lifecycle {
-    prevent_destroy = true
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "finn"
-    Purpose = "audit-signing"
-  })
-}
-
-resource "aws_kms_alias" "finn_audit_signing" {
-  name          = "alias/${local.name_prefix}-finn-audit-signing"
-  target_key_id = aws_kms_key.finn_audit_signing.key_id
-}
-
-data "aws_iam_policy_document" "finn_kms_policy" {
-  # SKP-002: Explicit admin role — no blanket root kms:*
-  statement {
-    sid    = "AllowKeyAdministration"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = [
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/github-actions-terraform",
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/admin"
-      ]
-    }
-    actions = [
-      "kms:Create*",
-      "kms:Describe*",
-      "kms:Enable*",
-      "kms:List*",
-      "kms:Put*",
-      "kms:Update*",
-      "kms:Revoke*",
-      "kms:Disable*",
-      "kms:Get*",
-      "kms:Delete*",
-      "kms:TagResource",
-      "kms:UntagResource",
-      "kms:ScheduleKeyDeletion",
-      "kms:CancelKeyDeletion"
-    ]
-    resources = ["*"]
-  }
-
-  statement {
-    sid    = "AllowFinnTaskRole"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = [aws_iam_role.finn_task.arn]
-    }
-    actions = [
-      "kms:Decrypt",
-      "kms:GenerateDataKey",
-      "kms:DescribeKey",
-      "kms:Sign",
-      "kms:Verify"
-    ]
-    resources = ["*"]
-  }
-
-  # Allow key grant creation for services that need delegated access
-  statement {
-    sid    = "AllowGrantsForAWSServices"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
-    }
-    actions   = ["kms:CreateGrant"]
-    resources = ["*"]
-    condition {
-      test     = "Bool"
-      variable = "kms:GrantIsForAWSResource"
-      values   = ["true"]
-    }
-  }
-}
-
-data "aws_caller_identity" "current" {}
-```
-
-### 3.5 `env-finn.tf` — SSM Parameters
-
-```hcl
-locals {
-  finn_ssm_parameters = {
-    "finn/database-url"          = { type = "SecureString", description = "PostgreSQL connection URL" }
-    "finn/redis-url"             = { type = "SecureString", description = "Dedicated Redis connection URL" }
-    "finn/freeside-base-url"     = { type = "String", description = "Freeside service URL" }
-    "finn/arrakis-jwks-url"      = { type = "String", description = "JWKS endpoint for JWT verification" }
-    "finn/dixie-reputation-url"  = { type = "String", description = "Dixie reputation query endpoint" }
-    "finn/nats-url"              = { type = "String", description = "NATS JetStream URL" }
-    "finn/s2s-key-kid"           = { type = "String", description = "S2S JWT key identifier" }
-    "finn/nowpayments-webhook"   = { type = "SecureString", description = "NOWPayments webhook endpoint" }
-    "finn/log-level"             = { type = "String", description = "Application log level" }
-    "finn/node-env"              = { type = "String", description = "Node.js environment" }
-    "finn/feature-payments"      = { type = "String", description = "Payments feature flag" }
-    "finn/feature-inference"     = { type = "String", description = "Inference feature flag" }
-    "finn/audit-bucket"          = { type = "String", description = "S3 bucket for audit anchors" }
-  }
-}
-
-resource "aws_ssm_parameter" "finn" {
-  for_each = local.finn_ssm_parameters
-
-  name        = "/${local.name_prefix}/${each.key}"
-  type        = each.value.type
-  description = each.value.description
-  value       = "PLACEHOLDER"  # Real values imported from finn state
-  key_id      = each.value.type == "SecureString" ? aws_kms_key.finn_audit_signing.key_id : null
-
-  lifecycle {
-    ignore_changes = [value]  # Values managed outside terraform after import
-  }
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-```
-
-### 3.6 `monitoring-finn.tf` — Finn Alarms & Metric Filters
-
-```hcl
-resource "aws_cloudwatch_metric_alarm" "finn_cpu_high" {
-  alarm_name          = "${local.name_prefix}-finn-cpu-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/ECS"
-  period              = 300
-  statistic           = "Average"
-  threshold           = 80
-  alarm_description   = "Finn CPU utilization exceeds 80%"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.finn.name
-  }
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "finn_memory_high" {
-  alarm_name          = "${local.name_prefix}-finn-memory-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "MemoryUtilization"
-  namespace           = "AWS/ECS"
-  period              = 300
-  statistic           = "Average"
-  threshold           = 80
-  alarm_description   = "Finn memory utilization exceeds 80%"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.finn.name
-  }
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "finn_5xx" {
-  alarm_name          = "${local.name_prefix}-finn-5xx"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Finn5xxErrors"
-  namespace           = "Arrakis/Finn"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 5
-  alarm_description   = "Finn 5xx error rate elevated"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  treat_missing_data  = "notBreaching"
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "finn_task_count" {
-  alarm_name          = "${local.name_prefix}-finn-task-count"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "RunningTaskCount"
-  namespace           = "ECS/ContainerInsights"
-  period              = 60
-  statistic           = "Minimum"
-  threshold           = 1
-  alarm_description   = "Finn has no running tasks"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.finn.name
-  }
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "finn_latency_p99" {
-  alarm_name          = "${local.name_prefix}-finn-latency-p99"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 3
-  metric_name         = "FinnLatencyP99"
-  namespace           = "Arrakis/Finn"
-  period              = 60
-  extended_statistic  = "p99"
-  threshold           = 2000
-  alarm_description   = "Finn p99 latency exceeds 2s"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  treat_missing_data  = "notBreaching"
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "finn_redis_connection" {
-  alarm_name          = "${local.name_prefix}-finn-redis-connection"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "CurrConnections"
-  namespace           = "AWS/ElastiCache"
-  period              = 300
-  statistic           = "Minimum"
-  threshold           = 1
-  alarm_description   = "Finn dedicated Redis has no connections"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ReplicationGroupId = aws_elasticache_replication_group.finn_dedicated.id
-  }
-
-  tags = merge(local.common_tags, { Service = "finn" })
-}
-
-resource "aws_cloudwatch_log_metric_filter" "finn_errors" {
-  name           = "${local.name_prefix}-finn-error-filter"
-  log_group_name = aws_cloudwatch_log_group.finn.name
-  pattern        = "{ $.level = \"error\" }"
-
-  metric_transformation {
-    name      = "FinnErrors"
-    namespace = "Arrakis/Finn"
-    value     = "1"
-  }
-}
-
-resource "aws_cloudwatch_log_metric_filter" "finn_5xx_filter" {
-  name           = "${local.name_prefix}-finn-5xx-filter"
-  log_group_name = aws_cloudwatch_log_group.finn.name
-  pattern        = "{ $.statusCode >= 500 }"
-
-  metric_transformation {
-    name      = "Finn5xxErrors"
-    namespace = "Arrakis/Finn"
-    value     = "1"
-  }
-}
-```
-
-### 3.7 `monitoring-dixie.tf` — Dixie Alarms
-
-```hcl
-resource "aws_cloudwatch_metric_alarm" "dixie_cpu_high" {
-  alarm_name          = "${local.name_prefix}-dixie-cpu-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/ECS"
-  period              = 300
-  statistic           = "Average"
-  threshold           = 80
-  alarm_description   = "Dixie CPU utilization exceeds 80%"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.dixie.name
-  }
-
-  tags = merge(local.common_tags, { Service = "dixie" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "dixie_memory_high" {
-  alarm_name          = "${local.name_prefix}-dixie-memory-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "MemoryUtilization"
-  namespace           = "AWS/ECS"
-  period              = 300
-  statistic           = "Average"
-  threshold           = 80
-  alarm_description   = "Dixie memory utilization exceeds 80%"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.dixie.name
-  }
-
-  tags = merge(local.common_tags, { Service = "dixie" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "dixie_5xx" {
-  alarm_name          = "${local.name_prefix}-dixie-5xx"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Dixie5xxErrors"
-  namespace           = "Arrakis/Dixie"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 5
-  alarm_description   = "Dixie 5xx error rate elevated"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  treat_missing_data  = "notBreaching"
-
-  tags = merge(local.common_tags, { Service = "dixie" })
-}
-
-resource "aws_cloudwatch_metric_alarm" "dixie_task_count" {
-  alarm_name          = "${local.name_prefix}-dixie-task-count"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "RunningTaskCount"
-  namespace           = "ECS/ContainerInsights"
-  period              = 60
-  statistic           = "Minimum"
-  threshold           = 1
-  alarm_description   = "Dixie has no running tasks"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.dixie.name
-  }
-
-  tags = merge(local.common_tags, { Service = "dixie" })
-}
-
-resource "aws_cloudwatch_log_metric_filter" "dixie_errors" {
-  name           = "${local.name_prefix}-dixie-error-filter"
-  log_group_name = aws_cloudwatch_log_group.dixie.name
-  pattern        = "{ $.level = \"error\" }"
-
-  metric_transformation {
-    name      = "DixieErrors"
-    namespace = "Arrakis/Dixie"
-    value     = "1"
-  }
-}
-
-resource "aws_cloudwatch_log_metric_filter" "dixie_5xx_filter" {
-  name           = "${local.name_prefix}-dixie-5xx-filter"
-  log_group_name = aws_cloudwatch_log_group.dixie.name
-  pattern        = "{ $.statusCode >= 500 }"
-
-  metric_transformation {
-    name      = "Dixie5xxErrors"
-    namespace = "Arrakis/Dixie"
-    value     = "1"
-  }
-}
-```
-
-### 3.8 `autoscaling-dixie.tf` — Dixie Auto-Scaling
-
-```hcl
-resource "aws_appautoscaling_target" "dixie" {
-  max_capacity       = var.dixie_max_count
-  min_capacity       = var.dixie_desired_count
-  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.dixie.name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
-}
-
-resource "aws_appautoscaling_policy" "dixie_cpu" {
-  name               = "${local.name_prefix}-dixie-cpu-scaling"
-  policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.dixie.resource_id
-  scalable_dimension = aws_appautoscaling_target.dixie.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.dixie.service_namespace
-
-  target_tracking_scaling_policy_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageCPUUtilization"
-    }
-    target_value       = var.autoscaling_cpu_target
-    scale_in_cooldown  = var.autoscaling_scale_in_cooldown
-    scale_out_cooldown = var.autoscaling_scale_out_cooldown
-  }
-}
-```
-
-## 4. Resource Import Inventory
-
-**Authoritative per-resource mapping per PRD IMP-002. Physical IDs must be confirmed from loa-finn's state before execution.**
-
-### 4.1 Stateful Resources (Import with `prevent_destroy`)
-
-| # | Resource Type | Logical Name | Expected Physical ID Pattern | Import Command | Expected Plan Diff |
-|---|--------------|-------------|---------------------------|---------------|-------------------|
-| 1 | `aws_elasticache_replication_group` | `finn_dedicated` | `arrakis-staging-finn-redis` | `terraform import aws_elasticache_replication_group.finn_dedicated arrakis-staging-finn-redis` | 0 changes |
-| 2 | `aws_elasticache_parameter_group` | `finn_redis` | `arrakis-staging-finn-redis-params` | `terraform import aws_elasticache_parameter_group.finn_redis arrakis-staging-finn-redis-params` | 0 changes |
-| 3 | `aws_dynamodb_table` | `finn_scoring_path_log` | `arrakis-staging-finn-scoring-path-log` | `terraform import aws_dynamodb_table.finn_scoring_path_log arrakis-staging-finn-scoring-path-log` | 0 changes |
-| 4 | `aws_dynamodb_table` | `finn_x402_settlements` | `arrakis-staging-finn-x402-settlements` | `terraform import aws_dynamodb_table.finn_x402_settlements arrakis-staging-finn-x402-settlements` | 0 changes |
-| 5 | `aws_s3_bucket` | `finn_audit_anchors` | `arrakis-staging-finn-audit-anchors` | `terraform import aws_s3_bucket.finn_audit_anchors arrakis-staging-finn-audit-anchors` | 0 changes |
-| 6 | `aws_s3_bucket` | `finn_calibration` | `arrakis-staging-finn-calibration` | `terraform import aws_s3_bucket.finn_calibration arrakis-staging-finn-calibration` | 0 changes |
-| 7 | `aws_kms_key` | `finn_audit_signing` | `{key-id from finn state}` | `terraform import aws_kms_key.finn_audit_signing {key-id}` | 0 changes |
-| 8 | `aws_kms_alias` | `finn_audit_signing` | `alias/arrakis-staging-finn-audit-signing` | `terraform import aws_kms_alias.finn_audit_signing alias/arrakis-staging-finn-audit-signing` | 0 changes |
-
-### 4.2 Configuration Resources (Import, values managed externally)
-
-| # | Resource Type | Logical Name | Expected Physical ID Pattern | Import Command | Expected Plan Diff |
-|---|--------------|-------------|---------------------------|---------------|-------------------|
-| 9-21 | `aws_ssm_parameter` | `finn["finn/*"]` (13 params) | `/arrakis-staging/finn/*` | `terraform import 'aws_ssm_parameter.finn["finn/database-url"]' /arrakis-staging/finn/database-url` (repeat per param) | 0 changes (ignore_changes on value) |
-| 22 | `aws_cloudwatch_log_group` | `finn` (if legacy exists) | `/ecs/arrakis-staging/finn` | `terraform import aws_cloudwatch_log_group.finn /ecs/arrakis-staging/finn` | 0 changes |
-
-### 4.3 New Resources (Creates Only, No Import)
-
-| Resource Type | Logical Name | Expected Plan Diff |
-|--------------|-------------|-------------------|
-| `aws_security_group` | `finn_redis` | create |
-| `aws_secretsmanager_secret` | `finn_redis` | create |
-| `aws_cloudwatch_metric_alarm` | `finn_cpu_high`, `finn_memory_high`, `finn_5xx`, `finn_task_count`, `finn_latency_p99`, `finn_redis_connection` | create (6) |
-| `aws_cloudwatch_log_metric_filter` | `finn_errors`, `finn_5xx_filter` | create (2) |
-| `aws_cloudwatch_metric_alarm` | `dixie_cpu_high`, `dixie_memory_high`, `dixie_5xx`, `dixie_task_count` | create (4) |
-| `aws_cloudwatch_log_metric_filter` | `dixie_errors`, `dixie_5xx_filter` | create (2) |
-| `aws_appautoscaling_target` | `dixie` | create |
-| `aws_appautoscaling_policy` | `dixie_cpu` | create |
-| `aws_s3_bucket_*` | versioning, encryption configs for audit/calibration | create (may show changes if existing config differs) |
-
-### 4.4 Import Procedural Safeguards (IMP-003)
-
-Every import batch follows this sequence:
-
-1. **Pre-import state backup**: `terraform state pull > backup-$(date +%Y%m%d-%H%M%S).tfstate`
-2. **Dry-run plan**: `terraform plan` before any import — document expected creates
-3. **Import execution**: One resource at a time for stateful resources (rows 1-8); SSM params may be batched
-4. **Post-import diff review**: `terraform plan` after each import batch — operator must confirm 0 unexpected changes before proceeding
-5. **Post-import validation**: Run wiring test subset targeting imported resources (e.g., W-8 for Redis, W-9/W-10 for PgBouncer connectivity)
-6. **Checkpoint commit**: `git add -A && git commit -m "import: <resource_group>"` after each verified batch
-
-**Rollback**: If any import produces unexpected plan diff → `terraform state rm <resource>` to un-import, fix definition, retry. State backup enables full reset if needed.
-
-### 4.5 Verification Procedure
-
-After all imports, `terraform plan` must show:
-- **0 changes** for all imported stateful resources (rows 1-8)
-- **0 changes** for imported SSM parameters (rows 9-21, due to `ignore_changes`)
-- **Create** only for new monitoring/scaling resources
-- **No destroys or replaces** for any existing resources
-
-## 5. Deploy Pipeline Design
-
-### 5.1 `scripts/deploy-ring.sh`
-
-Sequential orchestrator with SLO-aligned health gates:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-RING="${1:?Usage: deploy-ring.sh <ring> [--services all|dixie,finn,freeside]}"
-SERVICES="${2:-all}"
-HEALTH_TIMEOUT=300        # 5 minutes
-HEALTH_INTERVAL=5         # 5 seconds
-CONSECUTIVE_REQUIRED=10   # 10 consecutive healthy checks
-LATENCY_THRESHOLD_MS=2000 # p99 < 2s
-
-# Phase 1: Build + Push
-log "Phase 1: Building Docker images..."
-for svc in freeside finn dixie; do
-  ./scripts/deploy-to-ecr.sh "$svc" "$RING"
-done
-
-# Phase 2: Terraform Apply (if changes pending)
-log "Phase 2: Terraform infrastructure..."
-cd infrastructure/terraform
-terraform plan -var-file="environments/${RING}/terraform.tfvars" -out=plan.tfplan
-# Plan must be reviewed — in CI this is a separate approval step
-terraform apply plan.tfplan
-cd ../..
-
-# Phase 3: Deploy Dixie (no upstream dependencies)
-log "Phase 3: Deploying Dixie..."
-deploy_service "dixie" "$RING"
-health_gate "dixie" "http://dixie.${RING}.arrakis.community/api/health"
-
-# Phase 4: Deploy Finn (needs DIXIE_BASE_URL)
-log "Phase 4: Deploying Finn..."
-deploy_service "finn" "$RING"
-health_gate "finn" "http://finn.${RING}.arrakis.community/health"
-
-# Phase 5: Deploy Freeside (needs both)
-log "Phase 5: Deploying Freeside..."
-deploy_service "freeside" "$RING"
-health_gate "freeside" "https://${RING}.api.arrakis.community/health"
-
-# Phase 6: Integration tests
-log "Phase 6: Wiring tests..."
-./scripts/staging-wiring-test.sh "$RING"
-
-log "Deploy complete. All services healthy, wiring verified."
-```
-
-### 5.2 Health Gate Function
-
-```bash
-health_gate() {
-  local service="$1"
-  local url="$2"
-  local start_time=$(date +%s)
-  local consecutive=0
-  local total_checks=0
-  local latency_sum=0
-  local fivexx_count=0
-  local -a latency_window=()
-
-  while true; do
-    local elapsed=$(( $(date +%s) - start_time ))
-    if (( elapsed > HEALTH_TIMEOUT )); then
-      error "Health gate TIMEOUT for $service after ${HEALTH_TIMEOUT}s"
-      exit 1
-    fi
-
-    local check_start=$(date +%s%N)
-    local http_code
-    http_code=$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 "$url" 2>/dev/null) || http_code="000"
-    local check_end=$(date +%s%N)
-    local latency_ms=$(( (check_end - check_start) / 1000000 ))
-
-    total_checks=$((total_checks + 1))
-    latency_sum=$((latency_sum + latency_ms))
-
-    # SKP-004 / IMP-006: Track sliding-window p99 (not just per-request latency)
-    latency_window+=("$latency_ms")
-
-    if [[ "$http_code" == "200" ]]; then
-      consecutive=$((consecutive + 1))
-    elif [[ "$http_code" =~ ^5 ]]; then
-      fivexx_count=$((fivexx_count + 1))
-      if (( fivexx_count > 0 )); then
-        error "Health gate FAILED for $service: ${fivexx_count} 5xx errors during gate"
-        exit 1
-      fi
-    else
-      consecutive=0  # Reset on non-200
-    fi
-
-    # Evaluate p99 over sliding window (need ≥10 samples)
-    if (( ${#latency_window[@]} >= CONSECUTIVE_REQUIRED )); then
-      local p99_latency
-      p99_latency=$(printf '%s\n' "${latency_window[@]}" | sort -n | awk -v p=0.99 \
-        'BEGIN{c=0} {v[c++]=$1} END{idx=int(c*p); if(idx>=c) idx=c-1; print v[idx]}')
-
-      if (( consecutive >= CONSECUTIVE_REQUIRED )) && (( p99_latency < LATENCY_THRESHOLD_MS )); then
-        local avg_latency=$((latency_sum / total_checks))
-        log "Health gate PASSED for $service: ${consecutive} consecutive OK, p99=${p99_latency}ms, avg=${avg_latency}ms"
-        return 0
-      elif (( p99_latency >= LATENCY_THRESHOLD_MS )); then
-        log "Health gate: p99 ${p99_latency}ms exceeds ${LATENCY_THRESHOLD_MS}ms — waiting..."
-        consecutive=0  # Reset — SLO not met
-      fi
-    fi
-
-    sleep "$HEALTH_INTERVAL"
-  done
-}
-```
-
-### 5.3 CI Serialization & Safety Gates
+Solid arrows are this cycle's verified paths; dashed arrows are declared-for
+future phases and MUST NOT require changes here to land.
+
+### 1.3 Architectural pattern
+
+**Declarative contract in a schema-gated data file.** The registry is the
+anti-corruption layer (ADR-012: "the naming IS the anti-corruption layer" —
+"where is health, and what cadence is expected?" answered once). The Effect
+Schema decode is the enforcement mechanism: an invalid declaration cannot load,
+anywhere, in any consumer that uses `loadRegistry()`.
+
+---
+
+## 2. Grounding (verified 2026-07-04/05)
+
+| Claim | Source | Verified |
+|---|---|---|
+| `ModuleEntry` has no `service`/`expectations`; excess yaml fields are "silently stripped on decode" (i.e. unknown fields do NOT break decode) | `packages/freeside-registry/src/registry.ts:26-54` (comment at L38-39) | read 2026-07-04 |
+| probe.mjs reads exactly `service.{deployment_url, health_path, expected_status, auth_class, expected_body_marker}`; no `service.deployment_url` → verdict `scaffold` | `loa-cli/lib/probe.mjs:153-190` (L157, L160-166, L178) | read 2026-07-04 |
+| probe.mjs defaults: `health_path`→`/`, `expected_status`→200, `auth_class`→`none`; `expected_body_marker` optional | `loa-cli/lib/probe.mjs:97, 161, 178` | read 2026-07-04 |
+| ADR-012 appendix declares 5 cells' service values + score-api DO-NOT-TRANSCRIBE + 3 no-block cells | `decisions/012-unify-cluster-liveness.md:105-124` | read 2026-07-04 |
+| score-api real health contract: `/` → **302 Location: /v1/health**; direct `GET /v1/health` → **200** `{"status":"ok",...,"service":"score-api",...}`; `/health` → 404 | live probe 2026-07-05T00:47Z (curl, read-only) | probed |
+| sonar per-chain lag SLOs: ETH<50 · OP<600 · Arbitrum<2400 · Base<600 · **Berachain<300** · Zora<1800; recipe = `chain_metadata { chain_id latest_processed_block block_height }`, lag = `block_height − latest_processed_block`; SLOs are **PROPOSED, observe-only** | `~/Documents/GitHub/sonar-api/SCALE.md` Guardrail 2 (SLO table + lag-check command) | read 2026-07-04 |
+| sonar GraphQL read plane = belt-gateway (`https://belt-gateway-production.up.railway.app/v1/graphql`), NOT sonar-api host; hyperindex deployment IDs rotate (blue-green) | `packages/freeside-registry/registry.yaml:258-268`; `SCALE.md` blue-green guardrail | read 2026-07-04 |
+| freeside-cli consumes the registry via `"@freeside/freeside-registry": "file:../freeside-registry"`; `tests/ordering-registry.test.ts:17` calls `loadRegistry()` with the DEFAULT path → decodes the **real** registry.yaml | `packages/freeside-cli/package.json`, `tests/ordering-registry.test.ts` | read 2026-07-04 |
+| No PR-time CI lane runs the freeside-registry / freeside-cli test suites today (`cluster-compliance.yml` triggers on registry.yaml paths but runs cell-compliance audits, not unit suites; `lib-tests.yml` covers `.claude/lib` only) | `.github/workflows/{cluster-compliance,lib-tests}.yml` | read 2026-07-04 |
+| Test runner: `tsx --test tests/*.test.ts` (node:test), effect ^3.21.0, yaml ^2.6.0, TS ^5.4.0 — no new deps needed (NFR-4) | `packages/freeside-registry/package.json` | read 2026-07-04 |
+| inventory-api appendix value (`/` 401 static-key) has likely drifted: the current deployment (`inventory-api-production-3f25`) serves open `/health 200` per registry notes 2026-07-03 | `registry.yaml:137-143` vs ADR-012 appendix | read 2026-07-04 |
+
+[ASSUMPTION] sonar's SVM reconcile freshness projection (`svm_run_marker.updated_at`
+or equivalent) — flagged in the PRD as unverified; FR-4 verifies against sonar's
+live GraphQL schema before declaring. This SDD designs the shape, not the value.
+
+---
+
+## 3. Design Decisions
+
+### D-1 — `service` block: ADR-012 Decision-1 verbatim, plus provenance
+
+The struct carries **exactly** the five fields probe.mjs reads, plus two
+provenance fields (NFR-5). Provenance is safe to add: probe.mjs destructures
+only the fields it knows (`probe.mjs:97,160-166`) — extra keys are inert.
+
+`service.deployment_url` is **required inside the block** (probe.mjs L157: no
+`service.deployment_url` → `scaffold`, which would silently un-probe a declared
+cell). The top-level `deployment_url` stays for existing consumers; a decode
+filter enforces they match (see D-6), so the duplication cannot drift.
+
+**Not chosen**: making `service.deployment_url` optional with fallback to the
+entry-level field — probe.mjs is frozen this cycle (zero loa-cli changes), so a
+fallback would require the exact consumer change that is out of scope.
+
+### D-2 — `expectations[]`: discriminated union on `probe_kind`, gh-workflow excluded
+
+`Schema.Union` of three structs, each tagged with `probe_kind:
+Schema.Literal(...)`. An entry with `probe_kind: gh-workflow` (or any unknown
+kind) fails the union decode loudly — the PRD's premature-use gate (FR-3) falls
+out of the type system; no bespoke check needed.
+
+### D-3 — stable ref identity
+
+Each expectation carries `ref` (kebab-case slug, pattern-enforced). The global
+identity is `<cell-slug>/<ref>` (e.g. `sonar-api/chain-lag`) — stable across
+endpoint rotations, threshold tuning, and cadence changes, so future runners can
+key state/alert-transition history on it. Refs are unique within a cell
+(decode-time filter, D-6).
+
+### D-4 — `graphql-lag` is generic-declared
+
+Per FR-3, nothing sonar-specific in the schema. The kind declares: `endpoint`
+(data — rotates with blue-green deploys), `query`, `rows_path` (dot-path to the
+row array), `key` (per-row identity field), `minuend`/`subtrahend` (the two
+numeric fields whose difference is the lag), and per-key `thresholds`
+(`lag < threshold` semantics). Sonar's chain-lag check is *just data* under
+this shape; a future postgres-replication-lag or queue-depth check fits the
+same kind unchanged.
+
+### D-5 — `event-max-age` shape
+
+Declares `endpoint`, `query`, `timestamp_path` (dot-path to the freshest-event
+ISO timestamp in the response) and `expect.max_age` (duration string). This is
+the absence-of-expected primitive: consumer-side semantics (next cycle) are
+`now() − timestamp > max_age` → stale.
+
+### D-6 — validation with teeth = decode-time filters, not docs
+
+Three `Schema.filter` refinements ride the schema itself so every consumer gets
+them for free:
+1. `service.deployment_url === entry.deployment_url` when both present (kills
+   the two-fields-drift hazard D-1 creates).
+2. `expectations[].ref` unique per cell.
+3. `graphql-lag.expect.thresholds` non-empty.
+
+Format constraints (path starts with `/`, status 100–599, cadence/max_age
+pattern, ref pattern) are `Schema.pattern`/`Schema.between` refinements on the
+fields.
+
+### D-7 — cells without a served URL get NO block (derive-don't-type)
+
+mint-api (routeless shell), events-api / mediums-api (libraries), ledger-api
+(scaffolded, /health 404) get no `service` block. Their lifecycle derives from
+absence per ADR-012 §Decision-3 — encoding a block for them would hand-type the
+exact claim this lane kills. The schema keeps both blocks `Schema.optional`, so
+absence is valid forever (G-4).
+
+### D-8 — score-api FR-2 resolution (flag discharged)
+
+Live-probed at design time (2026-07-05T00:47Z): `/` returns **302 → /v1/health**;
+`GET /v1/health` directly returns **200** with the documented health JSON
+(`"service":"score-api"`, `db:"connected"`, fresh `last_run_at`). `/health`
+404s. The stable liveness path exists:
 
 ```yaml
-# .github/workflows/deploy-staging.yml
-concurrency:
-  group: terraform-${{ github.event.inputs.environment || 'staging' }}
-  cancel-in-progress: false  # Queue, don't cancel
-
-# .github/workflows/dns-apply.yml
-concurrency:
-  group: terraform-dns-${{ github.event.inputs.environment || 'staging' }}
-  cancel-in-progress: false
+service:
+  deployment_url: https://score-api-production.up.railway.app
+  health_path: /v1/health
+  expected_status: 200
+  auth_class: none            # /v1/health is open (probed unauthenticated → 200)
+  expected_body_marker: '"service":"score-api"'
+  probed_at: "2026-07-05"     # sprint re-verifies at populate time
+  probe_source: live-probe    # FR-2 live resolution, NOT the ADR appendix
 ```
 
-#### IMP-009: CI Gate for Destructive Plan Actions
+The 302 is never encoded. The redirect is *tolerated* by probe.mjs's same-host
+manual redirect loop anyway, but declaring the direct path removes a hop and a
+misclassification surface. Cell `notes` records the resolution trail.
 
-Before any `terraform apply`, CI scans the plan for replacement or destroy actions on `prevent_destroy` resources:
+### D-9 — sonar's two entries: values are declared data, verified at populate time
 
-```bash
-# scripts/tf-plan-guard.sh — run in CI after terraform plan
-#!/usr/bin/env bash
-set -euo pipefail
+- `sonar-api/chain-lag` (`graphql-lag`): the SCALE.md Guardrail-2 recipe. All six
+  chain thresholds transcribed (§5.3). **Endpoint must be live-verified at sprint
+  time**: registry notes say GraphQL reads go through belt-gateway; SCALE.md's
+  lag-check hits `indexer.hyperindex.xyz/<deployment-id>`. Whichever host serves
+  `chain_metadata` is declared; it is data, revisable without schema change.
+- `sonar-api/svm-reconcile` (`event-max-age`): shape per D-5; the projection
+  field is an [ASSUMPTION] until verified against sonar's live GraphQL schema
+  (FR-4). If unverifiable in-sprint, the entry is **omitted** (not guessed) and
+  the gap recorded in sonar-api's cell `notes` — same discipline as FR-2's
+  declare-nothing branch.
 
-PLAN_JSON="${1:?Usage: tf-plan-guard.sh <plan.json>}"
-CRITICAL_RESOURCES=(
-  "aws_elasticache_replication_group"
-  "aws_dynamodb_table"
-  "aws_s3_bucket"
-  "aws_kms_key"
-  "aws_route53_zone"
-)
+SCALE.md marks the SLO numbers PROPOSED/observe-only; the expectation record
+declares them as thresholds with `owner: zerker` — alerting posture is a
+runner-phase concern (out of scope), so declaring proposed values is safe: the
+declaration layer records *what to measure against*, not *when to page*.
 
-# Check for replace/delete actions on critical resource types
-for resource_type in "${CRITICAL_RESOURCES[@]}"; do
-  replacements=$(jq -r --arg rt "$resource_type" '
-    [.resource_changes[] |
-     select(.type == $rt and (.change.actions | contains(["delete"]) or contains(["create","delete"])))] |
-     length' "$PLAN_JSON")
+### D-10 — G-4 gate is a real CI lane, not a hope
 
-  if (( replacements > 0 )); then
-    echo "BLOCKED: Plan contains replace/destroy for $resource_type ($replacements actions)"
-    echo "This requires manual approval — prevent_destroy resource would be recreated."
-    exit 1
-  fi
-done
+freeside-cli's `ordering-registry.test.ts` already decodes the **real**
+registry.yaml through the **shared** schema (file: dep) — the perfect G-4
+sensor. But no PR-time workflow runs it. Add
+`.github/workflows/registry-cli-tests.yml`: on PRs touching
+`packages/freeside-registry/**` or `packages/freeside-cli/**`, fresh-install
+(`npm ci` per package, standalone — mirrors cluster-compliance's "no workspace"
+install; a fresh install also sidesteps the known pnpm/npm `file:` stale-copy
+hazard) and run both `npm test` suites. The workflow file is domain-unclassified
+(`domain-classify.sh` lists only `packages/freeside-{cli,registry}/*` as
+network), so the PR stays single-domain **network**.
 
-echo "Plan guard PASSED: No destructive actions on critical resources."
+### D-11 — no version bump, no removals
+
+`registry.yaml` stays `version: 1`. Every schema change is
+`Schema.optional(...)` on `ModuleEntry`; no field is removed or retyped (NFR-2).
+The stale `# Live-probe state` header comment is retired at ADR-012 Phase 3
+(move-3), NOT here — this cycle only updates the schema documentation comment
+block (`registry.yaml:8-19`) to document the new fields.
+
+---
+
+## 4. Data Design — the schema (Contract plane)
+
+### 4.1 `src/registry.ts` additions (exact shape)
+
+```typescript
+// ── ADR-012 Phase 0 · cadence-ledger cycle ──────────────────────────────────
+
+const AuthClass = Schema.Literal("none", "static-key");
+
+/** ISO-8601 date, e.g. "2026-07-05" */
+const IsoDate = Schema.String.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/));
+
+/** duration/cadence literal: "15m", "6h", "1d" */
+const Duration = Schema.String.pipe(Schema.pattern(/^[1-9][0-9]*(m|h|d)$/));
+
+/** kebab-case slug — the stable half of the <cell>/<ref> expectation identity */
+const RefSlug = Schema.String.pipe(Schema.pattern(/^[a-z0-9][a-z0-9-]{0,63}$/));
+
+// The declared health contract — field-for-field what loa-cli/lib/probe.mjs
+// already reads (ADR-012 §Decision-1), plus NFR-5 provenance (inert to probe.mjs).
+const ServiceBlock = Schema.Struct({
+  deployment_url: Schema.String,           // required: probe.mjs L157 short-circuits to
+                                           // 'scaffold' without it; must equal the
+                                           // entry-level deployment_url (filter, §4.2)
+  health_path: Schema.String.pipe(Schema.pattern(/^\//)),
+  expected_status: Schema.Number.pipe(Schema.int(), Schema.between(100, 599)),
+  auth_class: AuthClass,
+  expected_body_marker: Schema.optional(Schema.String),
+  // ── provenance (NFR-5): hand-typed values cite where/when they were probed ──
+  probed_at: IsoDate,
+  probe_source: Schema.Literal("adr-012-appendix", "live-probe"),
+});
+
+// ── expectations[] · discriminated union on probe_kind ──────────────────────
+// gh-workflow is DELIBERATELY absent: premature use fails the union decode (FR-3).
+
+const ExpectationCommon = {
+  ref: RefSlug,
+  cadence: Duration,
+  owner: Schema.String.pipe(Schema.minLength(1)),
+};
+
+const HttpExpectation = Schema.Struct({
+  probe_kind: Schema.Literal("http"),
+  ...ExpectationCommon,
+  // absent target ⇒ consumers probe the cell's own `service` block (documented
+  // consumer semantic; dispatch lands in loa-cli NEXT cycle)
+  target: Schema.optional(Schema.Struct({ url: Schema.String })),
+  expect: Schema.optional(Schema.Struct({
+    status: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.between(100, 599))),
+    body_marker: Schema.optional(Schema.String),
+  })),
+});
+
+// Generic lag-between-two-numeric-fields over a GraphQL row set (never
+// sonar-hardcoded): lag = row[minuend] − row[subtrahend], keyed by row[key],
+// healthy iff lag < thresholds[row[key]] for every declared key.
+const GraphqlLagExpectation = Schema.Struct({
+  probe_kind: Schema.Literal("graphql-lag"),
+  ...ExpectationCommon,
+  target: Schema.Struct({
+    endpoint: Schema.String,       // declared DATA — deployment ids rotate (SCALE.md blue-green)
+    query: Schema.String,
+    rows_path: Schema.String,      // dot-path to the row array, e.g. "data.chain_metadata"
+    key: Schema.String,            // per-row identity field, e.g. "chain_id"
+    minuend: Schema.String,        // e.g. "block_height"
+    subtrahend: Schema.String,     // e.g. "latest_processed_block"
+  }),
+  expect: Schema.Struct({
+    thresholds: Schema.Record({ key: Schema.String, value: Schema.Number })
+      .pipe(Schema.filter((t) => Object.keys(t).length > 0
+        || "graphql-lag expect.thresholds must declare at least one key")),
+  }),
+});
+
+// Absence-of-expected: freshest event older than max_age ⇒ stale (consumer
+// semantic, next cycle). The staleness-against-declared-cadence primitive.
+const EventMaxAgeExpectation = Schema.Struct({
+  probe_kind: Schema.Literal("event-max-age"),
+  ...ExpectationCommon,
+  target: Schema.Struct({
+    endpoint: Schema.String,
+    query: Schema.String,
+    timestamp_path: Schema.String, // dot-path to the freshest ISO timestamp
+  }),
+  expect: Schema.Struct({ max_age: Duration }),
+});
+
+const Expectation = Schema.Union(
+  HttpExpectation,
+  GraphqlLagExpectation,
+  EventMaxAgeExpectation,
+);
+
+const Expectations = Schema.Array(Expectation).pipe(
+  Schema.filter((xs) => {
+    const refs = xs.map((x) => x.ref);
+    return new Set(refs).size === refs.length
+      || "expectations[].ref must be unique within a cell";
+  }),
+);
 ```
 
-Add to CI workflow after `terraform plan`:
-```yaml
-      - name: Plan Guard
-        run: |
-          terraform show -json plan.tfplan > plan.json
-          ./scripts/tf-plan-guard.sh plan.json
+### 4.2 `ModuleEntry` additions (additive only)
+
+```typescript
+const ModuleEntry = Schema.Struct({
+  // ... existing nine fields UNCHANGED (registry.ts:26-54) ...
+  service: Schema.optional(ServiceBlock).annotations({
+    description:
+      "ADR-012 §D-1 declared health contract, read by loa-cli/lib/probe.mjs. " +
+      "Absent ⇒ lifecycle derives from absence (derive-don't-type).",
+  }),
+  expectations: Schema.optional(Expectations).annotations({
+    description:
+      "Cadence ledger: declared liveness expectations (staleness-against-declared-cadence). " +
+      "Identity = <cell-slug>/<ref>. Consumers dispatch on probe_kind (loa-cli, next cycle).",
+  }),
+}).pipe(
+  Schema.filter((e) =>
+    !e.service || e.deployment_url == null || e.service.deployment_url === e.deployment_url
+      || "service.deployment_url must equal the entry-level deployment_url"),
+);
 ```
 
-### 5.4 Staging → Production Promotion Policy
-
-Per PRD IMP-005:
-1. Staging must pass: all wiring tests (W-1..W-10), health gates for all 3 services, `terraform plan` shows no unexpected changes
-2. Staging must be green for ≥1 hour before production promotion
-3. Production promotion requires: `DEPLOYMENT.md` checklist sign-off, manual approval gate in CI workflow
-4. No direct-to-production applies
-
-## 6. Wiring Test Design
-
-### 6.1 `scripts/staging-wiring-test.sh`
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-RING="${1:?Usage: staging-wiring-test.sh <ring>}"
-CLUSTER="arrakis-${RING}"
-PASS=0
-FAIL=0
-RESULTS=()
-
-# External tests (W-1 through W-3)
-test_external() {
-  local name="$1" url="$2"
-  local code
-  code=$(curl -sf -o /dev/null -w '%{http_code}' --max-time 15 "$url" 2>/dev/null) || code="000"
-  if [[ "$code" == "200" ]]; then
-    RESULTS+=("PASS: $name → HTTP $code")
-    PASS=$((PASS + 1))
-  else
-    RESULTS+=("FAIL: $name → HTTP $code")
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-# Internal tests via ECS Exec (W-4 through W-10)
-test_internal() {
-  local name="$1" task_service="$2" container="$3" cmd="$4"
-  local task_arn
-  task_arn=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$task_service" \
-    --query 'taskArns[0]' --output text)
-
-  if [[ "$task_arn" == "None" ]]; then
-    RESULTS+=("FAIL: $name → No running task for $task_service")
-    FAIL=$((FAIL + 1))
-    return
-  fi
-
-  local output
-  if output=$(aws ecs execute-command --cluster "$CLUSTER" --task "$task_arn" \
-    --container "$container" --command "/bin/sh -c '$cmd'" \
-    --interactive 2>&1); then
-    RESULTS+=("PASS: $name")
-    PASS=$((PASS + 1))
-  else
-    RESULTS+=("FAIL: $name → $output")
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-# W-1: External → Freeside
-test_external "W-1 External→Freeside" "https://${RING}.api.arrakis.community/health"
-
-# W-2: External → Finn (staging only)
-test_external "W-2 External→Finn" "https://finn.${RING}.arrakis.community/health"
-
-# W-3: External → Dixie
-test_external "W-3 External→Dixie" "https://dixie.${RING}.arrakis.community/api/health"
-
-# W-4: Freeside → Finn (Cloud Map)
-test_internal "W-4 Freeside→Finn" "arrakis-${RING}-api" "api" \
-  "curl -sf http://finn.arrakis-${RING}.local:3000/health"
-
-# W-5: Freeside → Dixie (Cloud Map)
-test_internal "W-5 Freeside→Dixie" "arrakis-${RING}-api" "api" \
-  "curl -sf http://dixie.arrakis-${RING}.local:3001/api/health"
-
-# W-6: Finn → Dixie (reputation query)
-test_internal "W-6 Finn→Dixie" "arrakis-${RING}-finn" "finn" \
-  "curl -sf http://dixie.arrakis-${RING}.local:3001/api/health"
-
-# W-7: Finn → Freeside (JWKS)
-test_internal "W-7 Finn→Freeside" "arrakis-${RING}-finn" "finn" \
-  "curl -sf http://freeside.arrakis-${RING}.local:3000/.well-known/jwks.json"
-
-# W-8: Finn → Redis (dedicated ElastiCache)
-test_internal "W-8 Finn→Redis" "arrakis-${RING}-finn" "finn" \
-  "node -e \"const r=require('ioredis');const c=new r(process.env.FINN_REDIS_URL);c.ping().then(p=>{console.log(p);c.quit()}).catch(e=>{console.error(e);process.exit(1)})\""
-
-# W-9: Freeside → PostgreSQL (PgBouncer)
-test_internal "W-9 Freeside→PgBouncer" "arrakis-${RING}-api" "api" \
-  "node -e \"const {Pool}=require('pg');const p=new Pool({connectionString:process.env.DATABASE_URL});p.query('SELECT 1').then(()=>{console.log('OK');p.end()}).catch(e=>{console.error(e);process.exit(1)})\""
-
-# W-10: Dixie → PostgreSQL (PgBouncer)
-test_internal "W-10 Dixie→PgBouncer" "arrakis-${RING}-dixie" "dixie" \
-  "node -e \"const {Pool}=require('pg');const p=new Pool({connectionString:process.env.DATABASE_URL});p.query('SELECT 1').then(()=>{console.log('OK');p.end()}).catch(e=>{console.error(e);process.exit(1)})\""
-
-# Report
-echo "════════════════════════════════════════"
-echo "Wiring Test Results: ${PASS} passed, ${FAIL} failed"
-echo "════════════════════════════════════════"
-for r in "${RESULTS[@]}"; do echo "  $r"; done
-
-if (( FAIL > 0 )); then
-  echo "WIRING TESTS FAILED"
-  exit 1
-fi
-```
-
-### 6.2 ECS Exec Prerequisites
-
-Add to `ecs.tf` (cluster configuration):
-
-```hcl
-resource "aws_ecs_cluster" "main" {
-  name = local.name_prefix
-
-  configuration {
-    execute_command_configuration {
-      logging = "OVERRIDE"
-      log_configuration {
-        cloud_watch_log_group_name = aws_cloudwatch_log_group.ecs_exec.name
-      }
-    }
-  }
-}
-```
-
-Add to each task role (finn, dixie, freeside):
-
-```hcl
-statement {
-  effect = "Allow"
-  actions = [
-    "ssmmessages:CreateControlChannel",
-    "ssmmessages:CreateDataChannel",
-    "ssmmessages:OpenControlChannel",
-    "ssmmessages:OpenDataChannel"
-  ]
-  resources = ["*"]
-}
-```
-
-### 6.3 ECS Exec Network Prerequisites (IMP-007)
-
-ECS Exec requires the `ssmmessages` API endpoint to be reachable from tasks. For tasks in private subnets (no NAT gateway), provision a VPC endpoint:
-
-```hcl
-resource "aws_vpc_endpoint" "ssmmessages" {
-  vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.aws_region}.ssmmessages"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = module.vpc.private_subnets
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = merge(local.common_tags, { Purpose = "ecs-exec" })
-}
-
-resource "aws_security_group" "vpc_endpoints" {
-  name_prefix = "${local.name_prefix}-vpce-"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [
-      aws_security_group.finn.id,
-      aws_security_group.dixie.id,
-      aws_security_group.ecs_tasks.id
-    ]
-    description = "HTTPS from ECS tasks for SSM messages"
-  }
-
-  tags = merge(local.common_tags, { Name = "${local.name_prefix}-vpce-ssm" })
-}
-```
-
-**Note**: If tasks already have NAT gateway egress, the VPC endpoint is optional but recommended for lower latency and cost. Verify with `aws ecs execute-command` in staging before relying on wiring tests.
-
-## 7. DNS Module Design
-
-### 7.1 `dns/main.tf`
-
-```hcl
-terraform {
-  required_version = ">= 1.6.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.82.0"  # IMP-002: Exact minor version pin for deterministic plans
-    }
-  }
-
-  backend "s3" {
-    bucket         = "arrakis-tfstate-891376933289"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "arrakis-terraform-locks"
-    # key is set via -backend-config at init time, e.g.:
-    # terraform init -backend-config=environments/staging/backend.tfvars
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = "Arrakis"
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-      Module      = "dns"
-    }
-  }
-}
-
-locals {
-  name_prefix = "arrakis-${var.environment}"
-}
-```
-
-### 7.2 `dns/variables.tf`
-
-```hcl
-variable "aws_region" {
-  type    = string
-  default = "us-east-1"
-}
-
-variable "environment" {
-  type = string
-}
-
-variable "domain" {
-  type    = string
-  default = "0xhoneyjar.xyz"
-}
-
-variable "vercel_anycast_ip" {
-  type    = string
-  default = "76.76.21.21"
-  description = "Vercel anycast IP for A records (per Vercel docs for custom domains)"
-}
-
-variable "vercel_cname" {
-  type    = string
-  default = "cname.vercel-dns.com"
-}
-
-variable "google_workspace_mx" {
-  type = list(object({
-    priority = number
-    value    = string
-  }))
-  default = [
-    { priority = 1, value = "aspmx.l.google.com" },
-    { priority = 5, value = "alt1.aspmx.l.google.com" },
-    { priority = 5, value = "alt2.aspmx.l.google.com" },
-    { priority = 10, value = "alt3.aspmx.l.google.com" },
-    { priority = 10, value = "alt4.aspmx.l.google.com" }
-  ]
-}
-
-variable "dkim_key" {
-  type        = string
-  default     = ""
-  description = "Google Workspace DKIM public key (retrieve from Admin Console)"
-  sensitive   = true
-}
-
-variable "enable_production_api" {
-  type    = bool
-  default = false
-  description = "Create api.0xhoneyjar.xyz alias to compute ALB"
-}
-
-variable "enable_dnssec" {
-  type    = bool
-  default = false
-  description = "Enable DNSSEC signing for the zone"
-}
-
-# IMP-008: Feature flag safety guardrails
-# Environment-specific defaults prevent accidental production enablement.
-# Staging tfvars: enable_production_api = true, enable_dnssec = true
-# Production tfvars: enable_production_api = false, enable_dnssec = false (until cutover)
-# CI lint rule: production tfvars must NOT set enable_dnssec=true without matching
-# DS record upload confirmation in DEPLOYMENT.md checklist.
-
-variable "dmarc_email" {
-  type    = string
-  default = "dmarc@0xhoneyjar.xyz"
-}
-```
-
-### 7.3 `dns/honeyjar-xyz.tf`
-
-```hcl
-resource "aws_route53_zone" "honeyjar" {
-  name    = var.domain
-  comment = "Managed by Terraform (Armitage Platform)"
-
-  tags = {
-    Project = "Arrakis"
-    Purpose = "production-dns"
-  }
-}
-
-# Apex A record → Vercel
-resource "aws_route53_record" "apex_a" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = var.domain
-  type    = "A"
-  ttl     = 300
-  records = [var.vercel_anycast_ip]
-}
-
-# www CNAME → Vercel
-resource "aws_route53_record" "www" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "www.${var.domain}"
-  type    = "CNAME"
-  ttl     = 300
-  records = [var.vercel_cname]
-}
-```
-
-### 7.4 `dns/honeyjar-xyz-email.tf`
-
-```hcl
-# MX records — Google Workspace
-resource "aws_route53_record" "mx" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = var.domain
-  type    = "MX"
-  ttl     = 3600
-
-  records = [for mx in var.google_workspace_mx : "${mx.priority} ${mx.value}"]
-}
-
-# SPF
-resource "aws_route53_record" "spf" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = var.domain
-  type    = "TXT"
-  ttl     = 3600
-  records = ["v=spf1 include:_spf.google.com ~all"]
-}
-
-# DKIM (Google Workspace)
-resource "aws_route53_record" "dkim" {
-  count = var.dkim_key != "" ? 1 : 0
-
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "google._domainkey.${var.domain}"
-  type    = "TXT"
-  ttl     = 3600
-  records = [var.dkim_key]
-}
-
-# DMARC (FIXED — replaces broken Gandi placeholder)
-resource "aws_route53_record" "dmarc" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "_dmarc.${var.domain}"
-  type    = "TXT"
-  ttl     = 3600
-  records = ["v=DMARC1; p=quarantine; rua=mailto:${var.dmarc_email}; ruf=mailto:${var.dmarc_email}; fo=1"]
-}
-```
-
-### 7.5 `dns/honeyjar-xyz-vercel.tf`
-
-```hcl
-# Wildcard CNAME for Vercel deployments
-resource "aws_route53_record" "wildcard" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "*.${var.domain}"
-  type    = "CNAME"
-  ttl     = 300
-  records = [var.vercel_cname]
-}
-
-# ACME challenge NS delegation to Vercel (for SSL cert issuance)
-resource "aws_route53_record" "acme_challenge" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "_acme-challenge.${var.domain}"
-  type    = "NS"
-  ttl     = 300
-  records = ["ns1.vercel-dns.com.", "ns2.vercel-dns.com."]
-}
-```
-
-### 7.6 `dns/honeyjar-xyz-agents.tf`
-
-```hcl
-# Agent economy wildcard: *.agents.0xhoneyjar.xyz
-# More specific than *.0xhoneyjar.xyz per RFC 4592 — no conflict
-resource "aws_route53_record" "agents_wildcard" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "*.agents.${var.domain}"
-  type    = "CNAME"
-  ttl     = 300
-  records = [var.vercel_cname]
-}
-
-# Bare agents.0xhoneyjar.xyz (explicit, prevents lookup failures)
-resource "aws_route53_record" "agents_bare" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "agents.${var.domain}"
-  type    = "A"
-  ttl     = 300
-  records = [var.vercel_anycast_ip]
-}
-
-# ACME challenge delegation for agent wildcard certs
-resource "aws_route53_record" "agents_acme" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "_acme-challenge.agents.${var.domain}"
-  type    = "NS"
-  ttl     = 300
-  records = ["ns1.vercel-dns.com.", "ns2.vercel-dns.com."]
-}
-```
-
-### 7.7 `dns/honeyjar-xyz-backend.tf`
-
-```hcl
-# Step 1: Find ALB by tag (aws_lbs supports tag filtering; aws_lb does not)
-data "aws_lbs" "compute" {
-  count = var.enable_production_api ? 1 : 0
-
-  tags = {
-    Name = "arrakis-${var.environment}-alb"
-  }
-
-  lifecycle {
-    postcondition {
-      condition     = length(self.arns) == 1
-      error_message = "Expected exactly one ALB matching arrakis-${var.environment}-alb, got ${length(self.arns)}"
-    }
-  }
-}
-
-# Step 2: Read ALB details by ARN
-data "aws_lb" "compute_alb" {
-  count = var.enable_production_api ? 1 : 0
-  arn   = one(data.aws_lbs.compute[0].arns)
-}
-
-# Step 3: Create alias record
-resource "aws_route53_record" "api" {
-  count = var.enable_production_api ? 1 : 0
-
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = "api.${var.domain}"
-  type    = "A"
-
-  alias {
-    name                   = data.aws_lb.compute_alb[0].dns_name
-    zone_id                = data.aws_lb.compute_alb[0].zone_id
-    evaluate_target_health = true
-  }
-}
-```
-
-### 7.8 `dns/security.tf`
-
-```hcl
-# CAA records — restrict certificate issuance
-resource "aws_route53_record" "caa" {
-  zone_id = aws_route53_zone.honeyjar.zone_id
-  name    = var.domain
-  type    = "CAA"
-  ttl     = 3600
-  records = [
-    "0 issue \"letsencrypt.org\"",
-    "0 issue \"amazon.com\"",
-    "0 issuewild \"letsencrypt.org\"",
-    "0 iodef \"mailto:security@0xhoneyjar.xyz\""
-  ]
-}
-
-# DNSSEC (gated by feature flag)
-resource "aws_route53_key_signing_key" "honeyjar" {
-  count = var.enable_dnssec ? 1 : 0
-
-  hosted_zone_id             = aws_route53_zone.honeyjar.zone_id
-  key_management_service_arn = aws_kms_key.dnssec[0].arn
-  name                       = "${var.domain}-ksk"
-}
-
-resource "aws_route53_hosted_zone_dnssec" "honeyjar" {
-  count = var.enable_dnssec ? 1 : 0
-
-  hosted_zone_id = aws_route53_zone.honeyjar.zone_id
-
-  depends_on = [aws_route53_key_signing_key.honeyjar[0]]
-}
-
-resource "aws_kms_key" "dnssec" {
-  count = var.enable_dnssec ? 1 : 0
-
-  customer_master_key_spec = "ECC_NIST_P256"
-  deletion_window_in_days  = 7
-  key_usage                = "SIGN_VERIFY"
-  description              = "DNSSEC KSK for ${var.domain}"
-
-  # SKP-002 (applied to DNSSEC key): Explicit admin roles, no root kms:*
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowKeyAdministration"
-        Effect = "Allow"
-        Principal = {
-          AWS = [
-            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/github-actions-terraform",
-            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/admin"
-          ]
-        }
-        Action = [
-          "kms:Create*", "kms:Describe*", "kms:Enable*", "kms:List*",
-          "kms:Put*", "kms:Update*", "kms:Revoke*", "kms:Disable*",
-          "kms:Get*", "kms:Delete*", "kms:TagResource", "kms:UntagResource",
-          "kms:ScheduleKeyDeletion", "kms:CancelKeyDeletion"
-        ]
-        Resource = "*"
-      },
-      {
-        Sid    = "AllowRoute53DNSSEC"
-        Effect = "Allow"
-        Principal = { Service = "dnssec-route53.amazonaws.com" }
-        Action = ["kms:DescribeKey", "kms:GetPublicKey", "kms:Sign"]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      }
-    ]
-  })
-}
-
-data "aws_caller_identity" "current" {}
-```
-
-### 7.9 `dns/outputs.tf`
-
-```hcl
-output "zone_id" {
-  value = aws_route53_zone.honeyjar.zone_id
-}
-
-output "nameservers" {
-  value       = aws_route53_zone.honeyjar.name_servers
-  description = "Set these as NS records at Gandi registrar"
-}
-
-output "ds_record" {
-  value       = var.enable_dnssec ? aws_route53_key_signing_key.honeyjar[0].ds_record : "DNSSEC not enabled"
-  description = "DS record to upload to Gandi for DNSSEC chain"
-}
-```
-
-## 8. Validation Scripts Design
-
-### 8.1 `scripts/dns-pre-migration.sh`
-
-Validates Route 53 records match Gandi before NS cutover:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-DOMAIN="0xhoneyjar.xyz"
-ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN" \
-  --query "HostedZones[0].Id" --output text | sed 's|/hostedzone/||')
-
-# Records to compare (diff allowlist: SOA, NS, TTL differences expected)
-DIFF_ALLOWLIST=("SOA" "NS")
-
-compare_record() {
-  local type="$1" name="$2"
-  local r53_value gandi_value
-
-  r53_value=$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
-    --query "ResourceRecordSets[?Name=='${name}.' && Type=='${type}'].ResourceRecords[].Value" \
-    --output text | sort)
-
-  gandi_value=$(dig +short "$name" "$type" @dns.gandi.net | sort)
-
-  if [[ "$r53_value" == "$gandi_value" ]]; then
-    echo "MATCH: $type $name"
-  elif printf '%s\n' "${DIFF_ALLOWLIST[@]}" | grep -q "^${type}$"; then
-    echo "EXPECTED_DIFF: $type $name (in allowlist)"
-  else
-    echo "MISMATCH: $type $name"
-    echo "  Route 53: $r53_value"
-    echo "  Gandi:    $gandi_value"
-    MISMATCHES=$((MISMATCHES + 1))
-  fi
-}
-
-MISMATCHES=0
-
-# Get Gandi authoritative nameservers (query current NS set, not fixed hostname)
-GANDI_NS=$(dig +short NS "$DOMAIN" | head -1 | sed 's/\.$//')
-
-compare_record_ns() {
-  local type="$1" name="$2" ns="${3:-$GANDI_NS}"
-  local r53_value gandi_value
-
-  r53_value=$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
-    --query "ResourceRecordSets[?Name=='${name}.' && Type=='${type}'].ResourceRecords[].Value" \
-    --output text | sort)
-
-  gandi_value=$(dig +short "$name" "$type" "@${ns}" | sort)
-
-  if [[ "$r53_value" == "$gandi_value" ]]; then
-    echo "MATCH: $type $name"
-  elif printf '%s\n' "${DIFF_ALLOWLIST[@]}" | grep -q "^${type}$"; then
-    echo "EXPECTED_DIFF: $type $name (in allowlist)"
-  else
-    echo "MISMATCH: $type $name"
-    echo "  Route 53: $r53_value"
-    echo "  Gandi:    $gandi_value"
-    MISMATCHES=$((MISMATCHES + 1))
-  fi
-}
-
-# Apex records
-for type in A AAAA MX TXT CAA; do
-  compare_record_ns "$type" "$DOMAIN"
-done
-
-# Explicit subdomains
-compare_record_ns "CNAME" "www.${DOMAIN}"
-compare_record_ns "CNAME" "*.${DOMAIN}"
-compare_record_ns "TXT" "_dmarc.${DOMAIN}"
-compare_record_ns "TXT" "google._domainkey.${DOMAIN}"
-
-# Agent economy records
-compare_record_ns "CNAME" "*.agents.${DOMAIN}"
-compare_record_ns "A" "agents.${DOMAIN}"
-
-# ACME delegation records (NS type)
-compare_record_ns "NS" "_acme-challenge.${DOMAIN}"
-compare_record_ns "NS" "_acme-challenge.agents.${DOMAIN}"
-
-if (( MISMATCHES > 0 )); then
-  echo "PRE-MIGRATION CHECK FAILED: $MISMATCHES mismatches"
-  exit 1
-fi
-echo "PRE-MIGRATION CHECK PASSED: All records match (or in diff allowlist)"
-```
-
-### 8.2 `scripts/dns-post-migration-check.sh`
-
-Monitors propagation after NS change with quantified checks per PRD IMP-003:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-DOMAIN="0xhoneyjar.xyz"
-RESOLVERS=("8.8.8.8" "1.1.1.1" "208.67.222.222" "9.9.9.9" "64.6.64.6"
-           "185.228.168.9" "76.76.19.19" "94.140.14.14")
-AGREEMENT_THRESHOLD=95  # ≥95% resolver agreement
-TIMEOUT_HOURS=4
-CHECK_INTERVAL=60  # 1 minute between full checks
-MAX_CHECKS=$(( TIMEOUT_HOURS * 3600 / CHECK_INTERVAL ))
-
-check_propagation() {
-  local record_type="$1" name="$2" expected="$3"
-  local agree=0 total=${#RESOLVERS[@]}
-
-  for resolver in "${RESOLVERS[@]}"; do
-    local result
-    result=$(dig +short "$name" "$record_type" "@${resolver}" 2>/dev/null | sort | tr '\n' ',')
-    if [[ "$result" == *"$expected"* ]]; then
-      agree=$((agree + 1))
-    fi
-  done
-
-  local pct=$(( agree * 100 / total ))
-  echo "$pct"
-}
-
-check_email() {
-  # MX record propagation is critical
-  local mx_pct
-  mx_pct=$(check_propagation "MX" "$DOMAIN" "aspmx.l.google.com")
-  echo "MX propagation: ${mx_pct}%"
-  (( mx_pct >= AGREEMENT_THRESHOLD ))
-}
-
-check_api_latency() {
-  local url="https://api.${DOMAIN}/health"
-  local latency
-  latency=$(curl -sf -o /dev/null -w '%{time_total}' --max-time 5 "$url" 2>/dev/null || echo "99")
-  local latency_ms=$(echo "$latency * 1000" | bc | cut -d. -f1)
-  echo "API latency: ${latency_ms}ms"
-  (( latency_ms < 500 ))
-}
-
-# Main monitoring loop
-for (( i=1; i<=MAX_CHECKS; i++ )); do
-  echo "Check $i/$MAX_CHECKS ($(date -u +%H:%M:%S))"
-
-  a_pct=$(check_propagation "A" "$DOMAIN" "76.76.21.21")
-  mx_pct=$(check_propagation "MX" "$DOMAIN" "aspmx.l.google.com")
-
-  echo "  A record:  ${a_pct}% agreement"
-  echo "  MX record: ${mx_pct}% agreement"
-
-  if (( a_pct >= AGREEMENT_THRESHOLD )) && (( mx_pct >= AGREEMENT_THRESHOLD )); then
-    echo "PROPAGATION COMPLETE: ≥${AGREEMENT_THRESHOLD}% agreement achieved"
-    echo "Send test email to verify MX within 1 hour"
-    exit 0
-  fi
-
-  sleep "$CHECK_INTERVAL"
-done
-
-echo "PROPAGATION TIMEOUT after ${TIMEOUT_HOURS}h — TRIGGER ROLLBACK ALERT"
-echo "Rollback: Revert NS records at Gandi registrar"
-exit 1
-```
-
-### 8.3 DNS Drift Check Workflow
+Note on the filter: it fires only when both are present, so no-URL library
+cells and blockless cells decode unchanged. (If `Schema.filter` on the struct
+proves awkward with the existing `Registry` composition, the equivalent check
+lives in the full-registry decode test instead — the invariant is what's
+load-bearing, not its host.)
+
+### 4.3 Exports
+
+`src/index.ts` additionally exports `type ServiceBlock`, `type Expectation`
+(and the three member types) so Phase 1–3 consumers and the next-cycle loa-cli
+dispatch import the contract types instead of re-declaring them.
+
+### 4.4 New state machine? No.
+
+This cycle introduces no runtime state. The verdict taxonomy
+(`live/gated-live/live-drifted/down/scaffold/unprobed` — probe.mjs) and the
+future stale/fresh transitions are consumer-side, out of scope. Deliberately no
+diagram: drawing one here would imply behavior this PR ships.
+
+---
+
+## 5. `registry.yaml` population plan
+
+### 5.1 Per-cell decision table
+
+| Cell | `service` block | Values source | Notes action |
+|---|---|---|---|
+| activities-api | YES | ADR appendix (`/health`, 200, none, `"service":"activities-api"`) → **re-probed at sprint time** | add probe trail |
+| identity-api | YES | ADR appendix (`/health`, 200, none, `"ok":true`) → re-probed | add probe trail |
+| inventory-api | YES | ⚠ appendix (`/` 401 static-key) is **expected-stale** — deployment moved to `-3f25`, registry notes 2026-07-03 say open `/health` 200. Live re-probe DECIDES; do not transcribe the appendix blind | record which value won |
+| sonar-api | YES | ADR appendix (`/`, 200, none, `"message":"Sonar API"`) → re-probed | + two `expectations` entries (§5.3) |
+| storage-api | YES | ADR appendix (`/`, 200, none, no marker — Playground HTML) → re-probed | add probe trail |
+| score-api | YES | **FR-2 live resolution** (D-8): `/v1/health`, 200, none, `"service":"score-api"` | record 302→/v1/health trail; DO-NOT-TRANSCRIBE flag discharged |
+| mint-api | NO | derive-from-absence (routeless shell, /health 404) | note stays |
+| events-api | NO | library, no served URL | — |
+| mediums-api | NO | npm-only, no deployment | — |
+| ledger-api | NO | scaffolded, /health 404 (probed 2026-06-19) | — |
+| ordering | **operator call** (Open Question OQ-1) | its own registry note documents `/healthz` 200 `{"ok":true` | see §10 |
+
+Every populated block carries `probed_at: <sprint probe date>` and
+`probe_source` (NFR-5). The sprint task re-probes **all** declared cells before
+populating — appendix values are 2 weeks old and one (inventory) is already
+suspect; the re-probe is the risk mitigation the PRD names (§8, row 3).
+
+### 5.2 Example — populated cell (activities-api)
 
 ```yaml
-# .github/workflows/dns-drift-check.yml
-name: DNS Drift Check
+activities-api:
+  git_url: https://github.com/0xHoneyJar/activities-api.git
+  # ... existing fields unchanged ...
+  service:
+    deployment_url: https://activities-api-production.up.railway.app
+    health_path: /health
+    expected_status: 200
+    auth_class: none
+    expected_body_marker: '"service":"activities-api"'
+    probed_at: "2026-07-XX"        # sprint probe date
+    probe_source: adr-012-appendix # value matched appendix on re-probe
+```
+
+### 5.3 Sonar's two expectation entries (FR-4 / G-3)
+
+```yaml
+sonar-api:
+  # ... existing fields + service block ...
+  expectations:
+    - ref: chain-lag
+      probe_kind: graphql-lag
+      cadence: 15m               # SLO windows are ~10-60 min; 15m gives 2 samples
+      owner: zerker              # SCALE.md doc owner
+      target:
+        endpoint: <LIVE-VERIFIED at sprint time — belt-gateway if it serves
+                   chain_metadata, else indexer.hyperindex.xyz/<current-deployment-id>>
+        query: "{ chain_metadata { chain_id latest_processed_block block_height } }"
+        rows_path: data.chain_metadata
+        key: chain_id
+        minuend: block_height
+        subtrahend: latest_processed_block
+      expect:
+        thresholds:              # SCALE.md Guardrail 2 (PROPOSED tier — observe-only posture
+          "1": 50                #   is a runner concern; declaration records the targets)
+          "10": 600
+          "42161": 2400
+          "8453": 600
+          "80094": 300           # Berachain — primary chain, strictest SLO
+          "7777777": 1800
+    - ref: svm-reconcile
+      probe_kind: event-max-age
+      cadence: 6h
+      owner: zerker
+      target:
+        endpoint: <same live-verified endpoint>
+        query: <VERIFIED against live schema — svm_run_marker.updated_at was an
+                ASSUMPTION; FR-4 forbids declaring an unverified projection>
+        timestamp_path: <verified dot-path>
+      expect:
+        max_age: 26h             # reconcile is ~daily; 26h ≈ one missed run + slack
+                                 # (operator-tunable data; the 5-day Helius outage
+                                 #  would have breached this ~4 days earlier)
+```
+
+The `svm-reconcile` entry ships **only if** the projection verifies against
+sonar's live GraphQL schema in-sprint (D-9); otherwise omit + note.
+
+---
+
+## 6. API Specifications
+
+No HTTP API changes. The package's public API grows two exported types
+(§4.3); `loadRegistry()` signature is unchanged. The "API" of this cycle is the
+YAML contract itself, specified in §4–5.
+
+---
+
+## 7. Error Handling Strategy
+
+Single failure surface: **decode**. `Schema.decodeUnknownSync` throws
+`ParseError` with a path-annotated tree — this is the designed behavior
+(G-5: "fails decode loudly"), not an error to soften.
+
+| Failure | Where caught | Behavior |
+|---|---|---|
+| Malformed `service` (bad status range, missing `probed_at`, unknown `auth_class`) | any `loadRegistry()` call | throw ParseError naming the field path |
+| `probe_kind: gh-workflow` / unknown kind | union decode | throw — the FR-3 premature-use gate |
+| Missing `cadence`, bad duration/ref pattern, empty thresholds, duplicate refs | field/array filters | throw with the filter's message |
+| `service.deployment_url` ≠ entry `deployment_url` | struct filter (or registry test, §4.2 note) | throw / red test |
+| Absent `service` / absent `expectations` | — | **valid** (optional; G-4) |
+
+No fallbacks, no partial loads: a registry that fails decode is a registry that
+does not exist to consumers — fail-closed is the point.
+
+---
+
+## 8. Testing Strategy
+
+Runner: existing `tsx --test` / node:test (no new deps, NFR-4).
+
+### 8.1 New tests in `packages/freeside-registry/tests/`
+
+| File | Covers | Gate |
+|---|---|---|
+| `service-block.test.ts` | valid block decodes; each invalid variant (missing field, bad path/status/auth_class, missing provenance) throws; blockless entry valid; deployment_url mismatch throws | G-1, G-5, NFR-5 |
+| `expectations.test.ts` | valid http / graphql-lag / event-max-age fixtures decode; **`gh-workflow` fails**; unknown kind fails; malformed cadence/ref fails; duplicate refs fail; empty thresholds fail; absent array valid | G-3, G-5, FR-3 |
+| `registry-decode.test.ts` | the REAL `registry.yaml` full-decodes; every `service` block carries `probed_at`; sonar has ≥1 `expectations` entry with the six chain-lag threshold keys; score-api's `health_path` is not `/` with `expected_status: 302` (the anti-transcription tripwire) | G-1, G-2, FR-5 |
+
+Fixtures live in `tests/fixtures/` beside the existing `sample-beacon-v3.yaml`,
+as small inline-or-file YAML documents per case. Fixture tests assert against
+the **shared production schema import**, never a test-local copy — the
+fixture-tautology guard.
+
+### 8.2 G-4 consumer gate
+
+`packages/freeside-cli` suite runs **unchanged** (zero source, zero test edits
+there): `ordering-registry.test.ts` decodes the real updated registry.yaml
+through the shared schema, and `doctor.test.ts` exercises fixture registries
+(which lack the new optional blocks — proving absence stays valid).
+
+### 8.3 CI lane (D-10)
+
+New `.github/workflows/registry-cli-tests.yml`:
+
+```yaml
 on:
-  schedule:
-    - cron: '0 6 * * *'  # Daily at 06:00 UTC
-  workflow_dispatch:
-
-jobs:
-  drift-check:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: terraform-dns-drift
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.TERRAFORM_ROLE_ARN }}
-          aws-region: us-east-1
-      - name: Terraform Init
-        working-directory: infrastructure/terraform/dns
-        run: terraform init -backend-config=environments/production/backend.tfvars
-      - name: Terraform Plan (drift detection)
-        working-directory: infrastructure/terraform/dns
-        run: |
-          terraform plan -var-file=environments/production/terraform.tfvars \
-            -detailed-exitcode -out=drift.tfplan 2>&1 | tee plan-output.txt
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ $EXIT_CODE -eq 2 ]; then
-            echo "::warning::DNS drift detected — review plan output"
-          fi
+  pull_request:
+    paths:
+      - 'packages/freeside-registry/**'
+      - 'packages/freeside-cli/**'
+      - '.github/workflows/registry-cli-tests.yml'
+# job: setup-node → for pkg in freeside-registry freeside-cli:
+#   npm ci (or npm install --no-package-lock, matching cluster-compliance's
+#   standalone-package install) → npm test
+# freeside-cli installs AFTER freeside-registry so its file: dep copies the
+# UPDATED schema (fresh install defeats the file:-dep stale-copy hazard).
 ```
 
-## 9. Security Architecture
+Acceptance for the lane itself: a deliberately-broken fixture branch goes red;
+this branch goes green.
 
-### 9.1 Service Mesh Security Model (NFR-3)
+### 8.4 Live-probe verification (sprint tasks, not unit tests)
 
-All service-to-service traffic uses SG-to-SG references (no CIDR within mesh):
+Probe output is ambient — never baked into unit tests. The populate task
+records each probe (URL, status, body head, date) in the PR description +
+`probed_at` fields; the score-api tripwire test (§8.1) guards the one
+transcription hazard structurally.
 
-```
-Internet → ALB SG (0.0.0.0/0:443) → ECS Tasks SG (from ALB SG)
-                                    → Dixie SG (from ALB SG + Finn SG)
+---
 
-Finn SG:    ingress from ECS Tasks SG (port 3000)
-            egress to PgBouncer SG (6432), Redis SG (6379), NATS SG (4222),
-                    Dixie SG (3001), Freeside SG (3000), HTTPS (443)
+## 9. Development Phases (sprint-shaping input)
 
-Dixie SG:   ingress from ALB SG (3001) + Finn SG (3001)
-            egress to PgBouncer SG (6432), Redis SG (6379), HTTPS (443)
-```
+Single sprint, one PR (all paths network-domain or unclassified):
 
-**Finn's dedicated Redis SG**: Ingress only from Finn SG (not shared with other services).
+1. **Schema** — §4 additions to `registry.ts` + `index.ts` exports + fixture
+   tests (`service-block`, `expectations`). *Verify: new tests red→green;
+   existing `beacon-loader.test.ts`, `worldline-score-api-registry.test.ts`
+   still green.*
+2. **Live probe wave** — re-probe the 6 declare-candidates (+ ordering if OQ-1
+   says yes); resolve inventory's drift; confirm score-api `/v1/health` still
+   200; verify sonar `chain_metadata` endpoint + SVM projection against the
+   live GraphQL schema. *Verify: probe log in PR body.*
+3. **Populate** — registry.yaml service blocks + sonar expectations + notes
+   updates (score-api resolution trail, schema-comment block) +
+   `registry-decode.test.ts`. *Verify: full-decode test green; freeside-cli
+   suite green untouched.*
+4. **CI lane** — `registry-cli-tests.yml`. *Verify: lane runs on the PR itself
+   and is green; `tools/check-beacon-domain.sh --since main` reports
+   single-domain.*
 
-### 9.2 State Backend Security (NFR-2, SKP-002)
+Dependency order is 1 → 2 → 3; 4 is parallel to 2–3 but must land in the same
+PR so gate G-4 is enforced at merge time.
 
-- S3 bucket policy: deny `s3:PutObject` without `aws:kms` encryption
-- DynamoDB lock table: `arrakis-terraform-locks` with PITR enabled
-- IAM policy for CI: `arn:aws:iam::<account>:role/github-actions-terraform`
-- No wildcard permissions on `s3://arrakis-tfstate-891376933289/*`
-- Access logging on state bucket
+---
 
-### 9.3 DNS Security (Post-Migration)
+## 10. Open Questions
 
-- CAA records restrict cert issuance to Let's Encrypt + Amazon
-- DNSSEC via feature flag (requires DS record upload to Gandi)
-- DMARC ramped to `p=reject` 4 weeks post-cutover
-- SPF pruned (remove Gandi include) after cutover confirmed
+- **OQ-1 (operator)**: declare a `service` block for `ordering`? It is outside
+  the ADR-012 appendix and the PRD's "8 cells" phrasing, but its health
+  contract is already documented in its own registry note (`/healthz`, 200,
+  `{"ok":true`) and it is deployed. **Recommendation: yes** — additive, same
+  probe wave, and leaving a documented-but-undeclared health path re-creates
+  the drift class this cycle kills. Costs one probe.
+- **OQ-2 (sprint-resolvable)**: which host serves `chain_metadata` —
+  belt-gateway or `indexer.hyperindex.xyz/<id>`? Resolved by one live query at
+  populate time; declared as data either way (D-9).
+- **OQ-3 (noted, not blocking)**: ADR-012 labels Phase 0 `domain:platform`,
+  but `domain-classify.sh:21` and the PRD both place `packages/freeside-registry`
+  in **network**. This SDD follows the classifier (it is the CI-enforced truth).
+  Worth a one-line ADR-012 erratum when the ADR is ratified.
 
-### 9.4 RPO/RTO Targets for Stateful Components (IMP-005)
+## 11. Risks & Mitigation
 
-| Component | RPO | RTO | Backup Mechanism | Recovery Procedure |
-|-----------|-----|-----|-----------------|-------------------|
-| ElastiCache Redis (Finn) | 1 second (AOF everysec) | 15 min (automatic failover) | AOF persistence + daily snapshots | Automatic: Multi-AZ failover. Manual: Restore from snapshot |
-| DynamoDB (scoring-path-log) | 0 (synchronous replication) | < 5 min | PITR enabled (35-day window) | `aws dynamodb restore-table-to-point-in-time` |
-| DynamoDB (x402-settlements) | 0 (synchronous replication) | < 5 min | PITR enabled (35-day window) | `aws dynamodb restore-table-to-point-in-time` |
-| S3 (finn-audit-anchors) | 0 (cross-AZ replication) | N/A (always available) | Versioning + Object Lock | Objects are immutable; no recovery needed |
-| S3 (finn-calibration) | 0 (cross-AZ replication) | < 1 min | Versioning enabled | `aws s3api get-object --version-id` for rollback |
-| KMS (finn-audit-signing) | N/A (AWS-managed) | < 1 min | Automatic key material backup by AWS | Key rotation; 30-day deletion window for accidental disable |
+| Risk | Mitigation (designed-in) |
+|---|---|
+| Appendix values drifted (inventory already suspect) | §5.1: live re-probe decides every value; `probed_at`/`probe_source` make staleness visible forever (NFR-5) |
+| score-api 302 gets transcribed by a future hand | D-8 declares the direct path; §8.1 tripwire test makes the 302-transcription a red build |
+| freeside-cli decode breaks | Optional-only additions + §8.2 real-registry consumer test + §8.3 CI lane at merge time |
+| gh-workflow used before a consumer exists | Excluded from the union — decode failure is mechanical (D-2) |
+| SVM projection guess wrong | D-9: verify-or-omit; only yaml data changes if later corrected |
+| Duplicated deployment_url drifts | D-6 filter #1 |
+| Effect struct-level `Schema.filter` composition friction | §4.2 fallback: same invariant asserted in `registry-decode.test.ts` |
+| ADR-012 rejected after landing | Additive schema + data — revertible in one PR (PRD §8) |
 
-**Monitoring**: CloudWatch alarms on `FreeableMemory` (Redis), `ConsumedReadCapacityUnits` (DynamoDB), and `NumberOfObjects` (S3) detect anomalies that may indicate data loss.
+## 12. Software Stack (unchanged — for the record)
 
-## 10. Deployment Workflow
-
-### Phase 1: Compute Consolidation (Sprints 1-2)
-
-```
-1. Add 8 new .tf files to infrastructure/terraform/
-2. terraform plan → verify "will be created" for new resources
-3. Freeze loa-finn terraform applies
-4. Export resource IDs from loa-finn state
-5. Pre-import state backup (§4.4)
-6. terraform import (22 resources, see §4) with per-batch verification
-7. terraform plan → verify 0 changes on imported, creates on new
-8. Run tf-plan-guard.sh (§5.3) — block any replace/destroy on critical resources
-9. terraform apply
-10. Finn cutover procedure (PRD FR-1):
-    a. Scale finn legacy desired_count=0
-    b. Apply freeside canonical (creates single Finn service)
-    c. Health gate + wiring tests
-    d. terraform state rm in finn's state for ECS/ALB/IAM resources
-11. Deploy pipeline validation (deploy-ring.sh --ring staging)
-```
-
-**Phase 1 Rollback Plan** (IMP-001):
-```
-TRIGGER: Import produces unexpected plan diff OR health gate fails post-apply
-OWNER: Infrastructure engineer
-STEPS:
-  1. terraform state rm <resource> for any mis-imported resources
-  2. Restore state from pre-import backup if needed
-  3. Re-enable loa-finn terraform applies (unfreeze)
-  4. For Finn cutover failure: re-scale legacy desired_count=1, scale canonical to 0
-  5. Verify: health gates + wiring tests pass with legacy configuration
-RECOVERY TIME: <15 min (state operations only, no infrastructure changes)
-```
-
-### Phase 2: DNS Module (Sprint 3)
-
-```
-1. Create infrastructure/terraform/dns/ (11 files)
-2. terraform init -backend-config=environments/staging/backend.tfvars
-3. terraform plan → all creates
-4. terraform apply → zone + records created
-5. dns-pre-migration.sh → validate functional equivalence with Gandi
-6. Manual: Lower TTLs at Gandi to 300s (48h before cutover)
-```
-
-### Phase 3: DNS Cutover & Hardening (Sprints 4-5)
-
-#### SKP-001: Formal DNS Cutover Playbook
-
-**T-72h: TTL Reduction**
-```
-1. Lower ALL record TTLs at Gandi to 300s (A, MX, TXT, CNAME, CAA)
-2. Verify lower TTLs propagated: dig +short @8.8.8.8 0xhoneyjar.xyz | check TTL in dig +noall +answer
-3. Confirm negative cache TTL (SOA MINIMUM) at Gandi is ≤300s
-4. Document registrar's NS update SLA (Gandi: typically <15 min)
-```
-
-**T-0: NS Cutover**
-```
-1. Pre-flight: dns-pre-migration.sh → must PASS (all records match)
-2. Manual: Update NS records at Gandi → Route 53 nameservers
-3. Immediately start dns-post-migration-check.sh → monitor propagation
-4. Multi-geo validation: Check from 8 diverse resolvers (see §8.2)
-5. Verify email delivery: Send test email within 30 min of cutover
-6. Monitor: CloudWatch DNS query logs + Gandi legacy traffic (if available)
-```
-
-**T+1h: Verification Gate**
-```
-1. ≥95% resolver agreement on A and MX records
-2. Test email sent AND received successfully
-3. HTTPS cert still valid on all subdomains (agents.*, www.*, api.*)
-4. No elevated error rates in CloudWatch
-```
-
-**T+24h: Enable API Record**
-```
-1. Set enable_production_api=true in production tfvars
-2. terraform plan → verify only api.0xhoneyjar.xyz A alias record created
-3. terraform apply
-4. Health gate: curl https://api.0xhoneyjar.xyz/health → 200
-```
-
-**Rollback Procedure** (IMP-001):
-```
-TRIGGER: ≥2 of: MX propagation <80%, A record propagation <80%, cert issuance failure
-OWNER: On-call engineer (documented in DEPLOYMENT.md)
-STEPS:
-  1. Revert NS records at Gandi registrar (< 5 min manual action)
-  2. Gandi re-asserts authority within TTL window (≤300s due to T-72h reduction)
-  3. Verify Gandi NS serving: dig NS 0xhoneyjar.xyz @8.8.8.8
-  4. Negative cache flush: wait SOA MINIMUM (300s) for NXDOMAIN recovery
-  5. Send test email to confirm MX recovery
-  6. Post-mortem: document what failed, fix in Route 53, re-attempt
-RECOVERY TIME: <30 min (dominated by registrar NS update propagation)
-```
-
-#### IMP-004: DNSSEC Activation Playbook
-
-DNSSEC activation is a **separate operation** from NS cutover, performed ≥48h after confirmed NS migration:
-
-```
-PREREQUISITES:
-  - NS cutover confirmed stable for ≥48h
-  - dns-drift-check.yml running clean for ≥2 days
-
-SEQUENCE:
-  1. Set enable_dnssec=true in production tfvars
-  2. terraform plan → verify KSK + zone signing resources created
-  3. terraform apply → Route 53 signs the zone
-  4. Extract DS record: terraform output ds_record
-  5. Upload DS record to Gandi registrar (establishes chain of trust)
-  6. Monitor: dig +dnssec 0xhoneyjar.xyz → verify RRSIG present
-  7. Validate chain: https://dnsviz.net/d/0xhoneyjar.xyz/dnssec/
-  8. Monitor for 24h: no elevated SERVFAIL rates
-
-ROLLBACK:
-  TRIGGER: SERVFAIL rate >1% from major resolvers OR dnsviz shows broken chain
-  STEPS:
-    1. Remove DS record at Gandi registrar (breaks chain of trust, resolvers fall back to unsigned)
-    2. Set enable_dnssec=false in production tfvars
-    3. terraform apply → removes KSK and zone signing
-    4. Verify: dig 0xhoneyjar.xyz → responses returned without RRSIG (unsigned, but resolvable)
-    5. Wait 24h before re-attempting
-```
-
-#### Legacy Phase 3 Steps (retained)
-
-```
-6. Ramp DMARC to p=reject (4 weeks post-cutover)
-7. dns-drift-check.yml activated (nightly)
-```
-
-## 11. Technical Risks & Mitigations
-
-| Risk | Impact | Mitigation | Fallback |
-|------|--------|------------|----------|
-| Import fails for stateful resource | Data loss if recreated | Safe import workflow (§4): add code → plan → import → plan-again. State snapshot before every apply. | Fix definition to match actual resource, re-import |
-| Partial apply corrupts state | Services unreachable | Phased applies (networking/IAM first, compute second). DynamoDB lock prevents concurrent applies. | Run-forward with targeted fixes (prefer over rollback) |
-| DNS migration breaks email | Google Workspace email down | Pre-migration validation (§8.1), low TTL, MX propagation monitoring | Revert NS at Gandi registrar (< 30 min recovery) |
-| Duplicate Finn ECS services | Two competing services, routing chaos | Finn cutover procedure: scale-to-zero → apply canonical → verify → retire legacy | Rollback: re-enable legacy, scale canonical to 0 |
-| `data.aws_lb` resolves wrong ALB | DNS points to wrong load balancer | Deterministic tag filter + postcondition validation | Use `terraform_remote_state` as alternative |
-| Concurrent TF applies during migration | State corruption | CI `concurrency` groups + documented prohibition of local applies | DynamoDB lock provides last-resort protection |
-| ECS Exec not enabled | Can't run internal wiring tests | Enable in cluster config + IAM + SSM endpoint access | Defer internal tests, use CloudWatch logs for verification |
-
-## 12. File Manifest
-
-### New Files — Compute Root (8 files)
-
-| File | Sprint | Purpose |
-|------|--------|---------|
-| `infrastructure/terraform/elasticache-finn.tf` | 1 | Dedicated Redis (noeviction + AOF) |
-| `infrastructure/terraform/dynamodb-finn.tf` | 1 | 2 DynamoDB tables + GSI |
-| `infrastructure/terraform/s3-finn.tf` | 1 | 2 S3 buckets (Object Lock + calibration) |
-| `infrastructure/terraform/kms-finn.tf` | 1 | KMS audit signing key |
-| `infrastructure/terraform/env-finn.tf` | 1 | 13 SSM SecureString parameters |
-| `infrastructure/terraform/monitoring-finn.tf` | 2 | 6 CloudWatch alarms + metric filters |
-| `infrastructure/terraform/monitoring-dixie.tf` | 2 | 4 CloudWatch alarms + metric filters |
-| `infrastructure/terraform/autoscaling-dixie.tf` | 2 | AppAutoScaling target + CPU policy |
-
-### New Files — DNS Root (13 files)
-
-| File | Sprint | Purpose |
-|------|--------|---------|
-| `infrastructure/terraform/dns/main.tf` | 3 | Backend config, providers |
-| `infrastructure/terraform/dns/variables.tf` | 3 | Environment vars, feature flags |
-| `infrastructure/terraform/dns/outputs.tf` | 3 | Zone ID, nameservers, DS record |
-| `infrastructure/terraform/dns/honeyjar-xyz.tf` | 3 | Zone + apex A records |
-| `infrastructure/terraform/dns/honeyjar-xyz-email.tf` | 3 | MX, SPF, DKIM, DMARC |
-| `infrastructure/terraform/dns/honeyjar-xyz-vercel.tf` | 3 | Wildcard CNAME, ACME delegation |
-| `infrastructure/terraform/dns/honeyjar-xyz-agents.tf` | 3 | Agent economy wildcards |
-| `infrastructure/terraform/dns/honeyjar-xyz-backend.tf` | 3 | api subdomain → ALB alias |
-| `infrastructure/terraform/dns/security.tf` | 3 | CAA, DNSSEC |
-| `infrastructure/terraform/dns/environments/staging/terraform.tfvars` | 3 | Staging variables |
-| `infrastructure/terraform/dns/environments/staging/backend.tfvars` | 3 | Staging state key (`dns/staging.tfstate`) |
-| `infrastructure/terraform/dns/environments/production/terraform.tfvars` | 3 | Production variables |
-| `infrastructure/terraform/dns/environments/production/backend.tfvars` | 3 | Production state key (`dns/production.tfstate`) |
-
-### New Files — Scripts (6 files)
-
-| File | Sprint | Purpose |
-|------|--------|---------|
-| `scripts/deploy-ring.sh` | 2 | Sequential deploy orchestrator with p99 health gates |
-| `scripts/staging-wiring-test.sh` | 2 | E2E connectivity validation |
-| `scripts/tf-plan-guard.sh` | 2 | CI gate blocking replace/destroy on critical resources (IMP-009) |
-| `scripts/bootstrap-redis-auth.sh` | 1 | External Redis auth token provisioning (SKP-003) |
-| `scripts/dns-pre-migration.sh` | 4 | Pre-cutover record comparison |
-| `scripts/dns-post-migration-check.sh` | 4 | Post-cutover propagation monitor |
-
-### New Files — CI (1 file)
-
-| File | Sprint | Purpose |
-|------|--------|---------|
-| `.github/workflows/dns-drift-check.yml` | 5 | Nightly DNS drift detection |
-
-### New Files — Infrastructure (IMP-007)
-
-| File | Sprint | Purpose |
-|------|--------|---------|
-| VPC endpoint resource in `ecs.tf` | 2 | ssmmessages VPC endpoint for ECS Exec |
-
-### Modified Files
-
-| File | Sprint | Change |
-|------|--------|--------|
-| `infrastructure/terraform/ecs.tf` | 2 | Add ECS Exec configuration, ssmmessages VPC endpoint + SG (IMP-007) |
-| `infrastructure/terraform/variables.tf` | 1 | Add `finn_redis_node_type`, `dixie_max_count` vars |
-| `infrastructure/terraform/environments/staging/terraform.tfvars` | 1 | Add finn redis + dixie scaling values |
-| `infrastructure/terraform/environments/production/terraform.tfvars` | 3 | Feature flag defaults: `enable_production_api=false`, `enable_dnssec=false` (IMP-008) |
-| `DEPLOYMENT.md` | 2 | Import procedure, deploy-ring usage, rollback commands, cutover playbooks |
-
-**Total: 29 new files, 5 modified files across 5 sprints.**
-
-### Flatline Integration Traceability (IMP-010)
-
-| Finding | Section(s) Modified | Integration Type |
-|---------|---------------------|-----------------|
-| SKP-001 | §10 Phase 3 | DNS cutover playbook with rollback |
-| SKP-002 | §3.4 | KMS key policy least-privilege |
-| SKP-003 | §3.1 | External Redis auth provisioning |
-| SKP-004 | §5.2 | Sliding-window p99 health gate |
-| IMP-001 | §10 Phase 1, Phase 3 | Executable rollback plans |
-| IMP-002 | §7.1 | Exact provider version pin |
-| IMP-003 | §4.4 | Import procedural safeguards |
-| IMP-004 | §10 Phase 3 | DNSSEC activation playbook |
-| IMP-005 | §9.4 | RPO/RTO targets table |
-| IMP-006 | §5.2 | Merged with SKP-004 |
-| IMP-007 | §6.3 | VPC endpoint for ssmmessages |
-| IMP-008 | §7.2 | Feature flag safety comments |
-| IMP-009 | §5.3 | CI plan guard script |
-| IMP-010 | §12 | This traceability table |
+| Component | Version | Justification |
+|---|---|---|
+| effect (Schema) | ^3.21.0 (existing) | already the decode substrate; discriminated unions + filters native |
+| yaml | ^2.6.0 (existing) | existing loader |
+| TypeScript | ^5.4.0 (existing) | existing toolchain |
+| tsx / node:test | ^4.20.0 (existing) | existing test runner |
+| New dependencies | **none** | NFR-4 |

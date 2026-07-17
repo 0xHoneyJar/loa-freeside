@@ -1,0 +1,95 @@
+# Path Domain Check — ADR-007 §D-3 workspace firewall enforcement
+#
+# Fails PRs that mix the two concerns ("freeside the platform" and
+# "freeside the network") in the same merge unit. This is the load-bearing
+# CI guard that prevents the cross-domain coupling the absorption was
+# designed to prevent.
+#
+# This check operates on the PR-level diff (base..head merge-base scope),
+# NOT per-commit, so split-commit attempts cannot bypass the gate.
+# (Addresses flatline SKP-002.)
+#
+# Bypass: PRs with the `adr-007-bootstrap` label are exempt. This label
+# is a SINGLE-USE artifact for the original workspace-creation PR; any
+# subsequent use requires an explicit ADR amendment + audit-trail entry
+# in decisions/007 or decisions/EXCEPTIONS.md. (Addresses flatline SKP-001:
+# "admin bypass normalizes circumvention" — the label-based bypass makes
+# the exception in-repo, traceable, and PR-specific instead of relying on
+# admin-merge precedent.)
+#
+# Reference: decisions/007-loa-freeside-absorption.md §D-3 + Implementation step 3
+# Addresses: flatline SKP-001 CRITICAL, SKP-001/SKP-002 from PR-210 review
+
+name: Path Domain Check (ADR-007 §D-3)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for bootstrap-bypass label
+        id: bootstrap
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          if echo ",${LABELS}," | grep -q ',adr-007-bootstrap,'; then
+            echo "::warning::PR carries 'adr-007-bootstrap' label — path-domain-check bypassed."
+            echo "::warning::This label is SINGLE-USE for the original workspace-creation PR (ADR-007 §Implementation step 3)."
+            echo "::warning::Any subsequent bypass requires an ADR amendment + decisions/EXCEPTIONS.md entry."
+            echo "is_bootstrap=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_bootstrap=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect cross-domain changes
+        if: steps.bootstrap.outputs.is_bootstrap != 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # PR-level diff (base..head), not per-commit — split-commit cannot bypass
+          touched=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          # shellcheck source=../../tools/lib/domain-classify.sh
+          source tools/lib/domain-classify.sh
+          classify_changes "$touched"
+
+          if $platform_touched && $network_touched; then
+            echo "::error::Cross-domain PR detected — touches BOTH platform and network paths."
+            echo "::error::Per ADR-007 §D-3, a single PR MUST NOT modify both concerns."
+            echo ""
+            echo "Platform paths touched:"
+            printf '  - %s\n' "${platform_files[@]}"
+            echo ""
+            echo "Network paths touched:"
+            printf '  - %s\n' "${network_files[@]}"
+            echo ""
+            echo "To fix: split this PR into separate platform-only and network-only PRs."
+            echo "If the change genuinely requires cross-domain coordination, propose"
+            echo "an ADR amendment first (decisions/007-loa-freeside-absorption.md §D-3)."
+            exit 1
+          fi
+
+          if $platform_touched; then
+            count=${#platform_files[@]}
+            echo "✓ Domain: platform (${count} files)"
+          elif $network_touched; then
+            count=${#network_files[@]}
+            echo "✓ Domain: network (${count} files)"
+          else
+            echo "✓ Domain: shared/cross-domain (no platform or network paths touched)"
+          fi
+
+      - name: Bootstrap bypass acknowledged
+        if: steps.bootstrap.outputs.is_bootstrap == 'true'
+        run: |
+          echo "Bootstrap PR — path-domain-check intentionally skipped."
+          echo "See workflow header for bypass policy."

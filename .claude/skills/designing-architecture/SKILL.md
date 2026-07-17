@@ -1,6 +1,8 @@
 ---
 name: architect
 description: Create comprehensive Software Design Document based on PRD
+role: planning
+effort: high  # cycle-114 FR-3: deep-reasoning skill — override baseline /effort
 capabilities:
   schema_version: 1
   read_files: true
@@ -13,7 +15,6 @@ capabilities:
   task_management: false
 cost-profile: moderate
 context: fork
-agent: Plan
 parallel_threshold: null
 timeout_minutes: 60
 zones:

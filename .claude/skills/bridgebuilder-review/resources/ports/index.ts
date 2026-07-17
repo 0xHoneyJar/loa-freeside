@@ -11,11 +11,13 @@ export type {
   ReviewRequest,
   ReviewResponse,
   ILLMProvider,
+  VerdictQualityEnvelope,
 } from "./llm-provider.js";
 
 export type {
   ReviewEvent,
   PostReviewInput,
+  ReviewMarkerKind,
   IReviewPoster,
 } from "./review-poster.js";
 

@@ -718,16 +718,51 @@ main() {
     # Check for scores/attacks arrays (attack-mode uses .attacks, standard uses .scores)
     local gpt_count opus_count
     if [[ "$attack_mode" == "true" ]]; then
-        gpt_count=$(jq '(.attacks // .scores // []) | length' "$gpt_scores_file" 2>/dev/null || echo "0")
-        opus_count=$(jq '(.attacks // .scores // []) | length' "$opus_scores_file" 2>/dev/null || echo "0")
+        gpt_count=$(jq '(.attacks // .scores // []) | length' "$gpt_scores_file" 2>/dev/null || echo "0")  # check-no-swallowed-jq: ok (pending #1025 sweep)
+        opus_count=$(jq '(.attacks // .scores // []) | length' "$opus_scores_file" 2>/dev/null || echo "0")  # check-no-swallowed-jq: ok (pending #1025 sweep)
     else
-        gpt_count=$(jq '.scores | length' "$gpt_scores_file" 2>/dev/null || echo "0")
-        opus_count=$(jq '.scores | length' "$opus_scores_file" 2>/dev/null || echo "0")
+        gpt_count=$(jq '.scores | length' "$gpt_scores_file" 2>/dev/null || echo "0")  # check-no-swallowed-jq: ok (pending #1025 sweep)
+        opus_count=$(jq '.scores | length' "$opus_scores_file" 2>/dev/null || echo "0")  # check-no-swallowed-jq: ok (pending #1025 sweep)
     fi
 
     if [[ "$gpt_count" == "0" && "$opus_count" == "0" ]]; then
-        error "No items to score in either file"
-        exit 3
+        # Issue #759: emit structured DEGRADED consensus instead of `exit 3`
+        # with no stdout. The flatline-orchestrator captures this via
+        # `result=$(run_consensus ...)`; an empty result silently produces
+        # zero stdout from the orchestrator on partial-success Phase 1
+        # (operator spent ~$0.66 with no actionable output). The structured
+        # output below preserves the consensus contract (high_consensus,
+        # disputed, low_value, blockers arrays + summary) while signalling
+        # the degraded state via `degraded: true` + `confidence: "degraded"`
+        # + `degradation_reason: "no_items_to_score"`. Exit 0 because empty
+        # consensus IS a valid consensus result, not an error condition —
+        # ZERO findings is a meaningful outcome on a clean document review.
+        log "WARNING: both input files empty (no items to score) — emitting degraded consensus per #759"
+        # Schema mirrors `calculate_consensus_with_blockers` output (uses
+        # `consensus_summary` key + top-level `confidence`/`degraded`) so
+        # downstream parsers (orchestrator, dashboards) treat this as a
+        # normal consensus result with empty arrays.
+        jq -n '{
+            consensus_summary: {
+                high_consensus_count: 0,
+                disputed_count: 0,
+                low_value_count: 0,
+                blocker_count: 0,
+                model_agreement_percent: 0,
+                models: 2,
+                tertiary_items: 0,
+                confidence: "degraded"
+            },
+            high_consensus: [],
+            disputed: [],
+            low_value: [],
+            blockers: [],
+            degraded: true,
+            degraded_model: "both",
+            confidence: "degraded",
+            degradation_reason: "no_items_to_score"
+        }'
+        exit 0
     fi
 
     local mode_display="standard"

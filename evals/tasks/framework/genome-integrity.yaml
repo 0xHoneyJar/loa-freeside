@@ -1,0 +1,17 @@
+id: genome-integrity
+schema_version: 1
+skill: test-skill
+category: framework
+fixture: loa-skill-dir
+description: "Construct genome-hash-chain verifier is correct in both directions: a valid chain verifies, a tampered chain is rejected. Locks the incorruptibility math as a CI regression gate (bd-uze Track B / arrakis-u6xh)."
+trials: 1
+timeout:
+  per_trial: 120
+  per_grader: 60
+graders:
+  - type: code
+    script: genome-integrity-grader.sh
+    args: ["environment-design"]
+    weight: 1.0
+difficulty: basic
+tags: ["framework", "genome-hash-chain", "integrity", "bd-uze", "arrakis-u6xh"]

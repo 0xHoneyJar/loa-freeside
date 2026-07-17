@@ -1,0 +1,57 @@
+name: Flow Moment Governance
+
+on:
+  pull_request:
+    paths:
+      - "product/flow-moments/**"
+      - "spec/product/flow-moment.schema.json"
+      - "spec/product/system-component.schema.json"
+      - "tools/flow-moment.mjs"
+      - "tools/flow-moment.test.mjs"
+      - "tools/markdown-text.mjs"
+      - "tools/system-component.mjs"
+      - "tools/system-component.test.mjs"
+      - "tools/construct-operator.mjs"
+      - "tools/construct-operator.test.mjs"
+      - "tools/fixtures/construct-operator.snapshot.json"
+      - "grimoires/territory.yaml"
+      - "tools/hivemind/hivemind-labels.v1.0.json"
+      - "docs/product/flow-moment-contract.md"
+      - "spec/product/flow-moment-plan.md"
+      - "spec/product/flow-moment-implementation-report.md"
+      - "product/system-components/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/flow-moment-governance.yml"
+      - ".github/workflows/reusable-flow-moment-governance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  continuity-contract:
+    name: Validate user-flow moments
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install validator dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Prove promotion gates fail closed
+        run: node --test tools/flow-moment.test.mjs tools/system-component.test.mjs tools/construct-operator.test.mjs
+      - name: Validate every flow-moment record
+        run: node tools/flow-moment.mjs validate product/flow-moments
+      - name: Validate every system-component manifest
+        run: node tools/system-component.mjs validate product/system-components
+      - name: Prove the continuity receipt renders from source
+        run: node tools/flow-moment.mjs render product/flow-moments/audit-community-composition.flow.json > /tmp/audit-flow-receipt.md
+      - name: Prove the system receipt renders from source
+        run: node tools/system-component.mjs render product/system-components/loa-freeside.system.json > /tmp/loa-freeside-system-receipt.md
+      - name: Smoke render construct receipt (partial is visible, not accepted)
+        run: node tools/construct-operator.mjs render --snapshot tools/fixtures/construct-operator.snapshot.json > /tmp/loa-freeside-construct-receipt.md

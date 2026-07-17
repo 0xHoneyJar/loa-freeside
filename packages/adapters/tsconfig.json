@@ -20,6 +20,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["chain/**/*.ts", "agent/**/*.ts"],
+  "include": ["chain/**/*.ts", "agent/**/*.ts", "sonar/**/*.ts", "score/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/__tests__/**"]
 }

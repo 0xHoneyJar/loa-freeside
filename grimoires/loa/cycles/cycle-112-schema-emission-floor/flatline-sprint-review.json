@@ -1,0 +1,238 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 7,
+    "disputed_count": 3,
+    "low_value_count": 0,
+    "blocker_count": 8,
+    "model_agreement_percent": 80,
+    "models": 3,
+    "tertiary_items": 0,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Critical security and operability gap. Signing is load-bearing and cannot be implemented consistently without a key provisioning, injection, absence, and rotation contract. Cost is modest at sprint-plan level and prevents insecure hardcoding or silent unsigned paths.",
+      "gpt_score": 930,
+      "opus_score": 875,
+      "tertiary_score": 850,
+      "delta": 55,
+      "average_score": 902.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical planning correctness issue. The count mismatch can directly produce an omitted migration site and late CI failure. Resolving the exact site list is low cost and materially improves traceability across S3, S4, and S5.",
+      "gpt_score": 900,
+      "opus_score": 890,
+      "tertiary_score": 880,
+      "delta": 10,
+      "average_score": 895,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "High-value testability improvement. The failure mode is central to validating divergence logging and metrics, and without a defined injection point the test may prove the wrong behavior. Implementation cost is moderate but best paid before test scaffolding hardens.",
+      "gpt_score": 850,
+      "opus_score": 855,
+      "tertiary_score": 810,
+      "delta": 5,
+      "average_score": 852.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Important concurrency contract clarification. Mutex scope affects both integrity and throughput, and the current acceptance criterion is too generic to detect the wrong key domain. Adding a scoped test is low to moderate cost with strong correctness payoff.",
+      "gpt_score": 820,
+      "opus_score": 880,
+      "tertiary_score": 880,
+      "delta": 60,
+      "average_score": 850,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Valuable contract-driven handoff improvement. Pinning the stub invariant shape avoids S5 churn and reduces ambiguity between generator output and enforcement tests. The ROI is high if S3 artifacts are produced before S5, though less urgent than runtime security and migration-count issues.",
+      "gpt_score": 780,
+      "opus_score": 760,
+      "tertiary_score": 750,
+      "delta": 20,
+      "average_score": 770,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-007",
+      "description": "Critical enough to integrate because deterministic hashing depends on a stable field subset. Ambiguity here can cause flapping verification tests and incompatible producer-consumer assumptions. The fix is mostly specification work with clear downstream benefit.",
+      "gpt_score": 800,
+      "opus_score": 715,
+      "tertiary_score": 860,
+      "delta": 85,
+      "average_score": 757.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-008",
+      "description": "Strong migration safety improvement. Fail-block activation without a complete final-state assertion can break all PRs mid-migration. Enumerating expected allowlist cardinality and migrated state is low cost and directly protects CI stability.",
+      "gpt_score": 830,
+      "opus_score": 890,
+      "tertiary_score": 900,
+      "delta": 60,
+      "average_score": 860,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [
+    {
+      "id": "IMP-013",
+      "description": "Intra-sprint dependency edges for sequencing are useful for bead graph accuracy but implementation teams routinely resolve these in execution. The cross-cutting list already captures the sprint-level dependencies. Low-value addition to the plan document; the sprint mechanics will surface these naturally.",
+      "gpt_score": 0,
+      "opus_score": 510,
+      "tertiary_score": 500,
+      "delta": 510,
+      "average_score": 510,
+      "source": "opus_scored",
+      "would_integrate": false,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-014",
+      "description": "The runtime behavior for registry entries with transform? is a real spec gap. If the rule is 'transforms are forbidden on emit,' 'transforms are separately reviewed,' or 'transforms are consumer-only,' these produce meaningfully different schema/payload contracts. Ambiguity here can cause silent semantic divergence even when payload validation passes. HIGH priority rating is correct.",
+      "gpt_score": 0,
+      "opus_score": 860,
+      "tertiary_score": 850,
+      "delta": 860,
+      "average_score": 860,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-015",
+      "description": "Machine-readable JSON mode for CI and human-readable mode for local use are good ergonomics, but output stability can be added in a follow-up once the lint rule's logic is stable. Specifying output format before the rule is validated risks over-constraining the implementation. Nice-to-have; defer to post-S2 polish.",
+      "gpt_score": 0,
+      "opus_score": 545,
+      "tertiary_score": 700,
+      "delta": 545,
+      "average_score": 545,
+      "source": "opus_scored",
+      "would_integrate": false,
+      "agreement": "DISPUTED"
+    }
+  ],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "Silent failure risk: `emit` returns an `Either` (`Left` on validation failure) but does not throw. If callers ignore the return value (fire-and-forget), validation failures will result in silently dropped events.",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "Developers migrating from raw `.publish` to `emit` might intuitively treat it as fire-and-forget. If the `Left` case is unhandled, a schema mismatch means the local state commits but the event is permanently lost without any application-level error, causing silent state divergence.",
+      "location": "Sprint S1 / T1.6 (`emit.ts`)",
+      "recommendation": "Add a lint rule in S2 to enforce that the `Either` return value of `emit` is explicitly handled (e.g., prohibiting unhandled `Left` results), OR make the standard `emit` throw on validation failure and provide a separate `tryEmit` for the `Either` return type.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "T3.4 is an unresolved design decision embedded mid-sprint: whether `internal.killswitch` gets a real schema or a permanent allowlist carve-out. If the decision is carve-out, the raw-nats-allowlist count does not shrink by those 2 ids, breaking the set-subset gate's expected count. S3's exit condition ('allowlist shrinks') is predicated on this decision resolving one way. No decision deadline or fallback is specified.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "An unresolved design decision inside an execution sprint creates a blocker that can invalidate the sprint's exit condition. S3 cannot exit cleanly if the kill-switch decision is deferred past S3 execution, and S5's fail-block depends on the allowlist having been correctly shrunk.",
+      "location": "S3 T3.4, S2 T2.3, grounding §1 #10/#11",
+      "recommendation": "Resolve the kill-switch decision as a pre-sprint gate before S3 begins — not mid-sprint. Add it as T3.0 (design decision record). Define the exact allowlist count after the decision so T2.3's gate has a concrete expected-count to assert against.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "The mutex serializes concurrent emits per key, but the plan does not define the mutex key, lock lifetime behavior, timeout policy, or what happens if publish hangs or rejects mid-critical-section.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "A poorly scoped or unbounded lock can either fail to prevent chain forks or create deadlocks/backpressure under broker failures, causing availability or ordering issues in the exact path meant to harden event emission.",
+      "location": "S1 T1.4, T1.6",
+      "recommendation": "Specify the lock key derivation, guarantee release in `finally`, add timeout/cancellation behavior, and test publish rejection, timeout, and high-concurrency behavior.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "The per-key async mutex in T1.4 has no timeout. If the underlying NATS publish stalls — slow-consumer penalty, buffer-full backpressure, or a network partition — withLock never resolves. All subsequent emit() calls for that key queue behind the stalled lock and the caller hangs indefinitely. The unit test for 'concurrent calls serialize' cannot catch this class of failure because tests do not simulate stalled I/O.",
+      "severity": "CRITICAL",
+      "severity_score": 850,
+      "why_matters": "A single stalled NATS publish can deadlock all event emission for an entire event-type key in the process. Under NATS slow-consumer conditions this is not a corner case — it is a normal operational state.",
+      "location": "S1 T1.4, S1 T1.6 (mutex-wrapped publish)",
+      "recommendation": "Add a configurable mutex-acquire timeout (default 5s) and a separate publish-operation timeout. If either fires, emit() must return Left(TimeoutError) rather than hanging. The unit test suite should include a stalled-publish scenario using a mock transport.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "The plan explicitly excludes transactional outbox/completeness, but S4 only requires divergence observability after state-write and emit-Left; it does not require an operational remediation path or durable recovery signal.",
+      "severity": "HIGH",
+      "severity_score": 705,
+      "why_matters": "Observable divergence still leaves the system in an inconsistent state. Without a retry, reconciliation, alert ownership, or incident runbook, the floor may detect data loss without making it recoverable.",
+      "location": "Scope reminder; S4 T4.4; Out of scope cycle-2",
+      "recommendation": "Add minimum recovery requirements for this cycle: durable metric/log identifiers, alert threshold, owner, correlation id linking state write to failed emit, and a documented manual reconciliation path until outbox lands.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "The plan relies on a TypeScript facade and lint rule to make raw NATS publishing unreachable, but does not specify package boundary enforcement against path aliases, compiled JS imports, or workspace-level deep imports that bypass `index.ts`.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "If consumers can import built artifacts, source files, or alternate paths directly, `internalPublish` or raw NATS clients may remain reachable despite the public API contract, undermining the core soundness guarantee.",
+      "location": "S1 T1.5, T1.9; S2 T2.1; S5 T5.3",
+      "recommendation": "Add explicit package `exports` restrictions, negative import tests for source/dist/path-alias deep imports, and CI checks that published package contents do not expose `internalPublish` or raw transport capabilities.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "TypeScript phantom types (SchemaId<P>) can be silently bypassed with `as` casts or `any` annotations. The plan's compile-error acceptance criterion for T1.1 only tests the *happy path* type assignment. It does not require `strict: true`, `noImplicitAny`, or any lint rule blocking `as SchemaId<unknown>` / `as any` patterns. Existing codebase usage of `any` for NATS payloads — common in event-driven TypeScript — would pass both tsd tests and the lint rule in T2.1.",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "The entire type-level enforcement story collapses if a developer writes `emit(id, payload as any)` or receives a payload typed `any` from a deserialization boundary. The schema validation still runs at runtime, but the *compile-error* guarantee marketed in T1.1's acceptance criterion is hollow.",
+      "location": "S1 T1.1, S1 T1.6, S2 T2.1",
+      "recommendation": "Add a TSConfig `strict: true` requirement for the events package and an ESLint rule banning `as SchemaId` and `as any` patterns in emit call sites. The tsd tests should include a negative test: `emit(id, payload as any)` should *not* satisfy the type contract (which it will with current TypeScript semantics — only a no-unsafe-cast rule catches this).",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "emit-Left produces an unrecoverable state/event divergence. When emit() returns Left after a state write has already occurred, the event is silently dropped — there is no compensation, saga, or retry mechanism in scope. T4.4 proves the gap is *observable* but the plan explicitly defers recovery to cycle-2. In production, this means every NATS hiccup or schema-validation failure after a state mutation leaves the cluster in inconsistent state with no repair path.",
+      "severity": "CRITICAL",
+      "severity_score": 870,
+      "why_matters": "The stated WIN is soundness — emitted events honor their schema. An observable-but-unrecoverable divergence between state and events satisfies neither soundness nor adoption safety. Operators lose trust in the floor the first time a Left is logged without a compensating action.",
+      "location": "S1 T1.6, S4 T4.2, S4 T4.4, PRD §10 C2-0 deferral",
+      "recommendation": "Define a minimum recovery contract before S5 ships the fail-block: at minimum, a dead-letter queue or retry-on-transient-error policy inside emit() with a bounded backoff. The outbox pattern (C2-0) need not be complete, but a transient-retry wrapper with a final-Left-to-dead-letter path closes the silent-drop hole without requiring completeness semantics.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "sprint",
+  "document": "grimoires/loa/cycles/cycle-112-schema-emission-floor/sprint-plan.md",
+  "domain": " fr adopt 8 s1",
+  "tertiary_model_used": "gemini-headless",
+  "tertiary_status": "active",
+  "execution": {
+    "mode": "interactive",
+    "mode_reason": "Default (no explicit mode specified)",
+    "run_id": null
+  },
+  "timestamp": "2026-06-01T04:32:13Z",
+  "metrics": {
+    "total_latency_ms": 192000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

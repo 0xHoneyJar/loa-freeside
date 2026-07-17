@@ -15,7 +15,7 @@ import {
   WalletVerification,
   createWalletVerification,
 } from '../wallet-verification.js';
-import type { IVaultClient, WalletChallenge } from '@arrakis/core/ports';
+import type { IVaultClient, WalletChallenge } from '@freeside/core/ports';
 import type { VaultMetrics } from '../metrics.js';
 import { createNoOpVaultMetrics } from '../metrics.js';
 import type { Logger } from 'pino';

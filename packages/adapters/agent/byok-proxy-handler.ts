@@ -438,7 +438,7 @@ export class BYOKProxyHandler {
    * - The local string variable is nulled (allows GC to collect the V8 heap string)
    * - The Buffer is zeroed via fill(0) in the finally block
    *
-   * Why not undici: undici is not a dependency of @arrakis/adapters. The isolation
+   * Why not undici: undici is not a dependency of @freeside/adapters. The isolation
    * boundary approach achieves AC-3.8 (no toString outside dispatch) and AC-3.10
    * (Buffer zeroed + references nulled). Full zero-copy would require undici's
    * dispatcher with Buffer header support — documented as a future enhancement.

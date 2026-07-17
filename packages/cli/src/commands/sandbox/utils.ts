@@ -9,7 +9,7 @@
  * @module packages/cli/commands/sandbox/utils
  */
 
-import { SandboxManager } from '@arrakis/sandbox';
+import { SandboxManager } from '@freeside/sandbox';
 import type { Logger } from 'pino';
 import postgres from 'postgres';
 

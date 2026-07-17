@@ -195,7 +195,39 @@ Options:
   --fast               Single-pass mode
   --tool-access        Repo-root file access for Codex
 Environment: OPENAI_API_KEY (required, env var only)
+
+DEPRECATED: this command is scheduled for retirement no earlier than
+2026-07-15. Superseded by the Flatline Protocol. See
+.claude/commands/gpt-review.md for migration guidance, or set
+LOA_SUPPRESS_GPT_REVIEW_DEPRECATION=1 to silence the runtime warning.
 USAGE
+}
+
+# Emit a one-shot deprecation warning to stderr on every invocation that
+# does real work (i.e. not --help). Follows clig.dev guidance: forewarn
+# users in the program itself, don't break scripts, make warning
+# suppressible for automation (LOA_SUPPRESS_GPT_REVIEW_DEPRECATION=1).
+_emit_deprecation_warning() {
+  [[ "${LOA_SUPPRESS_GPT_REVIEW_DEPRECATION:-0}" == "1" ]] && return 0
+  cat >&2 <<'DEPREWARN'
+[DEPRECATED] /gpt-review (and gpt-review-api.sh) is DEPRECATED as of
+2026-04-15 and scheduled for removal no earlier than 2026-07-15.
+
+This command is superseded by the Flatline Protocol (multi-model
+adversarial review — Opus + GPT-5.3-codex + optionally Gemini).
+
+  Migration: use /flatline-review, or rely on the Flatline gates that
+             run automatically inside /run sprint-plan, /run-bridge,
+             and /audit-sprint.
+  Reference: .claude/loa/reference/flatline-reference.md
+
+If you rely on /gpt-review, please let us know before the sunset date:
+  - Run /feedback to submit usage context, or
+  - File an issue at https://github.com/0xHoneyJar/loa/issues with
+    the 'deprecation' label.
+
+Set LOA_SUPPRESS_GPT_REVIEW_DEPRECATION=1 to silence this warning.
+DEPREWARN
 }
 
 main() {
@@ -215,6 +247,15 @@ main() {
   [[ -n "$cf" && -f "$cf" ]] || { error "Content file required/not found"; exit 2; }
   [[ -n "$ef" && -f "$ef" ]] || { error "--expertise file required/not found"; exit 2; }
   [[ -n "$ctf" && -f "$ctf" ]] || { error "--context file required/not found"; exit 2; }
+  # Deprecation notice fires AFTER all arg/file validation so users hitting
+  # validation errors (bad review type, missing expertise file, etc.) aren't
+  # shown the deprecation banner followed by an error — that combination was
+  # confusing UX. Now only invocations that pass validation and are about to
+  # actually invoke the deprecated API get the notice. Better aligns with
+  # clig.dev's "forewarn on use" — users exploring via invalid args aren't
+  # "using" the deprecated functionality yet. Addresses post-hoc review MEDIUM
+  # on PR #523.
+  _emit_deprecation_warning
   ensure_codex_auth || { error "OPENAI_API_KEY not set"; exit 4; }
   command -v jq &>/dev/null || { error "jq required"; exit 2; }
 

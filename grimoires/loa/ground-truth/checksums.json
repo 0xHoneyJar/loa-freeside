@@ -1,16 +1,21 @@
 {
-  "generated_at": "2026-03-02T06:13:18Z",
-  "git_sha": "1ae361b2926b10b267e2e4d2f3498d835ada9912",
+  "generated_at": "2026-07-06T23:31:14Z",
+  "git_sha": "9b0f4a129c1c04d97298015d1e07c69435c971bf",
   "algorithm": "sha256",
+  "generator": "/ride reality+ground-truth refresh 2026-07-06",
+  "note": "covers committed reality spokes + ground-truth (drift-report.md is local/gitignored)",
   "files": {
-    "grimoires/loa/reality/services.md": "8fa8a4d46e62639edd75177ee4d30d92b3973f06e927d8416b66d88c835f7465",
-    "grimoires/loa/reality/database.md": "ad8104bde8ec418fbfc12fe24ef24129086e87a5e258ab90037d624d16876411",
-    "grimoires/loa/reality/triggers.md": "ab66ce26031bcfb3536f9952a15414709b97d62ab1ad334f17f9c9c3535c2f78",
-    "grimoires/loa/reality/api.md": "77b2230056eb0f6fa439898927e0c4b5b6aec307378050e23c6b95bfacdbad14",
-    "grimoires/loa/reality/structure.md": "9722c007ec9bf904ea9d8c229089c74955d6466328c25238ffaa5ec0615ff134",
-    "grimoires/loa/reality/index.md": "6f2488a460c0f51879a7d72901836fdc3bc8ff33854ce04195b0e777759f03ce",
-    "grimoires/loa/reality/commands.md": "3aee21c6b4eca22b155d5a9347490c60058a4ceda7b7446d0e717a1da94c39c9",
-    "grimoires/loa/reality/environment.md": "2ac9a025abb0fab709872a0cd466099908f9dfa6a23ddef863c890a05cae4dc7",
-    "grimoires/loa/reality/README.md": "cec7549e6f34591ddd6d0aca39a2879d90b02c459a5c327da3c3cbd1f59c795a"
+    "grimoires/loa/reality/index.md": "2ecc181a4a26a247884298bed2c2db64280c2ed9b189166764afc069c66732eb",
+    "grimoires/loa/reality/structure.md": "bad3a8b9f80a38a1fe86be7a43653a184f319115d1460ea7c4d7d0f3964ba10d",
+    "grimoires/loa/reality/architecture-overview.md": "42f9f9eded61cfe53845c8a851d5954529bf03b91ca682816d4cc08ddcd587a6",
+    "grimoires/loa/reality/api-surface.md": "8a61f7dd2028284c81615364558e95308e5b6837aa31489e16d98b0f149f7c04",
+    "grimoires/loa/reality/types.md": "a2f7f87ad7fe69ce24cb8f0d62ccc95f556189383684dd83db80d090dffc4ad2",
+    "grimoires/loa/reality/entry-points.md": "caf3757c0e4cd8d75ef706ffbdf1938cc8539614264dff418dc4024246344da6",
+    "grimoires/loa/reality/hygiene-report.md": "a4b9d6cd36b6679c61f8ec5911413e1fdeaa97eedc0d476a00d49abedf0aa37f",
+    "grimoires/loa/ground-truth/index.md": "05d7232161a62275009836b7291b42d8d4dc23d85d077595e1146b4e7facfdfc",
+    "grimoires/loa/ground-truth/architecture.md": "b566ae5e12bde8b20f2a0e5d062b46821b90e1babcc46627f34e0572fc254bba",
+    "grimoires/loa/ground-truth/api-surface.md": "bf21db55011b913bbffedbbefe7045cc36f7ad96956e8e68639c9c7f262c3cdf",
+    "grimoires/loa/ground-truth/contracts.md": "818edf9c2c0d098622228f0a59c777e4c216a5e90015f6792d478764122e7bda",
+    "grimoires/loa/ground-truth/behaviors.md": "96d1d7c8b661e4e93b80fe82a6a5f710411f540af063064148c3f4b34f0f1ae7"
   }
 }

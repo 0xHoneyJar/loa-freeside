@@ -1,0 +1,35 @@
+# Governance Doctor — the teeth of tools/governance-doctor.sh (closes BB #285 F1).
+# Fails a PR only when a monolith CORPSE (grimoires/loa/reality/*) or a root doc
+# (README/CLAUDE.md/BUTTERFREEZONE) is ungoverned-and-stale. Non-numb by design:
+# the 71 recent WATCH-tier briefs generate debt visibility, never a red check.
+# Scoped to the governed surfaces so it does not run on unrelated PRs.
+name: Governance Doctor
+
+on:
+  pull_request:
+    paths:
+      - 'grimoires/loa/reality/**'
+      - 'grimoires/loa/context/**'
+      - 'grimoires/loa/specs/enhance-freeside-api-surface.md'
+      - 'grimoires/loa/specs/enhance-federation-contract-suite.md'
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'BUTTERFREEZONE.md'
+      - 'tools/governance-doctor.sh'
+      - '.github/workflows/governance-doctor.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  teeth:
+    name: governance-doctor --teeth
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # full history: the doctor derives artifact age from `git log` dates
+          # (filename-date and mtime are only fallbacks).
+          fetch-depth: 0
+      - name: Run the stale-artifact gate
+        run: tools/governance-doctor.sh --teeth

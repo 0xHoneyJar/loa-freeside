@@ -511,6 +511,13 @@ run_mode:
     auto_push: true
     # Always create PRs as drafts - this is hardcoded and cannot be changed
     create_draft_pr: true
+    # Git-aware sync_run_mode (Issue #474)
+    # Branch to diff against when inferring sprint completion from git history.
+    base_branch: "main"
+    # Regex pattern (grep -E) for sprint commit messages. Default matches
+    # conventional commit markers like "feat(sprint-1): implementation".
+    # Override if your project uses a different commit convention.
+    sprint_commit_pattern: '^feat\(sprint-'
 
 # -----------------------------------------------------------------------------
 # BUTTERFREEZONE — Agent-Grounded README (v1.35.0)
@@ -645,15 +652,21 @@ beads:
 # Architecture: SDD §4.1.2 (Config Schema), §4.2 (Routing), §4.5 (Metering)
 # Feature flags and metering — Hounfour Model-Heterogeneous Agent Routing
 hounfour:
-  # Top-level flag — controls whether Flatline uses Hounfour routing
-  # or the legacy direct-call path. Set to true when ready to migrate.
-  flatline_routing: false
+  # cycle-109 Sprint 3 T3.8 (commit E): `hounfour.flatline_routing` config
+  # key REMOVED. Cycle-109 deleted the legacy adapter (T3.7 under
+  # C109.OP-S3) and removed the consuming branches (T3.6 commit C).
+  # cheval is now the unconditional substrate dispatch path; there is no
+  # runtime-flag rollback. Rollback model post-cycle-109: `git revert` per
+  # grimoires/loa/runbooks/cycle-109-rollback.md. The `feature_flags.flatline_routing`
+  # sub-key below is preserved as an informational audit-log surface
+  # (other consumers still read it for telemetry) but does NOT gate
+  # dispatch behavior anymore.
 
   # Per-subsystem feature flags (all default true — opt-out, not opt-in)
   feature_flags:
     google_adapter: true     # Enable Google provider adapter
     deep_research: true      # Enable Deep Research models (Interactions API)
-    flatline_routing: false   # Route Flatline through Hounfour
+    flatline_routing: true   # cycle-107: flipped — engages cheval chain-walk + voice-drop
     metering: true           # Enable BudgetEnforcer cost tracking
     thinking_traces: true    # Include thinking config in request bodies
     jam_geometry: false      # Enable Jam multi-model parallel review (opt-in)
@@ -667,6 +680,35 @@ hounfour:
       daily_micro_usd: 500000000             # $500/day (500M micro-USD)
       warn_at_percent: 80                    # Warn when spending exceeds this %
       on_exceeded: downgrade                 # block | downgrade | warn
+
+  # Headless mode — within-company CLI fallback routing (cycle-104 Sprint 2)
+  # ---------------------------------------------------------------------------
+  # Routes between HTTP API adapters and local CLI binaries (`claude` /
+  # `codex` / `gemini`). Per-call override via env: LOA_HEADLESS_MODE=<mode>
+  # (env wins over this config; both unset → prefer-api).
+  #
+  # Modes (chain_resolver.resolve() applies them within-company only):
+  #   prefer-api : HTTP first, CLI last in each chain entry (today's default)
+  #   prefer-cli : CLI first, HTTP last (budget-constrained operators)
+  #   api-only   : drop CLI entries from chain
+  #   cli-only   : drop HTTP entries — zero-API-key path. Requires every
+  #                primary in your bindings to have a `kind: cli` chain
+  #                terminal (`claude-headless` / `codex-headless` /
+  #                `gemini-headless` in the default model-config.yaml).
+  #
+  # CLI binaries must be on $PATH (or pin paths below). The router REFUSES
+  # to issue HTTPS when the resolved chain is CLI-only (defense-in-depth,
+  # SDD §1.9). Operator runbooks (cycle-104 T2.12):
+  #   grimoires/loa/runbooks/headless-mode.md            # 4-mode reference
+  #   grimoires/loa/runbooks/headless-capability-matrix.md  # feature × adapter
+  #   grimoires/loa/runbooks/chain-walk-debugging.md     # LOA_HEADLESS_VERBOSE + envelope queries
+  headless:
+    mode: prefer-api                         # prefer-api | prefer-cli | api-only | cli-only
+    # cli_paths: discovery hints. If unset, $PATH is searched.
+    # cli_paths:
+    #   claude: /usr/local/bin/claude
+    #   codex: /usr/local/bin/codex
+    #   gemini: /usr/local/bin/gemini
 
   # Provider registry — override endpoints, auth, or add new providers
   # Providers not listed here use system defaults from model-config.yaml
@@ -710,12 +752,20 @@ hounfour:
     anthropic:
       auth: "{env:ANTHROPIC_API_KEY}"
       models:
-        claude-opus-4-6:
+        claude-opus-4-7:
           capabilities: [chat, tools, function_calling, thinking_traces]
           context_window: 200000
           pricing:
             input_per_mtok: 5000000     # $5.00/M tokens
             output_per_mtok: 25000000   # $25.00/M tokens
+        claude-opus-4-6:
+          # Retained as pinnable fallback (cycle-082 PRD §13).
+          # Pin via `opus: "anthropic:claude-opus-4-6"` in your aliases to route to 4.6 specifically.
+          capabilities: [chat, tools, function_calling, thinking_traces]
+          context_window: 200000
+          pricing:
+            input_per_mtok: 5000000
+            output_per_mtok: 25000000
         claude-sonnet-4-6:
           capabilities: [chat, tools, function_calling]
           context_window: 200000
@@ -723,17 +773,152 @@ hounfour:
             input_per_mtok: 3000000
             output_per_mtok: 15000000
 
+    # ─── Subscription-auth headless adapters (cycle-098/099 cheval transport plugins) ───
+    #
+    # The `*-headless` provider types below (gemini-headless, claude-headless,
+    # codex-headless) are CHEVAL TRANSPORT PLUGINS — they route requests
+    # through CLI subprocess calls instead of HTTP APIs, billing against the
+    # operator's subscription quota instead of an API-key balance.
+    #
+    # IMPORTANT: these provider types are configured here via `hounfour.providers`
+    # (which is the cheval ProviderConfig.type axis). They are NOT registerable
+    # via `model_aliases_extra` (whose `provider:` enum is locked to the 4 SoT-
+    # declared providers per cycle-099 NFR-Sec-4: openai, anthropic, google,
+    # bedrock). If you try to use `provider: codex-headless` inside a
+    # `model_aliases_extra` block, schema validation will reject it.
+    #
+    # Subscription-billed model IDs live entirely in `hounfour.providers`;
+    # operators expose them to agent bindings via `aliases:` below.
+
+    # gemini-headless: routes through `gemini -p` for Google AI subscription auth.
+    # No api_key consumed — bills against the operator's personal Google account
+    # quota (free tier: 60 req/min · 1000 req/day) or Gemini Advanced subscription.
+    # Requires `gemini` CLI on PATH (npm install -g @google/gemini-cli) and a
+    # one-time interactive `gemini` run to populate ~/.gemini/settings.json with
+    # the OAuth tokens. Alternative: set GEMINI_API_KEY / GOOGLE_GENAI_USE_GCA.
+    #
+    # Same gemini-3.x line as the google provider, just a different transport.
+    # Useful when deep-thinker / fast-thinker / flatline-tertiary token spend
+    # is large enough that subscription economics beat per-token API pricing.
+    #
+    # NOTE (#979): `auth_type` and `dispatch_group` are inferred for the three
+    # *-headless provider types (headless + the provider family's group) —
+    # the field-less model shape below loads as-is. Set them explicitly only
+    # to override.
+    gemini-headless:
+      type: gemini-headless
+      # No `auth:` field — auth is file-based (~/.gemini/settings.json) or env-var
+      read_timeout: 600.0
+      models:
+        # Model IDs match gemini-cli ≥ 0.40.x defaults. The bare names
+        # (`gemini-3-pro` / `gemini-3-flash`) return ModelNotFoundError 404 —
+        # the canonical preview suffixes are required.
+        gemini-3.1-pro-preview:
+          capabilities: [chat, thinking_traces]
+          context_window: 1048576
+          pricing:
+            # Subscription-billed: zero per-token cost ledger entry.
+            input_per_mtok: 0
+            output_per_mtok: 0
+          # extra:
+          #   gemini_policies:                        # additional --policy <path> args
+          #     - .gemini/policy-readonly.json
+          #   gemini_extra_flags:                     # arbitrary additional CLI flags
+          #     - ["--allowed-tools", "read,grep"]
+          #     - "--list-extensions"
+        gemini-3-flash-preview:
+          capabilities: [chat]
+          context_window: 1048576
+          pricing:
+            input_per_mtok: 0
+            output_per_mtok: 0
+
+    # claude-headless: routes through `claude -p` (Claude Code CLI) for Claude
+    # Max / Pro / Team subscription auth. No api_key consumed — bills against
+    # the operator's Claude subscription quota.
+    # Requires `claude` CLI on PATH (npm install -g @anthropic-ai/claude-code)
+    # and a one-time `claude /login` to populate the OAuth credential store.
+    #
+    # NOTE: This is DIFFERENT from `claude-code:session` (the in-process native
+    # runtime). claude-headless is a subprocess invocation of the CLI — useful
+    # when an agent binding wants subscription-billed Claude calls but doesn't
+    # want to (or can't) use the native runtime.
+    #
+    # NOTE on overhead: Claude Code injects ~14K tokens of agent-persona system
+    # prompt per call. On Max subscription that's quota-cost only. To trim,
+    # set `extra: { system_prompt: "..." }` (REPLACES default) or
+    # `extra: { append_system_prompt: "..." }` (ADDS to default).
+    claude-headless:
+      type: claude-headless
+      # No `auth:` field — auth is OAuth-managed by Claude Code (~/.claude/...)
+      read_timeout: 600.0
+      models:
+        claude-opus-4-7:
+          capabilities: [chat, tools, function_calling, thinking_traces]
+          context_window: 200000
+          pricing:
+            # Subscription-billed: zero per-token cost ledger entry.
+            input_per_mtok: 0
+            output_per_mtok: 0
+          extra:
+            effort: high  # low | medium | high | xhigh | max
+            # system_prompt: "You are a precise code reviewer."  # OPTIONAL — replaces default
+            # append_system_prompt: "Be terse."                  # OPTIONAL — adds to default
+        claude-sonnet-4-6:
+          capabilities: [chat, tools, function_calling]
+          context_window: 200000
+          pricing:
+            input_per_mtok: 0
+            output_per_mtok: 0
+
+    # codex-headless: routes through `codex exec` for ChatGPT subscription auth.
+    # No api_key consumed — bills against the operator's ChatGPT subscription quota.
+    # Requires `codex` CLI (>=0.125.0 for gpt-5.5 + xhigh) on PATH and a one-time
+    # `codex login` to populate ~/.codex/auth.json.
+    #
+    # Same gpt-5.x line as the openai provider, just a different transport. Useful
+    # when bridgebuilder / spiraling / flatline-review token spend is large enough
+    # that subscription economics beat per-token API pricing.
+    codex-headless:
+      type: codex-headless
+      # No `auth:` field — auth is file-based (~/.codex/auth.json)
+      read_timeout: 600.0                  # codex agent loops can run longer than HTTP
+      models:
+        gpt-5.5:
+          capabilities: [chat, code]
+          context_window: 400000
+          token_param: max_completion_tokens
+          pricing:
+            # Subscription-billed: zero per-token cost ledger entry. The operator's
+            # subscription quota is the budget; cheval's per-Mtok metering should
+            # not double-count it.
+            input_per_mtok: 0
+            output_per_mtok: 0
+          extra:
+            reasoning_effort: high          # low | medium | high | xhigh
+            # codex_config_overrides:        # optional — extra `codex exec -c k=v` flags
+            #   reasoning_summaries: "true"
+
   # Flatline tertiary model — enables 3-model triangular cross-scoring
   # Requires GOOGLE_API_KEY to be set in environment
   flatline_tertiary_model: gemini-2.5-pro  # 3-model Flatline: Opus + GPT-5.3-codex + Gemini
 
   # Aliases — short names mapping to provider:model-id
+  #
+  # Cycle-093 sprint-4 advisory (T3.1):
+  # If you have `gpt-5.2` pinned in your `.loa.config.yaml`, consider migrating
+  # to `gpt-5.3-codex`. The 5.3 model line is on the current OpenAI Responses
+  # API path (better tool-calling, more recent training cutoff) and is what the
+  # framework's adversarial-review + bridgebuilder paths default to. The
+  # examples below have been updated to reflect this preference; gpt-5.2
+  # remains supported for operators with workload-specific reasons to pin it.
   aliases:
-    native: "claude-code:session"         # Reserved — Claude Code native runtime
-    reviewer: "openai:gpt-5.2"            # Primary review model
-    reasoning: "openai:gpt-5.2"           # Reasoning/skeptic model
-    cheap: "anthropic:claude-sonnet-4-6"  # Budget-conscious model
-    opus: "anthropic:claude-opus-4-6"     # High-quality model
+    native: "claude-code:session"          # Reserved — Claude Code native runtime
+    reviewer: "openai:gpt-5.3-codex"       # Primary review model (gpt-5.2 → 5.3 per T3.1)
+    reasoning: "openai:gpt-5.3-codex"      # Reasoning/skeptic model (gpt-5.2 → 5.3 per T3.1)
+    cheap: "anthropic:claude-sonnet-4-6"   # Budget-conscious model
+    opus: "anthropic:claude-opus-4-7"      # High-quality model (retargeted from 4-6 in cycle-082)
+    deep-thinker: "google:gemini-3.1-pro-preview"   # Re-added cycle-093 sprint-4
 
   # Agent bindings — which model each agent uses + requirements
   # Agents not listed here use the system defaults from model-config.yaml
@@ -1162,7 +1347,7 @@ invisible_retrospective:
 # -----------------------------------------------------------------------------
 # Flatline Protocol (v1.17.0)
 # -----------------------------------------------------------------------------
-# Multi-model adversarial review using Claude Opus 4.6 + GPT-5.2 for planning
+# Multi-model adversarial review using Claude Opus 4.7 + GPT-5.2 for planning
 # document quality assurance. Phase 1: parallel reviews, Phase 2: cross-scoring,
 # Phase 3: consensus extraction with HIGH/DISPUTED/LOW/BLOCKER classification.
 flatline_protocol:
@@ -1180,7 +1365,7 @@ flatline_protocol:
 
   # Model configuration
   models:
-    primary: opus        # Claude Opus 4.6 (via claude.ai or API)
+    primary: opus        # Claude Opus 4.7 (alias resolves to 4.7 per cycle-082)
     secondary: gpt-5.3-codex  # OpenAI GPT-5.3-codex (via Responses API)
 
   # Consensus thresholds (0-1000 scale)
@@ -1245,6 +1430,41 @@ flatline_protocol:
     allowlist:                   # False-positive exclusions
       - "sha256:[a-f0-9]{64}"
       - "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+
+# -----------------------------------------------------------------------------
+# Red Team — Generative Adversarial Security Design (cycle-012, sprint-bug-102)
+# -----------------------------------------------------------------------------
+# Invoked via /red-team. Generates creative attack scenarios against design
+# documents (PRD/SDD) and synthesizes architectural counter-designs.
+#
+# IMPORTANT: Live model invocation requires:
+#   1. hounfour.flatline_routing: true  (see Hounfour section above)
+#   2. At least one provider API key: ANTHROPIC_API_KEY / OPENAI_API_KEY /
+#      GOOGLE_API_KEY / GEMINI_API_KEY
+#   3. .claude/scripts/model-invoke is executable
+#
+# When any of those is missing, the pipeline falls back to MOCK mode (fixture
+# data). Mock mode emits a visible WARNING banner so results aren't mistaken
+# for real analysis. To force a mode explicitly, the adapter accepts --live
+# or --mock.
+red_team:
+  enabled: false                # Opt-in — set true to enable /red-team
+  mode: standard                # quick | standard | deep (see SKILL.md)
+  thresholds:
+    confirmed_attack: 700       # Both models >700 → CONFIRMED_ATTACK
+    theoretical: 400
+    human_review_gate: 800      # Severity >800 requires human acknowledgment
+  budgets:
+    quick_max_tokens: 50000
+    standard_max_tokens: 200000
+    deep_max_tokens: 500000
+  # Optional: route red team through Hounfour (same routing as Flatline).
+  # If unset, inherits from hounfour.flatline_routing. Set false here to
+  # force mock mode even when Flatline runs live.
+  # routing_enabled: true
+  simstim:
+    auto_trigger: false         # Run as Phase 4.5 of /simstim
+    phase: post_sdd
 
 # -----------------------------------------------------------------------------
 # Autonomous Flatline Mode (v1.22.0)
@@ -1455,14 +1675,28 @@ post_pr_validation:
       # Mode for Flatline review
       mode: "hitl"    # hitl | autonomous
 
+    # Bridgebuilder post-PR review with auto-triage (Amendment 1, cycle-053)
+    # Closes the loop between external adversarial review and Loa state.
+    # Runs bridge-orchestrator.sh against the current PR after PR creation,
+    # parses findings via post-pr-triage.sh, and dispatches /bug for BLOCKERs.
+    # Feature-flagged OFF for progressive rollout — opt-in per Issue #464 Part B.
+    bridgebuilder_review:
+      enabled: false  # Default off; enable per-repo after validation
+      # Auto-dispatch /bug triage for BLOCKER findings in autonomous mode.
+      # Per HITL design decision #1: autonomous acts with logged reasoning.
+      auto_triage_blockers: true
+      # Bridge iteration depth (inherited from /run-bridge default)
+      depth: 5
+
   # -------------------------------------------------------------------------
   # Per-Phase Timeouts (seconds)
   # -------------------------------------------------------------------------
   timeouts:
-    post_pr_audit: 600    # 10 minutes
-    context_clear: 60     # 1 minute
-    e2e_testing: 1200     # 20 minutes
-    flatline_pr: 300      # 5 minutes
+    post_pr_audit: 600         # 10 minutes
+    context_clear: 60          # 1 minute
+    e2e_testing: 1200          # 20 minutes
+    flatline_pr: 300           # 5 minutes
+    bridgebuilder_review: 600  # 10 minutes (Amendment 1)
 
   # -------------------------------------------------------------------------
   # Circuit Breakers
@@ -1545,6 +1779,121 @@ vision_registry:
   # When true, bridge-vision-capture.sh is invoked automatically during bridge
   # review finalization for findings with VISION or SPECULATION severity.
   bridge_auto_capture: false
+
+# =============================================================================
+# /spiral Autopoietic Meta-Orchestrator (cycle-066, RFC-060 #483)
+# =============================================================================
+# Multi-cycle autonomous development loop. Each cycle runs /simstim; outputs
+# (visions, lore, bridge findings) become the next cycle's inputs via the
+# existing post-merge HARVEST pipeline. Terminates on cycle budget, flatline,
+# cost, wall-clock, quality-gate failure, or HITL halt.
+#
+# SAFETY FLOORS (hardcoded, cannot be overridden by config):
+#   - max_cycles        ≤ 50
+#   - budget_cents      ≤ 10000 ($100)
+#   - wall_clock_seconds ≤ 86400 (24h)
+#
+# Status: v0.1.0 MVP scaffolding. Cycle dispatch wires in cycle-067+.
+# See: grimoires/loa/proposals/rfc-060-spiral.md
+spiral:
+  # Master switch — default OFF. /spiral exits early with guidance when false.
+  enabled: false
+
+  # Default cycle budget
+  default_max_cycles: 3
+
+  # Kaironic convergence: two consecutive cycles below this many new findings
+  # trigger flatline termination.
+  flatline:
+    min_new_findings_per_cycle: 3
+    consecutive_low_cycles: 2
+
+  # Cost budget (cents). Safety floor: 10000 ($100).
+  budget_cents: 2000
+
+  # Wall-clock budget (seconds). Safety floor: 86400 (24h).
+  wall_clock_seconds: 28800
+
+  # SEED phase: pull prior cycle outputs into this cycle's discovery context.
+  # Gated separately because Vision Registry is in shadow_mode (#486).
+  seed:
+    enabled: false
+    include_visions: true
+    include_lore: true
+    include_deferred_findings: true
+    max_seed_tokens: 2000
+
+  # HITL halt sentinel — creating this file mid-spiral halts gracefully.
+  halt_sentinel: ".run/spiral-halt"
+
+  # ── Evidence-Gated Harness (cycle-071) ──────────────────────────────
+  # Phase-as-subprocess: each phase is a separate claude -p call.
+  # Gate-as-script: Flatline/Review/Audit run in bash (LLM cannot skip).
+  harness:
+    enabled: true                    # Use harness vs monolithic dispatch
+    max_phase_retries: 3             # Retries per gate on failure
+
+    # cycle-092 Sprint 4 (#598) — SIMSTIM heartbeat (editor of intent in-flight)
+    heartbeat:
+      enabled: true                  # Spawn heartbeat emitter daemon during cycles
+      interval_sec: 60               # Emit [HEARTBEAT] every N seconds (clamp [30, 300])
+      budget_usd: 80                 # Budget displayed in heartbeat line
+      format: editor                 # editor (3-line, default) | compact | json (S5 stretch — editor fallback + warning)
+      intent:
+        enabled: true                # Emit [INTENT <ts>] lines on phase boundary
+        sources:                     # Per-phase source-file mapping for intent text
+          IMPLEMENTATION: grimoires/loa/a2a/engineer-feedback.md
+          IMPL_FIX:       grimoires/loa/a2a/engineer-feedback.md
+          AUDIT:          grimoires/loa/a2a/auditor-sprint-feedback.md
+      confidence_cues: true          # Surface "attempt N of 3 · last chance" etc.
+      pace_baselines_min:            # Per-phase baseline for pace classification (minutes)
+        discovery: 4
+        architecture: 4
+        planning: 4
+        flatline: 2
+        implementation: 18
+        review: 4
+        audit: 4
+        impl_fix: 10
+      # SpiralPhaseComplete hook — operator-configurable per-phase notification.
+      # Deferred to post-cycle-092 work: schema reserved for forward compat,
+      # but actual dispatching from _emit_dashboard_snapshot(PHASE_EXIT) is
+      # scope-split. Env vars at dispatch time: PHASE, COST, DURATION_SEC, CYCLE_ID.
+      phase_complete_hook:
+        enabled: false               # Post-cycle-092 follow-up
+        command: ""                  # e.g. 'osascript -e ... notification' on macOS
+
+    # Per-phase budget caps (claude -p --max-budget-usd)
+    planning_budget_usd: 1           # PRD, SDD, Sprint (each)
+    implement_budget_usd: 5          # Code + tests + commit
+    review_budget_usd: 2             # Independent review session
+    audit_budget_usd: 2              # Independent audit session
+
+    # Advisor Strategy: Sonnet executes (~5x cheaper), Opus judges.
+    # See: grimoires/loa/reports/spiral-harness-benchmark-report.md
+    executor_model: sonnet           # PRD, SDD, Sprint, Implementation
+    advisor_model: opus              # Review, Audit (judgment quality)
+
+    # Pipeline Profiles (cycle-072): match intensity to task complexity.
+    # full     = all 3 Flatline gates + Opus advisor ($15 budget)
+    # standard = Sprint Flatline only + Opus advisor ($12 budget) [DEFAULT]
+    # light    = no Flatline + Sonnet advisor ($8 budget)
+    # Override per-cycle: --profile light
+    pipeline_profile: standard
+
+  # ── Off-Hours Scheduling (cycle-072) ────────────────────────────────
+  # Run spiral cycles during AFK/sleep windows against included token
+  # allowances instead of burning paid overage.
+  # Entry point: .claude/scripts/spiral-scheduler.sh
+  # Schedule via: CronCreate, RemoteTrigger, or /schedule skill
+  scheduling:
+    enabled: false                   # Must opt-in
+    windows:
+      - start_utc: "02:00"          # When to begin (HH:MM UTC)
+        end_utc: "08:00"            # When to halt gracefully
+        days: [mon, tue, wed, thu, fri]
+    strategy: fill                   # "fill" = use full window; "single" = one cycle; "continuous" = ignore window, run until other conditions stop
+    max_cycles_per_window: 3         # Safety cap per scheduling window
 
 # Prompt Isolation (v1.42.0)
 # De-authorization wrappers for untrusted content in LLM prompts.
@@ -1756,6 +2105,12 @@ agent_teams:
 # =============================================================================
 # Automated post-merge pipeline triggered on push to main.
 # 3-layer architecture: GH Actions → claude-code-action → shell orchestrator.
+#
+# Workflow file `.github/workflows/post-merge.yml` is scaffolded automatically
+# by `mount-loa.sh` / `mount-submodule.sh` on first install (Issue #669) and
+# preserved on re-mount. Submodule installs require `submodules: recursive`
+# on actions/checkout (baked into the upstream template) so symlinked
+# `.claude/scripts/*` paths resolve at runtime.
 post_merge:
   # Master toggle — must be true for GH Actions workflow to process merges
   enabled: false
@@ -1785,6 +2140,19 @@ post_merge:
     skip_gt: false
     # Skip RTFM validation
     skip_rtfm: false
+
+  # Lore promoter (cycle-061, #484)
+  # When enabled, the post-merge pipeline auto-promotes PRAISE candidates
+  # from .run/bridge-lore-candidates.jsonl into grimoires/loa/lore/patterns.yaml
+  # via lore-promote.sh --auto (threshold 2 — pattern must recur across ≥2
+  # distinct merged PRs to qualify). Without this enabled, lore-promote.sh
+  # ships in v1.80.0 but never runs in practice — the autopoietic spiral
+  # never closes.
+  #
+  # Default false — opt-in per repo. Recommended to enable once the
+  # downstream Loa user has reviewed the lore promoter contract.
+  lore_promote:
+    enabled: false
 
   # Notification
   notify:
@@ -1966,3 +2334,394 @@ qmd_context:
 #   thread_archive_days: 30   # Auto-archive open threads after N days
 #   local_source_paths:       # Local clone search paths for /constructs install
 #     - ~/Documents/GitHub/construct-{slug}
+
+# -----------------------------------------------------------------------------
+# cycle-095 — Model Currency operator surface (Sprints 1+2)
+# -----------------------------------------------------------------------------
+# All blocks are commented (defaults preserve previous behavior). Uncomment
+# to opt in.
+#
+# Pro-tier opt-in: retargets aliases declared in tier_groups.mappings to
+# their *-pro counterparts when prefer_pro_models: true. Default false
+# (cost-safety). Sprint 3 wires the flag into the config loader.
+# WARNING: enables ~5-10x cost increase on reasoning_tokens-charged calls.
+#
+# hounfour:
+#   prefer_pro_models: false        # Sprint 3 — opt-in flag
+#   experimental:
+#     # Operational kill-switch: restore pre-cycle-095 alias resolution
+#     # at config-load time. Equivalent to LOA_FORCE_LEGACY_ALIASES=1.
+#     force_legacy_aliases: false
+#     # Forward-compat policy for /v1/responses output[].type values not
+#     # in the §5.4 normalization matrix. Default "strict" raises
+#     # UnsupportedResponseShapeError; "degrade" skips the unknown block
+#     # with a once-per-process WARN.
+#     responses_unknown_shape_policy: strict
+#
+# tier_groups:
+#   mappings: {}                    # Sprint 3 populates with reviewer/reasoning -> *-pro targets
+#   denylist: []                    # alias names to opt out of retargeting
+#   max_cost_per_session_micro_usd: null   # set integer for hard per-session cap (e.g., 100000000 = $100)
+#   override_user_aliases: false    # Sprint 3 — when true, mappings WIN over user pins
+#
+# Environment-variable equivalents:
+#   LOA_FORCE_LEGACY_ALIASES=1            # operator escape hatch (alias rollback)
+#   LOA_LEGACY_ENDPOINT_FAMILY_DEFAULT=chat  # one-shot migration backstop for custom OpenAI entries
+#   LOA_RESPONSES_UNKNOWN_SHAPE_POLICY=degrade  # one-shot graceful degradation
+#   LOA_PREFER_PRO_DRYRUN=1               # preview retargets without applying (Sprint 2)
+
+# -----------------------------------------------------------------------------
+# cycle-098 — Agent-Network Primitives (Sprint 1+ — opt-in)
+# -----------------------------------------------------------------------------
+# Seven named primitives (L1..L7) for autonomous adjudication, budget,
+# scheduled cycles, trust, cross-repo reads, structured handoffs, and SOUL.
+# All primitives default to disabled. Tier validator (CC-10) classifies the
+# enabled set on boot. tier_enforcement_mode controls behavior on unsupported
+# combinations: "warn" (default) prints a warning; "refuse" halts boot.
+#
+# Currently shipped (Sprint 1):
+#   - L1 hitl-jury-panel (this section's hitl_jury_panel block)
+#   Audit-envelope shared infrastructure (.run/<primitive>-events.jsonl)
+#
+# Pending (Sprint 2..7):
+#   - L2 cost-budget-enforcer
+#   - L3 scheduled-cycle-template
+#   - L4 graduated-trust
+#   - L5 cross-repo-status-reader
+#   - L6 ostrom-handoff
+#   - L7 soul-md
+#
+# agent_network:
+#   primitives:
+#     L1:
+#       enabled: false      # opt-in; see hitl_jury_panel block below
+#     L2:
+#       enabled: false
+#     L3:
+#       enabled: false
+#     L4:
+#       enabled: false
+#     L5:
+#       enabled: false
+#     L6:
+#       enabled: false
+#     L7:
+#       enabled: false
+#
+# tier_enforcement_mode: warn   # warn (default) | refuse
+
+# -----------------------------------------------------------------------------
+# L1 hitl-jury-panel — N-panelist random-selection adjudicator
+# -----------------------------------------------------------------------------
+# When enabled, replaces routine AskUserQuestion-class decisions during
+# operator absence with a deterministic-seed jury panel. Logs all panelist
+# views BEFORE selection (auditable on crash). Protected-class decisions
+# always route to .run/protected-queue.jsonl regardless of this flag.
+#
+# Source: RFC #653; PRD §FR-L1; SDD §1.4.2 + §5.3
+#
+# hitl_jury_panel:
+#   enabled: false                         # opt-in
+#   default_panelists:
+#     - id: persona-a
+#       model: claude-opus-4-7
+#       persona_file: .claude/data/personas/persona-a.md
+#     - id: skeptic
+#       model: claude-opus-4-7
+#       persona_file: .claude/data/personas/skeptic.md
+#     - id: alternative-model
+#       model: gpt-5.3-codex
+#       persona_file: .claude/data/personas/alternative-model.md
+#   selection: random                      # random | (future: weighted | round-robin)
+#   seed_source: decision_id+context_hash  # FR-L1-3
+#   audit_log: .run/panel-decisions.jsonl
+#   default_disagreement_threshold: 0.5
+#
+# Environment variables:
+#   LOA_PANEL_AUDIT_LOG               override audit log path
+#   LOA_PANEL_PROTECTED_QUEUE         override protected-queue path
+#   LOA_PANEL_PER_PANELIST_TIMEOUT    per-panelist timeout in seconds (default 60)
+#   LOA_PANEL_MIN_PANELISTS           min surviving panelists for BOUND (default 2)
+#   LOA_PANEL_DISAGREEMENT_FN         path to caller-supplied disagreement script
+#                                      (default: no-op pass per FR-L1-6)
+
+# -----------------------------------------------------------------------------
+# L2 cost-budget-enforcer — daily token cap with fail-closed semantics
+# -----------------------------------------------------------------------------
+# When enabled, paid calls go through budget_verdict before execution. The
+# verdict is one of {allow, warn-90, halt-100, halt-uncertainty}. The fifth
+# halt-uncertainty mode covers 5 failure cases (billing API stale, counter
+# inconsistent, counter drift, clock drift, provider lag) — fail-closed under
+# all uncertainty.
+#
+# Sprint 2 ships: state machine, reconciliation cron (default 6h cadence),
+# daily snapshot job for hash-chain recovery (RPO 24h).
+#
+# Source: RFC #654; PRD §FR-L2; SDD §1.4.2 + §1.5.3 + §5.4
+#
+# cost_budget_enforcer:
+#   daily_cap_usd: 50.00                          # FR-L2-1..4 reference
+#   freshness_threshold_seconds: 300              # 5 min — billing data is "fresh"
+#   stale_halt_pct: 75                            # counter % triggering stale_halt + provider_lag
+#   clock_tolerance_seconds: 60                   # ±60s for clock_drift
+#   provider_lag_halt_seconds: 300                # 5 min provider_lag threshold
+#   billing_stale_halt_seconds: 900               # 15 min billing_stale threshold
+#   audit_log: .run/cost-budget-events.jsonl
+#   billing_observer_cmd: /path/to/observer-shim.sh   # caller-supplied UsageObserver
+#   # Sprint H2 (#708 F-005): observer cmd path MUST live under one of the
+#   # allowed_observer_paths prefixes. Defaults to .claude/scripts/observers
+#   # and .run/observers if unset. Without this allowlist, an attacker who
+#   # could set LOA_BUDGET_OBSERVER_CMD via env-var injection achieved
+#   # arbitrary execution in the L2 process. Tests can widen the allowlist
+#   # via env: LOA_BUDGET_OBSERVER_ALLOWED_PREFIXES (colon-separated).
+#   allowed_observer_paths:
+#     - .claude/scripts/observers
+#     - .run/observers
+#   per_provider_caps:                            # optional sub-caps per provider
+#     openai: 5.00
+#     anthropic: 30.00
+#   providers:                                    # used by reconciliation cron
+#     - aggregate
+#     - anthropic
+#     - openai
+#   reconciliation:
+#     interval_hours: 6                           # cron cadence (1..24)
+#     drift_threshold_pct: 5.0                    # FR-L2-5 BLOCKER threshold
+#
+# Environment variable overrides (see .claude/scripts/lib/cost-budget-enforcer-lib.sh):
+#   LOA_BUDGET_LOG                  override audit log path
+#   LOA_BUDGET_DAILY_CAP_USD        override daily cap
+#   LOA_BUDGET_DRIFT_THRESHOLD      override reconcile drift threshold pct
+#   LOA_BUDGET_FRESHNESS_SECONDS    override freshness threshold
+#   LOA_BUDGET_STALE_HALT_PCT       override stale-halt counter %
+#   LOA_BUDGET_CLOCK_TOLERANCE      override clock tolerance seconds
+#   LOA_BUDGET_LAG_HALT_SECONDS     override provider-lag threshold
+#   LOA_BUDGET_BILLING_STALE_SECONDS override billing-stale threshold
+#   LOA_BUDGET_OBSERVER_CMD         override billing-observer path
+#   LOA_BUDGET_TEST_NOW             test-only override for "now"
+#
+# To install/uninstall the reconciliation cron:
+#   .claude/scripts/budget/budget-reconcile-install.sh install
+#   .claude/scripts/budget/budget-reconcile-install.sh uninstall
+
+# -----------------------------------------------------------------------------
+# L3 scheduled-cycle-template — generic 5-phase autonomous-cycle skeleton
+# -----------------------------------------------------------------------------
+# Composes /schedule (cron registration) with the audit envelope into a
+# 5-phase contract: reader → decider → dispatcher → awaiter → logger. flock
+# guards concurrency; cycle_id (content-addressed) provides idempotency;
+# optional L2 budget pre-check halts cycles before they spend.
+#
+# Each ScheduleConfig is a small YAML pointing at the five phase scripts.
+# Worked example: .claude/skills/scheduled-cycle-template/contracts/example-schedule.yaml
+#
+# Source: RFC #655; PRD §FR-L3 (8 ACs); SDD §1.4.2 + §5.5
+#
+# scheduled_cycle_template:
+#   enabled: false                              # opt-in
+#   audit_log: .run/cycles.jsonl                # cycle.{start,phase,complete,error,lock_failed}
+#   lock_dir: .run/cycles                       # per-schedule lock files: <lock_dir>/<schedule_id>.lock
+#   lock_timeout_seconds: 30                    # flock acquire timeout (FR-L3-5)
+#   budget_pre_check: false                     # opt-in to L2 cost-budget gate (FR-L3-6, CC-9)
+#   max_cycle_seconds: 14400                    # cap on (timeout_seconds × 5 phases); rejects malicious schedules
+#   phase_path_allowed_prefixes:                # phase scripts MUST live under one of these
+#     - .claude/skills                          #   Defaults shown; canonicalized via realpath +
+#     - .run/schedules                          #   prefix-match. Add deployment-specific dirs here.
+#     - .run/cycles-contracts
+#   schedules: []                               # array of ScheduleConfig YAML paths
+#
+# Environment variable overrides (see .claude/scripts/lib/scheduled-cycle-lib.sh):
+#   LOA_CYCLES_LOG                       override audit log path
+#   LOA_L3_LOCK_DIR                      override lock directory
+#   LOA_L3_LOCK_TIMEOUT_SECONDS          override flock acquire timeout
+#   LOA_L3_BUDGET_PRECHECK_ENABLED       "1"/"true" to enable L2 gate
+#   LOA_L3_KILL_GRACE_SECONDS            grace period after timeout TERM before KILL (default 5)
+#   LOA_L3_TEST_NOW                      test-only override for "now"
+#   LOA_L3_TEST_MODE                     "1" enables test-only escape hatches (LOA_L3_L2_LIB_OVERRIDE);
+#                                          implicit when running under bats (BATS_TEST_DIRNAME set)
+#   LOA_L3_PHASE_PATH_ALLOWED_PREFIXES   colon-separated list overriding the yaml allowlist
+#   LOA_L3_PHASE_ENV_PASSTHROUGH         space-separated extra env-var names to expose to phase scripts
+#                                          (default allowlist is minimal: PATH/HOME/USER/LANG/...);
+#                                          only [A-Z_][A-Z0-9_]* names accepted
+#   LOA_L3_MAX_CYCLE_SECONDS             override max projected cycle time (default 14400)
+#   LOA_L3_L2_LIB_OVERRIDE               TEST-ONLY: path to override L2 lib for graceful-skip testing
+#
+# CLI:
+#   .claude/scripts/lib/scheduled-cycle-lib.sh invoke <schedule.yaml> [--cycle-id <id>] [--dry-run]
+#   .claude/scripts/lib/scheduled-cycle-lib.sh idempotency-check <cycle_id>
+#   .claude/scripts/lib/scheduled-cycle-lib.sh replay [<log_path>] [--cycle-id <id>]
+#
+# Cron registration is done via /schedule pointing at the `invoke` subcommand.
+
+# -----------------------------------------------------------------------------
+# Audit-log daily snapshot — RPO 24h for L1/L2 chain-critical untracked logs
+# -----------------------------------------------------------------------------
+# Sprint 2C ships the producer side of the L1/L2 hash-chain recovery loop.
+# Snapshots gzip-compress and optionally Ed25519-sign each rolling log to
+# grimoires/loa/audit-archive/<utc-date>-<primitive>.jsonl.gz; the archive
+# directory is git-tracked. The recovery side
+# (audit_recover_chain) consumes these to restore corrupted/lost logs.
+#
+# Source: SDD §3.4.4 (recovery procedure) + §3.7 (persistence policy)
+#
+# audit_snapshot:
+#   cron_expression: "0 4 * * *"          # daily at 04:00 UTC (default)
+#
+# Operator runbook: grimoires/loa/runbooks/audit-log-recovery.md
+#
+# To install/uninstall the daily snapshot cron:
+#   .claude/scripts/audit/audit-snapshot-install.sh install
+#   .claude/scripts/audit/audit-snapshot-install.sh uninstall
+
+# -----------------------------------------------------------------------------
+# Model-Health-Probe Webhook (cycle-093 §3B + cycle-099 sprint-1E.c.3.c)
+# -----------------------------------------------------------------------------
+# Optional fan-out for probe alert events. The probe POSTs the redacted audit
+# entry (already scrubbed via _redact_secrets) to the configured webhook URL,
+# fire-and-forget, with --max-time 5.
+#
+# Two dispatch paths:
+#   1. Default (legacy): raw curl with hardened defaults (--proto =https,
+#      --max-redirs 10). The webhook URL is operator-supplied dynamically and
+#      cannot be statically allowlisted (operators legitimately use Slack,
+#      PagerDuty, Discord, custom URLs). Tagged [ENDPOINT-VALIDATOR-EXEMPT].
+#   2. Opt-in (1E.c.3.c, recommended): wrapper-routed dispatch through
+#      endpoint_validator__guarded_curl with the operator-controlled
+#      .claude/scripts/lib/allowlists/webhook-hosts.json allowlist.
+#      Empty default → fail-closed; operator MUST add permitted webhook
+#      hosts before opt-in dispatch will succeed.
+#
+# Why opt-in (not always-on): operators upgrading from cycle-093 with an
+# existing webhook URL configured continue to work without action. Migrating
+# to wrapper-routed dispatch is a one-line config change PLUS adding the host
+# to webhook-hosts.json.
+#
+# model_health_probe:
+#   alert_webhook_url: ""                                # operator-supplied
+#   alert_webhook_endpoint_validator_enabled: false      # opt-in to wrapper path
+#
+# IMPORTANT — value semantics (BB iter-1 F10): the toggle accepts ONLY the
+# literal lowercase string `true` to enable the wrapper path. YAML-truthy
+# variants (`yes`, `1`, `True`, `True`/`Yes`/`On`) all fall through to the
+# legacy raw-curl path. This is INTENTIONAL fail-safe behavior — operators
+# expecting the wrapper protection MUST use lowercase `true` exactly.
+#
+# When alert_webhook_endpoint_validator_enabled: true, populate
+# .claude/scripts/lib/allowlists/webhook-hosts.json with the permitted hosts.
+# Override the allowlist path via the LOA_WEBHOOK_ALLOWLIST_PATH env var.
+
+# ============================================================================
+# Cycle-108 — Advisor-strategy routing (PRD §5 FR-1, SDD §3 + §21.1)
+# ----------------------------------------------------------------------------
+# Maps logical role (planning/review/implementation) → tier (advisor/executor)
+# → provider:model. Default-OFF until operator-approved benchmark resolves
+# decision-fork (see grimoires/loa/cycles/cycle-108-advisor-strategy/rollout-policy.md).
+#
+# Kill switch (env, takes precedence over `enabled`):
+#   LOA_ADVISOR_STRATEGY_DISABLE=1   # disables advisor-strategy at runtime
+#
+# NFR-Sec1: review/audit roles MUST resolve to advisor tier — enforced at
+# the loader layer (.claude/adapters/loa_cheval/config/advisor_strategy.py).
+# Attempting to map review→executor raises ConfigError at load time.
+# ============================================================================
+
+# advisor_strategy:
+#   # Master switch. Default false per cycle-108 decision-fork (c') —
+#   # see rollout-policy.md §1. Operators opt in per-stratum once the
+#   # real-data benchmark resolves DEFERRED classifications.
+#   enabled: false
+#
+#   # Resolution mode:
+#   #   static  — config_sha pinned at load time; safer for production
+#   #   dynamic — re-resolves per call; only for dev/test
+#   tier_resolution: static
+#
+#   # Default tier per role. NFR-Sec1 hard-pins review→advisor.
+#   defaults:
+#     planning: advisor
+#     review: advisor
+#     implementation: executor
+#
+#   # Tier → provider → model alias.
+#   tier_aliases:
+#     advisor:
+#       anthropic: claude-opus-4-7
+#       # openai: gpt-5.5-pro              # optional cross-provider
+#       # google: gemini-3.1-pro-preview   # optional cross-provider
+#     executor:
+#       anthropic: claude-sonnet-4-6
+#       # openai: gpt-5.5
+#       # google: gemini-2.5-pro
+#
+#   # Per-skill tier override. Map skill name → tier.
+#   # Skills in audited_review_skills CANNOT be overridden to executor
+#   # (NFR-Sec1 enforced at loader).
+#   per_skill_overrides: {}
+#
+#   # Skill names that MUST resolve to advisor tier regardless of role/override.
+#   # CI gate (cycle-108-schema-guard.yml) requires this enum to be co-edited
+#   # with the SKILL.md role field in a single commit.
+#   audited_review_skills: []
+#
+#   # Benchmark substrate (cycle-108 sprint-2 T2.A).
+#   benchmark:
+#     # Cost-cap pre-estimate aborts the benchmark harness above this USD.
+#     # Override via `tools/advisor-benchmark.sh --cost-cap-usd N`.
+#     max_cost_usd: 50
+#     # Cleanup strategy for worktrees: keep | defer | now
+#     cleanup_strategy: defer
+#
+#   # Per-skill daily token quota (cycle-108 sprint-4 T4.D).
+#   # tools/modelinv-rollup.sh --per-skill-daily-quota alerts when a single
+#   # skill exceeds this on any 24-hour window.
+#   daily_token_budget_default: 500000
+
+# =============================================================================
+# Karpathy Principles (#961 enforcement v1)
+# =============================================================================
+# Mechanical reinforcement of the 4 Karpathy principles documented inline in
+# .claude/loa/CLAUDE.loa.md (post-PR #960) and detailed in
+# .claude/protocols/karpathy-principles.md.
+#
+# v1 ships:
+#   - Surgical-Changes diff-size hook (warn-by-default, opt-in BLOCK reserved for v2)
+#   - Goal-Driven success-criteria gate in /implement
+#   - Trajectory logging at grimoires/loa/a2a/trajectory/karpathy-*.jsonl
+karpathy_principles:
+  # Advisory — used by skills' Think-Before-Coding internal checks. No hook
+  # consumer in v1; reserved for v2 when surface-assumption analysis lands.
+  surface_assumptions: true
+
+  # Simplicity enforcement intensity: full (default, enforced — the YAGNI ladder,
+  # stdlib/native first, shortest diff) or ultra (deletion-first, challenges the
+  # requirement before building). There is NO advise-only 'lite' level: the
+  # "never simplify away" floor (C-PROC-011) stays enforced at every level.
+  simplicity_intensity: full
+
+  # G-1 — master switch for the PostToolUse:Write|Edit surgical-diff hook
+  # at .claude/hooks/quality/karpathy-surgical-diff-check.sh. When false,
+  # the hook fast-paths to exit 0 in <10ms.
+  surgical_diff_warning: true
+
+  # G-1 — per-session diff-lines threshold. When the session accumulator
+  # exceeds this, the hook emits a [karpathy-surgical-warn] stderr line
+  # and writes a trajectory event. Raised from the original protocol-doc
+  # sketch of 50 because 50 was empirically too tight for bug-fix sprints
+  # that legitimately touch 60-80 lines (test file + production diff).
+  diff_lines_per_task: 100
+
+  # Reserved for v2 — no v1 consumer. Cyclomatic complexity check.
+  simplicity_check: true
+
+  # Reserved for v2 — no v1 consumer. AST-level abstraction-depth analysis.
+  max_abstraction_depth: 2
+
+  # G-3 — when true, /implement refuses to write code if sprint.md lacks a
+  # "Success criteria" / "Acceptance criteria" / "Verification" section.
+  # Operator can [Skip with rationale] to override per-invocation.
+  require_success_criteria: true
+
+  # warn | block. v1 honors only "warn" — block-mode is reserved for v2 to
+  # avoid surprise breaking changes during initial rollout. Even with
+  # `enforce: block` set, the v1 hook returns 0 (informational only).
+  enforce: warn

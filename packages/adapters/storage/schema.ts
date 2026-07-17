@@ -35,7 +35,7 @@ import type {
   CommunitySettings,
   ProfileMetadata,
   BadgeMetadata,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 
 // =============================================================================
 // Communities Table

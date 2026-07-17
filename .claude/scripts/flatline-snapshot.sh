@@ -27,6 +27,10 @@
 
 set -euo pipefail
 
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/.loa.config.yaml"
@@ -124,9 +128,10 @@ is_git_hooks_enabled() {
 }
 
 is_secret_scanning_enabled() {
-    local enabled
-    enabled=$(read_config '.autonomous_mode.snapshots.secret_scanning' 'true')
-    [[ "$enabled" == "true" ]]
+    # Security invariant: always returns true. Config value is ignored.
+    # Secret scanning must never be disabled — raw code sent to external
+    # providers without redaction is a data leak.
+    return 0
 }
 
 get_max_count() {
@@ -162,7 +167,7 @@ ensure_snapshot_dir() {
 calculate_hash() {
     local file="$1"
     if [[ -f "$file" ]]; then
-        sha256sum "$file" | cut -d' ' -f1
+        sha256_portable "$file" | cut -d' ' -f1
     else
         echo ""
     fi
@@ -179,7 +184,7 @@ get_storage_stats() {
     local total_bytes=0
 
     while IFS= read -r -d '' file; do
-        ((count++))
+        count=$((count + 1))
         local size
         size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
         total_bytes=$((total_bytes + size))
@@ -266,7 +271,7 @@ purge_oldest_snapshots() {
         fi
 
         rm -f "$snapshot" "$meta_file" "$refs_file"
-        ((purged++))
+        purged=$((purged + 1))
         log "Purged old snapshot: $snapshot"
     done < <(find "$SNAPSHOT_DIR" -name "*.snapshot" -type f -print0 2>/dev/null | \
              xargs -0 -I{} bash -c 'echo "$(stat -c %Y "{}" 2>/dev/null || stat -f %m "{}" 2>/dev/null) {}"' | \
@@ -700,7 +705,7 @@ cleanup_snapshots() {
                 ref_count=$(wc -l < "$refs_file" 2>/dev/null || echo "0")
                 if [[ $ref_count -gt 0 ]]; then
                     log "Skipping referenced snapshot: $snapshot_id ($ref_count refs)"
-                    ((skipped++))
+                    skipped=$((skipped + 1))
                     continue
                 fi
             fi
@@ -713,7 +718,7 @@ cleanup_snapshots() {
                 rm -f "$snapshot_file" "$meta_file" "$refs_file"
                 log "Deleted expired snapshot: $snapshot_id"
             fi
-            ((cleaned++))
+            cleaned=$((cleaned + 1))
         fi
     done < <(find "$SNAPSHOT_DIR" -name "*.meta" -type f -print0 2>/dev/null)
 

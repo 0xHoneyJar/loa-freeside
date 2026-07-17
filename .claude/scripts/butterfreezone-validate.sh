@@ -19,6 +19,7 @@ export TZ=UTC
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/compat-lib.sh"
 SCRIPT_VERSION="1.0.0"
 
 # =============================================================================
@@ -284,6 +285,16 @@ validate_references() {
         [[ "$file" == "head_sha" ]] && continue
         [[ "$file" == "generated_at" ]] && continue
         [[ "$file" == "generator" ]] && continue
+        # #938: skip Express/Fastify-style route patterns. Routes always
+        # start with `/` and don't carry filesystem extensions; real
+        # filesystem references either start with `./`, `../`, or a
+        # relative segment (e.g., `src/foo.ts`). Real absolute paths
+        # would have extensions (e.g., `/usr/bin/foo.sh:42`); those
+        # still match below. Heuristic chosen for low blast radius —
+        # see issue #938 candidate-fix-A.
+        if [[ "$file" == /* && "$file" != *.* ]]; then
+            continue
+        fi
 
         checked=$((checked + 1))
 
@@ -320,14 +331,27 @@ validate_word_budget() {
 }
 
 # Check 5b: Minimum word count (FR-5: narrative quality gate)
+#
+# Default minimum is 500. Tests (and other callers that legitimately
+# exercise the validator against minimal fixtures) can override via
+# LOA_BUTTERFREEZONE_MIN_WORDS. Production BUTTERFREEZONE.md generation
+# should easily exceed 500 — the override exists purely for fixture-based
+# testing of downstream validators.
 validate_min_words() {
-    local total_words
+    local total_words min_words
     total_words=$(wc -w < "$FILE" 2>/dev/null | tr -d ' ')
+    min_words="${LOA_BUTTERFREEZONE_MIN_WORDS:-500}"
+    # Guard against misuse: reject 0, negative, empty, or non-numeric values.
+    # Falls back to the production default (500) so the quality gate cannot
+    # be silently disabled by exporting LOA_BUTTERFREEZONE_MIN_WORDS=0 or a
+    # malformed value. Only positive integers are accepted. (Addresses post-
+    # hoc review finding MEDIUM on PR #527.)
+    [[ "$min_words" =~ ^[1-9][0-9]*$ ]] || min_words=500
 
-    if (( total_words < 500 )); then
-        log_fail "min_words" "Output too sparse: $total_words words (minimum: 500)" "sparse: $total_words < 500"
+    if (( total_words < min_words )); then
+        log_fail "min_words" "Output too sparse: $total_words words (minimum: $min_words)" "sparse: $total_words < $min_words"
     else
-        log_pass "min_words" "Word count sufficient: $total_words (minimum: 500)"
+        log_pass "min_words" "Word count sufficient: $total_words (minimum: $min_words)"
     fi
 }
 
@@ -458,7 +482,7 @@ validate_freshness() {
 
     # Parse the timestamp and compare with current time
     local gen_epoch
-    gen_epoch=$(date -d "$generated_at" +%s 2>/dev/null || echo 0)
+    gen_epoch=$(_date_to_epoch "$generated_at" 2>/dev/null || echo 0)
     local now_epoch
     now_epoch=$(date +%s)
     local diff_days=$(( (now_epoch - gen_epoch) / 86400 ))

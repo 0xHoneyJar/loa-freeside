@@ -15,13 +15,13 @@ import type {
   IncumbentInfo,
   Evidence,
   EvidenceType,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   KNOWN_INCUMBENT_BOTS,
   INCUMBENT_CHANNEL_PATTERNS,
   INCUMBENT_ROLE_PATTERNS,
   EVIDENCE_CONFIDENCE_WEIGHTS,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Types for Discord REST API

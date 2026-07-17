@@ -12,8 +12,8 @@ import type {
   IChannelConfigStore,
   IChannelMetrics,
 } from './channel-strategy-manager.js';
-import type { DiscordChannel, ChannelStrategyConfig } from '@arrakis/core/domain';
-import { DEFAULT_CHANNEL_STRATEGY_CONFIG, DEFAULT_ADDITIVE_CHANNELS } from '@arrakis/core/domain';
+import type { DiscordChannel, ChannelStrategyConfig } from '@freeside/core/domain';
+import { DEFAULT_CHANNEL_STRATEGY_CONFIG, DEFAULT_ADDITIVE_CHANNELS } from '@freeside/core/domain';
 import type { Logger } from 'pino';
 
 // =============================================================================

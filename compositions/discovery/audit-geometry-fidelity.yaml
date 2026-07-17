@@ -1,0 +1,355 @@
+# Composition · audit-geometry-fidelity
+# ================================================================
+# GECKO maps the cost-field, FAGAN breaks the map, the OPERATOR stamps the
+# felt-gradient, the SYNTHESIZER writes it to the ledger and proves it.
+#
+# Sibling of audit-ecosystem-coherence (deployment seams). THIS one audits
+# the HONESTY GEOMETRY: every decision-fork an agent faces is a RAIL scored
+# on a 4-axis cost-field (formation / observability / payoff_regime /
+# hook_backed). The recurring fire is the ROLEPLAY-VULNERABLE GAP — a fork
+# whose hardness is SKILL.md prose (a signpost) while its intended_regime is
+# stick-deterred (a wall). Prose is a gradient an LLM rolls past; only a hook
+# (un-fakeable artifact) bends the field. The instrument already exists:
+# evals/environment-design/rail-hardness-ledger.jsonl + rail-hardness-scan.mjs.
+# This audit EXTENDS it to full 5-altitude coverage and surfaces every gap.
+#
+# Authored 2026-06-10 from the truth-stack / claim-grade session: the operator
+# named the unification ("evals, scripts, hooks are all gradients in a world
+# topology; parallel across engineering, truth, game theory") and asked to
+# rigorously gauge the geometry's definition + fidelity at five altitudes.
+# Self-referential by design: an audit of where honesty is physics-vs-prose
+# MUST itself run the governed path (compose-verify-run → valid_run), never
+# be inline-asserted. Auditing gradient-fidelity by defecting to raw Workflow
+# would be the exact roleplay it hunts.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: audit-geometry-fidelity
+description: >
+  Audit the honesty-geometry of the stack across five altitudes (operator /
+  hooks / loa-harness / repo / CI+evals). GECKO enumerates the decision-forks
+  (rails AND seams), scores each on the rail-hardness 4-axis cost-field, and
+  flags every roleplay-vulnerable gap. FAGAN adversarially verifies each
+  hook_backed claim resolves to a real file and each rail-vs-seam call is
+  right. The operator stamps the felt-gradient. The synthesizer appends the
+  rows to the ledger, runs the hardness scanner (the geometry self-checks),
+  and writes the topology-fidelity synthesis.
+
+intent: >
+  "Evals, scripts, hooks are all gradients in one world-topology — parallel
+   across engineering, truth, and game theory. Gauge the geometry rigorously:
+   at every altitude, enumerate the forks an agent faces, score the cost-field
+   (can the game form? is the honest move observable? what's the payoff? is the
+   wall a HOOK or just PROSE?), and surface every gap where the map claims a
+   wall the territory doesn't have (hook_backed:false under intended stick, OR
+   hook_backed:true whose hook_path is absent = the K1 class). Write it to the
+   rail-hardness ledger so the topology gets denser and self-checks in CI
+   forever. I'll be in the seams to stamp whether the governed path actually
+   FEELS like least resistance."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Engineering — honesty-geometry / gradient-fidelity across the stack"
+  workstream: discovery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Make honesty physics, not hope — find every fork where the wall
+      is prose an agent can roll past, and harden it where intent says wall"
+  source: team-internal
+
+depends_on:
+  constructs:
+  - gecko               # stage 1 ground — the geometry sensor (sensing-runtime-fit / -path-friction eyes)
+  - fagan               # stage 2 adversarial verify — does each hook_backed claim RESOLVE
+  scripts:
+  - evals/environment-design/rail-hardness-scan.mjs    # the hardness self-check (hook_path must resolve)
+  tools:
+  - cheval              # multi-model council routing (MODELINV envelope)
+  reference:
+  - "construct-gecko/skills/sensing-runtime-fit/SKILL.md"     # rails-vs-seams + roleplay-vulnerability doctrine
+  - "evals/environment-design/rail-hardness-row.schema.json"  # the 4-axis schema rows must satisfy
+  - "grimoires/loa/context/2026-06-07-environment-design-game-theory-synthesis.md"  # three-gates-in-series
+  upstream_compositions:
+  - compositions/discovery/audit-ecosystem-coherence.yaml     # the deployment-seam sibling
+
+inputs:
+- type: Intent
+  name: scope
+  description: >
+    which altitudes to audit (default ALL five: operator / hooks / loa-harness
+    / repo / CI+evals). Each altitude's lens: operator=gecko+the-arcade,
+    hooks=gecko+scar, harness=gygax+fagan, repo=protocol+rosenzu,
+    CI+evals=noether+worldline. GECKO grounds across all (its eyes ARE the
+    altitude sensors); the council supplies adversarial multi-model diversity.
+  required: false
+- type: Artifact
+  name: prior_ledger
+  description: >
+    The existing rail-hardness-ledger.jsonl (~17 rows). INGEST it: do not
+    re-score rows already present + verified; extend coverage to un-scored
+    forks. Re-verify any row whose hook_path you touch.
+  required: false
+
+# ================================================================
+# Stages — ground -> adversarial-verify -> OPERATOR SEAM -> write+prove
+# Linear (no auto-iterate): the operator seam IS the convergence control.
+# ================================================================
+
+chain:
+- stage: 1
+  name: ground-the-forks
+  construct: gecko
+  skill: diagnose
+  persona: GECKO
+  mode: fresh
+  reads: [Intent, Artifact]
+  writes: [Artifact, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    You are GECKO. This is the cost-field eye — the union of sensing-runtime-fit
+    (declared-vs-runtime) and sensing-path-friction (wrong-weight paths). A RAIL
+    is a decision-fork an agent faces; honesty is whichever region of the field
+    the gradients route it toward.
+
+    Walk all five altitudes and enumerate the forks an agent ACTUALLY hits,
+    every claim file:line / path-exists checked (never inferred):
+      1. OPERATOR  — ~/.claude/CLAUDE.md kernel, calibration banner, modes/lenses,
+         /recall, doctrine-activation. (Mostly prose — expect hook_backed:false.)
+      2. HOOKS     — .claude/hooks/** PreToolUse gradients (block-destructive-bash,
+         team-role-guard, run-mode-stop-guard, spiral-dispatch-guard,
+         adversarial-review-gate, ai-stench, claim-grade). The real walls.
+      3. HARNESS   — Loa workflow gates (/implement, /run, /bug, beads-preflight,
+         review/audit gates, /compose proof-of-run).
+      4. REPO      — zone-system (.claude untouchable), path-domain-check,
+         commit-scope-check, schema-emission-floor, ledger-domain-check.
+      5. CI+EVALS  — rail-hardness-scan, genome-chain, eval.yml ratchet,
+         the graders (no-secrets, quality-gate).
+
+    For EACH fork emit a row satisfying rail-hardness-row.schema.json PLUS:
+      - altitude (1-5 above)
+      - rail_or_seam: is roleplay the WORK here (seam — leave it) or is this
+        deterministic transport that must be un-fakeable (rail — score it)?
+        Misread a seam as a rail -> you gate creativity. Misread a rail as a
+        seam -> you trust a simulation.
+      - gap_class: one of
+          NONE (aligned: hook_backed matches intended, or a true soft seam),
+          PROSE-WALL (intended stick/3-3 but hook_backed:false — a signpost
+            where physics is needed; the v1-82% / compose-defection class),
+          GHOST-HOOK (hook_backed:true but hook_path does NOT resolve — the
+            K1 class; a painted wall),
+          OVER-WALLED (a seam that's been hardened — gated creativity).
+      - evidence: file:line or the path-exists check you ran.
+
+    Mark SMELL (soft/taxonomy-dependent) vs CONFLICT (hard/provable). You sense;
+    you do not decide. INGEST prior_ledger but re-verify any row you touch.
+  output_schema:
+    type: object
+    required: [rows, coverage_note]
+    additionalProperties: false
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [rail, where, altitude, formation, observability, payoff_regime, intended_regime, hook_backed, rail_or_seam, gap_class, severity, evidence]
+          additionalProperties: true
+          properties:
+            rail: {type: string}
+            where: {type: string}
+            altitude: {type: integer, enum: [1,2,3,4,5]}
+            formation: {type: integer, enum: [0,1]}
+            observability: {type: integer, enum: [0,1]}
+            payoff_regime: {type: string, enum: [soft, cant-form, dominant-defect, stick-deterred, positive-sum-3-3]}
+            intended_regime: {type: string, enum: [soft, stick-deterred, positive-sum-3-3]}
+            hook_backed: {type: boolean}
+            hook_path: {type: string}
+            rail_or_seam: {type: string, enum: [rail, seam]}
+            gap_class: {type: string, enum: [NONE, PROSE-WALL, GHOST-HOOK, OVER-WALLED]}
+            severity: {type: string, enum: [CONFLICT, SMELL]}
+            evidence: {type: string}
+      coverage_note:
+        type: string
+        description: which altitudes/forks were NOT reached and why (no silent caps)
+- stage: 2
+  name: adversarial-verify
+  construct: fagan
+  persona: FAGAN
+  mode: fresh
+  reads: [Artifact]
+  writes: [Verdict, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    Adversarially verify GECKO's cost-field map. The grounder is biased toward
+    its own scoring — break it. For EACH row:
+      - hook_backed:true -> does hook_path RESOLVE on disk? Run the check. A
+        claim that doesn't resolve is a GHOST-HOOK (the K1 class), reclassify it.
+      - rail_or_seam -> is this really deterministic transport, or did GECKO
+        mark a judgment-seam as a fakeable rail (would gate creativity) or a
+        rail as a seam (would trust a simulation)?
+      - gap_class -> is each PROSE-WALL real (intended stick but only prose),
+        or did GECKO over-generalize a soft seam into a false gap?
+      - MISSED forks (a fork at some altitude GECKO didn't enumerate)?
+    A lone critical from any voice HOLDS. Per-voice MODELINV proves which model
+    answered — reject "unknown" model_ran on this audit.
+  output_schema:
+    type: object
+    required: [verdict, blocker, confirmed_rows, corrections, missed_forks]
+    additionalProperties: false
+    properties:
+      verdict: {type: string, enum: [APPROVED, CHANGES_REQUIRED]}
+      blocker: {type: boolean}
+      confirmed_rows:
+        type: array
+        items: {type: string, description: "rail name confirmed as scored"}
+      corrections:
+        type: array
+        items:
+          type: object
+          required: [rail, gecko_scored, actual, evidence]
+          additionalProperties: false
+          properties:
+            rail: {type: string}
+            gecko_scored: {type: string}
+            actual: {type: string}
+            evidence: {type: string}
+      missed_forks:
+        type: array
+        items: {type: string}
+- stage: 3
+  name: operator-stamp
+  construct: general-purpose
+  persona: OPERATOR
+  mode: persistent
+  reads: [Verdict, Artifact]
+  writes: [Artifact]
+  role: gate
+  hitl_by_nature: true
+  notes: >
+    OPERATOR SEAM (soju in the seams). Surface the verified rows grouped by
+    altitude, gap_class first (PROSE-WALL / GHOST-HOOK loudest). For the rows
+    that matter, the operator stamps the SUBJECTIVE lane the objective axes
+    cannot see: operator_stamp.feels_default — does the GOVERNED path FEEL like
+    the path of least resistance here, or does defecting still feel cheaper?
+    That felt-gradient is the RLAIHF join the schema reserves. The operator
+    MAY also correct a mis-score or veto a row. Capture any >>clew steer. No
+    rows are written until this seam clears.
+- stage: 4
+  name: write-and-prove
+  construct: general-purpose
+  persona: SYNTHESIZER
+  mode: persistent
+  reads: [Verdict, Artifact]
+  writes: [Artifact, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    Fold the SURVIVING council corrections (not the rejected) + the operator
+    stamps. Then:
+      1. APPEND the new rows to evals/environment-design/rail-hardness-ledger.jsonl
+         in the schema's canonical field order (rail, where, formation,
+         observability, payoff_regime, hook_backed, [hook_path], intended_regime,
+         source, ts, [operator_stamp]). Carry altitude/rail_or_seam/gap_class as
+         additional fields (the scanner ignores extras; the synthesis uses them).
+      2. RUN node evals/environment-design/rail-hardness-scan.mjs — the geometry
+         self-checks. If any hook_backed row's path is MISSING, it exits 3:
+         that is a GHOST-HOOK that slipped through; fix the row (downgrade to
+         hook_backed:false + gap_class GHOST-HOOK) and re-run until clean.
+      3. WRITE the topology-fidelity synthesis to
+         grimoires/loa/context/<date>-geometry-fidelity-audit.md: the cost-field
+         framing, the per-altitude fork census, the GAP REGISTER (every
+         PROSE-WALL + GHOST-HOOK + OVER-WALLED, sorted by severity), and the
+         ranked HARDENING BACKLOG (which prose-walls to turn into hooks first,
+         cheapest-observability-gradient first per the three-gates law).
+    Cite file:line for every concrete claim. A path that "should exist" is a
+    claim to verify, not assert.
+  output_schema:
+    type: object
+    required: [rows_appended, scan_result, synthesis_path, hardening_backlog]
+    additionalProperties: false
+    properties:
+      rows_appended: {type: integer}
+      scan_result: {type: string, enum: [clean, fixed-then-clean, dirty], description: "rail-hardness-scan verdict after write"}
+      synthesis_path: {type: string}
+      hardening_backlog:
+        type: array
+        items:
+          type: object
+          required: [fork, altitude, gap_class, fix, cost]
+          additionalProperties: false
+          properties:
+            fork: {type: string}
+            altitude: {type: integer}
+            gap_class: {type: string}
+            fix: {type: string, description: "the hook/artifact that would harden it"}
+            cost: {type: string, enum: [observability-only, light, medium, heavy]}
+
+outputs:
+- type: Artifact
+  destination: "evals/environment-design/rail-hardness-ledger.jsonl"
+  description: new rail-hardness rows extending the topology to 5-altitude coverage
+  hivemind_labels:
+    artifact_type: dataset
+    learning_status: strongly-validated
+- type: Artifact
+  destination: "grimoires/loa/context/<date>-geometry-fidelity-audit.md"
+  description: the cost-field synthesis + gap register + hardening backlog
+  hivemind_labels:
+    artifact_type: product-spec
+    learning_status: strongly-validated
+- type: Verdict
+  destination: .run/compose/<run_id>/geometry-council.jsonl
+  description: per-voice adversarial verdicts + MODELINV envelopes
+- type: Signal
+  destination: .run/compose/<run_id>/orchestrator.jsonl
+
+# ================================================================
+# Surface Class — gradient-fidelity of the whole stack is high-stakes infra
+# ================================================================
+surface_class:
+  default: defi-strict
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  inferred_when_unspecified: defi-strict
+
+review_routing:
+  mandatory_when: [defi-strict]
+  router: cheval
+  runner: construct-fagan/scripts/cheval-council.sh
+  voices: [gpt-reviewer, reviewing-code, deep-thinker]
+  min_surviving_voices: 2
+  audit: modelinv-required
+  optional_when: [culturetech-loose, mixed, unspecified]
+
+when_to_use: >
+  - You suspect a gate is prose pretending to be a wall (an agent keeps
+    rolling past an instruction) — score the fork, find the gap, harden it.
+  - After adding/removing a hook, gate, eval, or CI check — re-audit the
+    altitude so the ledger stays coherent with the territory.
+  - Quarterly geometry sweep — does every intended-stick fork have a real
+    hook whose path resolves?
+  - NOT for deployment-seam coherence (use audit-ecosystem-coherence) or code
+    review (code-implement-and-review).
+
+operator_note: |
+  Authored 2026-06-10. Why this exists: the operator unified evals/scripts/hooks
+  as one cost-field topology and asked to gauge its fidelity at five altitudes.
+  Three principles:
+    1. THE MAP MUST BE UN-FAKEABLE TOO. rail-hardness-scan opens each claimed
+       hook file — a hook_backed claim that does not resolve is a roleplayed
+       gradient. The audit's own ledger is held to that scanner.
+    2. PROOF-OF-RUN OR IT DIDN'T HAPPEN. Auditing gradient-fidelity by inline
+       roleplay (or raw Workflow) would defect on the exact gradient it hunts.
+       Only valid_run for this run_id counts.
+    3. THE OPERATOR OWNS THE FELT-GRADIENT. The objective axes are AI-captured;
+       whether the governed path FEELS like least resistance is the operator's
+       stamp — the RLAIHF join the geometry cannot self-measure.
+
+version: "1.0.0"
+authored_at: "2026-06-10"

@@ -19,22 +19,22 @@ import type {
   SessionValidationResult,
   StateTransitionResult,
   SessionStats,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   WizardSession,
   WizardState,
   WizardSessionData,
   NewWizardSession,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   isValidTransition,
   validateSessionData,
   WizardState as WizardStateEnum,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   DEFAULT_SESSION_TTL_SECONDS,
   SESSION_KEY_PREFIXES,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 
 // =============================================================================
 // Types

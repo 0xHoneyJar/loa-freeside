@@ -19,11 +19,11 @@ import {
   WizardState,
   type WizardSession,
   type CommunityManifest,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import type {
   IWizardSessionStore,
   ISynthesisEngine,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type { AnalyticsRedisClient } from '../engine.js';
 import pino from 'pino';
 

@@ -4,6 +4,10 @@
 set -euo pipefail
 
 # === Configuration ===
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 STAGING_DIR=".claude_staging"
 SYSTEM_DIR=".claude"
 OVERRIDES_DIR=".claude/overrides"
@@ -215,10 +219,10 @@ show_dry_run_preview() {
     local existing="${SYSTEM_DIR}/${rel_path}"
 
     if [[ ! -f "$existing" ]]; then
-      ((new_files++))
+      new_files=$((new_files + 1))
       echo -e "  ${GREEN}+ $rel_path${NC}"
     elif ! diff -q "$file" "$existing" >/dev/null 2>&1; then
-      ((modified_files++))
+      modified_files=$((modified_files + 1))
       echo -e "  ${YELLOW}~ $rel_path${NC}"
     fi
   done < <(find "$staging_dir" -type f -print0 2>/dev/null | head -100)
@@ -234,7 +238,7 @@ show_dry_run_preview() {
       [[ "$rel_path" == constructs/* ]] && continue
 
       if [[ ! -f "$staging_file" ]]; then
-        ((deleted_files++))
+        deleted_files=$((deleted_files + 1))
         echo -e "  ${RED}- $rel_path${NC}"
       fi
     done < <(find "$SYSTEM_DIR" -type f ! -path "*/overrides/*" ! -path "*/constructs/*" -print0 2>/dev/null | head -100)
@@ -298,7 +302,8 @@ check_deps() {
   command -v jq >/dev/null || err "jq is required"
   command -v yq >/dev/null || err "yq is required"
   command -v git >/dev/null || err "git is required"
-  command -v sha256sum >/dev/null || err "sha256sum is required"
+  # sprint-bug-172: sha256_portable backend availability tracked in _COMPAT_SHA256_CMD.
+  [[ -n "${_COMPAT_SHA256_CMD:-}" ]] || err "GNU coreutils or BSD shasum (sha-256 tool) is required"
 }
 
 get_version() {
@@ -419,7 +424,7 @@ generate_checksums() {
 
   local first=true
   while IFS= read -r -d '' file; do
-    local hash=$(sha256sum "$file" | cut -d' ' -f1)
+    local hash=$(sha256_portable "$file" | cut -d' ' -f1)
     local relpath="${file#./}"
     [[ "$first" == "true" ]] && first=false || checksums+=','
     checksums+='"'"$relpath"'": "'"$hash"'"'
@@ -448,7 +453,7 @@ check_integrity() {
     [[ -z "$expected" ]] && continue
 
     if [[ -f "$file" ]]; then
-      local actual=$(sha256sum "$file" | cut -d' ' -f1)
+      local actual=$(sha256_portable "$file" | cut -d' ' -f1)
       if [[ "$expected" != "$actual" ]]; then
         drift_detected=true
         drifted_files+=("$file")
@@ -508,21 +513,21 @@ preflight_check() {
   while IFS= read -r -d '' f; do
     # Try to validate YAML with whichever yq is installed
     if yq --version 2>&1 | grep -q "mikefarah"; then
-      yq eval '.' "$f" > /dev/null 2>&1 || { warn "Invalid YAML: $f"; ((errors++)); }
+      yq eval '.' "$f" > /dev/null 2>&1 || { warn "Invalid YAML: $f"; errors=$((errors + 1)); }
     else
-      yq . "$f" > /dev/null 2>&1 || { warn "Invalid YAML: $f"; ((errors++)); }
+      yq . "$f" > /dev/null 2>&1 || { warn "Invalid YAML: $f"; errors=$((errors + 1)); }
     fi
   done < <(find "$STAGING_DIR" -name "*.yaml" -print0 2>/dev/null)
 
   while IFS= read -r -d '' f; do
     if ! bash -n "$f" 2>/dev/null; then
       warn "Invalid shell script: $f"
-      ((errors++))
+      errors=$((errors + 1))
     fi
   done < <(find "$STAGING_DIR" -name "*.sh" -print0 2>/dev/null)
 
-  [[ -d "$STAGING_DIR/skills" ]] || { warn "Missing skills directory"; ((errors++)); }
-  [[ -d "$STAGING_DIR/commands" ]] || { warn "Missing commands directory"; ((errors++)); }
+  [[ -d "$STAGING_DIR/skills" ]] || { warn "Missing skills directory"; errors=$((errors + 1)); }
+  [[ -d "$STAGING_DIR/commands" ]] || { warn "Missing commands directory"; errors=$((errors + 1)); }
 
   [[ $errors -gt 0 ]] && err "Pre-flight failed with $errors errors"
   log "Pre-flight checks passed"
