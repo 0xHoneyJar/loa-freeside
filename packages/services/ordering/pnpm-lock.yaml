@@ -14,6 +14,9 @@ importers:
       '@freeside/collection-resolution-protocol':
         specifier: file:../../protocol/collection-resolution
         version: file:../../protocol/collection-resolution(effect@3.22.0)
+      '@freeside/dependency-ledger-protocol':
+        specifier: file:../../protocol/dependency-ledger
+        version: file:../../protocol/dependency-ledger(effect@3.22.0)
       '@freeside/ordering-protocol':
         specifier: file:../../protocol/ordering
         version: file:../../protocol/ordering(zod@3.25.76)
@@ -26,6 +29,12 @@ importers:
       '@freeside/shadow-audit-service':
         specifier: file:../shadow-audit
         version: file:../shadow-audit(@types/pg@8.20.0)(pg@8.22.0)(pino@10.3.1)(typescript@5.9.3)(zod@3.25.76)
+      '@freeside/signing-key-custody-protocol':
+        specifier: file:../../protocol/signing-key-custody
+        version: file:../../protocol/signing-key-custody(effect@3.22.0)
+      '@freeside/trust-envelope-protocol':
+        specifier: file:../../protocol/trust-envelope
+        version: file:../../protocol/trust-envelope(effect@3.22.0)
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.27)
@@ -337,6 +346,11 @@ packages:
     resolution: {directory: ../../core, type: directory}
     engines: {node: '>=20.0.0'}
 
+  '@freeside/dependency-ledger-protocol@file:../../protocol/dependency-ledger':
+    resolution: {directory: ../../protocol/dependency-ledger, type: directory}
+    peerDependencies:
+      effect: ^3.21.0
+
   '@freeside/ordering-protocol@file:../../protocol/ordering':
     resolution: {directory: ../../protocol/ordering, type: directory}
     peerDependencies:
@@ -356,6 +370,16 @@ packages:
     resolution: {directory: ../shadow-audit, type: directory}
     peerDependencies:
       zod: ^3.23.0
+
+  '@freeside/signing-key-custody-protocol@file:../../protocol/signing-key-custody':
+    resolution: {directory: ../../protocol/signing-key-custody, type: directory}
+    peerDependencies:
+      effect: ^3.21.0
+
+  '@freeside/trust-envelope-protocol@file:../../protocol/trust-envelope':
+    resolution: {directory: ../../protocol/trust-envelope, type: directory}
+    peerDependencies:
+      effect: ^3.21.0
 
   '@hono/node-server@1.19.14':
     resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
@@ -1531,6 +1555,12 @@ snapshots:
 
   '@freeside/core@file:../../core': {}
 
+  '@freeside/dependency-ledger-protocol@file:../../protocol/dependency-ledger(effect@3.22.0)':
+    dependencies:
+      '@freeside/signing-key-custody-protocol': file:../../protocol/signing-key-custody(effect@3.22.0)
+      '@freeside/trust-envelope-protocol': file:../../protocol/trust-envelope(effect@3.22.0)
+      effect: 3.22.0
+
   '@freeside/ordering-protocol@file:../../protocol/ordering(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
@@ -1587,6 +1617,18 @@ snapshots:
       - supports-color
       - typescript
       - utf-8-validate
+
+  '@freeside/signing-key-custody-protocol@file:../../protocol/signing-key-custody(effect@3.22.0)':
+    dependencies:
+      '@freeside/trust-envelope-protocol': file:../../protocol/trust-envelope(effect@3.22.0)
+      effect: 3.22.0
+
+  '@freeside/trust-envelope-protocol@file:../../protocol/trust-envelope(effect@3.22.0)':
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      canonicalize: 2.1.0
+      effect: 3.22.0
 
   '@hono/node-server@1.19.14(hono@4.12.27)':
     dependencies:

@@ -28,6 +28,13 @@ import { DEFAULT_BASELINE_FIXTURE } from '../src/public-authorization-projection
 import { InMemoryCapabilityDemandStore } from '../src/capability-demand-store.js';
 import { mountCapabilityDemandRoutes } from '../src/capability-demand-http.js';
 import {
+  InMemoryDependencyLedgerStore,
+} from '../src/dependency-ledger-store.js';
+import {
+  createFixtureDependencyLedgerService,
+} from '../src/dependency-ledger-service.js';
+import { mountDependencyLedgerRoutes } from '../src/dependency-ledger-http.js';
+import {
   publicAuthPostureFromEnv,
   serviceTokenForPublicAuthMounts,
 } from '../src/public-auth-posture.js';
@@ -85,6 +92,11 @@ const resolutionService = new CollectionResolutionService({
 });
 
 const capabilityDemandStore = new InMemoryCapabilityDemandStore();
+const dependencyLedgerStore = new InMemoryDependencyLedgerStore();
+const dependencyLedgerService = createFixtureDependencyLedgerService(
+  dependencyLedgerStore,
+  () => Date.now(),
+);
 const mountPublicAuthRoutes =
   publicAuth !== undefined && publicAuthToken.kind !== 'refuse';
 const publicAuthServiceToken =
@@ -109,10 +121,16 @@ const app = createIntakeApp({
     collection_resolutions: true,
     collection_reports: mountPublicAuthRoutes,
     report_attention: true,
-    capability_demands: {
+    "capability_demands": {
       enabled: mountPublicAuthRoutes,
       store: 'memory',
       lifecycle: 'cr-208',
+    },
+    dependency_ledger: {
+      enabled: mountPublicAuthRoutes,
+      store: 'memory',
+      lifecycle: 'cr-012a',
+      cr_011a_producer: 'pending',
     },
     public_authorization: {
       mode: publicAuthPosture.mode,
@@ -155,6 +173,12 @@ if (mountPublicAuthRoutes && publicAuth) {
     auth: publicAuth,
     serviceToken: publicAuthServiceToken,
     now: () => Date.now(),
+  });
+
+  // CR-012A: public dependency ledger inbox (fixture registry; CR-011A producer pending).
+  mountDependencyLedgerRoutes(app, {
+    service: dependencyLedgerService,
+    serviceToken: publicAuthServiceToken,
   });
 }
 
