@@ -8,7 +8,7 @@ gating: false
 owner_approved: false
 ---
 
-# ACCEPT-LOA — Conditional Technical Owner-Boundary Acceptance
+# Conditional Loa owner-boundary technical record
 
 > **Acceptance state:** conditional technical record. Every human owner
 > acknowledgment remains pending or unsigned; this document is not owner
@@ -16,7 +16,7 @@ owner_approved: false
 
 | Field | Value |
 |---|---|
-| Task | `ACCEPT-LOA` (`collection-report-coordinator-f09.9`) |
+| Dispatch identifier | `ACCEPT-LOA` (`collection-report-coordinator-f09.9`); identifier only, not an approval state |
 | Repository | `0xHoneyJar/loa-freeside` (this worktree) |
 | Branch | `coord/collection-report-coordinator-f09.9` |
 | Audited baseline | `origin/main` @ `3782fd47e8a20cdaf6325621962bd0443e6781b8` (2026-07-14; matches sprint §2) |
@@ -25,7 +25,7 @@ owner_approved: false
 | Author role | Loa platform multi-boundary audit (KRANZ dispatch; no CR implementation) |
 | **Overall verdict** | **conditional** |
 
-This artifact records **technical, conditional acceptance** of Loa’s planned
+This artifact records a **technical, conditional assessment** of Loa’s planned
 owner boundaries before CR issue creation (sprint §13). It is **not** human or
 operator approval, **not** production readiness, **not** authorization to
 implement or create CR issues, and **not** a claim that `origin/main` already
@@ -53,9 +53,10 @@ Notation: `CR-NNN*` means every lettered variant of `CR-NNN`.
 | Shadow Audit (CR-000/016/018) | **blocked** (CR-000 + Gateway producer) / **conditional** (boundary) | Live k-anon audit + file `RoleSnapshot` + open collection capability read exist; no Discord Gateway capture epoch, gate-mapping aggregate, or signed Discord-policy authority record |
 | Privacy / security (CR-015 + co-sign CR-000/007B/010/014 surfaces) | **blocked** (signatures / review evidence) / **conditional** (boundary) | k-anon bands and contact-consent route are precedent only; no CR-015 disclosure review packet and no privacy/security signature on Discord viability |
 | Platform / deployment (CR-013/209A/209B) | **conditional** | Railway deploy runbooks for Ordering + Shadow Audit exist; production signing-key custody registry, mixed-version rehearsal authority, and collection-report flags are absent |
-| Coordinator (CR-019 + gate graph) | **conditional** | This acceptance artifact advances the graph; machine-readable gate manifest and operator issue-creation approval remain open |
+| Coordinator (CR-019 + gate graph) | **conditional** | This conditional record advances the graph; machine-readable gate manifest and operator issue-creation approval remain open |
 
-**Overall: conditional.** Loa accepts the *authority splits* in SDD §3.1 / §6 /
+**Overall: conditional.** This technical assessment recommends the *authority
+splits* in SDD §3.1 / §6 /
 §11 / §17 and will own the Loa-primary CRs named in sprint §12, but
 `origin/main` is a **seed substrate**, not the collection-report system. T0/T1
 planning may proceed only behind the public closure conditions in §8. T2 /
@@ -267,8 +268,9 @@ Loa must not:
 
 ### 3.8 Boundary acknowledgment
 
-This non-human technical record **conditionally accepts** the boundary split in
-SDD §3.1: Dashboard presents; Sonar resolves/indexes physically; Ordering owns
+This non-human technical record makes a **conditional technical recommendation**
+for the boundary split in SDD §3.1: Dashboard presents; Sonar
+resolves/indexes physically; Ordering owns
 sessions/orders/shared work; Shadow Audit owns gate/Discord evidence; Identity
 owns links/consent; Storage owns Key Index; protocol owns shared wire. The same
 technical record **rejects** any plan that makes Shadow Audit’s current
@@ -547,7 +549,7 @@ external real artifacts** — absence here is evidence, not permission to invent
 
 | Role | Status |
 |---|---|
-| Loa multi-boundary technical acceptance (this artifact) | **conditional** |
+| Loa multi-boundary technical assessment (this artifact) | **conditional** |
 | Shared-protocol maintainer human ack | **pending** (U-16) |
 | Ordering maintainer human ack | **pending** (U-16) |
 | Shadow Audit maintainer human ack | **pending** (U-16) |
@@ -635,15 +637,22 @@ for needle in \
   gate_mapping \
   artifact_manifest
 do
-  count="$(
-    git grep -I -F "$needle" "$BASE" -- \
-      packages \
-      ':!packages/**/docs/**' \
-      ':!packages/**/grimoires/**' \
-      2>/dev/null \
-      | wc -l \
-      | tr -d ' '
-  )"
+  if matches="$(
+      git grep -I -F "$needle" "$BASE" -- \
+        packages \
+        ':!packages/**/docs/**' \
+        ':!packages/**/grimoires/**'
+    )"
+  then
+    grep_status=0
+  else
+    grep_status=$?
+  fi
+  case "$grep_status" in
+    0) count="$(printf '%s\n' "$matches" | wc -l | tr -d ' ')" ;;
+    1) count=0 ;;
+    *) printf 'git grep failed for %s (status %s)\n' "$needle" "$grep_status" >&2; exit "$grep_status" ;;
+  esac
   printf '%s  %s\n' "$needle" "$count"
 done
 
