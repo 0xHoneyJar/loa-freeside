@@ -1,0 +1,32 @@
+{
+  "collection_id": {
+    "algorithm": "sha-256",
+    "domain": "collection.identity",
+    "major_version": 1,
+    "digest": "813542a03e9e5b6916d3704dc397fe7d30a7f63f07130d6ab3037ef9b598db4f"
+  },
+  "schema_version": 1,
+  "name": null,
+  "deployments": [
+    {
+      "schema_version": 1,
+      "network": {
+        "schema_version": 1,
+        "network_namespace": "eip155",
+        "network_reference": "1"
+      },
+      "address": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+      "normalized_address": "0xabcdef0123456789abcdef0123456789abcdef01",
+      "deployment_id": {
+        "algorithm": "sha-256",
+        "domain": "collection.deployment",
+        "major_version": 1,
+        "digest": "f74d1dfe0e9b7445f356967d0eed683a0a50251d26d94da3053578ab9db38729"
+      }
+    }
+  ],
+  "equivalence_basis": {
+    "schema_version": 1,
+    "kind": "single_deployment"
+  }
+}

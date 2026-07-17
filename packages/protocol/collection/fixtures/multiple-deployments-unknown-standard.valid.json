@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "80aef68b45dbe3da17a93b40df2d82e6b277f4cf50dca03cf3a745e4aeaeb13f"
+    },
+    "schema_version": 1,
+    "collection_key": "cross-vm-demo",
+    "name": "Cross VM Demo",
+    "deployments": [
+      {
+        "schema_version": 1,
+        "network": {
+          "schema_version": 1,
+          "network_namespace": "solana",
+          "network_reference": "mainnet-beta"
+        },
+        "address": "So11111111111111111111111111111111111111112",
+        "normalized_address": "So11111111111111111111111111111111111111112",
+        "deployment_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.deployment",
+          "major_version": 1,
+          "digest": "6c57477db4481fa73f6db2061e1ac1de5f6ece0677fdc8a321a4c6d8386437ed"
+        }
+      },
+      {
+        "schema_version": 1,
+        "network": {
+          "schema_version": 1,
+          "network_namespace": "eip155",
+          "network_reference": "137"
+        },
+        "address": "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+        "normalized_address": "0xabcdef0123456789abcdef0123456789abcdef01",
+        "deployment_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.deployment",
+          "major_version": 1,
+          "digest": "d69e945ba015e79dcc044984775933bd58e94eea1bbfaecc5058af6f2d151d9d"
+        }
+      }
+    ],
+    "equivalence_basis": {
+      "schema_version": 1,
+      "kind": "registry",
+      "assertion_digest": {
+        "algorithm": "sha-256",
+        "domain": "collection.equivalence",
+        "major_version": 1,
+        "digest": "c54ca94346873d4ea8d7bddbd6501d0461ee177e6c35e227bbb624af193bbb9e"
+      }
+    }
+  },
+  "token_standard": {
+    "schema_version": 1,
+    "value": "unknown"
+  },
+  "recognition": "ambiguous",
+  "index_status": "unknown",
+  "report_readiness": "unknown",
+  "metadata_quality": "registry_enriched",
+  "provenance": [
+    {
+      "schema_version": 1,
+      "source": "inventory_registry",
+      "observed_at": "2026-07-16T08:00:00Z",
+      "evidence_digest": {
+        "algorithm": "sha-256",
+        "domain": "collection.provenance",
+        "major_version": 1,
+        "digest": "209cd34e7e360bcf4a2933f798bf79a7b2c89f0eaa58af560937837bc1287d31"
+      }
+    }
+  ],
+  "finality_policies": [
+    {
+      "schema_version": 1,
+      "network": {
+        "schema_version": 1,
+        "network_namespace": "eip155",
+        "network_reference": "137"
+      },
+      "finality_policy_version": "polygon-finalized.v3"
+    },
+    {
+      "schema_version": 1,
+      "network": {
+        "schema_version": 1,
+        "network_namespace": "solana",
+        "network_reference": "mainnet-beta"
+      },
+      "finality_policy_version": "solana-finalized.v2"
+    }
+  ],
+  "ranking_reasons": [
+    "exact_inventory_match",
+    "explicit_equivalence"
+  ]
+}

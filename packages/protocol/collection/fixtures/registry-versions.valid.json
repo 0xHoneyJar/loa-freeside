@@ -1,0 +1,22 @@
+[
+  {
+    "registry_epoch": "11111111-1111-4111-8111-111111111111",
+    "registry_sequence": "0"
+  },
+  {
+    "registry_epoch": "11111111-1111-4111-8111-111111111111",
+    "registry_sequence": "9"
+  },
+  {
+    "registry_epoch": "11111111-1111-4111-8111-111111111111",
+    "registry_sequence": "10"
+  },
+  {
+    "registry_epoch": "11111111-1111-4111-8111-111111111111",
+    "registry_sequence": "18446744073709551615"
+  },
+  {
+    "registry_epoch": "22222222-2222-4222-8222-222222222222",
+    "registry_sequence": "0"
+  }
+]
