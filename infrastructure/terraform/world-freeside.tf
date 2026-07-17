@@ -28,6 +28,10 @@ module "world_freeside" {
   aws_region               = var.aws_region
   account_id               = data.aws_caller_identity.current.account_id
 
+  # Health alarm wiring (2026-07-17 void-alarm audit — worlds had zero coverage)
+  alerts_topic_arn = aws_sns_topic.alerts.arn
+  alb_arn_suffix   = aws_lb.main.arn_suffix
+
   cpu    = 512
   memory = 1024
 
@@ -45,11 +49,11 @@ module "world_freeside" {
   }
 
   secrets = {
-    DATABASE_URL             = aws_secretsmanager_secret.freeside_dashboard["database_url"].arn
-    SCORE_API_KEY            = aws_secretsmanager_secret.freeside_dashboard["score_api_key"].arn
-    LINK_SERVICE_TOKEN       = aws_secretsmanager_secret.freeside_dashboard["link_service_token"].arn
-    ORDERING_SERVICE_TOKEN   = aws_secretsmanager_secret.freeside_dashboard["ordering_service_token"].arn
-    CONFIG_SERVICE_TOKEN     = aws_secretsmanager_secret.freeside_dashboard["config_service_token"].arn
+    DATABASE_URL           = aws_secretsmanager_secret.freeside_dashboard["database_url"].arn
+    SCORE_API_KEY          = aws_secretsmanager_secret.freeside_dashboard["score_api_key"].arn
+    LINK_SERVICE_TOKEN     = aws_secretsmanager_secret.freeside_dashboard["link_service_token"].arn
+    ORDERING_SERVICE_TOKEN = aws_secretsmanager_secret.freeside_dashboard["ordering_service_token"].arn
+    CONFIG_SERVICE_TOKEN   = aws_secretsmanager_secret.freeside_dashboard["config_service_token"].arn
   }
 
   secret_arns = [for s in aws_secretsmanager_secret.freeside_dashboard : s.arn]

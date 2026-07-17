@@ -1,38 +1,13 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Found logic errors that can trigger false alerts and missing alert metrics in single-snapshot evaluation.",
-  "issues": [
+  "summary": "The prior misconfiguration guard for alb_arn_suffix is not shown as implemented, so the previous blocking issue remains unresolved.",
+  "previous_issues_status": [
     {
-      "severity": "major",
-      "file": "packages/services/velocity-alert-service.ts",
-      "line": 86,
-      "description": "Non-positive exhaustion hours (0 or negative) should not trigger alerts, but current code only checks for null, causing false emergency alerts when estimatedExhaustionHours <= 0.",
-      "current_code": "```typescript\n  // No exhaustion predicted (velocity ≤ 0 or null)\n  if (snapshot.estimatedExhaustionHours === null) {\n    return null;\n  }\n```",
-      "fixed_code": "```typescript\n  // No exhaustion predicted (velocity ≤ 0 or null)\n  if (\n    snapshot.estimatedExhaustionHours === null ||\n    snapshot.estimatedExhaustionHours <= 0n\n  ) {\n    return null;\n  }\n```",
-      "explanation": "This prevents false alert emission when exhaustion is not actually predicted (zero or negative hours), aligning behavior with the comment and expected logic."
-    },
-    {
-      "severity": "major",
-      "file": "packages/services/velocity-alert-service.ts",
-      "line": 126,
-      "description": "Single-snapshot evaluation returns an alert but never emits the alert metric, so CloudWatch alarms won't trigger when evaluateSnapshot is used.",
-      "current_code": "```typescript\n    if (snapshot.estimatedExhaustionHours <= threshold.hours) {\n      return {\n        communityId: snapshot.communityId,\n        severity: threshold.severity,\n        estimatedExhaustionHours: snapshot.estimatedExhaustionHours,\n        velocityMicroPerHour: snapshot.velocityMicroPerHour,\n        confidence: snapshot.confidence,\n        timestamp: snapshot.computedAt,\n      };\n    }\n```",
-      "fixed_code": "```typescript\n    if (snapshot.estimatedExhaustionHours <= threshold.hours) {\n      const alert: VelocityAlert = {\n        communityId: snapshot.communityId,\n        severity: threshold.severity,\n        estimatedExhaustionHours: snapshot.estimatedExhaustionHours,\n        velocityMicroPerHour: snapshot.velocityMicroPerHour,\n        confidence: snapshot.confidence,\n        timestamp: snapshot.computedAt,\n      };\n      emitAlertMetric(alert);\n      return alert;\n    }\n```",
-      "explanation": "Emitting the alert metric ensures CloudWatch alarms fire consistently whether evaluation happens per-snapshot or in batch."
-    },
-    {
-      "severity": "major",
-      "file": "packages/services/velocity-alert-service.ts",
-      "line": 174,
-      "description": "Batch evaluation also fails to guard against non-positive exhaustion hours, which can emit false alerts when estimatedExhaustionHours <= 0.",
-      "current_code": "```typescript\n    if (snapshot.estimatedExhaustionHours === null) {\n      continue;\n    }\n```",
-      "fixed_code": "```typescript\n    if (\n      snapshot.estimatedExhaustionHours === null ||\n      snapshot.estimatedExhaustionHours <= 0n\n    ) {\n      continue;\n    }\n```",
-      "explanation": "This aligns batch behavior with the intended logic and prevents false alerts for non-exhaustion states."
+      "original_issue": "Missing validation: alerts enabled without alb_arn_suffix can create mis-dimensioned HealthyHostCount alarms",
+      "status": "not_fixed",
+      "notes": "The re-review diff does not show the validation added in infrastructure/terraform/modules/world/variables.tf, so this safeguard is still missing."
     }
   ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 2
 }

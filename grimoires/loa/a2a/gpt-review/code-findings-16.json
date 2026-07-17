@@ -1,23 +1,13 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously reported issues were addressed and no new blocking problems were introduced.",
+  "summary": "The previously missing safeguard for alb_arn_suffix has been added and the issue is resolved.",
   "previous_issues_status": [
     {
-      "original_issue": "Non-positive exhaustion hours should not trigger alerts (single snapshot)",
+      "original_issue": "Missing validation: alerts enabled without alb_arn_suffix can create mis-dimensioned HealthyHostCount alarms",
       "status": "fixed",
-      "notes": "Guard now checks for null or <= 0n before alert evaluation."
-    },
-    {
-      "original_issue": "Single-snapshot evaluation returns alert but doesn’t emit alert metric",
-      "status": "fixed",
-      "notes": "Alert metric emission added before returning the alert."
-    },
-    {
-      "original_issue": "Batch evaluation should skip non-positive exhaustion hours",
-      "status": "fixed",
-      "notes": "Batch now continues when estimatedExhaustionHours is null or <= 0n."
+      "notes": "Precondition added in modules/world/monitoring.tf to require alb_arn_suffix when alerts_topic_arn is set."
     }
   ],
   "new_blocking_concerns": [],
-  "iteration": 2
+  "iteration": 3
 }

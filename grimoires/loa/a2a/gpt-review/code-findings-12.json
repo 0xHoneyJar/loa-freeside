@@ -1,7 +1,35 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No bugs or security issues found in the migration.",
-  "issues": [],
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Input validation and SSRF hardening are missing on the proxy endpoint, and the timeout cleanup is incomplete on error paths.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "chatPageRouter.ts",
+      "line": 29,
+      "description": "The /chat/session endpoint does not validate token_id against the required format (\"mibera:<number>\"), allowing malformed input to be forwarded to the internal service.",
+      "current_code": "```typescript\n  try {\n    const { token_id } = req.body as { token_id?: string };\n    const controller = new AbortController();\n    const timeout = setTimeout(() => controller.abort(), 30000); // 30s for cold cache\n\n    const finnRes = await fetch(`${loaFinnUrl}/api/sessions`, {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({ token_id: token_id || undefined }),\n      signal: controller.signal,\n    });\n```",
+      "fixed_code": "```typescript\n  try {\n    const { token_id } = (req.body ?? {}) as { token_id?: unknown };\n    const TOKEN_ID_RE = /^mibera:\\d{1,64}$/;\n    if (typeof token_id !== 'string' || !TOKEN_ID_RE.test(token_id)) {\n      res.status(400).json({ error: 'Invalid token_id format' });\n      return;\n    }\n\n    const controller = new AbortController();\n    const timeout = setTimeout(() => controller.abort(), 30000); // 30s for cold cache\n\n    const finnRes = await fetch(new URL('/api/sessions', loaFinnUrl).toString(), {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({ token_id }),\n      signal: controller.signal,\n    });\n```",
+      "explanation": "This enforces the required token format and prevents malformed or unexpected input from being forwarded. It also uses URL joining safely (paired with the SSRF fix below)."
+    },
+    {
+      "severity": "critical",
+      "file": "chatPageRouter.ts",
+      "line": 22,
+      "description": "The proxy uses LOA_FINN_BASE_URL without validation, allowing unsafe protocols or hostnames if misconfigured, which can enable SSRF or credential leakage.",
+      "current_code": "```typescript\n  const loaFinnUrl = process.env.LOA_FINN_BASE_URL;\n  if (!loaFinnUrl) {\n    res.status(503).json({ error: 'Inference service not configured' });\n    return;\n  }\n```",
+      "fixed_code": "```typescript\n  const loaFinnUrl = getFinnBaseUrl();\n  if (!loaFinnUrl) {\n    res.status(503).json({ error: 'Inference service not configured or invalid' });\n    return;\n  }\n```\n\n```typescript\n// Place near imports/top of file\nconst ALLOWED_FINN_HOSTS = (process.env.LOA_FINN_ALLOWED_HOSTS ?? '')\n  .split(',')\n  .map((h) => h.trim())\n  .filter(Boolean);\n\nfunction getFinnBaseUrl(): URL | null {\n  const raw = process.env.LOA_FINN_BASE_URL;\n  if (!raw) return null;\n  let url: URL;\n  try {\n    url = new URL(raw);\n  } catch {\n    return null;\n  }\n  if (url.username || url.password) return null;\n  if (!['http:', 'https:'].includes(url.protocol)) return null;\n  if (ALLOWED_FINN_HOSTS.length > 0 && !ALLOWED_FINN_HOSTS.includes(url.hostname)) return null;\n  return url;\n}\n```",
+      "explanation": "Validating the base URL prevents unsafe protocols, embedded credentials, and unexpected hosts. Allowlisting provides explicit SSRF mitigation even if environment variables are misconfigured."
+    },
+    {
+      "severity": "major",
+      "file": "chatPageRouter.ts",
+      "line": 33,
+      "description": "Timeout is not cleared if fetch throws before response, causing a timer leak and potentially aborting unrelated future operations; abort detection relies on message substring rather than AbortError name.",
+      "current_code": "```typescript\n    const controller = new AbortController();\n    const timeout = setTimeout(() => controller.abort(), 30000); // 30s for cold cache\n\n    const finnRes = await fetch(`${loaFinnUrl}/api/sessions`, {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({ token_id: token_id || undefined }),\n      signal: controller.signal,\n    });\n\n    clearTimeout(timeout);\n\n    if (!finnRes.ok) {\n      res.status(finnRes.status).json({ error: 'Session creation failed', status: finnRes.status });\n      return;\n    }\n...\n  } catch (err: unknown) {\n    const message = err instanceof Error ? err.message : 'Unknown error';\n    if (message.includes('abort')) {\n      res.status(504).json({ error: 'Session creation timed out (personality synthesis in progress — try again)' });\n    } else {\n      res.status(500).json({ error: 'Session creation failed', message });\n    }\n  }\n```",
+      "fixed_code": "```typescript\n    const controller = new AbortController();\n    const timeout = setTimeout(() => controller.abort(), 30000); // 30s for cold cache\n\n    let finnRes: Response;\n    try {\n      finnRes = await fetch(new URL('/api/sessions', loaFinnUrl).toString(), {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ token_id }),\n        signal: controller.signal,\n      });\n    } finally {\n      clearTimeout(timeout);\n    }\n\n    if (!finnRes.ok) {\n      res.status(finnRes.status).json({ error: 'Session creation failed', status: finnRes.status });\n      return;\n    }\n...\n  } catch (err: unknown) {\n    if (err instanceof DOMException && err.name === 'AbortError') {\n      res.status(504).json({ error: 'Session creation timed out (personality synthesis in progress — try again)' });\n      return;\n    }\n    const message = err instanceof Error ? err.message : 'Unknown error';\n    res.status(500).json({ error: 'Session creation failed', message });\n  }\n```",
+      "explanation": "Using a finally block guarantees timer cleanup on all error paths. Checking AbortError by name is more reliable than substring matching and avoids false positives."
+    }
+  ],
   "fabrication_check": {
     "passed": true,
     "concerns": []
