@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "collection_id": {
+      "algorithm": "sha-256",
+      "domain": "collection.identity",
+      "major_version": 1,
+      "digest": "8e5e2591cd66b49551c495ff4bd14d98bf6d47ebe1e00844c466cc41ba1e5ba8"
+    },
+    "schema_version": 1,
+    "name": "Solana Collection",
+    "symbol": "SOLC",
+    "deployments": [
+      {
+        "schema_version": 1,
+        "network": {
+          "schema_version": 1,
+          "network_namespace": "solana",
+          "network_reference": "mainnet-beta"
+        },
+        "address": "So11111111111111111111111111111111111111112",
+        "normalized_address": "So11111111111111111111111111111111111111112",
+        "deployment_id": {
+          "algorithm": "sha-256",
+          "domain": "collection.deployment",
+          "major_version": 1,
+          "digest": "6c57477db4481fa73f6db2061e1ac1de5f6ece0677fdc8a321a4c6d8386437ed"
+        }
+      }
+    ],
+    "equivalence_basis": {
+      "schema_version": 1,
+      "kind": "single_deployment"
+    }
+  },
+  "token_standard": {
+    "schema_version": 1,
+    "value": "metaplex_collection"
+  },
+  "recognition": "recognized",
+  "index_status": "missing",
+  "report_readiness": "preparation_required",
+  "metadata_quality": "external_pointer",
+  "provenance": [
+    {
+      "schema_version": 1,
+      "source": "sonar_probe",
+      "observed_at": "2026-07-16T08:00:00Z",
+      "evidence_digest": {
+        "algorithm": "sha-256",
+        "domain": "collection.provenance",
+        "major_version": 1,
+        "digest": "cb7afc7e63357b747352578ca7d2d87af00c1c2faa70887db7bd2b1cd8176734"
+      }
+    }
+  ],
+  "finality_policies": [
+    {
+      "schema_version": 1,
+      "network": {
+        "schema_version": 1,
+        "network_namespace": "solana",
+        "network_reference": "mainnet-beta"
+      },
+      "finality_policy_version": "solana-finalized.v2"
+    }
+  ],
+  "ranking_reasons": [
+    "supported_standard",
+    "onchain_metadata"
+  ]
+}
