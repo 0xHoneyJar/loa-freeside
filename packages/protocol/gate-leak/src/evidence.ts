@@ -1295,6 +1295,42 @@ export const evaluateOwnershipFinalityProof = (
   const byDeployment = new Map<string, OwnershipFinalityAttestation>();
   const coverageByDeployment = new Map<string, DeploymentCoverageEntry>();
   const selectedDeploymentIds = [...selectedDeploymentNetworks.keys()];
+  const verifiedAttestations: Array<OwnershipFinalityAttestation> = [];
+
+  // This function is itself a public trust boundary. Callers may construct a
+  // typed object in-process and bypass decodeOwnershipIndexEvidence, so prove
+  // every attestation's digest and CR-001 deployment-ref integrity before any
+  // semantic finality checks.
+  for (const attestation of ownership.finality_attestations) {
+    const verification = Effect.runSync(
+      verifyOwnershipFinalityAttestationIntegrity(attestation).pipe(
+        Effect.match({
+          onFailure: (error) => ({ ok: false as const, error }),
+          onSuccess: (value) => ({ ok: true as const, value }),
+        }),
+      ),
+    );
+    if (!verification.ok) {
+      const detail =
+        verification.error instanceof OwnershipFinalityIntegrityError
+          ? verification.error.reason === "attestation_digest_mismatch"
+            ? "grafted_digest"
+            : verification.error.reason === "hybrid_deployment_ref"
+              ? "hybrid_deployment_ref"
+              : verification.error.reason === "wrong_vm_policy" ||
+                  verification.error.reason === "policy_namespace_mismatch"
+                ? "wrong_vm_policy"
+                : "grafted_deployment_ref"
+          : "grafted_deployment_ref";
+      return {
+        proven: false,
+        reason_code: "ownership_finality_unproven",
+        detail,
+        deployment_id: attestation.deployment_ref.deployment_id.digest,
+      };
+    }
+    verifiedAttestations.push(verification.value);
+  }
 
   for (const coverage of ownership.coverage) {
     const deploymentId = coverage.deployment_id.digest;
@@ -1309,7 +1345,7 @@ export const evaluateOwnershipFinalityProof = (
     coverageByDeployment.set(deploymentId, coverage);
   }
 
-  for (const attestation of ownership.finality_attestations) {
+  for (const attestation of verifiedAttestations) {
     const deploymentId = attestationDeploymentId(attestation).digest;
     if (seen.has(deploymentId)) {
       return {

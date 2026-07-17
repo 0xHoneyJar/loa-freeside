@@ -1688,6 +1688,27 @@ describe("ownership finality closed attestation contract", () => {
       "OwnershipFinalityIntegrityError",
     );
     expect(graftedFullFailure).toMatchObject({ reason: "grafted_deployment_ref" });
+    expect(
+      evaluateOwnershipFinalityProof(
+        {
+          ...ownershipEvidence,
+          finality_attestations: [
+            {
+              ...attestation,
+              deployment_ref: graftedFullRef,
+              attestation_digest: expectEffectSuccess(
+                computeOwnershipFinalityAttestationDigest(graftedFullMaterial),
+              ),
+            },
+          ],
+        },
+        selectedNetworkMap,
+        OWNERSHIP_FINALITY_POLICY_VERSIONS_V1,
+      ),
+    ).toMatchObject({
+      proven: false,
+      detail: "grafted_deployment_ref",
+    });
 
     // Wrong network_reference (eip155:1 vs eip155:80094) with grafted digest id.
     const wrongNetworkRef = expectEffectSuccess(
@@ -1830,21 +1851,38 @@ describe("ownership finality closed attestation contract", () => {
       throw new Error("expected attestation and coverage");
     }
 
-    expectEffectFailureTag(
-      decodeOwnershipIndexEvidence({
-        ...ownershipEvidence,
-        finality_attestations: [
-          {
-            ...attestation,
-            attestation_digest: {
-              ...attestation.attestation_digest,
-              digest: "c".repeat(64),
-            },
+    const forgedDigestOwnership: OwnershipIndexEvidence = {
+      ...ownershipEvidence,
+      finality_attestations: [
+        {
+          ...attestation,
+          attestation_digest: {
+            ...attestation.attestation_digest,
+            digest: "c".repeat(64),
           },
-        ],
-      }),
+        },
+      ],
+    };
+    expectEffectFailureTag(
+      decodeOwnershipIndexEvidence(forgedDigestOwnership),
       "OwnershipFinalityIntegrityError",
     );
+    expect(
+      evaluateOwnershipFinalityProof(
+        forgedDigestOwnership,
+        selectedNetworkMap,
+        OWNERSHIP_FINALITY_POLICY_VERSIONS_V1,
+      ),
+    ).toMatchObject({
+      proven: false,
+      detail: "grafted_digest",
+    });
+    expect(
+      refusalReasons({
+        ...readyContext(),
+        ownership: forgedDigestOwnership,
+      }),
+    ).toContain("ownership_finality_unproven");
 
     expect(
       refusalReasons({

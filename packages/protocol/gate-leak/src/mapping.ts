@@ -492,6 +492,7 @@ const commandMaterialMatchesVersion = (version: GateMappingVersion): boolean => 
     material.eligibility_rule.token_scope === version.eligibility_rule.token_scope &&
     material.provenance === version.provenance &&
     material.ratifier_subject === version.ratifier_subject &&
+    material.ratifier_permissions.includes(version.ratifier_permission) &&
     material.effective_at === version.effective_at &&
     material.idempotency_key === version.idempotency_key &&
     identityRevealBasesEqual(material.identity_reveal_basis, version.identity_reveal_basis)

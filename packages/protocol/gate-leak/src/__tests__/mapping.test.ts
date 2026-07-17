@@ -481,6 +481,40 @@ describe("gate_mapping.v1 aggregate", () => {
       expect.arrayContaining(["command_material", "mapping_version_id"]),
     );
 
+    // A persisted version cannot manufacture a self-consistent command that
+    // never granted the ratifier gate-config:ratify. Recompute every dependent
+    // digest to prove permission binding is an authorization invariant, not a
+    // stale-digest side effect.
+    const permissionlessMaterial = {
+      ...version.command_material,
+      ratifier_permissions: [] as typeof version.command_material.ratifier_permissions,
+    };
+    const permissionlessCommandDigest = expectEffectSuccess(
+      computeGateMappingCommandDigest(permissionlessMaterial),
+    );
+    const permissionlessVersionId = expectEffectSuccess(
+      digestVersioned("gate-leak.mapping-version", 1, {
+        config_digest: version.config_digest,
+        command_digest: permissionlessCommandDigest,
+        effective_at: version.effective_at,
+        idempotency_key: version.idempotency_key,
+        provenance: version.provenance,
+        ratifier_subject: version.ratifier_subject,
+        identity_reveal_basis: version.identity_reveal_basis,
+      }),
+    );
+    const permissionlessVersion: GateMappingVersion = {
+      ...version,
+      command_material: permissionlessMaterial,
+      command_digest: permissionlessCommandDigest,
+      mapping_version_id: permissionlessVersionId,
+    };
+    expect(integrityMismatchesOf(permissionlessVersion)).toEqual(["command_material"]);
+    expectEffectFailureTag(
+      decodeGateMappingVersion(permissionlessVersion),
+      "MappingIntegrityError",
+    );
+
     // Aggregate CAS / evidence field tamper on a persisted aggregate shape.
     const ratified = expectEffectSuccess(
       ratifyGateMapping(seedOf(mibera), ratifyCommandOf(mibera.ratify_command)),
