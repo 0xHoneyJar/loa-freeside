@@ -575,15 +575,24 @@ intentionally use `rg`.
 ```bash
 BASE=3782fd47e8a20cdaf6325621962bd0443e6781b8
 
+# A shallow or stale clone may not contain the audited object. If this fails,
+# run `git fetch origin main` and retry before accepting any output below.
+git cat-file -e "$BASE^{commit}" || {
+  printf 'missing audited commit; run: git fetch origin main\n' >&2
+  exit 1
+}
+
 git show -s --format='%H %cI %s' "$BASE"
 git grep -n 'export const ProductId\|ProductId =' \
   "$BASE" -- packages/protocol/ordering/src/order.ts
 
-# Candidate-path inventory only. The canonical CR-000 path and schema are not
+# Candidate-path inventory only. This includes extensionless and arbitrary-
+# extension filenames whose basename starts with CR-000 or contains both
+# "discord" and "policy". The canonical CR-000 path and schema are not
 # ratified, so zero matches is corroboration, never exhaustive absence proof.
 cr000_candidate_count="$(
   git ls-tree -r --name-only "$BASE" \
-    | rg -i '(^|/)(cr-000[^/]*|[^/]*discord[^/]*policy[^/]*)\.(md|json|ya?ml)$' \
+    | rg -i '(^|/)(cr-000[^/]*|[^/]*discord[^/]*policy[^/]*)$' \
     | rg -v '(^|/)grimoires/loa/coordination/collection-report/owner-acceptance\.md$' \
     | wc -l \
     | tr -d ' '
