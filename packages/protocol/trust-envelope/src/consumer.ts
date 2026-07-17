@@ -50,10 +50,18 @@ const cloneState = (state: StreamConsumerState): StreamConsumerState => ({
   retainedAcceptedAtMs: [...state.retainedAcceptedAtMs],
 });
 
+const commitAccepted = (
+  state: StreamConsumerState,
+  envelope: TrustEnvelope,
+  acceptedAtMs: number,
+): void => {
+  state.seenEventIds.add(envelope.header.event_id);
+  state.retainedAcceptedAtMs.push(acceptedAtMs);
+};
+
 export const ingestTrustEnvelope = (
   input: IngestTrustEnvelopeInput,
 ): IngestTrustEnvelopeResult => {
-  const state = cloneState(input.state);
   const retentionMs = input.retentionMs ?? TRUST_STREAM_MIN_RETENTION_MS;
 
   try {
@@ -69,7 +77,7 @@ export const ingestTrustEnvelope = (
     throw error;
   }
 
-  if (input.envelope.header.stream_id !== state.streamId) {
+  if (input.envelope.header.stream_id !== input.state.streamId) {
     return {
       kind: "rejected",
       error: new TrustEnvelopeRejectedError({ reason: "epoch_mismatch" }),
@@ -77,7 +85,7 @@ export const ingestTrustEnvelope = (
     };
   }
 
-  if (input.envelope.header.stream_epoch < state.streamEpoch) {
+  if (input.envelope.header.stream_epoch < input.state.streamEpoch) {
     return {
       kind: "rejected",
       error: new TrustEnvelopeRejectedError({
@@ -88,7 +96,7 @@ export const ingestTrustEnvelope = (
     };
   }
 
-  if (input.envelope.header.stream_epoch > state.streamEpoch) {
+  if (input.envelope.header.stream_epoch > input.state.streamEpoch) {
     return {
       kind: "rejected",
       error: new TrustEnvelopeRejectedError({
@@ -99,7 +107,7 @@ export const ingestTrustEnvelope = (
     };
   }
 
-  if (state.seenEventIds.has(input.envelope.header.event_id)) {
+  if (input.state.seenEventIds.has(input.envelope.header.event_id)) {
     return {
       kind: "rejected",
       error: new TrustEnvelopeRejectedError({ reason: "event_id_replay" }),
@@ -107,7 +115,7 @@ export const ingestTrustEnvelope = (
     };
   }
 
-  const oldestRetained = state.retainedAcceptedAtMs[0];
+  const oldestRetained = input.state.retainedAcceptedAtMs[0];
   if (
     oldestRetained !== undefined &&
     input.acceptedAtMs - oldestRetained > retentionMs
@@ -122,15 +130,15 @@ export const ingestTrustEnvelope = (
     };
   }
 
-  state.seenEventIds.add(input.envelope.header.event_id);
-  state.retainedAcceptedAtMs.push(input.acceptedAtMs);
-
+  // Non-trust streams: event_id idempotency only — no contiguous sequence.
   if (!input.envelope.header.trust_stream) {
+    const state = cloneState(input.state);
+    commitAccepted(state, input.envelope, input.acceptedAtMs);
     return { kind: "accepted", state, replay: false };
   }
 
   const sequence = input.envelope.header.sequence;
-  if (sequence <= state.highestContiguousSequence) {
+  if (sequence <= input.state.highestContiguousSequence) {
     return {
       kind: "rejected",
       error: new TrustEnvelopeRejectedError({ reason: "sequence_reuse" }),
@@ -138,8 +146,11 @@ export const ingestTrustEnvelope = (
     };
   }
 
-  const expected = state.highestContiguousSequence + 1;
+  const expected = input.state.highestContiguousSequence + 1;
   if (sequence > expected) {
+    // Record missing sequences for repair, but do NOT accept this envelope and
+    // do NOT commit event_id (redelivery after gap fill must succeed).
+    const state = cloneState(input.state);
     for (let gap = expected; gap < sequence; gap += 1) {
       state.gaps.add(gap);
     }
@@ -153,12 +164,11 @@ export const ingestTrustEnvelope = (
     };
   }
 
+  // sequence === expected: accept in order only. Never advance across gaps.
+  const state = cloneState(input.state);
+  commitAccepted(state, input.envelope, input.acceptedAtMs);
   state.highestContiguousSequence = sequence;
   state.gaps.delete(sequence);
-  while (state.gaps.has(state.highestContiguousSequence + 1)) {
-    state.highestContiguousSequence += 1;
-    state.gaps.delete(state.highestContiguousSequence);
-  }
 
   return { kind: "accepted", state, replay: false };
 };
@@ -211,6 +221,10 @@ export const replayEnvelopeIdempotently = (
       error: new TrustEnvelopeRejectedError({ reason: "event_id_replay" }),
       state: input.state,
     };
+  }
+  // True idempotent replay of an already-accepted event_id.
+  if (input.state.seenEventIds.has(input.envelope.header.event_id)) {
+    return { kind: "accepted", state: input.state, replay: true };
   }
   return ingestTrustEnvelope(input);
 };

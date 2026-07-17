@@ -145,6 +145,24 @@ describe("shared producer/consumer fixtures (CR-009)", () => {
     if (gapResult.kind === "rejected") {
       expect(gapResult.error.reason).toBe("sequence_gap");
       expect(requestGapRepairRange(gapResult.state)).toEqual({ fromSequence: 3, toSequence: 5 });
+      // BB #497: gap reject must not poison event_id or skip missing sequences.
+      expect(gapResult.state.seenEventIds.has(gap!.envelope.header.event_id)).toBe(false);
+      expect(gapResult.state.highestContiguousSequence).toBe(
+        second.state.highestContiguousSequence,
+      );
+    }
+
+    // Redelivery of the same jumped-ahead envelope still reports sequence_gap
+    // (not event_id_replay) until the missing range is repaired in order.
+    const gapRedelivery = ingestTrustEnvelope({
+      envelope: gap!.envelope,
+      registry,
+      acceptedAtMs,
+      state: gapResult.state,
+    });
+    expect(gapRedelivery.kind).toBe("rejected");
+    if (gapRedelivery.kind === "rejected") {
+      expect(gapRedelivery.error.reason).toBe("sequence_gap");
     }
 
     const epochReject = ingestTrustEnvelope({
