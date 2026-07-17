@@ -80,10 +80,22 @@ export function createHttpSonarResolveProbePort(
           throw new SonarResolveProbeUnavailableError(502, "sonar probe missing fields");
         }
 
+        const diagnosticsRaw = body.diagnostics as Record<string, unknown>;
+        // Kitchen bounded-core diagnostics omit schema_version; Ordering
+        // CandidateSnapshot requires it. Normalize at the service boundary.
+        const diagnostics = {
+          schema_version: 1 as const,
+          searched: Array.isArray(diagnosticsRaw?.searched) ? diagnosticsRaw.searched : [],
+          timed_out: Array.isArray(diagnosticsRaw?.timed_out) ? diagnosticsRaw.timed_out : [],
+          unavailable: Array.isArray(diagnosticsRaw?.unavailable)
+            ? diagnosticsRaw.unavailable
+            : [],
+        } as CandidateSnapshot["diagnostics"];
+
         return {
           capability_snapshot_version: body.capability_snapshot_version as CapabilityRegistryVersion,
           candidates: body.candidates as ReadonlyArray<CollectionCandidate>,
-          diagnostics: body.diagnostics as CandidateSnapshot["diagnostics"],
+          diagnostics,
         };
       } finally {
         clearTimeout(timer);
