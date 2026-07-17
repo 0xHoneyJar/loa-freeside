@@ -1,6 +1,6 @@
 {
   "verdict": "APPROVED",
-  "summary": "No bugs or security issues found in the provided code.",
+  "summary": "No bugs or security issues found in the new monitoring alarm definition.",
   "issues": [],
   "fabrication_check": {
     "passed": true,
