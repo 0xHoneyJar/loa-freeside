@@ -374,13 +374,61 @@ describe("CR-005 artifact harness", () => {
       ),
     ).toThrow(SourceCommitError);
 
-    const ancestor = execFileSync("git", ["rev-parse", "HEAD^"], {
-      cwd: packageRoot,
-      encoding: "utf8",
-    }).trim();
-    expect(() =>
-      assertReachableSourceCommit(packageRoot, ancestor),
-    ).toThrow(/must equal current HEAD/);
+    const repositoryWithAncestor = mkdtempSync(
+      join(tmpdir(), "collection-protocol-source-commit-"),
+    );
+    try {
+      execFileSync("git", ["init", "--quiet"], {
+        cwd: repositoryWithAncestor,
+      });
+      writeFileSync(join(repositoryWithAncestor, "fixture.txt"), "first\n");
+      execFileSync("git", ["add", "fixture.txt"], {
+        cwd: repositoryWithAncestor,
+      });
+      execFileSync(
+        "git",
+        [
+          "-c",
+          "user.name=Collection Protocol Tests",
+          "-c",
+          "user.email=collection-protocol-tests@invalid",
+          "commit",
+          "--quiet",
+          "-m",
+          "first",
+        ],
+        { cwd: repositoryWithAncestor },
+      );
+      const ancestor = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: repositoryWithAncestor,
+        encoding: "utf8",
+      }).trim();
+
+      writeFileSync(join(repositoryWithAncestor, "fixture.txt"), "second\n");
+      execFileSync("git", ["add", "fixture.txt"], {
+        cwd: repositoryWithAncestor,
+      });
+      execFileSync(
+        "git",
+        [
+          "-c",
+          "user.name=Collection Protocol Tests",
+          "-c",
+          "user.email=collection-protocol-tests@invalid",
+          "commit",
+          "--quiet",
+          "-m",
+          "second",
+        ],
+        { cwd: repositoryWithAncestor },
+      );
+
+      expect(() =>
+        assertReachableSourceCommit(repositoryWithAncestor, ancestor),
+      ).toThrow(/must equal current HEAD/);
+    } finally {
+      rmSync(repositoryWithAncestor, { recursive: true, force: true });
+    }
 
     expect(() =>
       packArtifact({
