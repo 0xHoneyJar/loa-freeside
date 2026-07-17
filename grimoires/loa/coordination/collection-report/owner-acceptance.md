@@ -351,6 +351,7 @@ ops **0.25 FTE** post-rehearsal (re-estimate after CR-404).
 
 | Aggregate | Value |
 |---|---|
+| Range derivation | Shared protocol `28–46` + Ordering `128–200` + Shadow Audit `19–30` + platform/privacy/coordinator/ops `41–68` = **216–344 eng-days**; arithmetic midpoint `(216 + 344) / 2` = **280 eng-days** |
 | Central estimate | **~280 eng-days** (arithmetic midpoint of the component range; any different planning anchor requires an explicit U-14 derivation) |
 | Range | **~216–344 eng-days** |
 | Assumed steady headcount | **3.5–5.0 FTE**: protocol 0.5–1.0 + Ordering 1.5–2.0 + Shadow Audit 0.5–1.0 + platform 0.5 + coordinator 0.25 + ops 0.25 |
