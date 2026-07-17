@@ -192,6 +192,32 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     }
   }
 
+  /** Serialize all work mutations under the same work-key lock as join/detach. */
+  private async withWorkIdLock<T>(
+    workId: string,
+    fn: () => Promise<T>,
+  ): Promise<T | { kind: "serialization_retry" } | undefined> {
+    const work = this.works.get(workId);
+    if (!work) return undefined;
+    return this.withWorkKeyLock(work.work_key_digest, fn);
+  }
+
+  private unwrapLocked<T>(
+    locked: T | { kind: "serialization_retry" } | undefined,
+    missing: () => T,
+  ): T {
+    if (locked === undefined) return missing();
+    if (
+      locked &&
+      typeof locked === "object" &&
+      "kind" in locked &&
+      (locked as { kind: string }).kind === "serialization_retry"
+    ) {
+      throw new SharedPreparationStateError("work-key lock serialization exhausted");
+    }
+    return locked as T;
+  }
+
   private rowsForKey(workKeyDigest: string): MutableWork[] {
     return [...this.works.values()].filter((row) => row.work_key_digest === workKeyDigest);
   }
@@ -396,27 +422,35 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     | { readonly kind: "busy" }
     | { readonly kind: "not_active" }
   > {
-    const work = this.works.get(input.work_id);
-    if (!work || !isActivePublicWorkState(work.state)) {
-      return { kind: "not_active" };
-    }
-    const leaseExpired =
-      work.lease_until_unix_ms === undefined || input.now_ms >= work.lease_until_unix_ms;
-    if (!leaseExpired && work.lease_until_unix_ms !== undefined) {
-      return { kind: "busy" };
-    }
-    const reclaimed = leaseExpired && work.lease_until_unix_ms !== undefined;
-    work.lease_epoch += 1;
-    work.lease_until_unix_ms = input.now_ms + input.lease_duration_ms;
-    work.updated_at_unix_ms = input.now_ms;
-    for (const item of this.itemsForWork(work.work_id)) {
-      item.lease_epoch = work.lease_epoch;
-      item.updated_at_unix_ms = input.now_ms;
-    }
-    return {
-      kind: reclaimed ? "reclaimed" : "acquired",
-      work: cloneWork(work),
-    };
+    type LeaseResult =
+      | { readonly kind: "acquired"; readonly work: SharedPreparationWorkRecord }
+      | { readonly kind: "reclaimed"; readonly work: SharedPreparationWorkRecord }
+      | { readonly kind: "busy" }
+      | { readonly kind: "not_active" };
+    const locked = await this.withWorkIdLock(input.work_id, async (): Promise<LeaseResult> => {
+      const work = this.works.get(input.work_id);
+      if (!work || !isActivePublicWorkState(work.state)) {
+        return { kind: "not_active" };
+      }
+      const leaseExpired =
+        work.lease_until_unix_ms === undefined || input.now_ms >= work.lease_until_unix_ms;
+      if (!leaseExpired && work.lease_until_unix_ms !== undefined) {
+        return { kind: "busy" };
+      }
+      const reclaimed = leaseExpired && work.lease_until_unix_ms !== undefined;
+      work.lease_epoch += 1;
+      work.lease_until_unix_ms = input.now_ms + input.lease_duration_ms;
+      work.updated_at_unix_ms = input.now_ms;
+      for (const item of this.itemsForWork(work.work_id)) {
+        item.lease_epoch = work.lease_epoch;
+        item.updated_at_unix_ms = input.now_ms;
+      }
+      return {
+        kind: reclaimed ? "reclaimed" : "acquired",
+        work: cloneWork(work),
+      };
+    });
+    return this.unwrapLocked(locked, () => ({ kind: "not_active" as const }));
   }
 
   async transitionToPreparing(input: {
@@ -424,23 +458,29 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     expected_lease_epoch: number;
     now_ms: number;
   }): Promise<SharedPreparationWorkRecord> {
-    const work = this.works.get(input.work_id);
-    if (!work) throw new SharedPreparationStateError("work not found");
-    if (work.lease_epoch !== input.expected_lease_epoch) {
-      throw new SharedPreparationFencingError("stale lease epoch for preparing transition");
-    }
-    if (work.state !== "queued" && work.state !== "retry_wait") {
-      throw new SharedPreparationStateError(`cannot enter preparing from ${work.state}`);
-    }
-    work.state = "preparing";
-    work.updated_at_unix_ms = input.now_ms;
-    for (const item of this.itemsForWork(work.work_id)) {
-      if (item.state === "queued" || item.state === "retry_wait") {
-        item.state = "preparing";
-        item.updated_at_unix_ms = input.now_ms;
+    const locked = await this.withWorkIdLock(input.work_id, async () => {
+      const work = this.works.get(input.work_id);
+      if (!work) throw new SharedPreparationStateError("work not found");
+      if (work.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for preparing transition");
       }
-    }
-    return cloneWork(work);
+      // retry_wait → preparing only via wakeRetryWait → queued first.
+      if (work.state !== "queued") {
+        throw new SharedPreparationStateError(`cannot enter preparing from ${work.state}`);
+      }
+      work.state = "preparing";
+      work.updated_at_unix_ms = input.now_ms;
+      for (const item of this.itemsForWork(work.work_id)) {
+        if (item.state === "queued") {
+          item.state = "preparing";
+          item.updated_at_unix_ms = input.now_ms;
+        }
+      }
+      return cloneWork(work);
+    });
+    return this.unwrapLocked(locked, () => {
+      throw new SharedPreparationStateError("work not found");
+    });
   }
 
   async recordRetryableFailure(input: {
@@ -451,22 +491,29 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     failure: { code: string; reason: string };
     now_ms: number;
   }): Promise<SharedPreparationWorkRecord> {
-    const work = this.works.get(input.work_id);
-    if (!work) throw new SharedPreparationStateError("work not found");
-    if (work.lease_epoch !== input.expected_lease_epoch) {
-      throw new SharedPreparationFencingError("stale lease epoch for retryable failure");
-    }
-    if (work.state !== "preparing") {
-      throw new SharedPreparationStateError(`retryable failure requires preparing, got ${work.state}`);
-    }
-    work.state = "retry_wait";
-    work.attempt += 1;
-    work.next_attempt_at_unix_ms = input.next_attempt_at_unix_ms;
-    work.retry_deadline_unix_ms = input.retry_deadline_unix_ms;
-    work.lease_until_unix_ms = undefined;
-    work.failure_reason = { ...input.failure };
-    work.updated_at_unix_ms = input.now_ms;
-    return cloneWork(work);
+    const locked = await this.withWorkIdLock(input.work_id, async () => {
+      const work = this.works.get(input.work_id);
+      if (!work) throw new SharedPreparationStateError("work not found");
+      if (work.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for retryable failure");
+      }
+      if (work.state !== "preparing") {
+        throw new SharedPreparationStateError(
+          `retryable failure requires preparing, got ${work.state}`,
+        );
+      }
+      work.state = "retry_wait";
+      work.attempt += 1;
+      work.next_attempt_at_unix_ms = input.next_attempt_at_unix_ms;
+      work.retry_deadline_unix_ms = input.retry_deadline_unix_ms;
+      work.lease_until_unix_ms = undefined;
+      work.failure_reason = { ...input.failure };
+      work.updated_at_unix_ms = input.now_ms;
+      return cloneWork(work);
+    });
+    return this.unwrapLocked(locked, () => {
+      throw new SharedPreparationStateError("work not found");
+    });
   }
 
   async wakeRetryWait(input: {
@@ -477,20 +524,26 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     | { readonly kind: "woke"; readonly work: SharedPreparationWorkRecord }
     | { readonly kind: "stale_wake" }
   > {
-    const work = this.works.get(input.work_id);
-    if (!work || work.state !== "retry_wait") return { kind: "stale_wake" };
-    if (work.attempt !== input.expected_attempt) {
-      return { kind: "stale_wake" };
-    }
-    if (
-      work.next_attempt_at_unix_ms === undefined ||
-      input.now_ms < work.next_attempt_at_unix_ms
-    ) {
-      return { kind: "stale_wake" };
-    }
-    work.state = "queued";
-    work.updated_at_unix_ms = input.now_ms;
-    return { kind: "woke", work: cloneWork(work) };
+    type WakeResult =
+      | { readonly kind: "woke"; readonly work: SharedPreparationWorkRecord }
+      | { readonly kind: "stale_wake" };
+    const locked = await this.withWorkIdLock(input.work_id, async (): Promise<WakeResult> => {
+      const work = this.works.get(input.work_id);
+      if (!work || work.state !== "retry_wait") return { kind: "stale_wake" };
+      if (work.attempt !== input.expected_attempt) {
+        return { kind: "stale_wake" };
+      }
+      if (
+        work.next_attempt_at_unix_ms === undefined ||
+        input.now_ms < work.next_attempt_at_unix_ms
+      ) {
+        return { kind: "stale_wake" };
+      }
+      work.state = "queued";
+      work.updated_at_unix_ms = input.now_ms;
+      return { kind: "woke", work: cloneWork(work) };
+    });
+    return this.unwrapLocked(locked, () => ({ kind: "stale_wake" as const }));
   }
 
   async publishChildEvidence(input: {
@@ -499,20 +552,27 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     evidence: ReadinessEvidenceEnvelope;
     now_ms: number;
   }): Promise<PreparationWorkItemRecord> {
-    const item = this.items.get(input.work_item_id);
-    if (!item) throw new SharedPreparationStateError("work item not found");
-    if (item.lease_epoch !== input.expected_lease_epoch) {
-      throw new SharedPreparationFencingError("stale lease epoch for child evidence");
-    }
-    if (item.state !== "preparing") {
-      throw new SharedPreparationStateError(
-        `child evidence requires preparing, got ${item.state}`,
-      );
-    }
-    item.state = "ready";
-    item.evidence_envelope = structuredClone(input.evidence);
-    item.updated_at_unix_ms = input.now_ms;
-    return cloneItem(item);
+    const itemLookup = this.items.get(input.work_item_id);
+    if (!itemLookup) throw new SharedPreparationStateError("work item not found");
+    const locked = await this.withWorkIdLock(itemLookup.work_id, async () => {
+      const item = this.items.get(input.work_item_id);
+      if (!item) throw new SharedPreparationStateError("work item not found");
+      if (item.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for child evidence");
+      }
+      if (item.state !== "preparing") {
+        throw new SharedPreparationStateError(
+          `child evidence requires preparing, got ${item.state}`,
+        );
+      }
+      item.state = "ready";
+      item.evidence_envelope = structuredClone(input.evidence);
+      item.updated_at_unix_ms = input.now_ms;
+      return cloneItem(item);
+    });
+    return this.unwrapLocked(locked, () => {
+      throw new SharedPreparationStateError("work item not found");
+    });
   }
 
   async finalizeReadyIfQualified(input: {
@@ -524,25 +584,33 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     | { readonly kind: "ready"; readonly work: SharedPreparationWorkRecord }
     | { readonly kind: "pending_children"; readonly work: SharedPreparationWorkRecord }
   > {
-    const work = this.works.get(input.work_id);
-    if (!work) throw new SharedPreparationStateError("work not found");
-    if (work.lease_epoch !== input.expected_lease_epoch) {
-      throw new SharedPreparationFencingError("stale lease epoch for parent ready");
-    }
-    if (work.state !== "preparing") {
-      throw new SharedPreparationStateError(
-        `finalize ready requires preparing, got ${work.state}`,
-      );
-    }
-    const children = this.itemsForWork(work.work_id);
-    if (!allChildrenReady(children)) {
-      return { kind: "pending_children", work: cloneWork(work) };
-    }
-    work.state = "ready";
-    work.readiness_evidence = structuredClone(input.readiness_evidence);
-    work.lease_until_unix_ms = undefined;
-    work.updated_at_unix_ms = input.now_ms;
-    return { kind: "ready", work: cloneWork(work) };
+    type FinalizeResult =
+      | { readonly kind: "ready"; readonly work: SharedPreparationWorkRecord }
+      | { readonly kind: "pending_children"; readonly work: SharedPreparationWorkRecord };
+    const locked = await this.withWorkIdLock(input.work_id, async (): Promise<FinalizeResult> => {
+      const work = this.works.get(input.work_id);
+      if (!work) throw new SharedPreparationStateError("work not found");
+      if (work.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for parent ready");
+      }
+      if (work.state !== "preparing") {
+        throw new SharedPreparationStateError(
+          `finalize ready requires preparing, got ${work.state}`,
+        );
+      }
+      const children = this.itemsForWork(work.work_id);
+      if (!allChildrenReady(children)) {
+        return { kind: "pending_children", work: cloneWork(work) };
+      }
+      work.state = "ready";
+      work.readiness_evidence = structuredClone(input.readiness_evidence);
+      work.lease_until_unix_ms = undefined;
+      work.updated_at_unix_ms = input.now_ms;
+      return { kind: "ready", work: cloneWork(work) };
+    });
+    return this.unwrapLocked(locked, () => {
+      throw new SharedPreparationStateError("work not found");
+    });
   }
 
   async detachSubscriber(input: {

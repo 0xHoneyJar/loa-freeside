@@ -198,6 +198,15 @@ describe("CR-201A public shared preparation store", () => {
     expect(failed.attempt).toBe(1);
     expect(failed.lease_until_unix_ms).toBeUndefined();
 
+    // Cannot bypass wake / next_attempt_at by transitioning from retry_wait.
+    await expect(
+      store.transitionToPreparing({
+        work_id: joined.work.work_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        now_ms: 3_500,
+      }),
+    ).rejects.toBeInstanceOf(SharedPreparationStateError);
+
     const staleWake = await store.wakeRetryWait({
       work_id: joined.work.work_id,
       expected_attempt: 0,
@@ -218,6 +227,71 @@ describe("CR-201A public shared preparation store", () => {
       now_ms: 10_000,
     });
     expect(woke.kind).toBe("woke");
+    if (woke.kind !== "woke") return;
+    expect(woke.work.state).toBe("queued");
+
+    // After wake, preparing is allowed from queued.
+    const lease2 = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "worker-b",
+      lease_duration_ms: 30_000,
+      now_ms: 10_500,
+    });
+    expect(lease2.kind === "acquired" || lease2.kind === "reclaimed").toBe(true);
+    if (lease2.kind !== "acquired" && lease2.kind !== "reclaimed") return;
+    const preparing = await store.transitionToPreparing({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease2.work.lease_epoch,
+      now_ms: 11_000,
+    });
+    expect(preparing.state).toBe("preparing");
+  });
+
+  it("allows only one winner under contested lease reclaim", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey();
+    const joined = await store.joinPublicWork({
+      order_id: "ord_lease_race",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1_000,
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    const first = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "worker-0",
+      lease_duration_ms: 5_000,
+      now_ms: 2_000,
+    });
+    expect(first.kind).toBe("acquired");
+    if (first.kind !== "acquired") return;
+    expect(first.work.lease_epoch).toBe(1);
+
+    const reclaimNow = 10_000; // past lease expiry
+    const results = await Promise.all(
+      Array.from({ length: 50 }, (_, index) =>
+        store.acquireLease({
+          work_id: joined.work.work_id,
+          worker_id: `worker-${index + 1}`,
+          lease_duration_ms: 30_000,
+          now_ms: reclaimNow,
+        }),
+      ),
+    );
+
+    const winners = results.filter(
+      (r) => r.kind === "reclaimed" || r.kind === "acquired",
+    );
+    const busy = results.filter((r) => r.kind === "busy");
+    expect(winners).toHaveLength(1);
+    expect(busy).toHaveLength(49);
+    expect(winners[0]!.kind).toBe("reclaimed");
+    if (winners[0]!.kind !== "reclaimed" && winners[0]!.kind !== "acquired") return;
+    expect(winners[0]!.work.lease_epoch).toBe(2);
+
+    const after = await store.getWork(joined.work.work_id);
+    expect(after?.lease_epoch).toBe(2);
   });
 
   it("fans subscriber transitions through shared work and abandons on zero subscribers", async () => {

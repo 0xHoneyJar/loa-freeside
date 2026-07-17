@@ -426,10 +426,11 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      // retry_wait → preparing only via wakeRetryWait → queued first.
       const result = await client.query(
         `UPDATE shared_preparation_work
          SET state = 'preparing', updated_at = $3
-         WHERE work_id = $1 AND lease_epoch = $2 AND state IN ('queued', 'retry_wait')
+         WHERE work_id = $1 AND lease_epoch = $2 AND state = 'queued'
          RETURNING *`,
         [input.work_id, input.expected_lease_epoch, msToIso(input.now_ms)],
       );
@@ -444,7 +445,7 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       await client.query(
         `UPDATE preparation_work_items
          SET state = 'preparing', updated_at = $2
-         WHERE work_id = $1 AND state IN ('queued', 'retry_wait')`,
+         WHERE work_id = $1 AND state = 'queued'`,
         [input.work_id, msToIso(input.now_ms)],
       );
       await client.query("COMMIT");
