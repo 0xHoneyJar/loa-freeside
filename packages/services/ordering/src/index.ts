@@ -248,6 +248,7 @@ export {
   InMemorySharedPreparationStore,
   SharedPreparationFencingError,
   SharedPreparationStateError,
+  assertReadinessEvidenceQualified,
   type SharedPreparationStore,
   type JoinPublicWorkInput,
   type JoinPublicWorkResult,

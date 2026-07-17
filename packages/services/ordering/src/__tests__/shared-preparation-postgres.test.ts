@@ -218,7 +218,11 @@ describePg("CR-201A Postgres shared preparation store", () => {
       }),
     ]);
 
-    expect(detachResult.kind === "detached" || detachResult.kind === "not_linked").toBe(true);
+    expect(
+      detachResult.kind === "detached" ||
+        detachResult.kind === "not_linked" ||
+        detachResult.kind === "serialization_retry",
+    ).toBe(true);
     expect(joinResult.kind === "joined" || joinResult.kind === "serialization_retry").toBe(true);
 
     if (joinResult.kind === "joined") {

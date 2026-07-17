@@ -22,6 +22,7 @@ import {
 import {
   SharedPreparationFencingError,
   SharedPreparationStateError,
+  assertReadinessEvidenceQualified,
   type JoinPublicWorkInput,
   type JoinPublicWorkResult,
   type SharedPreparationStore,
@@ -611,6 +612,12 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
           `finalize ready requires preparing, got ${work.state}`,
         );
       }
+      try {
+        assertReadinessEvidenceQualified(input.readiness_evidence);
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      }
 
       const pending = await client.query(
         "SELECT COUNT(*)::int AS pending FROM preparation_work_items WHERE work_id = $1 AND state <> 'ready'",
@@ -634,6 +641,7 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
              SELECT 1 FROM preparation_work_items
              WHERE work_id = $1 AND state <> 'ready'
            )
+           AND ($3::jsonb->'freshness'->>'qualified')::boolean = true
          RETURNING *`,
         [
           input.work_id,

@@ -112,6 +112,7 @@ export interface SharedPreparationStore {
   }): Promise<
     | { readonly kind: "detached"; readonly work?: SharedPreparationWorkRecord }
     | { readonly kind: "not_linked" }
+    | { readonly kind: "serialization_retry" }
   >;
   supersedeActiveGeneration(input: {
     work_key_digest: string;
@@ -143,6 +144,22 @@ function cloneLink(link: MutableLink): ReportWorkLinkRecord {
 
 function allChildrenReady(items: readonly MutableItem[]): boolean {
   return items.length > 0 && items.every((item) => item.state === "ready");
+}
+
+/** Same freshness gate join uses when reusing a ready row. */
+export function assertReadinessEvidenceQualified(
+  evidence: ReadinessEvidenceEnvelope,
+): void {
+  if (evidence.freshness.qualified !== true) {
+    throw new SharedPreparationStateError(
+      "finalize ready requires readiness_evidence.freshness.qualified",
+    );
+  }
+  if (evidence.privacy_scope !== "public_chain") {
+    throw new SharedPreparationStateError(
+      "finalize ready requires public_chain privacy_scope",
+    );
+  }
 }
 
 export class InMemorySharedPreparationStore implements SharedPreparationStore {
@@ -612,6 +629,7 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
           `finalize ready requires preparing, got ${work.state}`,
         );
       }
+      assertReadinessEvidenceQualified(input.readiness_evidence);
       const children = this.itemsForWork(work.work_id);
       if (!allChildrenReady(children)) {
         return { kind: "pending_children", work: cloneWork(work) };
@@ -634,7 +652,12 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
   }): Promise<
     | { readonly kind: "detached"; readonly work?: SharedPreparationWorkRecord }
     | { readonly kind: "not_linked" }
+    | { readonly kind: "serialization_retry" }
   > {
+    type DetachResult =
+      | { readonly kind: "detached"; readonly work?: SharedPreparationWorkRecord }
+      | { readonly kind: "not_linked" }
+      | { readonly kind: "serialization_retry" };
     const work = this.works.get(input.work_id);
     if (!work) return { kind: "not_linked" };
     const locked = await this.withWorkKeyLock(work.work_key_digest, async () => {
@@ -661,11 +684,9 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
       "kind" in locked &&
       locked.kind === "serialization_retry"
     ) {
-      return { kind: "not_linked" };
+      return { kind: "serialization_retry" };
     }
-    return locked as
-      | { readonly kind: "detached"; readonly work?: SharedPreparationWorkRecord }
-      | { readonly kind: "not_linked" };
+    return locked as DetachResult;
   }
 
   async supersedeActiveGeneration(input: {

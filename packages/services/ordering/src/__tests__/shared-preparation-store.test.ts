@@ -618,6 +618,139 @@ describe("CR-201A public shared preparation store", () => {
     ).rejects.toBeInstanceOf(SharedPreparationStateError);
   });
 
+  it("rejects unqualified finalize and does not reuse that row as ready", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey({ capability: "collection_identity.v1" });
+    const joined = await store.joinPublicWork({
+      order_id: "ord_unqual_a",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1,
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    const lease = await store.acquireLease({
+      work_id: joined.work.work_id,
+      worker_id: "w",
+      lease_duration_ms: 30_000,
+      now_ms: 2,
+    });
+    if (lease.kind !== "acquired") throw new Error("lease failed");
+    await store.transitionToPreparing({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease.work.lease_epoch,
+      now_ms: 3,
+    });
+    const evidence = fixtureReadinessEvidence(workKey.deployment_ids);
+    for (const item of await store.listWorkItems(joined.work.work_id)) {
+      await store.publishChildEvidence({
+        work_item_id: item.work_item_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        evidence,
+        now_ms: 4,
+      });
+    }
+
+    const unqualified = {
+      ...evidence,
+      freshness: { qualified: false, max_age_ms: 60_000 },
+    };
+    await expect(
+      store.finalizeReadyIfQualified({
+        work_id: joined.work.work_id,
+        expected_lease_epoch: lease.work.lease_epoch,
+        readiness_evidence: unqualified,
+        now_ms: 5,
+      }),
+    ).rejects.toBeInstanceOf(SharedPreparationStateError);
+
+    const stillPreparing = await store.getWork(joined.work.work_id);
+    expect(stillPreparing?.state).toBe("preparing");
+    expect(stillPreparing?.readiness_evidence).toBeUndefined();
+
+    const qualifiedReady = await store.finalizeReadyIfQualified({
+      work_id: joined.work.work_id,
+      expected_lease_epoch: lease.work.lease_epoch,
+      readiness_evidence: evidence,
+      now_ms: 6,
+    });
+    expect(qualifiedReady.kind).toBe("ready");
+
+    // Poison stored ready evidence — join must not reuse it as ready.
+    const works = (
+      store as unknown as {
+        works: Map<string, { readiness_evidence?: { freshness: { qualified: boolean } } }>;
+      }
+    ).works;
+    const stored = works.get(joined.work.work_id)!;
+    stored.readiness_evidence = {
+      ...evidence,
+      freshness: { qualified: false, max_age_ms: 60_000 },
+    };
+
+    const next = await store.joinPublicWork({
+      order_id: "ord_unqual_b",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 8,
+    });
+    expect(next.kind).toBe("joined");
+    if (next.kind !== "joined") return;
+    expect(next.reused_ready).toBe(false);
+    expect(next.created).toBe(true);
+    expect(next.work.state).toBe("queued");
+    expect(next.work.work_id).not.toBe(joined.work.work_id);
+  });
+
+  it("surfaces detach serialization_retry distinctly from not_linked", async () => {
+    const store = new InMemorySharedPreparationStore();
+    const workKey = fixturePublicWorkKey();
+    const joined = await store.joinPublicWork({
+      order_id: "ord_detach_ser",
+      order_tenant_scope_digest: fixtureCommunityScopeDigest("community-alpha"),
+      work_key: workKey,
+      now_ms: 1,
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    // Exhaust lock retries by forcing serialization_retry throws inside the critical section.
+    const digest = fixtureWorkKeyDigest(workKey);
+    const storeAny = store as unknown as {
+      withWorkKeyLock: <T>(
+        d: string,
+        fn: () => Promise<T>,
+      ) => Promise<T | { kind: "serialization_retry" }>;
+    };
+    const original = storeAny.withWorkKeyLock.bind(store);
+    storeAny.withWorkKeyLock = async () => ({ kind: "serialization_retry" as const });
+    try {
+      const result = await store.detachSubscriber({
+        order_id: "ord_detach_ser",
+        work_id: joined.work.work_id,
+        now_ms: 2,
+      });
+      expect(result.kind).toBe("serialization_retry");
+      expect(result.kind).not.toBe("not_linked");
+    } finally {
+      storeAny.withWorkKeyLock = original;
+    }
+
+    // Control: real detach after unlock still reports not_linked vs detached correctly.
+    const detached = await store.detachSubscriber({
+      order_id: "ord_detach_ser",
+      work_id: joined.work.work_id,
+      now_ms: 3,
+    });
+    expect(detached.kind).toBe("detached");
+    const missing = await store.detachSubscriber({
+      order_id: "ord_detach_ser",
+      work_id: joined.work.work_id,
+      now_ms: 4,
+    });
+    expect(missing.kind).toBe("not_linked");
+    expect(digest).toBeTruthy();
+  });
+
   it("survives concurrent detach and join without abandoning an active subscriber", async () => {
     const store = new InMemorySharedPreparationStore();
     const workKey = fixturePublicWorkKey();
