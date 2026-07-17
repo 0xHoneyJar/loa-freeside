@@ -34,6 +34,10 @@ module "world_mibera" {
   aws_region               = var.aws_region
   account_id               = data.aws_caller_identity.current.account_id
 
+  # Health alarm wiring (2026-07-17 void-alarm audit — worlds had zero coverage)
+  alerts_topic_arn = aws_sns_topic.alerts.arn
+  alb_arn_suffix   = aws_lb.main.arn_suffix
+
   # Next.js 15 + Sentry + sharp is heavier than the SvelteKit baseline (256/512).
   # Starting point; tune via CloudWatch observation (prd.md §6.3).
   cpu    = 512
