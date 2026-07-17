@@ -1,134 +1,112 @@
-# Sprint Plan — Shadow-Audit MVP: The Shadow-Mode Access-Intelligence Wedge
+# Sprint Plan — Thin Hub Extraction
 
-**Version:** 1.0
-**Date:** 2026-07-10
-**Cycle:** shadow-audit-mvp
-**PRD:** `grimoires/loa/prd.md` (G-1..G-6) · **SDD:** `grimoires/loa/sdd.md` (incl. §14 flatline integrations)
+**Version:** 1.0  
+**Date:** 2026-07-17  
+**Cycle:** thin-hub-extraction  
+**PRD:** `grimoires/loa/prd.md` (G-1..G-7) · **SDD:** `grimoires/loa/sdd.md`  
+**Prior sprint archived:** `sprint.shadow-audit-mvp.md`
 
-> **Spine = G-2** (thj sees real drift next to incumbent). Every sprint serves it. Acceptance criteria
-> trace to G-N + SDD §§ + flatline IMP-xxx. Multi-repo: master=loa-freeside, child=freeside-characters
-> (coordinator `~/bonfire/shadow-audit-mvp-coordinator`). Merge posture: DRAFT PRs, review→audit per task.
+> **Spine = G-1** — billing edge live over **one** credit SoT (finn cure).  
+> Mediums renamed → **integrations-api** (provider ingestion); sietch bot peel is separate.  
+> **G-7 AWS scrub is in-scope** (not optional hygiene).
+
+Domain labels: platform vs network per ADR-007 — **no cross-domain PRs**.
+
+---
 
 ## Sprint Overview
 
-| Sprint | Repo | Theme | Depends on |
-|--------|------|-------|-----------|
-| **S1** | loa-freeside | Shadow-audit service → SDD contracts (routes, formulas, tenancy, ingestion, tests) | — |
-| **S2** | loa-freeside | Deploy via Railway IaC + org-as-code agent-gate + access-risk teaser | S1 |
-| **S3** | freeside-characters (child) | Role-snapshot exporter → RoleSnapshot + profiles facts-write | S1 (POST /v1/role-snapshot) |
-| **S4** | loa-freeside / ops | thj onboarding + the spine E2E (thj sees drift) + representative E2E tests | S2, S3, G-4 |
+| Sprint | Theme | Goals | Domain |
+|--------|-------|-------|--------|
+| **S1** | Public AWS account scrub (`AWS_ACCOUNT_ID_REDACTED`) | G-7 | platform (docs/IaC) |
+| **S2** | Registry: `mediums-api` → `integrations-api` (#469) | G-3 | network |
+| **S3** | Mount BYOK admin + egress HTTP | G-4 | platform |
+| **S4** | Billing edge spike — finn finalize/health against single credit SoT | G-1 | network / billing-api |
+| **S5** | Hub freeze + dual-rail inventory beads (NOWPayments/x402 Shadows) | G-6 | platform |
 
-Cut-vertex order: harden the service first (S1) — everything reads its contracts. Deploy (S2) + exporter
-(S3) parallel after S1. Spine (S4) converges them.
+Ordering: S1 can parallel S2. S3 after S1 start. S4 is spine (may touch `billing-api` repo). S5 documents delete-later list only.
 
----
-
-## Sprint 1: Shadow-audit service to SDD contracts (loa-freeside)
-
-**Goal:** the built ~35-line box becomes the SDD-contract service: separated public/authed routes,
-deterministic formulas, per-community tenancy, the RoleSnapshot ingestion endpoint, k-anon, tests.
-
-> **RE-SCOPE 2026-07-10 (grounded against actual code — the service is ~2966 LOC, FAGAN-reviewed
-> across prior cycles, NOT a 35-line box).** VERIFIED-DONE + closed as beads (175 tests green):
-> **S1-T1** route separation (`GET /v1/audit` anon k-anon + `POST /v1/audit` authed — method-split,
-> `audit-router.ts:211,249`; rename to `/v1/access-risk` NOT done — would break the live dashboard
-> consumer), **S1-T2** block-at-date (`ownership-source.ts:40,59,78`), **S1-T3** tenancy + owner-waiver
-> (`association-verifier.ts:121,156`). GENUINE DELTA this pass: **S1-T4** (no `POST /v1/role-snapshot`
-> HTTP route exists — snapshot arrives only via a `load()` port; this is the S1↔S3 seam), **S1-T5**
-> (confirm the 6 test classes), **S1-T6** (role-snapshot contract fixture).
-
-- **S1-T1 — Route separation (SDD §4.1/§6, IMP-002/003):** `GET /v1/access-risk` (public teaser: on-chain
-  only, k-anon, meaningful-or-`insufficient-data`, NO member data) vs `POST /v1/audit` (authed member-level).
-  AC: distinct routes + auth; teaser never returns empty/always-true; contract tests for both.
-- **S1-T2 — Deterministic signals + block-at-date (SDD §4.2/§4.5, IMP-004/008/013):** pin the formulas;
-  `snapshot_date→block` at `block(date)-CONFIRMATIONS`; whale guard (`max(1,total_held)`, zero-supply→null).
-  AC: same inputs → identical `inputs_hash`+counts; reorg-below-finality cannot change a snapshot; unit tests.
-- **S1-T3 — Per-community tenancy + k-anon authz (SDD §4.3/§10, IMP-007/008):** credential→`community_id`;
-  `audit-acl` fails closed cross-community; member-level small-cohort disclosure owner-only + access-logged.
-  AC: cross-community request → denied+logged; cohort `<k` → `<k`; anonymous member-level → 401.
-- **S1-T4 — `POST /v1/role-snapshot` ingestion (SDD §14 IMP-009):** service-token auth; body=`RoleSnapshotSchema`
-  + sha256 integrity; holds latest per `(community, captured_at)`; fail-closed if absent/stale.
-  AC: valid snapshot accepted+hash-verified; bad token → 401; audit reads the ingested snapshot; stale → refused.
-- **S1-T5 — Test suite expansion (SDD §11/§14 IMP-016 HIGH-CONSENSUS):** k-anon suppression, k-waiver authz,
-  pagination ACL, block finality/reorg, `inputs_hash` stability, `risk_band` boundaries.
-  AC: all six test classes present + green in fixture mode; the 4 correctness scenarios (§11) pass.
-
-## Sprint 2: Deploy via Railway IaC + org-as-code (loa-freeside)
-
-**Goal:** G-1 (deploy the box, agent-first) + G-6 (org-as-code convention/gate) + G-5 (teaser live).
-
-- **S2-T1 — `.railway/railway.ts` for shadow-audit-api (SDD §8, G-1):** `service()` from repo, repo-root build,
-  Dockerfile path, env = greenlit `COLLECTION_REGISTRY` + 5 RPCs + `SHADOW_AUDIT_API_KEY` (`preserve()`).
-  AC: `railway config plan` shows the intended create; **operator approves the exact plan**; `apply` → live;
-  fail-closed verified. NEVER `--yes`/`--confirm-destructive` unapproved.
-- **S2-T2 — org-as-code agent gate (SDD §8, IMP-013, G-6):** CI `config plan --json --detailed-exit-code` vs
-  a committed baseline hash; drift fails unless intended; secrets redacted; prod apply human-gated.
-  AC: unexpected drift fails CI; baseline committed beside `.railway/railway.ts`; ordering-service also pulled.
-- **S2-T3 — access-risk teaser live (G-5):** the `access-risk-audit` preset wired to `GET /v1/access-risk`.
-  AC: given `{chain, contract, date}` returns turnover/sold-lapsed/newly-eligible/whale/stale-risk + CTA for a
-  real thj contract (Honeycomb) with NO Discord access.
-
-## Sprint 3: Role-snapshot exporter (freeside-characters · CHILD)
-
-**Goal:** G-3 — produce the RoleSnapshot AND write member FACTS to `profiles` (D1 first writer).
-
-- **S3-T1 — Exporter CLI (SDD §5, brief):** fork `apps/bot/src/cli/member-graph.ts`; enumerate thj guild
-  (`GuildMembers`); resolve discord→wallet (`member-identity-client`); emit `RoleSnapshotSchema` JSON
-  (`role_ids` snowflakes; unmatched flagged). AC: `RoleSnapshotSchema.parse` accepts output; unit test
-  (envelope + one resolved + one unmatched entry).
-- **S3-T2 — POST to service + profiles facts-write (SDD §3/§14, IMP-006/009/010/005):** POST the snapshot to
-  `/v1/role-snapshot`; upsert exporter-owned columns ONLY `ON CONFLICT (community_id, discord_id)` (never
-  Score's `tier`/`currentRank`); canonical gated-role scope; batch committed whole-or-not.
-  AC: profiles rows written for thj; Score columns untouched; conflict-flag on cross-identity wallet;
-  re-run = no-op (idempotent); `--dry-run` prints diff without writing.
-- **S3-T3 — PII floor (SDD §14 IMP-015):** logs redact wallet/discord; provenance recorded.
-  AC: no raw wallet/discord in logs; offboard-purge path documented.
-
-## Sprint 4: Spine + onboarding (loa-freeside / ops)
-
-**Goal:** G-4 onboarding + G-2 the spine (thj sees real drift) + SM validation.
-
-- **S4-T1 — thj onboarding (SDD §7, G-4, IMP-012):** place the `community-onboarding` order; advance
-  ingredients to `fulfilled` → thj `isOperatedCommunity`. AC: order fulfilled with `world_slug`; audit
-  mode-resolver returns `dogfood-full` for thj (not `external-mode`).
-- **S4-T2 — Spine E2E (G-2, SM-1/SM-2):** run the exporter → snapshot ingested → audit computes thj drift →
-  dashboard renders it next to incumbent. AC: drift renders live; hand-verified against ≥1 known holder;
-  ≥80% resolution (fixed denominator, unmatched flagged).
-- **S4-T3 — Representative E2E scenarios (SDD §11, IMP-014):** stale-access positive, ok holder,
-  newly-eligible, sold-lapsed against Berachain Honeycomb ground truth; read-only invariant asserted.
-  AC: all scenarios pass; no role-mutation path reachable; stale member-level refused (>2× freshness).
+Definition of green (hub): `oxlint` / relevant package tests green; no secrets in diff; path-domain check passes.
 
 ---
 
-## Flatline Sprint Review — Refinements (2026-07-10; 0 blockers, 14 disputed integrated)
+## Sprint 1: AWS account scrub (G-7)
 
-- **IMP-002 (920) — the service needs DURABLE STATE (was "stateless").** `POST /v1/role-snapshot` must HOLD
-  the latest snapshot per community; per-community credentials + access logs also persist. → **S1-T4 amended:**
-  snapshot/credentials/logs live in a small durable store (reuse the profiles Postgres). The *audit
-  computation* stays pure; only ingestion state is durable. Add a task note distinguishing pure-compute from
-  held-state.
-- **IMP-003 (960) — exporter dual-write (DB upsert + HTTP POST) cannot share a txn.** → **S3-T2 amended:**
-  order = POST snapshot first (idempotent by `sha256`), then profiles upsert (idempotent by key); a
-  post-run reconciliation compares snapshot entries vs profiles rows and fails loud on drift. NO shared
-  transaction claimed; both sides idempotent + reconciled. (Outbox is overkill for a one-shot CLI.)
-- **IMP-008 (870) — pin the cross-repo `/v1/role-snapshot` contract.** → **new S1-T6 / S3-T4:** a shared
-  contract fixture (the existing `tests/contracts/` consumer-conformance pattern) for `/v1/role-snapshot`,
-  run in both repos' CI — prevents S1→S3 prose-drift.
-- **IMP-001 (920) — the spine needs a dashboard integration task.** → **S4-T2 amended:** explicit
-  freeside-dashboard task for the "drift next to incumbent" comparison surface (API contract + auth-gated
-  states); the access-audit surface exists (renders aggregate) — wire it to the live audit + the incumbent view.
-- **IMP-005 (860) — Railway apply ≠ ready.** → **S2-T1 amended:** post-`apply` health check (`/healthz`),
-  smoke (`/v1/audit` §5 spot-check), one-step rollback rehearsed before declaring G-1 done.
-- **IMP-006 (885) — public teaser needs anti-abuse.** → **S2-T3 amended:** per-IP rate limit + anti-enumeration
-  (differencing) guard on `GET /v1/access-risk`, beyond k-anon.
-- **IMP-011 (760) — ordering-service in org-as-code is READ-ONLY.** → **S2-T2 clarified:** the pulled
-  ordering-service `.railway.ts` is representation/gate only; NEVER `apply` changes to it this cycle.
-- **IMP-012 (895) — spine failure behavior.** → **S4-T3 amended:** each spine dependency (RPC, block-at-date,
-  profiles, Discord pagination, audit service) has a defined failure mode (loud, never silent-wrong).
-- Minor (IMP-004 canonical serialization/payload-limit on POST · IMP-007 k-waiver policy detail · IMP-009
-  denominator per PRD SM-2 · IMP-010/013/014 doc hygiene): carried as task acceptance-criteria detail.
+**Goal:** Remove plaintext AWS account `AWS_ACCOUNT_ID_REDACTED` from committed public surfaces in loa-freeside.
 
-## Verification per sprint
-Each sprint closes through review→audit (the cycle gates). Acceptance criteria above are the audit checklist.
-Non-goals (do NOT implement): D1 holder-quality reasoning/`AccessDecisionRecord` (#283), the event-sourced
-shadow-mode ledger, Cloudflare, inventory DNS, Lanes C/D.
+| Task | Detail | Acceptance |
+|------|--------|------------|
+| S1-T1 | Inventory all hits (excl. worktrees/node_modules) into `grimoires/loa/reality/aws-account-scrub-inventory.md` | Inventory lists path:line for each hit |
+| S1-T2 | Replace plaintext account digits with `AWS_ACCOUNT_ID_REDACTED` / env-var references | Search for the former 12-digit account ID returns 0 in primary tracked paths (excl. `.worktrees` / `.ck` caches) |
+| S1-T3 | Note sibling early loa repos (ES thread) as follow-up beads — do not scrub other repos in this PR unless operator expands | Bead filed or NOTES entry |
+
+**Out of scope:** Changing live AWS resources; rotating credentials.
+
+---
+
+## Sprint 2: Registry integrations migration (G-3 / #469)
+
+**Goal:** loa-freeside registry truth matches GitHub `integrations-api`.
+
+| Task | Detail | Acceptance |
+|------|--------|------------|
+| S2-T1 | Update `packages/freeside-registry/registry.yaml`: slug/git_url/notes for ex-mediums → integrations-api | `git_url` = `https://github.com/0xHoneyJar/integrations-api.git`; notes cite wave-1 non-prod + medium-registry preserved |
+| S2-T2 | Update CLAUDE.md / ADR-008 orientation refs that still say mediums-only if they claim live HTTP | No claim that mediums-api is the live cell name |
+| S2-T3 | Close or comment [loa-freeside#469](https://github.com/0xHoneyJar/loa-freeside/issues/469) with evidence | Issue updated |
+
+**Do not:** claim production Discord ingestion until durable-store gate lands in integrations-api.
+
+---
+
+## Sprint 3: Mount BYOK (G-4)
+
+**Goal:** Wire existing BYOK admin + `BYOKProxyHandler` to live HTTP (or document fail-closed reason).
+
+| Task | Detail | Acceptance |
+|------|--------|------------|
+| S3-T1 | Mount admin BYOK routes in sietch `server.ts` / admin router behind auth | `POST/GET` admin BYOK reachable in test harness |
+| S3-T2 | Mount S2S BYOK egress proxy route for loa-finn callback | Route exists; SSRF allowlist still enforced; unit tests green |
+| S3-T3 | Feature-flag if needed (`BYOK_ENABLED`) — default off in prod until operator flips | Flag documented in env reality |
+
+Product frame: inference provider keys only (OpenAI/Anthropic); CRM AWS/Dune keys → integrations later.
+
+---
+
+## Sprint 4: Billing edge spine (G-1)
+
+**Goal:** One live finn finalize path against **single** credit SoT — no second ledger.
+
+| Task | Detail | Acceptance |
+|------|--------|------------|
+| S4-T1 | Confirm `billing-api` repo shape vs delegating-edge brief (`2026-06-21-billing-ledger-edge-design-brief.md`) | Written verdict in NOTES: edge vs own-ledger; block deploy if second ledger |
+| S4-T2 | Spike: health + finalize contract match loa-finn client | Contract table in SDD addendum or NOTES with file:line |
+| S4-T3 | Operator checkpoint before any production URL flip | AskUserQuestion / explicit NOTES gate — no silent cutover |
+
+**NG-1:** do not edit payment rail code this sprint unless Eileen gate lifted.
+
+---
+
+## Sprint 5: Freeze + Shadow inventory (G-6)
+
+**Goal:** Stop growth; catalog DELETE-CANDIDATEs for later.
+
+| Task | Detail | Acceptance |
+|------|--------|------------|
+| S5-T1 | Bead list: dual NOWPayments, dual x402, unmounted `packages/routes` webhooks, nested sietch packages | `br` issues with domain labels |
+| S5-T2 | NOTES freeze rule: no new feature in sietch billing/bots except firefixes + extraction seams | NOTES entry |
+
+---
+
+## Out of scope this plan
+
+- Full sietch → worlds extraction
+- ledger-api crypto bridge (forbidden)
+- Deleting Spice Gate
+- Production integrations-api durable store (lives in integrations-api repo)
+- Completing shadow-audit MVP product spine (archived cycle)
+
+---
+
+## Bridge readiness
+
+After S1–S3 land on this branch with a DRAFT PR, `/run-bridge --depth 3` reviews the diff. S4 may be design-only in first bridge pass if billing-api access is gated.

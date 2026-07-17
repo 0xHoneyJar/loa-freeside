@@ -1,5 +1,18 @@
 # Notes
 
+## Session Continuity — /ride hub-thinning 2026-07-17
+
+- **Forced fresh `/ride`** for Thin Hub extraction scope.
+- Archived prior PRD/SDD → `prd.shadow-audit-mvp.md`, `sdd.shadow-audit-mvp.md`.
+- New `prd.md` / `sdd.md` = Thin Hub (KEEP Spice Gate, EXTRACT billing/mediums, cut over ledger).
+- Reality refreshed: `reality/{structure,entry-points,services,api-surface,hub-thinning-verdicts,hygiene-report,index}.md`.
+- Drift **4/10**; claims A-3..A-10, D-1..D-3 **VERIFIED**.
+- **Next:** archive ledger `cycle-053` → open Thin Hub cycle; `/architect` or bead the PRD goals G-1..G-6; operator decide BYOK mount vs DELETE-CANDIDATE and ledger-first vs mediums-first.
+- Trajectory: `grimoires/loa/a2a/trajectory/riding-20260717.jsonl`.
+
+---
+
+
 ## 🚨 Decision Log — cycle-053 Sprint 2 (global 416), 2026-07-12 — CRITICAL: sonar cross-chain collision
 
 - **THE BUG (found by the FIRST live call, not by 199 green unit tests).** The public teaser against the real
@@ -632,3 +645,196 @@ Key drift findings:
 - **Ghosts/gaps**: beacon subdomains 404 cluster-wide; no CI canary for cluster secret-parity; mint/ledger/mediums not fully deployed.
 
 Follow-ups (see `drift-report.md`, not auto-applied): refresh AGENTS.md namespace; secret-parity CI canary; workspace dep dedupe (viem/zod/jose); `@ts-nocheck` (27) burn-down.
+
+## 2026-07-13 — /architect member-legibility: loa-freeside grounding (SOT-1)
+
+Read directly (not inferred):
+
+- **PRD §8 path is WRONG.** collections-sot is `packages/services/shadow-audit/src/collection-sot.ts`
+  (consumer) + `packages/services/shadow-mode/src/collections/*` (producer). The PRD says
+  `packages/services/shadow-mode/` for both.
+- **Open Question #1 ANSWERED mechanically.** `tools/lib/domain-classify.sh`:
+  `packages/services/*` → **platform**; `packages/protocol/*` → **shared**. The firewall
+  (`path-domain-check.yml`) fires only on platform∧network. This cycle touches **zero**
+  network paths. **SOT-1 does not split; the firewall cannot fire.**
+- **The snapshot contract is DUPLICATED, hand-written twice**, no shared package:
+  producer `shadow-mode/src/collections/export-snapshot.ts` (`CollectionSnapshotRow`),
+  consumer `shadow-audit/src/collection-sot.ts` (`EntitySnapshotSchema`). Adding
+  inventory-api (a *different repo*) as consumer #3 forces a hoist into
+  `packages/protocol/shadow-mode/` (= `domain:shared`).
+- **Snapshot row schema**: `{chain, contract, collection_key, token_standard, world?,
+  world_validated, contested}`. It carries **no** metadataStrategy, no totalSupply, no
+  mirror version. Label vocab is a CLOSED union: `token_standard | collection_key | world | role`
+  (DERIVED: standard/key · SUBJECTIVE/ratify-only: world/role).
+- **shadow-mode is NOT a deployed service** — package.json has only `test`/`typecheck`.
+  No build, no start, no Dockerfile. It is a library + the `bin/collections.ts` CLI
+  (`sync|propose|ratify|query|drift|export-snapshot`). ⇒ a `GET /snapshot` HTTP seam would
+  require standing up a new deploy. **Publish the snapshot as an artifact instead.**
+- **`COLLECTION_SNAPSHOT_PATH` is `readFileSync` at BOOT** (`shadow-audit/bin/http.ts:107-115`).
+  Not runtime-refreshable, and a local-file contract cannot cross a repo boundary.
+- **The version-pointer already exists in production**: CloudFront KeyValueStore,
+  `KVS <world>/<collection>:current_version = v1-YYYY-MM-DD`, over `s3://thj-assets`,
+  fronted by `metadata.0xhoneyjar.xyz` (JSON) + `assets.0xhoneyjar.xyz` (images).
+  Rollback = delete the KVS key. **FR-3f's "version-as-epoch" is already the live pattern —
+  do not design a new one.** (Provenance: 2026-06-07 ops decision, analytics/permission-requests.jsonl.)
+- All 4 external buildings LIVE on Railway (registry.yaml `modules`): inventory/sonar/storage/score.
+
+**Design consequence**: the mirrored-ness of a collection is answered by the *existence of its
+KVS pointer* — no new label, no new state, the closed union stays closed (PRD §6 thesis holds).
+
+### External-repo grounding (4 Explore agents, 2026-07-13)
+
+**storage-api** — the biggest lift; the PRD's "~70% written" is true of the LIBRARY only.
+- E-2 CONFIRMED and sharper than the PRD: `ingestAssets` (`packages/storage-client/src/ingest-assets.ts:362-398`)
+  has NO status check, NO magic-byte sniff, NO size cap. It never sees a `Response` — all byte-trust is
+  delegated to an injected `FetchBytes` port **that has no production implementation** (zero non-test
+  callers of `ingestAssets` in the repo). The only "is it an image" test is a string compare of the
+  *claimed* `Content-Type` (`:157-163`). A 200-with-HTML-body labelled `image/png` passes.
+  `alreadyMirrored` (`:241-255`) is existence-only → a poisoned object is NEVER re-fetched or corrected.
+- **NO sharp/jimp/libvips anywhere.** FR-3d variants need a net-new dep. (`asset-pipeline`'s Lambda
+  transform is NOT in this repo.)
+- `scripts/snapshot-external-collection.ts` **DOES NOT EXIST** (the registry-seam brief was wrong).
+- CloudFront KVS `current_version`: **NO implementation.** Only prose + a `RouteBacking` union member
+  `'cf-function-kv-manifest'` (`packages/protocol/src/url-contract.ts:157-163`). The pointer flip is a
+  hand-run `aws cloudfront-keyvaluestore put-key`, not code. (Corrects my earlier inference.)
+- **NO `.github/` at all.** R-3 confirmed: zero CI.
+
+**sonar-api**
+- Azuki block `config.yaml:593-596`, address `0xed5af...4133`, labelled `# azuki_kitchen_e2e`. No `start_block`.
+- Per-contract `start_block` **IS** supported (Envio's own JSON schema; HoneyJar/Honeycomb use it). Fix is mechanical.
+- chain-1 default `start_block: 13090020` (`config.yaml:558-559`) — the Milady block, as the PRD said.
+- **`tokenURI` → ZERO hits. Multicall3 → ZERO hits.** `resolveTokenUris` is 100% greenfield. Chain layer =
+  viem, two hand-rolled copy-pasted `createPublicClient`s, no shared factory.
+- **NO REST route returns token IDs / supply / holders.** Only `/health`, `/v1/collections/:chain/:addr/status`,
+  `POST .../ingest`. The real path is the belt-gateway GraphQL `Token` entity, paged.
+- ⚠ **NEW BLOCKER, not in the PRD**: `belt-build.yml` Gate 1 `pnpm verify:belt-config` is **BLOCKING** and
+  enforces that `config.mibera.yaml` is byte-identical to `config.yaml` on address/start_block. **The Azuki
+  edit must be mirrored or CI fails.**
+- ⚠ **PR #150 is a HIGH/DIRECT collision** — per-chain config split; `config.1.yaml` is a generated mirror
+  carrying the same Azuki address. Post-#150 the fix belongs in `config.1.yaml`. Must sequence.
+- ⚠ **PR #152** builds a *second* independent supply/coverage computation (`scripts/gate2-evm-parity.ts`).
+  FR-4c's "authoritative denominator" must reconcile with it or we ship two competing definitions.
+
+**inventory-api**
+- `COLLECTION_REGISTRY` is a module-level `const` (`src/collection-registry.ts:91`), 8 rows.
+  **ZERO hits for `COLLECTION_SNAPSHOT_PATH`.** No env/file/DB loading of any kind. The seam does not exist.
+- `MetadataStrategy` = exactly 3 arms (`:6-9`): `{kind:"codex"} | {kind:"sovereign"; slug} | {kind:"sovereign-world"}`.
+  ⇒ **the PRD's thesis holds**: Azuki lands as `{kind:"sovereign", slug:"azuki"}`, union stays closed.
+- `getProfilePicture` (`src/inventory.ts:378-386`) — confirmed `pageSize:1` + `nfts[0]`.
+- **No `GET /collections`. No `POST /profiles`. No batch endpoint at all** (only POST is `/mcp`).
+- Framework is **Hyper** — a bespoke vendored Bun-native framework (`src/hyper/core/*`), NOT hono/express.
+  Tests = vitest. CI = `.github/workflows/test.yml` (exists, hermetic).
+- Sovereign metadata URL `{BASE}/{world}/{slug}/{tokenId}` — **no version segment** ⇒ the version is
+  resolved behind CloudFront, which is exactly why the KVS pointer is the epoch seam.
+
+**KEY DESIGN COLLAPSE**: decoding the image to make the variants **IS** the poison gate. You cannot
+`sharp()`-decode an HTML error page, a 0-byte body, or a truncated PNG. E-2 (FR-3 gate) and FR-3d
+(variants) are ONE mechanism, not two.
+
+### /architect member-legibility — SDD landed (grimoires/loa/sdd.member-legibility.md)
+
+Design got SMALLER than the PRD assumed. Three workstreams collapsed into existing substrate:
+1. **Variants need no image processing.** `@0xhoneyjar/asset-pipeline` already ships
+   `CloudFront /_optimize?w=&fmt=&q=` → Lambda. No `sharp` in storage-api. FR-3d = DECLARE
+   variants, don't materialize. Kills ~20k derived objects + a dependency.
+2. **Mirrored-ness = the KVS pointer's existence.** No new label, no new table. The closed
+   `MetadataStrategy` union stays closed — the PRD's architectural thesis survives.
+3. **E-2's subject is NEW code.** There is NO production `fetchBytes` anywhere in storage-api
+   (only test fakes). The poison gate has nothing to harden — it must be written. Still the hard gate.
+
+**Root cause of FR-4a found**: `sonar-api/src/kitchen/config-patcher.ts` →
+`appendTrackedErc721ToChainBlock()` does `normalizeAddress()` and NOTHING else — no `eth_getCode`.
+The onboarding pipeline WROTE the ghost address. ⇒ **automating onboarding (G-3) without a liveness
+gate mass-produces this bug.** SONAR-1 must ship sonar#159's gate, not just the config fix. (R-12)
+
+**Open questions all resolved**: OQ-1 firewall cannot fire (zero network paths; `packages/services/*`
+=platform, `packages/protocol/*`=shared, gate is platform∧network). OQ-2 mirror does NOT auto-trigger
+on ratify — 4 CLI verbs, zero PRs, which is all G-3 asks. OQ-3 storage-api CI is a STOR-2 prerequisite
+(it has ZERO workflows today). OQ-4 retired by sequencing DASH-0 first.
+
+**PRD corrections (7)**: lifecycle enum is 4 states not 5 (`no_longer_holds` is a quality-bands reason
+code, NOT a lifecycle state); `roles.ts` is in freeside-dashboard NOT score-api; issue #96 is CLOSED and
+DASH-1 is ~60% merged (only the batch BFF is missing); `scripts/snapshot-external-collection.ts` does
+NOT exist; R-2 downgrades to LOW (member-pfp.ts + member-avatar.tsx are clean).
+
+**NEW risks**: R-10 score-api local checkout is 69 commits stale (ground on origin/main only).
+R-11 coverage-per-page would read "100 of 100" on a 4,406 roster — the Purupuru bug in a new coat.
+R-12 the unvalidated-address onboarding pipeline (above).
+
+### /architect member-legibility — SDD v1.1 landed (2026-07-13)
+
+`grimoires/loa/sdd.member-legibility.md`. A v1.0 existed (strong doc, converged independently on the
+same architecture). I **corrected it rather than replaced it**. Two classes of change:
+
+1. **A retraction, forced by a live probe.** v1.0's headline claim — *"don't materialize variants,
+   asset-pipeline's `/_optimize` Lambda does it on read"* — was **FALSE**. Probe:
+   `GET assets.0xhoneyjar.xyz/…png?w=64&fmt=webp` → **200 · image/png · 149,262 bytes, byte-identical
+   to the original.** CloudFront ignores the params; **the Lambda is not wired.** The live `image` field
+   is also still a flat string, not `MetadataImageStruct`. ⇒ `sharp` IS required, variants ARE
+   materialized. Root cause: **grounded on a README, not the deploy — capability read as liveness.**
+   (Same shape as deployed-but-unconsumed `ingestAssets` / never-populated `COLLECTION_SNAPSHOT_PATH`.)
+2. **Three sonar blockers found by reading CI, not source** — absent from both the PRD and v1.0:
+   - `verify:belt-config` is a **BLOCKING** gate: a lone `config.yaml` Azuki edit **turns the build red**;
+     `config.mibera.yaml` must be mirrored in the same commit.
+   - **PR #150** moves the file the fix lives in (`config.1.yaml`), carries the same wrong address, and its
+     generator once corrupted 101 addresses parsing bare `0x` as hex ints. **`/coord` must reconcile it
+     BEFORE SONAR-1 is dispatched.**
+   - **PR #152** builds a *second* coverage denominator → FR-4c must reconcile or we ship two "coverage"es.
+
+Also: split **STOR-0** (stand up storage-api CI — the repo has **no `.github/` at all**) out of STOR-2, since
+the E-2 poison gate is a security control that would otherwise ship with zero regression protection.
+
+**The design's central economy**: the `sharp` decode needed for the variants **IS** the E-2 poison gate
+(you cannot decode an HTML error page, a 0-byte body, or a truncated PNG). One mechanism, two requirements.
+
+---
+
+## 2026-07-13 — `/sprint-plan` → `sprint.member-legibility.md` (sprints #421–#426 registered)
+
+**Output:** `grimoires/loa/sprint.member-legibility.md` · **Ledger:** `cycle-member-legibility` added, 6 sprints,
+globals **#421–#426**, `next_sprint_number: 427`. **`active_cycle` deliberately left on `cycle-053`** (it is
+HALTED mid-flight and owns the generic slots per PRD D-4) — **flipping it is an operator act at `/run` time.**
+
+### The one thing sprint-planning changed about the task graph
+
+**The SDD's §11 task graph (9 tasks) predates its own ADDENDUM and is stale.** The ADDENDUM's live probes found:
+
+1. **The write half and the read half have never been connected.** `ingestCollectionMetadata` writes
+   `{world}/{collection}/metadata/v/{version}/{tokenId}.json`; `inventory-api` reads `{world}/{collection}/{tokenId}`.
+   Live: the flat key → **200**, the versioned key → **403**. Shipping the mirror as designed would have written
+   10k Azuki documents to keys that **403 to the only consumer that reads them**.
+2. **The KVS `current_version` pointer does not exist.** `cf-function-kv-manifest` is a declared `RouteBacking`
+   union member with **no implementation anywhere** — a type and a prose comment.
+
+⇒ The plan adds **two tasks the SDD's task table does not contain**:
+- **CDN-0** — `terraform import` both CloudFront distributions. They are in **no repo's IaC**, and *the available
+  IAM credential cannot even `ListDistributions`*. **🔒 OPERATOR-BLOCKED. Blocks CDN-1 → STOR-2's AC-RT → S3–S6.**
+- **CDN-1** — build the CloudFront Function + KVS pointer + `flip-version` CLI. **Highest blast radius in the cycle:**
+  it MUST fall through to the flat key on a KVS miss, or **every existing collection 403s the moment it deploys.**
+
+### Sprint shape (39 tasks)
+
+| S | Global | Theme | Deps |
+|---|---|---|---|
+| 1 | #421 | **The honest floor + the parallel front** — DASH-0 (identicon + coverage), STOR-0 (CI), SONAR-1 (address + `eth_getCode` gate), CDN-0, E-3/E-4 | **none** |
+| 2 | #422 | Chain truth + the CDN pointer — SONAR-2, CDN-1 | S1 |
+| 3 | #423 | The mirror + the poison bar — STOR-2, **AC-RT** | S1, S2 |
+| 4 | #424 | The registry seam — SOT-1 (**the only `loa-freeside` PR**, `shared/collections-sot`) | S3 |
+| 5 | #425 | The join layer — INV-4 | S4 |
+| 6 | #426 | Delete the switch · batch · toggle · **E2E goal validation** | S5 |
+
+**The counter-design to `member-pfp-2026-07`'s failure** (4-of-5 shipped, the 5th was the only user-visible one,
+so the cycle produced **zero observable value for 11 days while looking 80% done**): **DASH-0 ships in Sprint 1,
+alone, and is independently valuable.** Sprints 2→6 are strictly serial — **if this cycle gets cut, cut it after
+Sprint 1, not mid-chain.**
+
+### Blockers to surface NOW
+- **CDN-0 IAM grant** (CloudFront read + TF state). Day-1 operator action. Five of six sprints depend on it.
+- **`/coord` preflight** before any sonar dispatch: PR **#150** merge-state (it moves the file SONAR-1 edits),
+  PR **#152** (competing coverage denominator), dashboard **#129** (CONFLICTING), and dashboard `main`'s
+  **ECS-deploy RED** (else DASH-0 ships to a broken deploy).
+- **E-4 (license check, 5 targets, ~1h, human)** is the cheapest kill in the cycle. **Run it first.**
+- Beads health is **DEGRADED** (`br doctor` reports issues) — fix before creating Sprint-4 beads.
+
+## 2026-07-16 — dig-search fail-closed (logged per DIG rule)
+k-hole dig-search.ts failed closed: EXA_API_KEY not set in session env (both invocations, INVALID_CONFIG). Fell back to WebSearch for top-lab R&D grounding. Fix: export EXA_API_KEY (key exists per k-hole PR#29 lineage) or add to session env.
