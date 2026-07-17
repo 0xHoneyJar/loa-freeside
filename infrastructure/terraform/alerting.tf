@@ -141,6 +141,11 @@ resource "aws_cloudwatch_metric_alarm" "api_health_check_failure" {
   alarm_description   = "API service has no healthy targets — service is DOWN. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health"
   treat_missing_data  = "breaching"
 
+  # Self-disabling: a service deliberately scaled to zero must not page.
+  # Was stuck in ALARM since 2026-05-02 firing into sensenet-alarms-ingest
+  # (see grimoires/loa/context/2026-07-17-arrakis-void-alarm-audit.md).
+  actions_enabled = var.api_desired_count > 0
+
   dimensions = {
     TargetGroup  = aws_lb_target_group.api.arn_suffix
     LoadBalancer = aws_lb.main.arn_suffix
