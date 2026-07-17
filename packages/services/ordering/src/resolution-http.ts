@@ -29,12 +29,16 @@ import {
 } from "./resolution-service.js";
 import type { ResolutionStore } from "./resolution-store.js";
 import { SonarResolveProbeUnavailableError } from "./sonar-resolve-probe-client.js";
+import type { PublicAuthorizationService } from "./public-authorization-service.js";
+import { noStoreHeaders, requireServiceBearer } from "./public-authorization-http.js";
+import type { AuthorizationScope } from "@freeside/collection-resolution-protocol";
 
 export interface ResolutionHttpDeps {
   readonly store: ResolutionStore;
   readonly sonar: SonarResolveProbePort;
   readonly serviceToken?: string;
   readonly service?: CollectionResolutionService;
+  readonly auth?: PublicAuthorizationService;
 }
 
 type OrderingErrorCode =
@@ -147,10 +151,7 @@ function mapError(err: unknown): { status: number; body: ReturnType<typeof error
   return { status: 503, body: errorBody("unavailable") };
 }
 
-function requireBearer(c: Context, token: string | undefined): boolean {
-  if (!token) return true;
-  return c.req.header("authorization") === `Bearer ${token}`;
-}
+const requireBearer = requireServiceBearer;
 
 async function readCommandBody(
   c: Context,
@@ -195,25 +196,65 @@ export function mountCollectionResolutionRoutes(
     deps.service ??
     new CollectionResolutionService({ store: deps.store, sonar: deps.sonar });
 
+  const authorizeResolution = (
+    c: Context,
+    action: "create" | "confirm" | "refresh",
+    scope: AuthorizationScope,
+    commandCommunityRef?: string,
+  ): Response | undefined => {
+    if (!deps.auth) return undefined;
+    try {
+      deps.auth.acquireLeaseFromResolutionScope({
+        operation: { resource: "resolution", action },
+        scope,
+        authoritativeCommunityRef: commandCommunityRef,
+      });
+      return undefined;
+    } catch (err) {
+      const mapped = deps.auth.mapDenial(err);
+      return c.json(
+        {
+          schema_version: COLLECTION_RESOLUTION_SCHEMA_VERSION,
+          code:
+            mapped.body.code === "authorization_scope_mismatch"
+              ? "authorization_scope_mismatch"
+              : mapped.body.code === "unauthorized"
+                ? "unauthorized"
+                : "forbidden",
+        },
+        mapped.status as 401,
+        noStoreHeaders(),
+      );
+    }
+  };
+
   const respond = async (
     c: Context,
     run: () => Promise<ResolutionPublicProjection>,
   ) => {
     try {
       const projection = await run();
-      return c.json(projection, 200, { "Cache-Control": "no-store" });
+      return c.json(projection, 200, noStoreHeaders());
     } catch (err) {
       const mapped = mapError(err);
-      return c.json(mapped.body, mapped.status as 400);
+      return c.json(mapped.body, mapped.status as 400, noStoreHeaders());
     }
   };
 
   app.post("/v1/collection-resolutions", async (c) => {
     if (!requireBearer(c, deps.serviceToken)) {
-      return c.json(errorBody("unauthorized"), 401);
+      return c.json(errorBody("unauthorized"), 401, noStoreHeaders());
     }
     const parsed = await readCommandBody(c);
     if (!parsed.ok) return parsed.response;
+    const command = parsed.command as { community_ref?: string };
+    const denied = authorizeResolution(
+      c,
+      "create",
+      parsed.authorization_scope as AuthorizationScope,
+      command.community_ref,
+    );
+    if (denied) return denied;
     return respond(c, () =>
       service.create(parsed.command as never, parsed.authorization_scope as never),
     );
@@ -221,10 +262,16 @@ export function mountCollectionResolutionRoutes(
 
   app.post("/v1/collection-resolutions/:id/confirm", async (c) => {
     if (!requireBearer(c, deps.serviceToken)) {
-      return c.json(errorBody("unauthorized"), 401);
+      return c.json(errorBody("unauthorized"), 401, noStoreHeaders());
     }
     const parsed = await readCommandBody(c);
     if (!parsed.ok) return parsed.response;
+    const denied = authorizeResolution(
+      c,
+      "confirm",
+      parsed.authorization_scope as AuthorizationScope,
+    );
+    if (denied) return denied;
     return respond(c, () =>
       service.confirm(
         c.req.param("id"),
@@ -236,10 +283,16 @@ export function mountCollectionResolutionRoutes(
 
   app.post("/v1/collection-resolutions/:id/refresh", async (c) => {
     if (!requireBearer(c, deps.serviceToken)) {
-      return c.json(errorBody("unauthorized"), 401);
+      return c.json(errorBody("unauthorized"), 401, noStoreHeaders());
     }
     const parsed = await readCommandBody(c);
     if (!parsed.ok) return parsed.response;
+    const denied = authorizeResolution(
+      c,
+      "refresh",
+      parsed.authorization_scope as AuthorizationScope,
+    );
+    if (denied) return denied;
     return respond(c, () =>
       service.refresh(
         c.req.param("id"),

@@ -169,6 +169,24 @@ export { PostgresResolutionStore } from './resolution-store-postgres.js';
 export { createResolutionStore } from './resolution-store-factory.js';
 export { mountCollectionResolutionRoutes } from './resolution-http.js';
 export {
+  PublicAuthorizationService,
+  createFixturePublicAuthorizationService,
+  type PublicAuthorizationProjections,
+  type PublicAuthorizationProjectionPort,
+} from './public-authorization-service.js';
+export {
+  FixturePublicAuthorizationProjectionPort,
+  publicAuthFixtureFromEnv,
+  DEFAULT_BASELINE_FIXTURE,
+} from './public-authorization-projections.js';
+export { mountCapabilityDemandRoutes } from './capability-demand-http.js';
+export {
+  InMemoryCapabilityDemandStore,
+  toPublicCapabilityDemandProjection,
+  type CapabilityDemandStore,
+  type CapabilityDemandRecord,
+} from './capability-demand-store.js';
+export {
   createHttpSonarResolveProbePort,
   sonarResolveProbeFromEnv,
 } from './sonar-resolve-probe-client.js';

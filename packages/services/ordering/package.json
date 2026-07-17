@@ -29,6 +29,7 @@
     "zod": "^3.23.8",
     "@freeside/collection-protocol": "file:../../protocol/collection",
     "@freeside/collection-resolution-protocol": "file:../../protocol/collection-resolution",
+    "@freeside/public-authorization-protocol": "file:../../protocol/public-authorization",
     "effect": "^3.21.0"
   },
   "devDependencies": {

@@ -1,11 +1,22 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
 
 import { mountCollectionReportRoutes } from "../collection-report-http.js";
 import { InMemoryOrderStore } from "../store.js";
 import { ORDER_LIFECYCLE_SUBJECTS } from "@freeside/ordering-protocol";
+import { createFixturePublicAuthorizationService } from "../public-authorization-service.js";
 
 const TOKEN = "test-service-token";
+const fixtureDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../protocol/public-authorization/fixtures/acl",
+);
+const baselineFixture = JSON.parse(
+  readFileSync(join(fixtureDir, "projection-baseline.valid.json"), "utf8"),
+);
 
 function digest() {
   return {
@@ -68,9 +79,13 @@ async function seed(
   }
 }
 
-function appWith(store: InMemoryOrderStore) {
+function appWith(store: InMemoryOrderStore, withAuth = false) {
   const app = new Hono();
-  mountCollectionReportRoutes(app, { store, serviceToken: TOKEN });
+  mountCollectionReportRoutes(app, {
+    store,
+    serviceToken: TOKEN,
+    auth: withAuth ? createFixturePublicAuthorizationService(baselineFixture) : undefined,
+  });
   return app;
 }
 
@@ -139,20 +154,48 @@ describe("CR-206 collection-report HTTP", () => {
     expect(body.items[0]).not.toHaveProperty("inputs");
   });
 
-  it("denies cross-subject detail", async () => {
+  it("denies detail when membership is revoked under CR-007A auth", async () => {
     const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
     await seed(store, {
       order_id: "ord-a",
-      placed_by: "user-a",
-      community_ref: "mibera",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
       state: "placed",
     });
-    const app = appWith(store);
+    const revokedFixture = {
+      ...baselineFixture,
+      memberships: baselineFixture.memberships.map(
+        (m: { subject_id: string; community_ref: string; active: boolean }) =>
+          m.subject_id === "subject-bob" ? { ...m, active: false } : m,
+      ),
+    };
+    const app = new Hono();
+    mountCollectionReportRoutes(app, {
+      store,
+      serviceToken: TOKEN,
+      auth: createFixturePublicAuthorizationService(revokedFixture),
+    });
     const res = await app.request(
-      "/v1/collection-reports/ord-a?community_ref=mibera&subject_id=user-b",
+      "/v1/collection-reports/ord-a?community_ref=community-alpha&subject_id=subject-bob",
       { headers: { authorization: `Bearer ${TOKEN}` } },
     );
     expect(res.status).toBe(403);
+  });
+
+  it("allows report:read holder to open another member's order in the same community", async () => {
+    const store = new InMemoryOrderStore({ now: () => 1_700_000_000 });
+    await seed(store, {
+      order_id: "ord-a",
+      placed_by: "subject-alice",
+      community_ref: "community-alpha",
+      state: "placed",
+    });
+    const app = appWith(store, true);
+    const res = await app.request(
+      "/v1/collection-reports/ord-a?community_ref=community-alpha&subject_id=subject-bob",
+      { headers: { authorization: `Bearer ${TOKEN}` } },
+    );
+    expect(res.status).toBe(200);
   });
 
   it("pages with immutable created_at+order_id cursor", async () => {

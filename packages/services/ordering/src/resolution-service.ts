@@ -7,7 +7,7 @@
  * cloned/frozen at every ingress/egress boundary.
  *
  * EXTERNAL IMPLEMENTATION BLOCKER: no production Postgres adapter.
- * EXTERNAL AUTH/HTTP BLOCKER: no production authorization endpoint wiring.
+ * CR-007A wires public authorization at the HTTP edge; Identity stream ingestion is downstream.
  */
 
 import { createHash, randomUUID } from "node:crypto";

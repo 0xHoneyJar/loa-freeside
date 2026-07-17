@@ -21,6 +21,12 @@ import { sonarResolveProbeFromEnv } from '../src/sonar-resolve-probe-client.js';
 import { PostgresOrderStore } from '../src/store-postgres.js';
 import { InMemoryReportAttentionStore } from '../src/report-attention-store.js';
 import { PostgresReportAttentionStore } from '../src/report-attention-store-postgres.js';
+import {
+  createFixturePublicAuthorizationService,
+} from '../src/public-authorization-service.js';
+import { DEFAULT_BASELINE_FIXTURE } from '../src/public-authorization-projections.js';
+import { InMemoryCapabilityDemandStore } from '../src/capability-demand-store.js';
+import { mountCapabilityDemandRoutes } from '../src/capability-demand-http.js';
 
 const { store, orchestrator, enqueue } = await createOrderingComposition();
 
@@ -47,10 +53,14 @@ const probeModeOverride = process.env.COLLECTION_RESOLVE_PROBE_MODE?.trim().toLo
 const httpSonarProbe =
   probeModeOverride === 'catalog' ? undefined : sonarResolveProbeFromEnv();
 const sonarProbe = httpSonarProbe ?? createCatalogResolveProbePort();
-const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';const resolutionService = new CollectionResolutionService({
+const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';
+const resolutionService = new CollectionResolutionService({
   store: resolutionStore,
   sonar: sonarProbe,
 });
+
+const publicAuth = createFixturePublicAuthorizationService(DEFAULT_BASELINE_FIXTURE);
+const capabilityDemandStore = new InMemoryCapabilityDemandStore();
 
 const app = createIntakeApp({
   store,
@@ -63,6 +73,7 @@ const app = createIntakeApp({
   serviceTokenLabel: serviceTokenLabelFromEnv(),
   resolutionService,
   resolutionStore,
+  publicAuth,
   healthz: {
     store: process.env.DATABASE_URL ? 'postgres' : 'memory',
     kitchen_enqueue: Boolean(enqueue),
@@ -70,6 +81,8 @@ const app = createIntakeApp({
     collection_resolutions: true,
     collection_reports: true,
     report_attention: true,
+    capability_demands: true,
+    public_authorization: true,
     resolve_probe: resolutionProbeMode,
   },
 });
@@ -86,6 +99,7 @@ mountCollectionResolutionRoutes(app, {
   sonar: sonarProbe,
   service: resolutionService,
   serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
+  auth: publicAuth,
 });
 
 // CR-206: authenticated collection-report list/detail projections.
@@ -94,6 +108,15 @@ mountCollectionReportRoutes(app, {
   resolutionStore,
   attentionStore,
   serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
+  auth: publicAuth,
+});
+
+// CR-007A: capability-demand authorization contract (CR-208 extends lifecycle).
+mountCapabilityDemandRoutes(app, {
+  store: capabilityDemandStore,
+  auth: publicAuth,
+  serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
+  now: () => Date.now(),
 });
 
 // CR-305: idempotent mark-seen for report attention.
