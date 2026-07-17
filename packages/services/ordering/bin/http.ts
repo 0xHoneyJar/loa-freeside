@@ -14,6 +14,7 @@ import { ReProbeWorker } from '../src/reprobe-worker.js';
 import { createCatalogResolveProbePort } from '../src/catalog-resolve-probe.js';
 import { mountCollectionResolutionRoutes } from '../src/resolution-http.js';
 import { createResolutionStore } from '../src/resolution-store-factory.js';
+import { CollectionResolutionService } from '../src/resolution-service.js';
 import { sonarResolveProbeFromEnv } from '../src/sonar-resolve-probe-client.js';
 import { PostgresOrderStore } from '../src/store-postgres.js';
 
@@ -35,9 +36,17 @@ if (!mountWrites) {
 const resolutionStore = await createResolutionStore({
   orderStore: store instanceof PostgresOrderStore ? store : undefined,
 });
-const httpSonarProbe = sonarResolveProbeFromEnv();
+// COLLECTION_RESOLVE_PROBE_MODE=catalog forces the local catalog even when
+// SONAR_* URLs are set (kitchen image lag / token mismatch). Default: http when
+// configured, else catalog.
+const probeModeOverride = process.env.COLLECTION_RESOLVE_PROBE_MODE?.trim().toLowerCase();
+const httpSonarProbe =
+  probeModeOverride === 'catalog' ? undefined : sonarResolveProbeFromEnv();
 const sonarProbe = httpSonarProbe ?? createCatalogResolveProbePort();
-const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';
+const resolutionProbeMode = httpSonarProbe ? 'http' : 'catalog';const resolutionService = new CollectionResolutionService({
+  store: resolutionStore,
+  sonar: sonarProbe,
+});
 
 const app = createIntakeApp({
   store,
@@ -48,6 +57,8 @@ const app = createIntakeApp({
   orchestrator: mountWrites ? orchestrator : undefined,
   serviceToken,
   serviceTokenLabel: serviceTokenLabelFromEnv(),
+  resolutionService,
+  resolutionStore,
   healthz: {
     store: process.env.DATABASE_URL ? 'postgres' : 'memory',
     kitchen_enqueue: Boolean(enqueue),
@@ -62,6 +73,7 @@ const app = createIntakeApp({
 mountCollectionResolutionRoutes(app, {
   store: resolutionStore,
   sonar: sonarProbe,
+  service: resolutionService,
   serviceToken: writeRoutes === 'token' ? serviceToken : undefined,
 });
 

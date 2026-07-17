@@ -18,6 +18,9 @@ import {
   buildCommunityOnboardingOpsNotice,
   fireCommunityOnboardingOpsWebhook,
 } from './order-ops-webhook.js';
+import type { CollectionResolutionService } from './resolution-service.js';
+import type { ResolutionStore } from './resolution-store.js';
+import { buildLocalCapabilityFromRecord } from './admission-local-capability.js';
 
 /**
  * order-intake (SDD §5) — the internal HTTP edge.
@@ -49,6 +52,9 @@ export interface IntakeDeps {
   serviceTokenLabel?: string;
   /** Deploy-facing healthz payload extras (write-route posture, store kind, …). */
   healthz?: Record<string, unknown>;
+  /** CR-006 resolution admission for collection-report orders. */
+  resolutionService?: CollectionResolutionService;
+  resolutionStore?: ResolutionStore;
 }
 
 const PlaceOrderBodySchema = z
@@ -113,6 +119,37 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     const inputsParsed = preset.inputSchema.safeParse(body.data.inputs);
     if (!inputsParsed.success) {
       return c.json({ error: 'invalid inputs for product', issues: inputsParsed.error.issues }, 400);
+    }
+
+    if (body.data.product === 'collection-report') {
+      if (!deps.resolutionService || !deps.resolutionStore) {
+        return c.json({ error: 'collection-report admission unavailable' }, 503);
+      }
+      const binding = inputsParsed.data as {
+        schema_version: 1;
+        resolution_id: string;
+        candidate_snapshot_digest: unknown;
+        community_ref: string;
+      };
+      const record = await deps.resolutionStore.get(binding.resolution_id);
+      if (record === undefined) {
+        return c.json({ error: 'order binding rejected', reason: 'resolution_not_found' }, 409);
+      }
+      try {
+        const admitted = await deps.resolutionService.admit(
+          binding,
+          record.authorization_scope,
+          buildLocalCapabilityFromRecord(record),
+        );
+        if (admitted.decision !== 'admit') {
+          return c.json(
+            { error: 'order binding rejected', decision: admitted.decision },
+            409,
+          );
+        }
+      } catch {
+        return c.json({ error: 'order binding rejected' }, 409);
+      }
     }
 
     const order_id = randomUUID();
