@@ -38,7 +38,7 @@ export const isDirtySourceTree = (repositoryRoot: string): boolean => {
  * Resolve and validate a source commit against repository truth.
  *
  * - Must be a full 40-char lowercase hex SHA (or resolvable to one).
- * - Must name an actual commit object reachable from HEAD.
+ * - Must name the current HEAD whose working tree is actually packed.
  * - Zero / nonexistent / arbitrary SHAs are rejected at pack time.
  * - Dirty trees are allowed only because the pack also binds
  *   `source_tree_sha256` of the exact packed inventory (see identity/manifest).
@@ -67,11 +67,10 @@ export const assertReachableSourceCommit = (
     throw new SourceCommitError(`source_commit did not resolve to sha40: ${resolved}`);
   }
 
-  try {
-    runGit(repositoryRoot, ["merge-base", "--is-ancestor", resolved, "HEAD"]);
-  } catch {
+  const head = runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+  if (resolved !== head) {
     throw new SourceCommitError(
-      `source_commit ${resolved} is not an ancestor of HEAD (unreachable from current repository)`,
+      `source_commit ${resolved} must equal current HEAD ${head}; ancestor reachability does not prove packed-byte identity`,
     );
   }
 

@@ -47,8 +47,14 @@ const parseArgs = (argv) => {
 };
 
 const resolveSourceCommit = (explicit) => {
-  if (/^[0-9a-f]{40}$/.test(explicit)) {
-    return explicit;
+  const supplied = explicit.trim();
+  if (supplied.length > 0) {
+    if (!/^[0-9a-f]{40}$/.test(supplied)) {
+      throw new Error(
+        `invalid explicit source commit: expected a full lowercase sha40`,
+      );
+    }
+    return supplied;
   }
   try {
     return execFileSync("git", ["rev-parse", "HEAD"], {

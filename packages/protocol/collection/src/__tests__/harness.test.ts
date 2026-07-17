@@ -374,6 +374,14 @@ describe("CR-005 artifact harness", () => {
       ),
     ).toThrow(SourceCommitError);
 
+    const ancestor = execFileSync("git", ["rev-parse", "HEAD^"], {
+      cwd: packageRoot,
+      encoding: "utf8",
+    }).trim();
+    expect(() =>
+      assertReachableSourceCommit(packageRoot, ancestor),
+    ).toThrow(/must equal current HEAD/);
+
     expect(() =>
       packArtifact({
         packageRoot,
@@ -391,6 +399,18 @@ describe("CR-005 artifact harness", () => {
         isolatedBuild: true,
       }),
     ).toThrow(SourceCommitError);
+
+    expect(() =>
+      execFileSync(
+        "node",
+        [
+          join(packageRoot, "scripts/pack-artifact.mjs"),
+          "--source-commit",
+          "deadbeef",
+        ],
+        { cwd: packageRoot, stdio: "pipe" },
+      ),
+    ).toThrow();
   });
 
   it("CLI strict-verify rejects missing fixture digests (no weaker fallback)", async () => {
