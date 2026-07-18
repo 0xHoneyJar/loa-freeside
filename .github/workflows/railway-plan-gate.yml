@@ -1,0 +1,196 @@
+# S2-T2 (SDD §8, IMP-013, G-6) — operator-approved org-as-code gate.
+#
+# Runs `railway config plan` (READ-ONLY) against .railway/railway.ts and fails the PR on:
+#   1. ANY destructive change (baseline-independent) — Railway IaC is declarative and will DELETE
+#      resources it does not declare. A plan against a wrongly-linked project once read
+#      "1 to add, 3 to DESTROY" (would have deleted ordering-service + its Postgres).
+#   2. Drift from the committed .railway/plan-baseline.json — an intended IaC change must refresh the
+#      baseline in the same PR, which makes it explicit and reviewable.
+#
+# This workflow NEVER applies. `railway config apply` stays human-gated (NFR-2).
+# Secrets never reach the logs: the gate prints only change kind/severity/summary (variable NAMES, not
+# values — Railway redacts values as «hidden»).
+#
+# ── SECRET-HANDLING (FAGAN + Bridgebuilder review, 2026-07-18) ─────────────────────────────────────────
+# RAILWAY_TOKEN is apply-capable, and `railway config plan` evaluates .railway/railway.ts. Therefore this
+# workflow MUST NOT run automatically on pull_request: a trusted workflow cannot sandbox PR-controlled
+# TypeScript that it later evaluates with a deployment credential.
+#
+# The credentialed plan is manual-only and protected by the `railway-plan` GitHub Environment:
+#   · The operator dispatches an EXACT reviewed commit SHA (not a moving branch).
+#   · Required environment reviewers approve that SHA before the job starts or receives the token.
+#   · RAILWAY_TOKEN lives in the environment, NOT as an automatically exposed repository secret.
+#   · The GATE SCRIPT is fetched from the DEFAULT branch, never the reviewed ref — otherwise a ref could edit
+#     plan-gate.mjs to exfiltrate the token after approval.
+#   · The Railway CLI + SDK are PINNED — `npm install -g @railway/cli` (unpinned) is arbitrary code
+#     running with the secret in env.
+#
+# Enforcement identity: a trusted `pull_request_target` job marks the exact PR head's
+# `railway-plan-gate` commit status PENDING without checking out PR code. The protected
+# manual run publishes SUCCESS or FAILURE to that same exact SHA. A new head gets a new
+# pending status, so stale success cannot travel forward.
+#
+# SETUP (operator, one-time): create a protected `railway-plan` environment with required reviewers; add
+# RAILWAY_TOKEN there (Railway project token scoped to shadow-audit-api/production); remove any repo-level
+# copy; require the `railway-plan-gate` commit-status context in main's branch protection. If Railway ships a
+# read-only/plan-scoped token, replace it.
+
+name: railway-plan-gate
+
+on:
+  # Safe sentinel: pull_request_target executes this workflow from the trusted
+  # base branch. It never checks out or executes PR-controlled code.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Exact 40-character reviewed commit SHA to plan'
+        required: true
+        type: string
+
+jobs:
+  require-plan:
+    name: require exact-head Railway plan
+    if: github.event_name == 'pull_request_target'
+    permissions:
+      contents: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish exact PR-head requirement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          state=success
+          description='Railway plan not required for this change'
+          while IFS= read -r filename; do
+            case "$filename" in
+              .railway/*|packages/services/shadow-audit/Dockerfile)
+                state=pending
+                description='Awaiting protected Railway plan for this exact commit'
+                break
+                ;;
+            esac
+          done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$state" \
+            -f context=railway-plan-gate \
+            -f description="$description"
+
+  plan-gate:
+    name: railway config plan (operator-approved)
+    # Job-level guard is evaluated before the protected environment is
+    # requested. Only the workflow definition selected from the trusted default
+    # branch can reach approval or receive credentials.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    environment: railway-plan
+    permissions:
+      contents: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify immutable reviewed ref
+        run: |
+          set -euo pipefail
+          case "${{ inputs.commit_sha }}" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) echo "::error::commit_sha must be an exact lowercase 40-character commit SHA"; exit 1 ;;
+          esac
+          test "$(git rev-parse HEAD)" = "${{ inputs.commit_sha }}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prepare trusted gate and locked Railway toolchain
+        run: |
+          set -euo pipefail
+          trusted_dir="$RUNNER_TEMP/railway-gate-trusted"
+          rm -rf "$trusted_dir"
+          mkdir -p "$trusted_dir"
+          default_branch="${{ github.event.repository.default_branch }}"
+          git fetch --no-tags origin "$default_branch"
+          for path in \
+            .railway/plan-gate.mjs \
+            .railway/trusted-tools/package.json \
+            .railway/trusted-tools/package-lock.json \
+            .railway/trusted-tools/railway-cli.sha256
+          do
+            if ! git cat-file -e "origin/$default_branch:$path" 2>/dev/null; then
+              echo "::error::Trusted default branch has no $path; refusing credentialed bootstrap."
+              exit 1
+            fi
+          done
+          git show "origin/$default_branch:.railway/plan-gate.mjs" > "$trusted_dir/plan-gate.mjs"
+          git show "origin/$default_branch:.railway/trusted-tools/package.json" > "$trusted_dir/package.json"
+          git show "origin/$default_branch:.railway/trusted-tools/package-lock.json" > "$trusted_dir/package-lock.json"
+          git show "origin/$default_branch:.railway/trusted-tools/railway-cli.sha256" > "$trusted_dir/railway-cli.sha256"
+          (
+            cd "$trusted_dir"
+            NPM_CONFIG_USERCONFIG=/dev/null npm ci \
+              --ignore-scripts \
+              --registry=https://registry.npmjs.org
+            curl --fail --location --proto '=https' \
+              https://github.com/railwayapp/cli/releases/download/v4.10.0/railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz \
+              --output railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz
+            sha256sum --check railway-cli.sha256
+            mkdir -p bin
+            tar -xzf railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz -C bin
+          )
+          # The reviewed IaC imports `railway`. Resolve only the default-branch
+          # lockfile installation; do not let PR .npmrc or lifecycle scripts
+          # acquire code in the credentialed job.
+          mkdir -p "$GITHUB_WORKSPACE/node_modules"
+          rm -rf "$GITHUB_WORKSPACE/node_modules/railway"
+          ln -s "$trusted_dir/node_modules/railway" "$GITHUB_WORKSPACE/node_modules/railway"
+
+      - name: Plan gate (READ-ONLY — never applies)
+        id: plan
+        continue-on-error: true
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error title=railway-plan-gate NOT CONFIGURED::RAILWAY_TOKEN is missing from the protected railway-plan environment."
+            exit 1
+          fi
+          # Keep cwd at the reviewed workspace so the trusted CLI evaluates
+          # .railway/railway.ts while its SDK resolves through the trusted link.
+          PATH="$RUNNER_TEMP/railway-gate-trusted/bin:$PATH" \
+            node "$RUNNER_TEMP/railway-gate-trusted/plan-gate.mjs"
+
+      - name: Publish exact-commit plan status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        run: |
+          set -euo pipefail
+          state=failure
+          description='Protected Railway plan failed for this exact commit'
+          if [ "$PLAN_OUTCOME" = success ]; then
+            state=success
+            description='Protected Railway plan passed for this exact commit'
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$COMMIT_SHA" \
+            -f state="$state" \
+            -f context=railway-plan-gate \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Enforce plan result
+        if: steps.plan.outcome != 'success'
+        run: exit 1
