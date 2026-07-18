@@ -29,8 +29,8 @@ describe('rpc-pool — endpoint URLs never reach a caller (arrakis-qf5kc)', () =
       urls: [SECRET_URL, SECRET2],
       attemptsPerUrl: 1,
       sleep: async () => {},
-      callOne: async () => {
-        throw new Error('boom');
+      callOne: async (url) => {
+        throw new Error(`boom: request to ${url} failed`);
       },
     });
 

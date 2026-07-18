@@ -83,7 +83,12 @@ jobs:
 
   plan-gate:
     name: railway config plan (operator-approved)
-    if: github.event_name == 'workflow_dispatch'
+    # Job-level guard is evaluated before the protected environment is
+    # requested. Only the workflow definition selected from the trusted default
+    # branch can reach approval or receive credentials.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     environment: railway-plan
     permissions:
       contents: read

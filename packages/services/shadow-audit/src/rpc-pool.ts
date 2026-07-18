@@ -124,12 +124,19 @@ export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {
           // someone adds a paid key — the most natural next config change.
           //
           // The ordinal is enough to debug a pool ("endpoint 2 of 3 failed") and identifies nothing.
-          failures.push(`endpoint ${idx + 1} of ${urls.length}: ${(e as Error).message}`);
+          const safeMessage = redactEndpoints(
+            e instanceof Error ? e.message : String(e),
+          );
+          failures.push(`endpoint ${idx + 1} of ${urls.length}: ${safeMessage}`);
           if (attempt < attemptsPerUrl - 1) await sleep(backoffMs * 2 ** attempt);
         }
       }
     }
-    throw new Error(`RPC ${method} failed on all ${urls.length} endpoint(s) — ${failures.join(' | ')}`);
+    throw new Error(
+      redactEndpoints(
+        `RPC ${method} failed on all ${urls.length} endpoint(s) — ${failures.join(' | ')}`,
+      ),
+    );
   };
 }
 
