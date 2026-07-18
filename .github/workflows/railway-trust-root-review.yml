@@ -3,8 +3,8 @@
 # Ordinary `railway-plan-gate` attests an active, byte-pinned IaC declaration.
 # It MUST NOT authorize replacement of its own workflow, evaluator, executable
 # config, tests, or toolchain. Trust-root rotation is instead admitted by an
-# exact-head Bridgebuilder review from a repository member with no blocking
-# structured findings. No Railway credential is available to this workflow.
+# exact-head Bridgebuilder review from a non-author maintainer/admin with no
+# blocking structured findings. No Railway credential is available here.
 #
 # Bootstrap: the first merge installing this workflow has no predecessor that
 # can emit the status. Its one-time ceremony is documented in
@@ -17,7 +17,7 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened]
   pull_request_review:
-    types: [submitted, edited]
+    types: [submitted, edited, dismissed]
 
 jobs:
   attest:
@@ -33,6 +33,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           changed=false
@@ -54,58 +56,34 @@ jobs:
           description='Railway trust root unchanged'
           if [ "$changed" = true ]; then
             reviews="$RUNNER_TEMP/railway-trust-root-reviews.json"
+            permissions="$RUNNER_TEMP/railway-trust-root-permissions.json"
+            attestor="$RUNNER_TEMP/bridge-review-attestation.mjs"
             result="$RUNNER_TEMP/railway-trust-root-result.json"
             gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp > "$reviews"
-            REVIEWS_FILE="$reviews" RESULT_FILE="$result" node <<'NODE'
-          const { readFileSync, writeFileSync } = require('node:fs');
+            gh api \
+              -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.railway/trusted-tools/bridge-review-attestation.mjs?ref=$DEFAULT_BRANCH" \
+              > "$attestor"
 
-          const head = process.env.HEAD_SHA;
-          const reviews = JSON.parse(readFileSync(process.env.REVIEWS_FILE, 'utf8')).flat();
-          const marker = `<!-- bridgebuilder-review: ${head} -->`;
-          const trustedAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
-          const eligible = reviews
-            .filter(
-              (review) =>
-                review.commit_id === head &&
-                trustedAssociations.has(review.author_association) &&
-                typeof review.body === 'string' &&
-                review.body.includes(marker),
-            )
-            .sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at)));
+            echo '{}' > "$permissions"
+            while IFS= read -r reviewer; do
+              case "$reviewer" in
+                ''|*[!A-Za-z0-9-]*) continue ;;
+              esac
+              permission=$(
+                gh api "repos/$GITHUB_REPOSITORY/collaborators/$reviewer/permission" \
+                  --jq '.permission' 2>/dev/null || echo none
+              )
+              jq --arg reviewer "$reviewer" --arg permission "$permission" \
+                '. + {($reviewer): $permission}' "$permissions" > "$permissions.next"
+              mv "$permissions.next" "$permissions"
+            done < <(jq -r '[.[][] | .user.login // empty] | unique[]' "$reviews")
 
-          let result = {
-            state: 'pending',
-            description: 'Awaiting exact-head member Bridgebuilder review',
-          };
-          const review = eligible[0];
-          if (review) {
-            const match = review.body.match(
-              /<!-- bridge-findings-start -->\s*```json\s*([\s\S]*?)\s*```\s*<!-- bridge-findings-end -->/,
-            );
-            if (match) {
-              try {
-                const document = JSON.parse(match[1]);
-                const findings = Array.isArray(document.findings) ? document.findings : [];
-                const blocking = findings.filter((finding) =>
-                  ['CRITICAL', 'HIGH', 'MEDIUM'].includes(finding?.severity),
-                );
-                result =
-                  blocking.length === 0
-                    ? {
-                        state: 'success',
-                        description: 'Exact-head Bridgebuilder trust-root review passed',
-                      }
-                    : {
-                        state: 'failure',
-                        description: `Bridgebuilder found ${blocking.length} blocking trust-root issue(s)`,
-                      };
-              } catch {
-                // A malformed review is not an attestation.
-              }
-            }
-          }
-          writeFileSync(process.env.RESULT_FILE, JSON.stringify(result));
-          NODE
+            REVIEWS_FILE="$reviews" \
+              PERMISSIONS_FILE="$permissions" \
+              HEAD_SHA="$HEAD_SHA" \
+              PR_AUTHOR="$PR_AUTHOR" \
+              node "$attestor" > "$result"
             state=$(jq -r '.state' "$result")
             description=$(jq -r '.description' "$result")
           fi

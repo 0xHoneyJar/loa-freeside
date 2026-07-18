@@ -21,7 +21,8 @@ does not discover it automatically, and the bootstrap never executes it:
 5. Every later Railway change is marked pending on its exact PR head and must
    receive the applicable exact-head status. Active IaC uses the protected
    manual plan; verifier/workflow/toolchain rotations use the independent
-   member-authored Bridgebuilder attestation with no Railway credential.
+   Bridgebuilder attestation from a non-author maintainer/admin with no Railway
+   credential. A dismissed or superseded review revokes the attestation.
 
 The trusted evaluator is bound to Railway project
 `0bf95b1c-b8f2-4e60-a4a6-50089b521eb0` and production environment
