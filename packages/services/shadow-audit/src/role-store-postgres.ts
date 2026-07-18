@@ -10,6 +10,7 @@ import {
   type DurableRoleStore,
 } from './role-store.js';
 import type { SourceResolver } from './collection-union.js';
+import { PostgresFixedWindowRateLimiter } from './postgres-rate-limiter.js';
 
 /** Database row owned by the role-store adapter. `snapshot` is validated at both boundaries. */
 export interface RoleSnapshotRecord {
@@ -27,7 +28,8 @@ export interface RoleSnapshotRepository {
 }
 
 const ROLE_STORE_COMPONENT = 'role-snapshot-store';
-const ROLE_STORE_SCHEMA_VERSION = 1;
+const ROLE_STORE_SCHEMA_VERSION = 2;
+const ROLE_STORE_MIGRATION_LOCK = 7_341_209_866_127_451;
 
 const canonicalSnapshotJson = (snapshot: RoleSnapshot): string =>
   JSON.stringify(RoleSnapshotSchema.parse(snapshot));
@@ -80,7 +82,12 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
   ) {}
 
   async initialize(): Promise<void> {
-    await this.sql`
+    await this.sql.begin(async (sql) => {
+      // Serialize the complete read → migrate → record → verify sequence across
+      // startup replicas. The transaction-scoped lock releases on commit,
+      // rollback, or a crashed connection.
+      await sql`SELECT pg_advisory_xact_lock(${ROLE_STORE_MIGRATION_LOCK}::bigint)`;
+      await sql`
       CREATE TABLE IF NOT EXISTS shadow_audit_schema_migrations (
         component TEXT NOT NULL,
         version INTEGER NOT NULL CHECK (version > 0),
@@ -89,20 +96,20 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
       )
     `;
 
-    const currentRows = await this.sql<{ version: number }[]>`
+      const currentRows = await sql<{ version: number }[]>`
       SELECT COALESCE(MAX(version), 0)::int AS version
       FROM shadow_audit_schema_migrations
       WHERE component = ${ROLE_STORE_COMPONENT}
     `;
-    const current = currentRows[0]?.version ?? 0;
-    if (current > ROLE_STORE_SCHEMA_VERSION) {
-      throw new Error(
-        `role-store schema version ${current} is newer than supported ${ROLE_STORE_SCHEMA_VERSION}`,
-      );
-    }
+      const current = currentRows[0]?.version ?? 0;
+      if (current > ROLE_STORE_SCHEMA_VERSION) {
+        throw new Error(
+          `role-store schema version ${current} is newer than supported ${ROLE_STORE_SCHEMA_VERSION}`,
+        );
+      }
 
-    if (current < 1) {
-      await this.sql`
+      if (current < 1) {
+        await sql`
         CREATE TABLE IF NOT EXISTS shadow_audit_role_snapshots (
           community TEXT NOT NULL,
           collection_key TEXT NOT NULL,
@@ -112,26 +119,43 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
           PRIMARY KEY (community, collection_key)
         )
       `;
-      await this.sql`
+        await sql`
         INSERT INTO shadow_audit_schema_migrations (component, version)
         VALUES (${ROLE_STORE_COMPONENT}, 1)
         ON CONFLICT (component, version) DO NOTHING
       `;
-    }
+      }
 
-    const verifiedRows = await this.sql<{ version: number }[]>`
+      if (current < 2) {
+        await sql`
+          CREATE TABLE IF NOT EXISTS shadow_audit_rate_limits (
+            namespace TEXT NOT NULL,
+            limiter_key TEXT NOT NULL,
+            window_started_at TIMESTAMPTZ NOT NULL,
+            request_count INTEGER NOT NULL CHECK (request_count > 0),
+            PRIMARY KEY (namespace, limiter_key)
+          )
+        `;
+        await sql`
+          INSERT INTO shadow_audit_schema_migrations (component, version)
+          VALUES (${ROLE_STORE_COMPONENT}, 2)
+          ON CONFLICT (component, version) DO NOTHING
+        `;
+      }
+
+      const verifiedRows = await sql<{ version: number }[]>`
       SELECT COALESCE(MAX(version), 0)::int AS version
       FROM shadow_audit_schema_migrations
       WHERE component = ${ROLE_STORE_COMPONENT}
     `;
-    const verified = verifiedRows[0]?.version ?? 0;
-    if (verified !== ROLE_STORE_SCHEMA_VERSION) {
-      throw new Error(
-        `role-store schema initialization incomplete: expected ${ROLE_STORE_SCHEMA_VERSION}, got ${verified}`,
-      );
-    }
+      const verified = verifiedRows[0]?.version ?? 0;
+      if (verified !== ROLE_STORE_SCHEMA_VERSION) {
+        throw new Error(
+          `role-store schema initialization incomplete: expected ${ROLE_STORE_SCHEMA_VERSION}, got ${verified}`,
+        );
+      }
 
-    const columns = await this.sql<
+      const columns = await sql<
       { column_name: string; data_type: string; is_nullable: 'YES' | 'NO' }[]
     >`
       SELECT column_name, data_type, is_nullable
@@ -139,21 +163,21 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
       WHERE table_schema = current_schema()
         AND table_name = 'shadow_audit_role_snapshots'
     `;
-    const requiredColumns = new Map([
+      const requiredColumns = new Map([
       ['community', ['text', 'NO']],
       ['collection_key', ['text', 'NO']],
       ['captured_at', ['timestamp with time zone', 'NO']],
       ['snapshot', ['jsonb', 'NO']],
       ['updated_at', ['timestamp with time zone', 'NO']],
     ]);
-    for (const [name, [dataType, nullable]] of requiredColumns) {
-      const column = columns.find((candidate) => candidate.column_name === name);
-      if (!column || column.data_type !== dataType || column.is_nullable !== nullable) {
-        throw new Error(`role-store schema drift: required column ${name} is missing or incompatible`);
+      for (const [name, [dataType, nullable]] of requiredColumns) {
+        const column = columns.find((candidate) => candidate.column_name === name);
+        if (!column || column.data_type !== dataType || column.is_nullable !== nullable) {
+          throw new Error(`role-store schema drift: required column ${name} is missing or incompatible`);
+        }
       }
-    }
 
-    const primaryKeys = await this.sql<{ columns: string[] }[]>`
+      const primaryKeys = await sql<{ columns: string[] }[]>`
       SELECT array_agg(attribute.attname ORDER BY key_column.ordinality) AS columns
       FROM pg_constraint AS constraint_row
       JOIN LATERAL unnest(constraint_row.conkey) WITH ORDINALITY
@@ -165,11 +189,56 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
         AND constraint_row.conrelid = 'shadow_audit_role_snapshots'::regclass
       GROUP BY constraint_row.oid
     `;
-    if (JSON.stringify(primaryKeys[0]?.columns) !== JSON.stringify(['community', 'collection_key'])) {
-      throw new Error(
-        'role-store schema drift: primary key must be (community, collection_key)',
-      );
-    }
+      if (JSON.stringify(primaryKeys[0]?.columns) !== JSON.stringify(['community', 'collection_key'])) {
+        throw new Error(
+          'role-store schema drift: primary key must be (community, collection_key)',
+        );
+      }
+
+      const limiterColumns = await sql<
+        { column_name: string; data_type: string; is_nullable: 'YES' | 'NO' }[]
+      >`
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'shadow_audit_rate_limits'
+      `;
+      const requiredLimiterColumns = new Map([
+        ['namespace', ['text', 'NO']],
+        ['limiter_key', ['text', 'NO']],
+        ['window_started_at', ['timestamp with time zone', 'NO']],
+        ['request_count', ['integer', 'NO']],
+      ]);
+      for (const [name, [dataType, nullable]] of requiredLimiterColumns) {
+        const column = limiterColumns.find((candidate) => candidate.column_name === name);
+        if (!column || column.data_type !== dataType || column.is_nullable !== nullable) {
+          throw new Error(
+            `role-store schema drift: rate-limit column ${name} is missing or incompatible`,
+          );
+        }
+      }
+
+      const limiterPrimaryKeys = await sql<{ columns: string[] }[]>`
+        SELECT array_agg(attribute.attname ORDER BY key_column.ordinality) AS columns
+        FROM pg_constraint AS constraint_row
+        JOIN LATERAL unnest(constraint_row.conkey) WITH ORDINALITY
+          AS key_column(attnum, ordinality) ON TRUE
+        JOIN pg_attribute AS attribute
+          ON attribute.attrelid = constraint_row.conrelid
+         AND attribute.attnum = key_column.attnum
+        WHERE constraint_row.contype = 'p'
+          AND constraint_row.conrelid = 'shadow_audit_rate_limits'::regclass
+        GROUP BY constraint_row.oid
+      `;
+      if (
+        JSON.stringify(limiterPrimaryKeys[0]?.columns) !==
+        JSON.stringify(['namespace', 'limiter_key'])
+      ) {
+        throw new Error(
+          'role-store schema drift: rate-limit primary key must be (namespace, limiter_key)',
+        );
+      }
+    });
   }
 
   async load(community: string, collectionKey: string): Promise<unknown | undefined> {
@@ -258,6 +327,7 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
 
 export interface PostgresRoleSnapshotConnection {
   repository: PostgresRoleSnapshotRepository;
+  teaserBudget(config: { limit: number; windowMs: number }): PostgresFixedWindowRateLimiter;
   close(): Promise<void>;
 }
 
@@ -268,6 +338,11 @@ export function connectPostgresRoleSnapshotRepository(
   const sql = postgres(databaseUrl, { max: 5, connect_timeout: 10, idle_timeout: 20 });
   return {
     repository: new PostgresRoleSnapshotRepository(sql, sources),
+    teaserBudget: (config) =>
+      new PostgresFixedWindowRateLimiter(sql, {
+        namespace: 'public-access-risk-reconstruction',
+        ...config,
+      }),
     close: () => sql.end({ timeout: 5 }),
   };
 }

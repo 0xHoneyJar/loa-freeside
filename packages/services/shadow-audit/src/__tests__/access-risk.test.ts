@@ -202,10 +202,10 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect(seen.size).toBe(1);
   });
 
-  it('PER-REPLICA HARD BOUND: rotating the client key does NOT bypass the reconstruction budget', async () => {
+  it('IDENTITY-INDEPENDENT HARD BOUND: rotating the client key does NOT bypass the reconstruction budget', async () => {
     // The live probe (2026-07-12) sent 9 requests with rotating X-Forwarded-For against the 6/min per-IP
     // teaser limit and NONE were limited — the caller supplies the key, so per-IP is not a bound at all.
-    // The per-replica budget is keyed on a CONSTANT, so identity-rotation buys nothing in this process.
+    // The injected budget is keyed on a CONSTANT, so identity-rotation buys nothing.
     // Per-IP is left wide open here precisely to prove that identity-independent bound is what bites.
     const app = createAuditRouter(
       makeDeps({

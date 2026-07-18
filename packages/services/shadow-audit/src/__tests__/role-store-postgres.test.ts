@@ -154,13 +154,28 @@ describe('Postgres role-snapshot encoding', () => {
   it('applies and verifies the versioned role-store migration before serving', async () => {
     const queries: string[] = [];
     let version = 0;
-    const tag = Object.assign(
+    let transactionCalls = 0;
+    const tag: Sql = Object.assign(
       (strings: TemplateStringsArray) => {
         const query = strings.join(' ');
         queries.push(query);
         if (query.includes('SELECT COALESCE(MAX(version)')) return Promise.resolve([{ version }]);
-        if (query.includes('INSERT INTO shadow_audit_schema_migrations')) version = 1;
+        if (query.includes('INSERT INTO shadow_audit_schema_migrations')) {
+          version = Math.max(version, query.includes(', 2') ? 2 : 1);
+        }
         if (query.includes('FROM information_schema.columns')) {
+          if (query.includes("table_name = 'shadow_audit_rate_limits'")) {
+            return Promise.resolve([
+              { column_name: 'namespace', data_type: 'text', is_nullable: 'NO' },
+              { column_name: 'limiter_key', data_type: 'text', is_nullable: 'NO' },
+              {
+                column_name: 'window_started_at',
+                data_type: 'timestamp with time zone',
+                is_nullable: 'NO',
+              },
+              { column_name: 'request_count', data_type: 'integer', is_nullable: 'NO' },
+            ]);
+          }
           return Promise.resolve([
             { column_name: 'community', data_type: 'text', is_nullable: 'NO' },
             { column_name: 'collection_key', data_type: 'text', is_nullable: 'NO' },
@@ -170,30 +185,45 @@ describe('Postgres role-snapshot encoding', () => {
           ]);
         }
         if (query.includes('FROM pg_constraint')) {
+          if (query.includes("'shadow_audit_rate_limits'::regclass")) {
+            return Promise.resolve([{ columns: ['namespace', 'limiter_key'] }]);
+          }
           return Promise.resolve([{ columns: ['community', 'collection_key'] }]);
         }
         return Promise.resolve([]);
       },
-      { json: (value: unknown) => value },
+      {
+        json: (value: unknown) => value,
+        begin: async <T>(fn: (transaction: Sql) => Promise<T>) => {
+          transactionCalls++;
+          return fn(tag);
+        },
+      },
     ) as unknown as Sql;
     const repository = new PostgresRoleSnapshotRepository(tag, sources);
 
     await repository.initialize();
 
+    expect(transactionCalls).toBe(1);
+    expect(queries[0]).toContain('pg_advisory_xact_lock');
     expect(queries.some((query) => query.includes('CREATE TABLE IF NOT EXISTS shadow_audit_schema_migrations'))).toBe(true);
     expect(queries.some((query) => query.includes('CREATE TABLE IF NOT EXISTS shadow_audit_role_snapshots'))).toBe(true);
-    expect(version).toBe(1);
+    expect(queries.some((query) => query.includes('CREATE TABLE IF NOT EXISTS shadow_audit_rate_limits'))).toBe(true);
+    expect(version).toBe(2);
   });
 
   it('fails initialization when the migration ledger and live catalog disagree', async () => {
-    const tag = Object.assign(
+    const tag: Sql = Object.assign(
       (strings: TemplateStringsArray) => {
         const query = strings.join(' ');
-        if (query.includes('SELECT COALESCE(MAX(version)')) return Promise.resolve([{ version: 1 }]);
+        if (query.includes('SELECT COALESCE(MAX(version)')) return Promise.resolve([{ version: 2 }]);
         if (query.includes('FROM information_schema.columns')) return Promise.resolve([]);
         return Promise.resolve([]);
       },
-      { json: (value: unknown) => value },
+      {
+        json: (value: unknown) => value,
+        begin: <T>(fn: (transaction: Sql) => Promise<T>) => fn(tag),
+      },
     ) as unknown as Sql;
 
     await expect(new PostgresRoleSnapshotRepository(tag, sources).initialize()).rejects.toThrow(

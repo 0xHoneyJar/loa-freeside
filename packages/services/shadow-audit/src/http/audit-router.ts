@@ -52,7 +52,7 @@ import {
   type NonceStore,
   type RecoverSigner,
 } from '../association-verifier.js';
-import type { RateLimiter } from '../rate-limiter.js';
+import type { RateLimiter, ReconstructionBudget } from '../rate-limiter.js';
 import {
   isRunWithinWindow,
   ReactionSchema,
@@ -111,16 +111,14 @@ export interface AuditRouterDeps {
    *  BEST-EFFORT ONLY — do NOT rely on this as the abuse bound. It is keyed on the client identifier
    *  derived from X-Forwarded-For, which is CALLER-SUPPLIED. A live probe (2026-07-12) sent 9 requests with
    *  rotating XFF against the 6/min teaser and NONE were limited. Treat per-IP as a speed bump; the real
-   *  per-replica bound is `teaserBudget` + the cache below. */
+   *  deployment-wide bound is `teaserBudget` + the cache below. */
   teaserRateLimiter?: RateLimiter;
   /**
-   * S2-T3 PER-REPLICA HARD BOUND (FAGAN 2026-07-12): an identity-independent budget on the expensive path,
-   * keyed on a CONSTANT — not on the client. This caps chain reconstructions handled by this process per
-   * window no matter who calls, how many IPs they rotate, or what headers they forge. It is deliberately
-   * not described as deployment-global: multiple replicas multiply this budget until it moves to a shared
-   * store. The MVP deployment is single-replica; scaling it requires a distributed limiter first.
+   * S2-T3 DEPLOYMENT HARD BOUND: an identity-independent, shared budget on the expensive path, keyed on a
+   * constant — not on the client. Production supplies a Postgres-backed implementation so every replica
+   * consumes from one atomic counter. Tests may inject the synchronous in-memory limiter.
    */
-  teaserBudget?: RateLimiter;
+  teaserBudget?: ReconstructionBudget;
   /** S2-T3: TTL for memoizing the (deterministic) teaser result, so repeat queries cost ZERO chain work. */
   teaserCacheTtlMs?: number;
 }
@@ -408,27 +406,28 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (existing) {
       result = await existing;
     } else {
-      // Anti-abuse #5 — the per-replica HARD BOUND on cache MISSES (the only expensive path), keyed on a
-      // constant, NOT on the caller. FixedWindowRateLimiter.check mutates synchronously, so at most the
-      // configured number of DISTINCT misses enter reconstruction per process/window. The in-flight map
-      // above additionally makes identical concurrent misses share one reconstruction and one budget unit.
-      if (deps.teaserBudget && !deps.teaserBudget.check('replica').allowed) {
-        return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
-      }
-
-      // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
-      // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
-      const computation = computeAccessRisk(
-        {
-          chain: canonicalChain,
-          contract: canonicalContract,
-          snapshotDate: q.data.snapshot_date,
-          threshold,
-          nowUnixSeconds: Math.floor(now / 1000),
-          cta: deps.cta,
-        },
-        { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
-      );
+      // Anti-abuse #5 — the deployment-wide HARD BOUND on cache MISSES (the only expensive path), keyed
+      // on a constant, NOT on the caller. Production's atomic Postgres decision is shared by every
+      // replica. Install the promise BEFORE awaiting that remote decision, so identical local misses
+      // cannot race through the budget and consume multiple deployment units.
+      const computation: Promise<AccessRiskResult> = (async () => {
+        if (deps.teaserBudget && !(await deps.teaserBudget.check('deployment')).allowed) {
+          return { ok: false, refusal: rateLimitRefusal };
+        }
+        // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
+        // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
+        return computeAccessRisk(
+          {
+            chain: canonicalChain,
+            contract: canonicalContract,
+            snapshotDate: q.data.snapshot_date,
+            threshold,
+            nowUnixSeconds: Math.floor(now / 1000),
+            cta: deps.cta,
+          },
+          { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
+        );
+      })();
       teaserInFlight.set(cacheKey, computation);
       try {
         result = await computation;

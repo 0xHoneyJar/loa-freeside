@@ -74,9 +74,14 @@ export {
 export {
   FixedWindowRateLimiter,
   type RateLimiter,
+  type ReconstructionBudget,
   type RateLimiterConfig,
   type RateDecision,
 } from './rate-limiter.js';
+export {
+  PostgresFixedWindowRateLimiter,
+  type PostgresFixedWindowRateLimiterConfig,
+} from './postgres-rate-limiter.js';
 export { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 export {
   RoleSnapshotConflictError,

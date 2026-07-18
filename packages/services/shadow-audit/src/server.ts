@@ -31,6 +31,7 @@ import { InMemoryEventStore } from './event-store.js';
 import { InMemoryNonceStore } from './association-verifier.js';
 import { FixedWindowRateLimiter } from './rate-limiter.js';
 import type { OwnershipSource, RoleSource } from './audit-service.js';
+import type { ReconstructionBudget } from './rate-limiter.js';
 
 export interface AuditServerConfig {
   /** X-API-Key shared secret the dashboard sends; when set, all routes (except /healthz) require it. */
@@ -47,8 +48,7 @@ export interface AuditServerConfig {
   /** S2-T3: per-IP limit for the PUBLIC /v1/access-risk teaser (default 6 req / 60s). BEST-EFFORT — keyed
    *  on caller-supplied X-Forwarded-For; a live probe evaded it by rotating the header. */
   teaserRateLimit?: { limit: number; windowMs: number };
-  /** S2-T3 PER-REPLICA HARD BOUND: teaser chain-reconstructions (cache misses), keyed on a constant so
-   *  no header/IP rotation can raise it inside one process. Default 30 / 60s. */
+  /** S2-T3 deployment-wide bound for teaser chain reconstructions. Default 30 / 60s. */
   teaserBudget?: { limit: number; windowMs: number };
   /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
@@ -65,6 +65,8 @@ export interface AuditServerConfig {
 export interface AuditAppRuntime {
   /** Pre-initialized shared store. Required when roleSnapshotStore=postgres. */
   roleStore?: DurableRoleStore;
+  /** Deployment-shared public reconstruction budget. Required for production Postgres. */
+  teaserBudget?: ReconstructionBudget;
 }
 
 /** Fail-closed auth for the un-wired V2 POST path: `recover` returns a wallet that can never match a real
@@ -121,10 +123,8 @@ export function buildAuditApp(
   // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP. BEST-EFFORT — the client key
   // comes from caller-supplied X-Forwarded-For (a live probe evaded it by rotating the header).
   const teaserRl = config.teaserRateLimit ?? { limit: 6, windowMs: 60_000 };
-  // The per-replica HARD bound (FAGAN 2026-07-12): a cap on teaser cache-MISSES — i.e. actual chain
-  // reconstructions — keyed on a constant, so no amount of IP/header rotation raises it inside this
-  // process. The MVP is single-replica. Do not scale horizontally until this limiter is backed by shared
-  // state; otherwise deployment-wide capacity grows by the replica count.
+  // The production HARD bound is shared through Postgres. Tests/local file mode retain the in-memory
+  // implementation so the router remains independently testable.
   const teaserBudgetCfg = config.teaserBudget ?? { limit: 30, windowMs: 60_000 };
 
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
@@ -149,6 +149,11 @@ export function buildAuditApp(
     if (config.roleSnapshotStore === 'postgres' && !runtime.roleStore) {
       throw new Error('ROLE_SNAPSHOT_STORE=postgres requires an initialized Postgres role store');
     }
+    if (config.roleSnapshotStore === 'postgres' && !runtime.teaserBudget) {
+      throw new Error(
+        'ROLE_SNAPSHOT_STORE=postgres requires a deployment-shared Postgres teaser budget',
+      );
+    }
     const store =
       runtime.roleStore ??
       makeDurableRoleStore({
@@ -172,8 +177,8 @@ export function buildAuditApp(
     whale: makeBalanceWhaleSource(),
     roles,
     ingest,
-    // F4: the event store + rate limiter are IN-MEMORY (per-replica, non-durable). That is correct for the
-    // single-replica MVP — the audit is stateless read-modelling + best-effort anti-abuse, not a ledger.
+    // F4: the event store + authenticated-route limiter are IN-MEMORY (per-replica, non-durable). The
+    // public reconstruction budget is separate and Postgres-backed in production.
     // loa:shortcut: in-memory event/rate state; if this scales past one replica, back both with Redis (the
     //   rate window + the nonce/event store), else limits + replay-dedup are per-replica.
     eventStore: new InMemoryEventStore(),
@@ -184,12 +189,13 @@ export function buildAuditApp(
       windowMs: teaserRl.windowMs,
       now,
     }),
-    // The bound that actually holds in this process: identity-independent, per-replica reconstruction cap.
-    teaserBudget: new FixedWindowRateLimiter({
-      limit: teaserBudgetCfg.limit,
-      windowMs: teaserBudgetCfg.windowMs,
-      now,
-    }),
+    teaserBudget:
+      runtime.teaserBudget ??
+      new FixedWindowRateLimiter({
+        limit: teaserBudgetCfg.limit,
+        windowMs: teaserBudgetCfg.windowMs,
+        now,
+      }),
     auth: failClosedAuth(),
     isOperatedCommunity: (id) => config.operatedCommunities.includes(id),
     cta: config.cta,

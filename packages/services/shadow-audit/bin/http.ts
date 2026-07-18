@@ -150,6 +150,7 @@ const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confi
 const config = configFromEnv();
 let postgresConnection: PostgresRoleSnapshotConnection | undefined;
 let roleStore;
+let teaserBudget;
 if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
   const community = config.operatedCommunities[0];
   if (!community || !config.databaseUrl) {
@@ -158,8 +159,11 @@ if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
   postgresConnection = connectPostgresRoleSnapshotRepository(config.databaseUrl, sources);
   await postgresConnection.repository.initialize();
   roleStore = makeRepositoryRoleStore({ repository: postgresConnection.repository, community, sources });
+  teaserBudget = postgresConnection.teaserBudget(
+    config.teaserBudget ?? { limit: 30, windowMs: 60_000 },
+  );
 }
-const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore });
+const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore, teaserBudget });
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
 const server = serve({ fetch: app.fetch, port }, (info) => {

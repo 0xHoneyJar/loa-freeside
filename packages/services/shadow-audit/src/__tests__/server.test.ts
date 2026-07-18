@@ -286,6 +286,21 @@ describe('buildAuditApp — postgres role-store composition', () => {
     ).toThrow(/initialized Postgres role store/);
   });
 
+  it('fails startup when postgres is selected but the shared teaser budget is absent', () => {
+    const roleStore = {
+      load: async () => undefined,
+      store: async () => true,
+    };
+    expect(() =>
+      buildAuditApp(
+        ownership,
+        baseConfig({ ingestToken: 'ingest-secret', roleSnapshotStore: 'postgres' }),
+        collections,
+        { roleStore },
+      ),
+    ).toThrow(/deployment-shared Postgres teaser budget/);
+  });
+
   it('fails startup rather than serving one community from another community\'s role store', () => {
     expect(() =>
       buildAuditApp(
@@ -299,8 +314,6 @@ describe('buildAuditApp — postgres role-store composition', () => {
 
 describe('capability read security boundary (FR-2 / PRD §Security boundary)', () => {
   const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[R1, 1n]]));
-  const registry = ({ chain, contract }: { chain: string; contract: string }) =>
-    ({ '1/0xabc': { collection: 'azuki', standard: 'erc721' as const } })[`${chain}/${contract}`.toLowerCase()];
 
   it('GET /v1/collections is OPEN even when an X-API-Key is configured', async () => {
     const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), buildCollectionIndex({ '1/0xabc': { collection: 'azuki', standard: 'erc721' } }));
