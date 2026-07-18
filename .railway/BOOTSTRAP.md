@@ -59,11 +59,17 @@ An intentional config rotation changes both `.railway/railway.ts` and
    `pull_request_target`/`workflow_run` status publisher consumes only the
    canonical workflow-run identity, repository, exact head SHA, and conclusion;
    it never receives candidate-produced files, environment values, or command
-   outputs, and it never executes PR-head code.
+   outputs, and it never executes PR-head code. Before accepting that
+   conclusion, it also proves the candidate's
+   `railway-trust-root-tests.yml` is byte-identical to the default-branch
+   runner, so a candidate cannot replace the test command with a no-op.
    For this first bootstrap only, no default-branch regression suite exists, so
    the unprivileged workflow runs all candidate tests and the exact-head
    Bridgebuilder review is the independent substitute. Once merged, absence of
    either default regression file is a hard test failure.
+   The independent runner is deliberately outside ordinary trust-root rotation:
+   changing it requires a separate bootstrap ceremony and may not be combined
+   with verifier/config/toolchain changes that rely on its conclusion.
 3. Only after that success may the protected plan run. It retains the old
    default-branch evaluator, SDK lock, and CLI checksum; it extracts the
    candidate config from the attested SHA, verifies it is byte-identical to the

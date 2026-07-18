@@ -94,6 +94,25 @@ jobs:
           done < "$files"
 
           if [ "$state" != failure ] && [ "$changed" = true ]; then
+            default_runner="$RUNNER_TEMP/railway-trust-root-tests.default.yml"
+            candidate_runner="$RUNNER_TEMP/railway-trust-root-tests.candidate.yml"
+            if ! gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.github/workflows/railway-trust-root-tests.yml?ref=$DEFAULT_BRANCH" \
+              > "$default_runner"
+            then
+              state=pending
+              description='Bootstrap requires explicit exact-head review'
+            elif ! gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.github/workflows/railway-trust-root-tests.yml?ref=$HEAD_SHA" \
+              > "$candidate_runner" ||
+              ! cmp --silent "$default_runner" "$candidate_runner"
+            then
+              state=failure
+              description='Independent trust-test runner differs from default branch'
+            fi
+          fi
+
+          if [ "$state" = success ] && [ "$changed" = true ]; then
             test_run="$RUNNER_TEMP/railway-trust-root-test-run.json"
             if [ "$EVENT_NAME" = workflow_run ]; then
               case "$WORKFLOW_RUN_ID" in

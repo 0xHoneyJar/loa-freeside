@@ -63,6 +63,7 @@ jobs:
       contents: read
       statuses: write
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Publish exact PR-head requirement
         env:
