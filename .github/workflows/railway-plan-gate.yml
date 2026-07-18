@@ -42,9 +42,6 @@ on:
   # base branch. It never checks out or executes PR-controlled code.
   pull_request_target:
     types: [opened, synchronize, reopened]
-    paths:
-      - '.railway/**'
-      - 'packages/services/shadow-audit/Dockerfile'
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -61,16 +58,28 @@ jobs:
       statuses: write
     runs-on: ubuntu-latest
     steps:
-      - name: Mark exact PR head pending
+      - name: Publish exact PR-head requirement
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          state=success
+          description='Railway plan not required for this change'
+          while IFS= read -r filename; do
+            case "$filename" in
+              .railway/*|packages/services/shadow-audit/Dockerfile)
+                state=pending
+                description='Awaiting protected Railway plan for this exact commit'
+                break
+                ;;
+            esac
+          done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
           gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-            -f state=pending \
+            -f state="$state" \
             -f context=railway-plan-gate \
-            -f description='Awaiting protected Railway plan for this exact commit'
+            -f description="$description"
 
   plan-gate:
     name: railway config plan (operator-approved)
@@ -108,14 +117,17 @@ jobs:
       - name: Fetch the gate script from the default branch
         run: |
           set -euo pipefail
+          trusted_dir="$GITHUB_WORKSPACE/.railway-gate-trusted"
+          rm -rf "$trusted_dir"
+          mkdir -p "$trusted_dir"
           default_branch="${{ github.event.repository.default_branch }}"
           git fetch --no-tags origin "$default_branch"
           if git cat-file -e "origin/$default_branch:.railway/plan-gate.mjs" 2>/dev/null; then
-            git show "origin/$default_branch:.railway/plan-gate.mjs" > /tmp/plan-gate.mjs
+            git show "origin/$default_branch:.railway/plan-gate.mjs" > "$trusted_dir/plan-gate.mjs"
           else
             # Bootstrap only: the first merge has no default-branch gate yet. The protected-environment
             # reviewer must verify the exact SHA includes the reviewed bootstrap script.
-            cp .railway/plan-gate.mjs /tmp/plan-gate.mjs
+            cp .railway/plan-gate.mjs "$trusted_dir/plan-gate.mjs"
           fi
 
       - name: Plan gate (READ-ONLY — never applies)
@@ -129,7 +141,9 @@ jobs:
             echo "::error title=railway-plan-gate NOT CONFIGURED::RAILWAY_TOKEN is missing from the protected railway-plan environment."
             exit 1
           fi
-          node /tmp/plan-gate.mjs
+          # Keep cwd at the reviewed workspace so Railway resolves
+          # .railway/railway.ts and its pinned SDK from workspace node_modules.
+          node "$GITHUB_WORKSPACE/.railway-gate-trusted/plan-gate.mjs"
 
       - name: Publish exact-commit plan status
         if: always()

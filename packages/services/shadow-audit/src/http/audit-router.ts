@@ -293,8 +293,8 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   // it must work for a community whose Discord we have NO access to. On-chain only, aggregate only, k-anon.
   // It never returns member data and never claims to know the real stale-access set (see access-risk.ts).
   const AccessRiskQuerySchema = z.object({
-    chain: z.string().min(1),
-    contract: z.string().min(1),
+    chain: z.string().regex(/^[1-9]\d*$/, 'chain must be a canonical positive numeric id'),
+    contract: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'contract must be an EVM address'),
     snapshot_date: z.string().min(1),
     threshold: z.string().optional(),
   });
@@ -322,11 +322,13 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
     const q = AccessRiskQuerySchema.safeParse(c.req.query());
     if (!q.success) return c.json({ error: 'missing/invalid query params' }, 400);
+    const canonicalChain = q.data.chain;
+    const canonicalContract = q.data.contract.toLowerCase();
 
     // Anti-abuse #2 — ANTI-ENUMERATION: only collections in the registry are auditable, so an open caller
     // cannot walk the chain/contract space using this endpoint as a probe oracle.
     if (!deps.collectionRegistry) return c.json({ error: 'registry unavailable' }, 503);
-    if (!deps.collectionRegistry({ chain: q.data.chain, contract: q.data.contract })) {
+    if (!deps.collectionRegistry({ chain: canonicalChain, contract: canonicalContract })) {
       const r: Refusal = {
         code: 'unindexed-contract',
         reason: 'contract is not in the audited collection registry',
@@ -342,7 +344,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
     // Anti-abuse #4 — CACHE. The teaser is deterministic for these inputs, so a repeat is free. A flood of
     // identical queries (the cheapest attack) does exactly ONE reconstruction per TTL.
-    const cacheKey = `${q.data.chain}/${q.data.contract}/${q.data.snapshot_date}/${threshold}`;
+    const cacheKey = `${canonicalChain}/${canonicalContract}/${q.data.snapshot_date}/${threshold}`;
     const now = deps.now();
     const hit = teaserCache.get(cacheKey);
     if (hit && now - hit.at < teaserTtlMs) {
@@ -366,8 +368,8 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
       const computation = computeAccessRisk(
         {
-          chain: q.data.chain,
-          contract: q.data.contract,
+          chain: canonicalChain,
+          contract: canonicalContract,
           snapshotDate: q.data.snapshot_date,
           threshold,
           nowUnixSeconds: Math.floor(now / 1000),

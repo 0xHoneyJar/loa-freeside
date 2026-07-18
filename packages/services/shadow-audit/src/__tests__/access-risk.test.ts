@@ -220,6 +220,26 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect(reconstructions).toBe(1);
   });
 
+  it('CACHE: checksum-case variants share the canonical contract identity', async () => {
+    let reconstructions = 0;
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: {
+          ...ownership,
+          balancesAt: async () => {
+            reconstructions++;
+            return snapBal;
+          },
+        },
+      }),
+    );
+    const checksumCase = `0x${CONTRACT.slice(2).toUpperCase()}`;
+
+    expect((await app.request(url())).status).toBe(200);
+    expect((await app.request(url(checksumCase))).status).toBe(200);
+    expect(reconstructions).toBe(1);
+  });
+
   it('CACHE: identical concurrent misses share one reconstruction and budget unit', async () => {
     let reconstructions = 0;
     let release!: () => void;
