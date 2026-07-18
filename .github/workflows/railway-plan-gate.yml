@@ -25,13 +25,26 @@
 #   · The Railway CLI + SDK are PINNED — `npm install -g @railway/cli` (unpinned) is arbitrary code
 #     running with the secret in env.
 #
+# Enforcement identity: a trusted `pull_request_target` job marks the exact PR head's
+# `railway-plan-gate` commit status PENDING without checking out PR code. The protected
+# manual run publishes SUCCESS or FAILURE to that same exact SHA. A new head gets a new
+# pending status, so stale success cannot travel forward.
+#
 # SETUP (operator, one-time): create a protected `railway-plan` environment with required reviewers; add
 # RAILWAY_TOKEN there (Railway project token scoped to shadow-audit-api/production); remove any repo-level
-# copy. If Railway ships a read-only/plan-scoped token, replace it.
+# copy; require the `railway-plan-gate` commit-status context in main's branch protection. If Railway ships a
+# read-only/plan-scoped token, replace it.
 
 name: railway-plan-gate
 
 on:
+  # Safe sentinel: pull_request_target executes this workflow from the trusted
+  # base branch. It never checks out or executes PR-controlled code.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.railway/**'
+      - 'packages/services/shadow-audit/Dockerfile'
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -40,11 +53,32 @@ on:
         type: string
 
 jobs:
+  require-plan:
+    name: require exact-head Railway plan
+    if: github.event_name == 'pull_request_target'
+    permissions:
+      contents: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark exact PR head pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f context=railway-plan-gate \
+            -f description='Awaiting protected Railway plan for this exact commit'
+
   plan-gate:
     name: railway config plan (operator-approved)
+    if: github.event_name == 'workflow_dispatch'
     environment: railway-plan
     permissions:
       contents: read
+      statuses: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +119,8 @@ jobs:
           fi
 
       - name: Plan gate (READ-ONLY — never applies)
+        id: plan
+        continue-on-error: true
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
@@ -94,3 +130,27 @@ jobs:
             exit 1
           fi
           node /tmp/plan-gate.mjs
+
+      - name: Publish exact-commit plan status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        run: |
+          set -euo pipefail
+          state=failure
+          description='Protected Railway plan failed for this exact commit'
+          if [ "$PLAN_OUTCOME" = success ]; then
+            state=success
+            description='Protected Railway plan passed for this exact commit'
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$COMMIT_SHA" \
+            -f state="$state" \
+            -f context=railway-plan-gate \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Enforce plan result
+        if: steps.plan.outcome != 'success'
+        run: exit 1

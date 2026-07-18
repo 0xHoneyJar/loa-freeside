@@ -269,6 +269,19 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     expect(res.status).toBe(413);
   });
 
+  it.each(['-1', '1.5', '+1'])('rejects malformed Content-Length %s before reading the body', async (value) => {
+    const store = makeInMemoryRoleStore('thj', testSources);
+    const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
+    const raw = JSON.stringify(snapshot());
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+      'content-length': value,
+    });
+    expect(res.status).toBe(400);
+    expect(await store.load(KEY_A)).toBeUndefined();
+  });
+
   it('aborts an oversized streamed body when Content-Length is absent', async () => {
     const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));

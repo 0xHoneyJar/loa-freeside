@@ -603,9 +603,14 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       }
       // Reject an honestly declared oversize body before reading, then enforce the same limit while
       // streaming because Content-Length is optional and caller-controlled.
-      const declaredLen = Number(c.req.header('content-length') ?? '0');
-      if (Number.isFinite(declaredLen) && declaredLen > MAX_SNAPSHOT_BYTES) {
-        return c.json({ error: 'snapshot too large' }, 413);
+      const declaredLength = c.req.header('content-length');
+      if (declaredLength !== undefined) {
+        if (!/^(0|[1-9]\d*)$/.test(declaredLength)) {
+          return c.json({ error: 'invalid content-length' }, 400);
+        }
+        if (BigInt(declaredLength) > BigInt(MAX_SNAPSHOT_BYTES)) {
+          return c.json({ error: 'snapshot too large' }, 413);
+        }
       }
       // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
       // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an
