@@ -113,27 +113,47 @@ jobs:
         with:
           node-version: '22'
 
-      # PINNED. Unpinned installs are arbitrary code executing with an apply-capable token in env.
-      - name: Install Railway CLI + SDK (pinned)
-        run: |
-          npm install -g @railway/cli@4.10.0
-          npm install --no-save railway@3.5.5
-
-      - name: Fetch the gate script from the default branch
+      - name: Prepare trusted gate and locked Railway toolchain
         run: |
           set -euo pipefail
-          trusted_dir="$GITHUB_WORKSPACE/.railway-gate-trusted"
+          trusted_dir="$RUNNER_TEMP/railway-gate-trusted"
           rm -rf "$trusted_dir"
           mkdir -p "$trusted_dir"
           default_branch="${{ github.event.repository.default_branch }}"
           git fetch --no-tags origin "$default_branch"
-          if git cat-file -e "origin/$default_branch:.railway/plan-gate.mjs" 2>/dev/null; then
-            git show "origin/$default_branch:.railway/plan-gate.mjs" > "$trusted_dir/plan-gate.mjs"
-          else
-            echo "::error::Trusted default branch has no .railway/plan-gate.mjs; refusing credentialed bootstrap."
-            echo "Land the evaluator without credentials first, then dispatch the protected plan."
-            exit 1
-          fi
+          for path in \
+            .railway/plan-gate.mjs \
+            .railway/trusted-tools/package.json \
+            .railway/trusted-tools/package-lock.json \
+            .railway/trusted-tools/railway-cli.sha256
+          do
+            if ! git cat-file -e "origin/$default_branch:$path" 2>/dev/null; then
+              echo "::error::Trusted default branch has no $path; refusing credentialed bootstrap."
+              exit 1
+            fi
+          done
+          git show "origin/$default_branch:.railway/plan-gate.mjs" > "$trusted_dir/plan-gate.mjs"
+          git show "origin/$default_branch:.railway/trusted-tools/package.json" > "$trusted_dir/package.json"
+          git show "origin/$default_branch:.railway/trusted-tools/package-lock.json" > "$trusted_dir/package-lock.json"
+          git show "origin/$default_branch:.railway/trusted-tools/railway-cli.sha256" > "$trusted_dir/railway-cli.sha256"
+          (
+            cd "$trusted_dir"
+            NPM_CONFIG_USERCONFIG=/dev/null npm ci \
+              --ignore-scripts \
+              --registry=https://registry.npmjs.org
+            curl --fail --location --proto '=https' \
+              https://github.com/railwayapp/cli/releases/download/v4.10.0/railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz \
+              --output railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz
+            sha256sum --check railway-cli.sha256
+            mkdir -p bin
+            tar -xzf railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz -C bin
+          )
+          # The reviewed IaC imports `railway`. Resolve only the default-branch
+          # lockfile installation; do not let PR .npmrc or lifecycle scripts
+          # acquire code in the credentialed job.
+          mkdir -p "$GITHUB_WORKSPACE/node_modules"
+          rm -rf "$GITHUB_WORKSPACE/node_modules/railway"
+          ln -s "$trusted_dir/node_modules/railway" "$GITHUB_WORKSPACE/node_modules/railway"
 
       - name: Plan gate (READ-ONLY — never applies)
         id: plan
@@ -146,9 +166,10 @@ jobs:
             echo "::error title=railway-plan-gate NOT CONFIGURED::RAILWAY_TOKEN is missing from the protected railway-plan environment."
             exit 1
           fi
-          # Keep cwd at the reviewed workspace so Railway resolves
-          # .railway/railway.ts and its pinned SDK from workspace node_modules.
-          node "$GITHUB_WORKSPACE/.railway-gate-trusted/plan-gate.mjs"
+          # Keep cwd at the reviewed workspace so the trusted CLI evaluates
+          # .railway/railway.ts while its SDK resolves through the trusted link.
+          PATH="$RUNNER_TEMP/railway-gate-trusted/bin:$PATH" \
+            node "$RUNNER_TEMP/railway-gate-trusted/plan-gate.mjs"
 
       - name: Publish exact-commit plan status
         if: always()

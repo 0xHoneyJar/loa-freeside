@@ -177,10 +177,29 @@ function refusalStatus(refusal: Refusal): RefusalStatus {
   return (REFUSAL_HTTP_STATUS[refusal.code] ?? 422) as RefusalStatus;
 }
 
+const MIN_SNAPSHOT_DATE = '2015-07-30';
+const SnapshotDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'snapshot_date must be YYYY-MM-DD')
+  .refine((value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year!, month! - 1, day!));
+    if (Number.isNaN(date.getTime())) return false;
+    return date.toISOString().slice(0, 10) === value;
+  }, 'snapshot_date must be a real UTC calendar date')
+  .refine(
+    (value) => value >= MIN_SNAPSHOT_DATE,
+    `snapshot_date must be on or after ${MIN_SNAPSHOT_DATE}`,
+  );
+
+const isNonFutureSnapshotDate = (value: string, nowMs: number): boolean =>
+  value <= new Date(nowMs).toISOString().slice(0, 10);
+
 const OrderQuerySchema = z.object({
   chain: z.string(),
   contract: z.string(),
-  snapshot_date: z.string(),
+  snapshot_date: SnapshotDateSchema,
   community: z.string(),
   owner_wallet: z.string(),
   threshold: z.string().optional(),
@@ -298,7 +317,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const AccessRiskQuerySchema = z.object({
     chain: z.string().regex(/^[1-9]\d*$/, 'chain must be a canonical positive numeric id'),
     contract: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'contract must be an EVM address'),
-    snapshot_date: z.string().min(1),
+    snapshot_date: SnapshotDateSchema,
     threshold: z.string().optional(),
   });
 
@@ -324,7 +343,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
 
     const q = AccessRiskQuerySchema.safeParse(c.req.query());
-    if (!q.success) return c.json({ error: 'missing/invalid query params' }, 400);
+    if (!q.success || !isNonFutureSnapshotDate(q.data.snapshot_date, deps.now())) {
+      return c.json({ error: 'missing/invalid query params' }, 400);
+    }
     const canonicalChain = q.data.chain;
     const canonicalContract = q.data.contract.toLowerCase();
 
@@ -416,7 +437,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   app.get('/v1/audit', async (c) => {
     if (isRateLimited(c)) return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
     const q = OrderQuerySchema.safeParse(c.req.query());
-    if (!q.success) return c.json({ error: 'missing/invalid query params' }, 400);
+    if (!q.success || !isNonFutureSnapshotDate(q.data.snapshot_date, deps.now())) {
+      return c.json({ error: 'missing/invalid query params' }, 400);
+    }
     if ((q.data.gating ?? 'nft-balance') !== 'nft-balance') {
       const r: Refusal = { code: 'unsupported-gating', reason: `gating "${q.data.gating}" not supported`, retryable: false };
       return c.json({ error: r }, refusalStatus(r));
@@ -452,7 +475,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const NamedBodySchema = z.object({
     chain: z.string(),
     contract: z.string(),
-    snapshot_date: z.string(),
+    snapshot_date: SnapshotDateSchema,
     community: z.string(),
     owner_wallet: z.string(),
     threshold: z.string().optional(),
@@ -467,7 +490,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (isRateLimited(c)) return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
     const body = await c.req.json().catch(() => null);
     const parsed = NamedBodySchema.safeParse(body);
-    if (!parsed.success) return c.json({ error: 'invalid body' }, 400);
+    if (!parsed.success || !isNonFutureSnapshotDate(parsed.data.snapshot_date, deps.now())) {
+      return c.json({ error: 'invalid body' }, 400);
+    }
 
     const built = buildOrder(parsed.data);
     if (!built.ok) return c.json({ error: 'invalid order params' }, 400);
@@ -564,7 +589,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   app.get('/v1/audit/view', async (c) => {
     if (isRateLimited(c)) return c.html('<p>rate limited — try again shortly</p>', 429);
     const q = OrderQuerySchema.safeParse(c.req.query());
-    if (!q.success) return c.html('<p>missing/invalid query params</p>', 400);
+    if (!q.success || !isNonFutureSnapshotDate(q.data.snapshot_date, deps.now())) {
+      return c.html('<p>missing/invalid query params</p>', 400);
+    }
     if ((q.data.gating ?? 'nft-balance') !== 'nft-balance') {
       return c.html(
         renderRefusalHtml({ code: 'unsupported-gating', reason: `gating "${q.data.gating}" not supported`, retryable: false }),

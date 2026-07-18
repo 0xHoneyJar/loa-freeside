@@ -99,6 +99,30 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect(b.cta).toEqual({ product: '/shadow-access', conversation: '/talk' });
   });
 
+  it.each(['not-a-date', '2026-02-30', '2015-07-29', '2026-06-23'])(
+    'rejects invalid or future snapshot date %s before reconstruction',
+    async (snapshotDate) => {
+      let reconstructions = 0;
+      const app = createAuditRouter(
+        makeDeps({
+          ownership: {
+            ...ownership,
+            balancesAt: async () => {
+              reconstructions++;
+              return snapBal;
+            },
+          },
+        }),
+      );
+      const res = await app.request(
+        `/v1/access-risk?chain=80094&contract=${CONTRACT}&snapshot_date=${snapshotDate}`,
+      );
+
+      expect(res.status).toBe(400);
+      expect(reconstructions).toBe(0);
+    },
+  );
+
   it('NEVER leaks member data — no wallet addresses, no per-member records', async () => {
     const app = createAuditRouter(makeDeps());
     const res = await app.request(url());
