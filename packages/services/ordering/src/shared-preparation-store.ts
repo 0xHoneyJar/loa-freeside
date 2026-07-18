@@ -119,6 +119,26 @@ export interface SharedPreparationStore {
     work_key_digest: string;
     now_ms: number;
   }): Promise<SharedPreparationWorkRecord | undefined>;
+  recordChildJobRef(input: {
+    work_item_id: string;
+    expected_lease_epoch: number;
+    external_job_ref: string;
+    now_ms: number;
+  }): Promise<PreparationWorkItemRecord>;
+  recordTerminalFailure(input: {
+    work_id: string;
+    expected_lease_epoch: number;
+    failure: { code: string; reason: string };
+    now_ms: number;
+  }): Promise<SharedPreparationWorkRecord>;
+  listLeasableWork(limit?: number): Promise<readonly SharedPreparationWorkRecord[]>;
+  listRetryWaitDue(input: { now_ms: number; limit?: number }): Promise<
+    readonly SharedPreparationWorkRecord[]
+  >;
+  getActiveWorkForOrder(order_id: string): Promise<
+    | { readonly work: SharedPreparationWorkRecord; readonly link: ReportWorkLinkRecord }
+    | undefined
+  >;
 }
 
 type MutableWork = {
@@ -696,6 +716,109 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
       return { kind: "serialization_retry" };
     }
     return locked as DetachResult;
+  }
+
+  async recordChildJobRef(input: {
+    work_item_id: string;
+    expected_lease_epoch: number;
+    external_job_ref: string;
+    now_ms: number;
+  }): Promise<PreparationWorkItemRecord> {
+    const itemLookup = this.items.get(input.work_item_id);
+    if (!itemLookup) throw new SharedPreparationStateError("work item not found");
+    const locked = await this.withWorkIdLock(itemLookup.work_id, async () => {
+      const item = this.items.get(input.work_item_id);
+      if (!item) throw new SharedPreparationStateError("work item not found");
+      const parent = this.works.get(item.work_id);
+      if (!parent) throw new SharedPreparationStateError("work not found");
+      if (parent.state !== "preparing" && parent.state !== "queued") {
+        throw new SharedPreparationStateError(
+          `child job ref requires parent active, got ${parent.state}`,
+        );
+      }
+      if (item.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for child job ref");
+      }
+      item.external_job_ref = input.external_job_ref;
+      item.updated_at_unix_ms = input.now_ms;
+      return cloneItem(item);
+    });
+    return this.unwrapLocked(locked, () => {
+      throw new SharedPreparationStateError("work item not found");
+    });
+  }
+
+  async recordTerminalFailure(input: {
+    work_id: string;
+    expected_lease_epoch: number;
+    failure: { code: string; reason: string };
+    now_ms: number;
+  }): Promise<SharedPreparationWorkRecord> {
+    const locked = await this.withWorkIdLock(input.work_id, async () => {
+      const work = this.works.get(input.work_id);
+      if (!work) throw new SharedPreparationStateError("work not found");
+      if (work.lease_epoch !== input.expected_lease_epoch) {
+        throw new SharedPreparationFencingError("stale lease epoch for terminal failure");
+      }
+      if (!isActivePublicWorkState(work.state) && work.state !== "preparing") {
+        throw new SharedPreparationStateError(
+          `terminal failure requires active work, got ${work.state}`,
+        );
+      }
+      work.state = "failed";
+      work.failure_reason = { ...input.failure };
+      work.lease_until_unix_ms = undefined;
+      work.updated_at_unix_ms = input.now_ms;
+      for (const item of this.itemsForWork(work.work_id)) {
+        if (item.state !== "ready" && item.state !== "failed") {
+          item.state = "failed";
+          item.failure_reason = { ...input.failure };
+          item.updated_at_unix_ms = input.now_ms;
+        }
+      }
+      return cloneWork(work);
+    });
+    return this.unwrapLocked(locked, () => {
+      throw new SharedPreparationStateError("work not found");
+    });
+  }
+
+  async listLeasableWork(limit = 64): Promise<readonly SharedPreparationWorkRecord[]> {
+    return [...this.works.values()]
+      .filter((row) => isLeasablePublicWorkState(row.state))
+      .sort((a, b) => a.created_at_unix_ms - b.created_at_unix_ms)
+      .slice(0, limit)
+      .map(cloneWork);
+  }
+
+  async listRetryWaitDue(input: {
+    now_ms: number;
+    limit?: number;
+  }): Promise<readonly SharedPreparationWorkRecord[]> {
+    const limit = input.limit ?? 64;
+    return [...this.works.values()]
+      .filter(
+        (row) =>
+          row.state === "retry_wait" &&
+          row.next_attempt_at_unix_ms !== undefined &&
+          input.now_ms >= row.next_attempt_at_unix_ms,
+      )
+      .sort((a, b) => (a.next_attempt_at_unix_ms ?? 0) - (b.next_attempt_at_unix_ms ?? 0))
+      .slice(0, limit)
+      .map(cloneWork);
+  }
+
+  async getActiveWorkForOrder(order_id: string): Promise<
+    | { readonly work: SharedPreparationWorkRecord; readonly link: ReportWorkLinkRecord }
+    | undefined
+  > {
+    for (const link of this.links.values()) {
+      if (link.order_id !== order_id || link.detached_at_unix_ms !== undefined) continue;
+      const work = this.works.get(link.work_id);
+      if (!work) continue;
+      return { work: cloneWork(work), link: cloneLink(link) };
+    }
+    return undefined;
   }
 
   async supersedeActiveGeneration(input: {
