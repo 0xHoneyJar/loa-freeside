@@ -43,7 +43,8 @@ An intentional config rotation changes both `.railway/railway.ts` and
 1. Both exact-head statuses begin pending.
 2. A non-author maintainer/admin runs Bridgebuilder. The default-branch
    `railway-trust-root-review` validates that review without Railway credentials
-   and attests the candidate SHA.
+   and attests the candidate SHA. That workflow also requires both config copies
+   to change together and fetches them from the exact head to prove byte identity.
 3. Only after that success may the protected plan run. It retains the old
    default-branch evaluator, SDK lock, and CLI checksum; it extracts the
    candidate config from the attested SHA, verifies it is byte-identical to the
@@ -51,3 +52,8 @@ An intentional config rotation changes both `.railway/railway.ts` and
 4. The PR merges only when both contexts succeed. If review is dismissed, the
    candidate changes again, or the plan fails, no trust-root state advances;
    `main` remains the rollback root.
+
+Both status workflows reject PRs at GitHub's 3,000-file pull-files API ceiling,
+where complete changed-path enumeration cannot be proven. The manual plan entry
+rechecks the associated open PR and the same ceiling before credentials are
+requested, so a dispatch cannot overwrite that inventory failure with success.

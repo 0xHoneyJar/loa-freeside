@@ -37,24 +37,65 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          changed=false
-          while IFS= read -r filename; do
-            case "$filename" in
-              .github/workflows/railway-plan-gate.yml|\
-              .github/workflows/railway-trust-root-review.yml|\
-              .railway/BOOTSTRAP.md|\
-              .railway/plan-gate.mjs|\
-              .railway/plan-gate.test.mjs|\
-              .railway/trusted-tools/*)
-                changed=true
-                break
-                ;;
-            esac
-          done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
-
           state=success
           description='Railway trust root unchanged'
-          if [ "$changed" = true ]; then
+          changed=false
+          active_config_changed=false
+          trusted_config_changed=false
+          changed_count=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.changed_files')
+          if ! [[ "$changed_count" =~ ^[0-9]+$ ]] || [ "$changed_count" -ge 3000 ]; then
+            state=failure
+            description='PR diff exceeds complete changed-file enumeration'
+          else
+            files="$RUNNER_TEMP/railway-trust-root-files.txt"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+              --paginate --jq '.[].filename' > "$files"
+            while IFS= read -r filename; do
+              case "$filename" in
+                .railway/railway.ts)
+                  changed=true
+                  active_config_changed=true
+                  ;;
+                .railway/trusted-tools/railway.ts)
+                  changed=true
+                  trusted_config_changed=true
+                  ;;
+                .github/workflows/railway-plan-gate.yml|\
+                .github/workflows/railway-trust-root-review.yml|\
+                .railway/BOOTSTRAP.md|\
+                .railway/plan-gate.mjs|\
+                .railway/plan-gate.test.mjs|\
+                .railway/trusted-tools/*)
+                  changed=true
+                  ;;
+              esac
+            done < "$files"
+          fi
+
+          if [ "$state" != failure ]; then
+            if [ "$active_config_changed" = true ] || [ "$trusted_config_changed" = true ]; then
+              if [ "$active_config_changed" != true ] || [ "$trusted_config_changed" != true ]; then
+                state=failure
+                description='Active and trusted Railway configs must rotate together'
+              else
+                active_config="$RUNNER_TEMP/active-railway.ts"
+                trusted_config="$RUNNER_TEMP/trusted-railway.ts"
+                if ! gh api -H 'Accept: application/vnd.github.raw+json' \
+                  "repos/$GITHUB_REPOSITORY/contents/.railway/railway.ts?ref=$HEAD_SHA" \
+                  > "$active_config" ||
+                  ! gh api -H 'Accept: application/vnd.github.raw+json' \
+                  "repos/$GITHUB_REPOSITORY/contents/.railway/trusted-tools/railway.ts?ref=$HEAD_SHA" \
+                  > "$trusted_config" ||
+                  ! cmp --silent "$active_config" "$trusted_config"
+                then
+                  state=failure
+                  description='Active and trusted Railway configs differ at exact head'
+                fi
+              fi
+            fi
+          fi
+
+          if [ "$state" != failure ] && [ "$changed" = true ]; then
             reviews="$RUNNER_TEMP/railway-trust-root-reviews.json"
             permissions="$RUNNER_TEMP/railway-trust-root-permissions.json"
             attestor="$RUNNER_TEMP/bridge-review-attestation.mjs"

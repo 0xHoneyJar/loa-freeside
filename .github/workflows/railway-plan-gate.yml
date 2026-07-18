@@ -73,17 +73,23 @@ jobs:
           set -euo pipefail
           state=success
           description='Railway plan not required for this change'
-          while IFS= read -r filename; do
-            case "$filename" in
-              .railway/railway.ts|\
-              .railway/plan-baseline.json|\
-              packages/services/shadow-audit/Dockerfile)
-                state=pending
-                description='Awaiting protected Railway plan for this exact commit'
-                break
-                ;;
-            esac
-          done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          changed_count=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.changed_files')
+          if ! [[ "$changed_count" =~ ^[0-9]+$ ]] || [ "$changed_count" -ge 3000 ]; then
+            state=failure
+            description='PR diff exceeds complete changed-file enumeration'
+          else
+            while IFS= read -r filename; do
+              case "$filename" in
+                .railway/railway.ts|\
+                .railway/plan-baseline.json|\
+                packages/services/shadow-audit/Dockerfile)
+                  state=pending
+                  description='Awaiting protected Railway plan for this exact commit'
+                  break
+                  ;;
+              esac
+            done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
             -f state="$state" \
             -f context=railway-plan-gate \
@@ -110,6 +116,8 @@ jobs:
 
       - name: Verify immutable reviewed ref
         env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
         run: |
           set -euo pipefail
@@ -118,6 +126,23 @@ jobs:
             *) echo "::error::commit_sha must be an exact lowercase 40-character commit SHA"; exit 1 ;;
           esac
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          pulls="$RUNNER_TEMP/railway-plan-associated-pulls.json"
+          gh api "repos/$GITHUB_REPOSITORY/commits/$REQUESTED_SHA/pulls" > "$pulls"
+          pr_number=$(
+            jq -r --arg sha "$REQUESTED_SHA" --arg base "$DEFAULT_BRANCH" \
+              '[.[] | select(.state == "open" and .head.sha == $sha and .base.ref == $base)] |
+               if length == 1 then .[0].number else empty end' \
+              "$pulls"
+          )
+          if [ -z "$pr_number" ]; then
+            echo "::error::commit_sha must identify exactly one open PR head into the default branch."
+            exit 1
+          fi
+          changed_count=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --jq '.changed_files')
+          if ! [[ "$changed_count" =~ ^[0-9]+$ ]] || [ "$changed_count" -ge 3000 ]; then
+            echo "::error::PR diff exceeds GitHub's complete changed-file enumeration limit."
+            exit 1
+          fi
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
