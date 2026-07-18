@@ -28,6 +28,10 @@ The trusted evaluator is bound to Railway project
 `0bf95b1c-b8f2-4e60-a4a6-50089b521eb0` and production environment
 `2068efa5-0ed4-4cf3-9ae2-89120c4b18d5`. A token or checkout resolving to any
 other target fails before changes are compared or logged.
+Captured Railway v4.10.0 plans identify safe service and Postgres creation as
+`resource.create` with `Create service <name>` and `Create database <name>`
+summaries. The evaluator converts only those two strict shapes into value-free
+baseline identities; other creation types fail closed until separately grounded.
 
 The workflow fails closed when the default branch lacks any trusted evaluator,
 executable config, or tool-lock file. A later Railway PR's active

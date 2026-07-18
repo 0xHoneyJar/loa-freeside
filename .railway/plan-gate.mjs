@@ -55,6 +55,7 @@ const EXPECTED_TARGET = Object.freeze({
 
 const KNOWN_SEVERITIES = new Set(['safe', 'destructive']);
 const KNOWN_KINDS = new Set([
+  'resource.create',
   'resource.update',
   'resource.delete',
   'variable.set',
@@ -128,6 +129,16 @@ function safeChangeIdentity(change, index) {
     return `${kind}|${severity}`;
   }
 
+  if (kind === 'resource.create') {
+    const match = /^Create (service|database) ([A-Za-z0-9][A-Za-z0-9._/-]{0,127})$/.exec(
+      summary,
+    );
+    if (!match || !SAFE_NAME.test(match[2])) {
+      failSchema(`change ${index} has an unknown resource-create summary`);
+    }
+    return `${kind}|${severity}|type:${match[1]}|resource:${match[2]}`;
+  }
+
   if (kind === 'resource.update') {
     const match = /^Update ([A-Za-z0-9][A-Za-z0-9._/-]{0,127}) ([A-Za-z][A-Za-z0-9_.-]{0,127})$/.exec(
       summary,
@@ -199,6 +210,11 @@ function isDestructiveIdentity(identity) {
 function isCanonicalBaselineIdentity(identity) {
   if (typeof identity !== 'string') return false;
   const parts = identity.split('|');
+  if (parts[0] === 'resource.create' && parts[1] === 'safe' && parts.length === 4) {
+    const type = parts[2].startsWith('type:') ? parts[2].slice('type:'.length) : '';
+    const resource = parts[3].startsWith('resource:') ? parts[3].slice('resource:'.length) : '';
+    return (type === 'service' || type === 'database') && SAFE_NAME.test(resource);
+  }
   if (parts[0] === 'resource.update' && parts[1] === 'safe' && parts.length === 4) {
     const resource = parts[2].startsWith('resource:') ? parts[2].slice('resource:'.length) : '';
     const field = parts[3].startsWith('field:') ? parts[3].slice('field:'.length) : '';

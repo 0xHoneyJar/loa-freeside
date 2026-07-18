@@ -64,6 +64,38 @@ test('accepts the trusted target and canonical value-free baseline', () => {
   assert.match(result.stdout, /plan matches baseline/);
 });
 
+for (const [type, name] of [
+  ['service', 'shadow-audit-api'],
+  ['database', 'shadow-audit-postgres'],
+]) {
+  test(`accepts captured safe ${type} creation output`, () => {
+    const plan = validPlan();
+    plan.changeSet.changes[0] = {
+      kind: 'resource.create',
+      severity: 'safe',
+      summary: `Create ${type} ${name}`,
+    };
+    const identity = `resource.create|safe|type:${type}|resource:${name}`;
+    const result = runGate(plan, [identity]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /plan matches baseline/);
+  });
+}
+
+test('rejects unknown resource creation types without echoing producer prose', () => {
+  const plan = validPlan();
+  const marker = 'SENSITIVE_MARKER_DO_NOT_PRINT';
+  plan.changeSet.changes[0] = {
+    kind: 'resource.create',
+    severity: 'safe',
+    summary: `Create bucket ${marker}`,
+  };
+  const result = runGate(plan);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unknown resource-create summary/);
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(marker));
+});
+
 test('fails closed when the target IDs do not match', () => {
   const plan = validPlan();
   plan.currentEnvironment.projectId = '00000000-0000-0000-0000-000000000000';
