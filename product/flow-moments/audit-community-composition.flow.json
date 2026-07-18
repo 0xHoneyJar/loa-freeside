@@ -1,0 +1,143 @@
+{
+  "$schema": "../../spec/product/flow-moment.schema.json",
+  "schema_version": "1.0",
+  "flow_moment_id": "FM-AUDIT-COMPOSITION",
+  "title": "Understand how the community is composed and changing",
+  "record_state": "active",
+  "as_of": "2026-07-14",
+  "hivemind": {
+    "schema_version": "1.0",
+    "artifact_type": "experiment-design",
+    "workstream": "experimentation",
+    "priority": "high",
+    "product_area": "Audit",
+    "jtbd": {
+      "category": "functional",
+      "description": "Understand how my community is composed and changing so I can make informed decisions"
+    },
+    "learning_status": "cant-make-a-conclusion",
+    "source": "team-internal"
+  },
+  "actor": {
+    "role": "Community manager",
+    "context": "They understand community operations, but their member truth is fragmented across Discord, social platforms, and onchain activity."
+  },
+  "entry_state": "The manager sees activity and identities in separate tools and cannot distinguish durable community movement from noise.",
+  "desired_progress": "Form a coherent, evidence-backed view of who makes up the community and how that composition is moving.",
+  "dream_outcome": "Stay close enough to rapidly changing reality to make more informed community decisions.",
+  "hypothesis": {
+    "statement": "If Freeside composes fragmented social and onchain signals into predefined cohorts with fact-level receipts, community managers will understand how their community is composed and changing quickly enough to make more informed decisions.",
+    "falsifiable_by": [
+      "Managers cannot identify a meaningful composition or movement signal during an exposed session.",
+      "Managers treat cohort labels as opaque scores and cannot explain the supporting facts.",
+      "The surfaced view does not change or sharpen any subsequent community decision."
+    ]
+  },
+  "experience": {
+    "promise": "Surface signal from fragmented community noise without requiring the manager to become a data analyst.",
+    "recommendation_boundary": "Freeside may suggest options when it shows the reason, supporting facts, and uncertainty; the manager chooses whether to inspect, save, export, or activate and Freeside does not silently act.",
+    "actions": ["inspect", "save", "export", "activate"],
+    "surfaces": [
+      "github:0xHoneyJar/freeside-dashboard#110",
+      "github:0xHoneyJar/freeside-dashboard#111",
+      "github:0xHoneyJar/freeside-dashboard#112"
+    ]
+  },
+  "evidence_contract": {
+    "signals": [
+      {
+        "id": "time_to_supported_insight",
+        "kind": "behavioral",
+        "question": "Can the manager identify a supported fact about composition or movement without assembling the analysis themselves?",
+        "success_indicator": "The manager identifies at least one fact-backed composition or movement signal during the first exposed session.",
+        "failure_indicator": "The manager leaves the session without a supported observation or needs the team to interpret the interface for them.",
+        "source_types": ["product-telemetry", "partner-observation"]
+      },
+      {
+        "id": "receipt_comprehension",
+        "kind": "qualitative",
+        "question": "Does the manager understand why a member or cohort appears where it does?",
+        "success_indicator": "The manager can restate the reason using the displayed facts and says the classification feels credible.",
+        "failure_indicator": "The manager describes the result as an unexplained score, asks how it was invented, or distrusts it after inspecting the facts.",
+        "source_types": ["user-interview", "website-feedback", "discord-support-or-feedback", "dm-to-team-member"]
+      },
+      {
+        "id": "decision_usefulness",
+        "kind": "qualitative",
+        "question": "Did the surfaced signal sharpen a real community decision?",
+        "success_indicator": "The manager cites the view when choosing what to investigate, whom to speak with, or which cohort to save or export.",
+        "failure_indicator": "The view is interesting but does not change what the manager understands or considers doing.",
+        "source_types": ["user-interview", "partner-observation", "dm-to-team-member"]
+      }
+    ],
+    "observations": [],
+    "learning_refs": [],
+    "privacy": {
+      "customer_text_handling": "no-raw-private-text-in-repo",
+      "provenance_required": true
+    }
+  },
+  "exposure": {
+    "kind": "research",
+    "state": "dark",
+    "audience": "Internal communities first, followed by bounded partner walkthroughs.",
+    "owner": "Freeside product",
+    "review_trigger": "After three partner walkthroughs or thirty exposed sessions, whichever comes first.",
+    "success_criteria": [
+      "At least two managers identify a supported composition or movement signal without team interpretation.",
+      "Managers can explain at least one cohort placement using the displayed receipt facts."
+    ],
+    "failure_criteria": [
+      "Managers consistently require an analyst or team member to interpret the view.",
+      "Managers cannot connect the surfaced composition or movement to a real decision."
+    ],
+    "decision_refs": []
+  },
+  "boundaries": {
+    "does": [
+      "Compose fragmented identity, social, and onchain evidence into a legible view.",
+      "Expose facts and provenance that let a manager inspect why a result exists.",
+      "Offer reversible tools and evidence-backed options."
+    ],
+    "does_not": [
+      "Present the operator thesis as settled user truth.",
+      "Expose hidden scores or weights as an authority claim.",
+      "Silently contact members, launch campaigns, or take consequential action."
+    ]
+  },
+  "exemplars": [
+    {
+      "product": "Clay People",
+      "workflow_moment": "Inspect one person across connected sources and prior interactions.",
+      "ref": "operator-reference:mobbin/clay-people-2026-07-14",
+      "adopt": "Person-centered profile, low-density timeline, connected sources, and familiar CRM navigation.",
+      "reject": "Email-first contact-manager assumptions and decorative integration imagery as product evidence."
+    },
+    {
+      "product": "Customer.io Segments",
+      "workflow_moment": "Narrow an audience using understandable attribute and behavior rules.",
+      "ref": "https://docs.customer.io/messaging/segmentation/segments/",
+      "adopt": "Plain-language grouping logic and immediate visibility into the population produced by the rules.",
+      "reject": "Exposing a full advanced segment builder before the Audit MVP proves that managers need it."
+    },
+    {
+      "product": "Common Room Contacts",
+      "workflow_moment": "Understand a community member through unified identity and activity context.",
+      "ref": "https://www.commonroom.io/docs/using-common-room/contacts/",
+      "adopt": "Unified member intelligence with inspectable source activity and cohort navigation.",
+      "reject": "Prescribing an outreach action before the manager has understood the evidence."
+    }
+  ],
+  "components": [
+    {
+      "ref": "github:0xHoneyJar/freeside-dashboard#111",
+      "resolution": "external",
+      "maturity": "uncaptured"
+    }
+  ],
+  "decision_refs": [
+    "bead:arrakis-ydw0u",
+    "github:0xHoneyJar/freeside-dashboard#110",
+    "github:0xHoneyJar/freeside-dashboard#112"
+  ]
+}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ProductId } from './order.js';
+import { CollectionReportInputs } from './collection-report.js';
 
 /**
  * A Preset is a FIXED recipe (the "Subway menu item") composed from declared capabilities.
@@ -141,10 +142,22 @@ export const COMMUNITY_ONBOARDING_PRESET: Preset = {
   ],
 };
 
+/**
+ * Preset #3 — collection-report admission via confirmed resolution binding.
+ * Execution DAG is staged elsewhere; intake only admits the binding.
+ */
+export const COLLECTION_REPORT_PRESET: Preset = {
+  id: 'collection-report',
+  inputSchema: CollectionReportInputs,
+  capabilityNeeds: ['collection-index'],
+  recipe: [{ label: 'admit confirmed collection resolution', capability: 'collection-index' }],
+};
+
 /** The preset registry — looked up by product id. */
 export const PRESETS: Readonly<Record<ProductId, Preset>> = {
   'access-risk-audit': ACCESS_RISK_AUDIT_PRESET,
   'community-onboarding': COMMUNITY_ONBOARDING_PRESET,
+  'collection-report': COLLECTION_REPORT_PRESET,
 };
 
 export function resolvePreset(product: ProductId): Preset {

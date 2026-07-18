@@ -1,0 +1,239 @@
+{
+  "snapshot_version": "1.0",
+  "atlas": {
+    "atlas_version": "1.0",
+    "vantage": "operator-local",
+    "partial": false,
+    "failed_sources": [],
+    "ratification_status": "unchecked",
+    "ratification": "unchecked — fixture mirrors the current atlas contract",
+    "regions": [
+      {
+        "region": "loa-freeside",
+        "maintainers": ["@janitooor", "@zkSoju"],
+        "source": "grimoires/territory.yaml",
+        "outcomes": [
+          {
+            "id": "user-intent-continuity",
+            "description": "System intent stays joined to real user-flow moments."
+          },
+          {
+            "id": "expertise-boundary-integrity",
+            "description": "Prose, mechanics, and authority stay separate."
+          },
+          {
+            "id": "operator-projection-legibility",
+            "description": "The operator can inspect the joined contract in one receipt."
+          }
+        ],
+        "scopes": [
+          "grimoires/territory.yaml",
+          "product/**",
+          "spec/product/**",
+          "docs/product/**",
+          "tools/markdown-text.mjs",
+          "tools/flow-moment.mjs",
+          "tools/flow-moment.test.mjs",
+          "tools/system-component.mjs",
+          "tools/system-component.test.mjs",
+          "tools/construct-operator.mjs",
+          "tools/construct-operator.test.mjs",
+          "tools/fixtures/construct-operator.snapshot.json",
+          "tools/hivemind/hivemind-labels.v1.0.json"
+        ],
+        "loadout": [
+          {
+            "construct": "the-arcade",
+            "outcomes": ["expertise-boundary-integrity", "user-intent-continuity"],
+            "scopes": null,
+            "authority_ceiling": "observe",
+            "authority_earned": "unknown",
+            "authority_effective": "observe",
+            "installed": true
+          },
+          {
+            "construct": "beacon",
+            "outcomes": ["operator-projection-legibility"],
+            "scopes": null,
+            "authority_ceiling": "observe",
+            "authority_earned": "unknown",
+            "authority_effective": "observe",
+            "installed": true
+          }
+        ],
+        "trust": null
+      }
+    ],
+    "conflicts": [],
+    "estate": {
+      "installed_packs": 2,
+      "corrupt_packs": 0,
+      "stationed_constructs": 2,
+      "unstationed_installed": []
+    }
+  },
+  "capabilities": {
+    "tool": "constructs",
+    "version": "0.1.0",
+    "contract_version": "1.0.0",
+    "verbs": [
+      {
+        "name": "atlas",
+        "summary": "Render the operator-local territory map.",
+        "flags": ["--json"],
+        "mutation": false
+      },
+      {
+        "name": "capabilities",
+        "summary": "Render the command contract.",
+        "flags": ["--json"],
+        "mutation": false
+      },
+      {
+        "name": "info",
+        "summary": "Inspect one construct.",
+        "flags": ["--json", "--rung <local|api|registry>"],
+        "mutation": false
+      },
+      {
+        "name": "observe",
+        "summary": "Append a governed observation.",
+        "flags": ["--region <name>", "--outcome <id>"],
+        "mutation": true
+      },
+      {
+        "name": "station",
+        "summary": "Record a stationing receipt.",
+        "flags": ["--region <name>"],
+        "mutation": true
+      }
+    ],
+    "exit_codes": {
+      "0": "ok",
+      "5": "drift detected"
+    },
+    "determinism": {
+      "class": "attestable",
+      "ambient": ["network", "filesystem_outside_cwd"],
+      "note": "Live answers carry provenance instead of claiming byte identity."
+    },
+    "info_contract": {
+      "schema_version": "1.0",
+      "schema_path": "schemas/info.schema.json",
+      "orientation": "prose; authoritative=false",
+      "mechanics": "declared callable routes and runtime hints; authority_effect=none",
+      "authority": "territory plus earned evidence"
+    },
+    "atlas_contract": {
+      "atlas_version": "1.0",
+      "ratification_status": "structured status; unchecked until the atlas verifies committed stationing",
+      "authority": "ceiling and earned tier are separate; unknown earned authority has effective=observe"
+    }
+  },
+  "info": {
+    "the-arcade": {
+      "data": {
+        "slug": "the-arcade",
+        "name": "The Arcade",
+        "version": "1.0.0",
+        "info_schema_version": "1.0",
+        "orientation": {
+          "kind": "prose",
+          "authoritative": false,
+          "description": "Structural game-design expertise for product systems and progressive disclosure.",
+          "short_description": "Game design for product systems",
+          "domains": ["systems-design"],
+          "persona_ref": "identity/persona.yaml",
+          "expertise_ref": "identity/expertise.yaml"
+        },
+        "mechanics": {
+          "kind": "declared",
+          "authority_effect": "none",
+          "source_refs": ["construct.yaml", "skills/designing-systems/index.yaml"],
+          "skills": [
+            {
+              "slug": "designing-systems",
+              "path": "skills/designing-systems",
+              "metadata_status": "declared",
+              "entry": "SKILL.md",
+              "capabilities": {
+                "model_tier": "opus",
+                "danger_level": "safe",
+                "effort_hint": "large",
+                "downgrade_allowed": false,
+                "execution_hint": "sequential",
+                "requires": {
+                  "native_runtime": false,
+                  "tool_calling": false,
+                  "thinking_traces": true,
+                  "vision": false
+                }
+              }
+            }
+          ],
+          "commands": [{ "name": "systems", "path": "commands/systems.md", "path_status": "declared" }]
+        }
+      },
+      "provenance": {
+        "rung": "local-packs",
+        "pinned": true,
+        "cache": "n/a",
+        "rungs_consulted": ["local-packs"],
+        "vantage": "operator-local"
+      },
+      "drift": []
+    },
+    "beacon": {
+      "data": {
+        "slug": "beacon",
+        "name": "Beacon",
+        "version": "2.1.0",
+        "info_schema_version": "1.0",
+        "orientation": {
+          "kind": "prose",
+          "authoritative": false,
+          "description": "Machine-readable content and API discovery expertise.",
+          "short_description": "Machine-readable discovery",
+          "domains": ["operations"],
+          "persona_ref": "identity/persona.yaml",
+          "expertise_ref": "identity/expertise.yaml"
+        },
+        "mechanics": {
+          "kind": "declared",
+          "authority_effect": "none",
+          "source_refs": ["construct.yaml", "skills/discovering-endpoints/index.yaml"],
+          "skills": [
+            {
+              "slug": "discovering-endpoints",
+              "path": "skills/discovering-endpoints",
+              "metadata_status": "declared",
+              "entry": "SKILL.md",
+              "capabilities": {
+                "model_tier": "sonnet",
+                "danger_level": "moderate",
+                "effort_hint": "medium",
+                "downgrade_allowed": false,
+                "execution_hint": "sequential",
+                "requires": {
+                  "native_runtime": true,
+                  "tool_calling": true,
+                  "thinking_traces": false,
+                  "vision": false
+                }
+              }
+            }
+          ],
+          "commands": []
+        }
+      },
+      "provenance": {
+        "rung": "local-packs",
+        "pinned": true,
+        "cache": "n/a",
+        "rungs_consulted": ["local-packs"],
+        "vantage": "operator-local"
+      },
+      "drift": []
+    }
+  }
+}

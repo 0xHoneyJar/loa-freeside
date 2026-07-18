@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freeside.dev/schemas/product/system-component.schema.json",
+  "title": "Freeside System Component Intent",
+  "description": "A thin BFF and product-surface adoption contract that joins a component's stable responsibility to real user-flow moments without copying those moments.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "component_id",
+    "repository",
+    "layer",
+    "operator",
+    "object",
+    "question",
+    "responsibility",
+    "consumers",
+    "trust",
+    "actions",
+    "boundaries",
+    "flow_moments"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": "1.0" },
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^github:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["building", "bff", "surface", "agent-surface", "orchestrator"]
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "job"],
+      "properties": {
+        "role": { "$ref": "#/$defs/nonEmptyString" },
+        "job": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "description"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["system-component", "backend-for-frontend", "product-surface", "agent-product"]
+        },
+        "description": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "question": { "$ref": "#/$defs/nonEmptyString" },
+    "responsibility": { "$ref": "#/$defs/nonEmptyString" },
+    "consumers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "need"],
+        "properties": {
+          "name": { "$ref": "#/$defs/nonEmptyString" },
+          "need": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_status", "contract_refs", "evidence_refs", "note"],
+      "properties": {
+        "contract_status": {
+          "type": "string",
+          "enum": ["declared", "partial", "missing"]
+        },
+        "contract_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/reference" }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/reference" }
+        },
+        "note": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "contract_status": { "enum": ["declared", "partial"] } },
+            "required": ["contract_status"]
+          },
+          "then": {
+            "properties": { "contract_refs": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "contract_status": { "const": "missing" } },
+            "required": ["contract_status"]
+          },
+          "then": {
+            "properties": { "contract_refs": { "maxItems": 0 } }
+          }
+        }
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owns", "does_not_own", "missing_capability_handoff"],
+      "properties": {
+        "owns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "does_not_own": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "missing_capability_handoff": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "flow_moments": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["flow_moment_id", "canonical_ref", "role", "contribution"],
+        "properties": {
+          "flow_moment_id": {
+            "type": "string",
+            "pattern": "^FM-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+          },
+          "canonical_ref": {
+            "type": "string",
+            "pattern": "^flow:FM-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["producer", "composer", "surface", "feedback", "orchestrator"]
+          },
+          "contribution": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "unmapped_reason": { "$ref": "#/$defs/nonEmptyString" }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "reference": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^(?![\\s\\S]*\\s)[a-z][a-z0-9+.-]*:\\S+$"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": { "flow_moments": { "minItems": 1 } },
+      "not": { "required": ["unmapped_reason"] }
+    },
+    {
+      "properties": { "flow_moments": { "maxItems": 0 } },
+      "required": ["unmapped_reason"]
+    }
+  ]
+}

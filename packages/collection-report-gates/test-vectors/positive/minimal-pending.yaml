@@ -1,0 +1,50 @@
+# Positive fixture — smallest honest pending manifest. Everything pending,
+# nothing enabled, static evidence superseded. Must validate with 0 findings.
+schema_version: 1
+manifest_id: fixture-minimal-pending
+manifest_version: 0.0.1
+cycle: collection-report
+status: pending_owner_approval
+evaluated_at: 2026-07-16T00:00:00Z
+source:
+  task_manifest_path: fixture
+  task_manifest_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  sprint_plan_path: fixture
+  sprint_plan_version: "0.6"
+approvals: []
+tasks:
+  - id: ACCEPT-LOA
+    title: Loa acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: platform-deployment-owner
+  - id: CR-001
+    title: Cross-VM collection identity contract
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+gates:
+  - id: G0
+    title: Identity
+    owner: shared-protocol-maintainer
+    requires_tasks: [CR-001]
+    evidence:
+      - id: EV-G0-identity-fixtures
+        description: CR-001 strict fixtures
+        kind: contract_fixture
+        produced_by: [CR-001]
+        validity:
+          valid_until: superseded
+    state: pending
+tiers:
+  - id: T0
+    title: Recognition
+    requires_gates: [G0]
+    entry_tasks: [CR-001]
+    tasks: [CR-001]
+    acceptance: [ACCEPT-LOA]
+    summary:
+      source: fixture
+      gates: [G0]
+      tasks: [CR-001]
+flags: []

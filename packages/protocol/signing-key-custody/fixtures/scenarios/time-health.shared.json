@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "evaluated_at_ms": 1784322001000,
+  "database_unix_ms": 1784322000500,
+  "healthy_sources": [
+    {
+      "source_id": "ntp.pool.a",
+      "observed_at": "2026-07-17T21:00:01.000Z",
+      "unix_ms": 1784322001000,
+      "uncertainty_ms": 25,
+      "region": "us-west-2"
+    },
+    {
+      "source_id": "ntp.pool.b",
+      "observed_at": "2026-07-17T21:00:01.000Z",
+      "unix_ms": 1784322000990,
+      "uncertainty_ms": 30,
+      "region": "us-east-1"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "healthy-skew-within-threshold",
+      "expect": "accept",
+      "database_unix_ms": 1784322000500,
+      "max_skew_ms": 2000
+    },
+    {
+      "id": "skew-exceeds-2s-blocks-intake",
+      "expect": "reject",
+      "database_unix_ms": 1784322004000,
+      "reject_reason": "database_clock_skew_exceeded"
+    },
+    {
+      "id": "insufficient-time-sources",
+      "expect": "reject",
+      "sources": [
+        {
+          "source_id": "ntp.pool.a",
+          "observed_at": "2026-07-17T21:00:01.000Z",
+          "unix_ms": 1784322001000,
+          "uncertainty_ms": 25
+        }
+      ],
+      "reject_reason": "insufficient_time_sources"
+    },
+    {
+      "id": "regional-divergence",
+      "expect": "reject",
+      "sources": [
+        {
+          "source_id": "ntp.pool.a",
+          "observed_at": "2026-07-17T21:00:01.000Z",
+          "unix_ms": 1784322001000,
+          "uncertainty_ms": 25,
+          "region": "us-west-2"
+        },
+        {
+          "source_id": "ntp.pool.b",
+          "observed_at": "2026-07-17T21:00:01.000Z",
+          "unix_ms": 1784322002000,
+          "uncertainty_ms": 25,
+          "region": "eu-west-1"
+        }
+      ],
+      "reject_reason": "time_source_divergence"
+    },
+    {
+      "id": "clock-jump-unknown",
+      "expect": "reject",
+      "database_unix_ms": 1784322000500,
+      "last_good_at": "2026-07-17T19:00:00.000Z",
+      "reject_reason": "database_clock_unknown"
+    }
+  ]
+}

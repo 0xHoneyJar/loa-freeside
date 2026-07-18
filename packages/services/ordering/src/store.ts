@@ -120,6 +120,17 @@ export interface OrderStore {
   markPublished(seq: number): Promise<void>;
   /** Kitchen worker — orders in a given lifecycle state. */
   listByState(state: OrderState): Promise<OrderRecord[]>;
+
+  /**
+   * CR-206 — cursor page of collection-report orders for one subject + community.
+   * Cursor is exclusive `(created_at_unix, order_id)` descending.
+   */
+  listCollectionReports(query: {
+    readonly community_ref: string;
+    readonly placed_by: string;
+    readonly limit: number;
+    readonly cursor?: { readonly created_at_unix: number; readonly order_id: string };
+  }): Promise<OrderRecord[]>;
 }
 
 export class OrderNotFoundError extends Error {
@@ -176,6 +187,21 @@ export class InMemoryOrderStore implements OrderStore {
     return { created: true, record };
   }
 
+  /**
+   * CR-201C admission txn rollback: remove a just-placed order + its outbox rows.
+   * Not part of OrderStore — only the in-memory backend exposes this for
+   * compensating a failed join/capacity txn.
+   */
+  removePlacedOrder(orderId: string): boolean {
+    const existed = this.orders.delete(orderId);
+    for (let i = this.outbox.length - 1; i >= 0; i -= 1) {
+      if (this.outbox[i]!.order_id === orderId) {
+        this.outbox.splice(i, 1);
+      }
+    }
+    return existed;
+  }
+
   async get(orderId: string): Promise<OrderRecord | undefined> {
     return this.orders.get(orderId);
   }
@@ -227,5 +253,32 @@ export class InMemoryOrderStore implements OrderStore {
 
   async listByState(state: OrderState): Promise<OrderRecord[]> {
     return [...this.orders.values()].filter((r) => r.state === state);
+  }
+
+  async listCollectionReports(query: {
+    readonly community_ref: string;
+    readonly placed_by: string;
+    readonly limit: number;
+    readonly cursor?: { readonly created_at_unix: number; readonly order_id: string };
+  }): Promise<OrderRecord[]> {
+    const rows = [...this.orders.values()].filter((r) => {
+      if (r.product !== "collection-report") return false;
+      if (r.placed_by !== query.placed_by) return false;
+      const community = (r.inputs as { community_ref?: unknown }).community_ref;
+      if (community !== query.community_ref) return false;
+      if (query.cursor) {
+        if (r.created_at_unix < query.cursor.created_at_unix) return true;
+        if (r.created_at_unix > query.cursor.created_at_unix) return false;
+        return r.order_id < query.cursor.order_id;
+      }
+      return true;
+    });
+    rows.sort((a, b) => {
+      if (a.created_at_unix !== b.created_at_unix) {
+        return b.created_at_unix - a.created_at_unix;
+      }
+      return a.order_id < b.order_id ? 1 : a.order_id > b.order_id ? -1 : 0;
+    });
+    return rows.slice(0, query.limit);
   }
 }

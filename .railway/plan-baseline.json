@@ -1,9 +1,8 @@
 {
-  "_comment": "S2-T2 org-as-code baseline. Names/shape only — no secret values (Railway redacts them). Regenerate with `node .railway/plan-gate.mjs --update-baseline` in the same PR that changes .railway/railway.ts.",
-  "fingerprint": "4c1f58c70dd9ea51bf6f418d2dcfa3f5c02f09a43d3b9713e7ba0ab3e38b0fc9",
-  "changeCount": 2,
+  "_comment": "S2-T2 org-as-code baseline. Trusted canonical identities only; no upstream summaries or values. Regenerate with `node .railway/plan-gate.mjs --update-baseline` in the same PR that changes .railway/railway.ts.",
+  "fingerprint": "55f548d145ece465927a36d081f84e13d49affe7957511a2a4fe69c51fd5db4e",
+  "changeCount": 1,
   "changes": [
-    "variable.set|safe|Update variable shadow-audit-api.DATABASE_URL",
-    "variable.set|safe|Update variable shadow-audit-api.ROLE_SNAPSHOT_STORE"
+    "resource.update|safe|resource:shadow-audit-api|field:source.branch"
   ]
 }

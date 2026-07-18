@@ -1,0 +1,44 @@
+{
+  "name": "@freeside/signing-key-custody-protocol",
+  "version": "1.0.0",
+  "description": "CR-013 production KMS/HSM signing-key custody: pinned registry distribution, fixture vs production class separation, rotation/revocation, and Ordering database time-health for signed intake.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "@freeside/trust-envelope-protocol": "file:../trust-envelope"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "effect": "^3.21.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

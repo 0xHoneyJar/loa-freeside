@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "accepted_at_ms": 1784322001000,
+  "note": "CR-012A shared fixture index — programmatic vectors live in ledger-inbox.test.ts until CR-011A Sonar producer ships EV-G1B1-sonar-ordering-replay.",
+  "scenarios": [
+    "lost_edge",
+    "duplicated_edge",
+    "delayed_edge",
+    "signing_key_compromised",
+    "backfill_complete",
+    "unsupported_schema_minor"
+  ]
+}

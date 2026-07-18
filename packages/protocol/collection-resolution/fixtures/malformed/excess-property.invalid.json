@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "resolution_id": "res_fixture_001",
+  "candidate_snapshot_digest": {
+    "algorithm": "sha-256",
+    "domain": "collection-resolution.candidate-snapshot",
+    "major_version": 1,
+    "digest": "da5c399e41a36c190eadea125187b25209bd97064b5a55c04ffa71abd268d58e"
+  },
+  "community_ref": "community-alpha",
+  "unexpected_field": true
+}

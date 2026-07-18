@@ -1,0 +1,989 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# collection-report release-gate manifest · CR-019 (sprint.md §6)
+#
+# The canonical, machine-readable, exhaustive release input for the
+# collection-report cycle. The sprint plan's tier tables and checkpoint
+# diagrams are labeled human SUMMARIES; this manifest is the transitive
+# closure they are validated against. Validate with:
+#
+#   check-gate-manifest --manifest manifest/collection-report.gates.yaml \
+#     --source test-vectors/source/task-manifest.yaml
+#
+# Honest state: every gate is `pending`, every flag is disabled, and no
+# evidence has been recorded. This document claims NO owner approval and NO
+# pass state — status is pending_owner_approval until every gate owner signs.
+#
+# Documented corrections vs the prose sprint plan (Flatline findings, CR-019):
+#   1. T0/G2A — the sprint §4 tier-table T0 row omits CR-002 even though
+#      T0's transitive closure requires it (CR-007A depends on CR-002, and
+#      G1's work-key ratification underpins the T1 path). The summary below
+#      includes CR-002; the uncorrected literal row is preserved as the
+#      negative fixture t0-g2a-summary-not-closed.yaml.
+#   2. Suffixed ranges — prose ranges ("CR-101 through CR-107",
+#      "CR-003 through CR-006", "CR-205 through CR-208") are expanded to
+#      explicit canonical IDs everywhere. Ranges are rejected by the
+#      validator (negative fixtures range-forbidden.yaml,
+#      implicit-suffixed-id.yaml).
+#   3. Checkpoint C5 — the sprint §5 literal spine orders "CR-209A plan"
+#      before CR-201B, but CR-209A declares a dependency on CR-201B. The
+#      spine below follows the DAG; the contradicting literal is preserved
+#      as negative fixture checkpoint-contradicts-dag.yaml.
+#   4. G3-PUBLIC — the tier table's prose "public half of G3" is made an
+#      explicit gate ID (same discipline as explicit suffixed CR IDs);
+#      full G3 depends on it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+schema_version: 1
+manifest_id: collection-report-gates
+manifest_version: 0.1.0
+cycle: collection-report
+status: pending_owner_approval
+evaluated_at: 2026-07-16T00:00:00Z
+
+source:
+  task_manifest_path: grimoires/loa/coordination/task-manifest.yaml
+  task_manifest_digest: sha256:572375fac2abaea6e0882d9a6cc1444afc6d247e6f6cec9bf2c46f554a17c0c0
+  simstim: simstim-20260715-061f2083
+  sprint_plan_path: grimoires/loa/sprint.md
+  sprint_plan_version: "0.6"
+
+# Populated with one signed digest receipt per distinct gate owner before
+# status may become owner_approved.
+approvals: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Canonical CR inventory — every ID explicit; suffixed IDs are explicit;
+# ranges are forbidden. Dependencies mirror sprint.md §6-§10 "Depends on".
+# ─────────────────────────────────────────────────────────────────────────────
+tasks:
+  # Boundary acceptance (sprint.md §13 — an unaccepted boundary stays blocked)
+  - id: ACCEPT-DASHBOARD
+    title: Dashboard owner acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+  - id: ACCEPT-LOA
+    title: Loa platform owners acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: platform-deployment-owner
+    participant_owners: [shared-protocol-maintainer, ordering-maintainer, shadow-audit-maintainer, privacy-security-owner]
+  - id: ACCEPT-SONAR
+    title: Sonar owner acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+  - id: ACCEPT-INVENTORY
+    title: Inventory owner acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/inventory-api
+    primary_owner: inventory-api-maintainer
+  - id: ACCEPT-STORAGE
+    title: Storage owner acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/storage-api
+    primary_owner: storage-maintainer
+  - id: ACCEPT-IDENTITY
+    title: Identity owner acceptance
+    kind: acceptance
+    repository: 0xHoneyJar/identity-api
+    primary_owner: identity-api-maintainer
+
+  # Foundation program (sprint.md §6)
+  - id: CR-000
+    title: Discord restricted-tier viability go/no-go
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: discord-application-owner
+    participant_owners: [privacy-security-owner, shadow-audit-maintainer]
+  - id: CR-001
+    title: Cross-VM collection identity contract
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+    participant_owners: [sonar-api-maintainer, dashboard-maintainer]
+  - id: CR-002
+    title: Ratify Gate Leak readiness and work-key scopes
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+    participant_owners: [shadow-audit-maintainer]
+    depends_on: [CR-001]
+  - id: CR-003
+    title: Resolver contract and hermetic adapter proof
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-001]
+  - id: CR-004
+    title: Metadata egress threat model and test harness
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-003]
+  - id: CR-005
+    title: Cross-repository contract harness
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+    participant_owners: [dashboard-maintainer, sonar-api-maintainer]
+    depends_on: [CR-001, CR-003]
+  - id: CR-006
+    title: Durable resolution and stale-selection contract
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [sonar-api-maintainer]
+    depends_on: [CR-001, CR-003]
+  - id: CR-007A
+    title: Public resolution, order, and demand authorization
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [dashboard-maintainer]
+    depends_on: [CR-002]
+  - id: CR-007B
+    title: Restricted artifact access, retention, and deletion policy
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [privacy-security-owner]
+    depends_on: [CR-000, CR-002, CR-007A]
+  - id: CR-008
+    title: Authorized identity-link snapshot capability
+    kind: cr
+    repository: 0xHoneyJar/identity-api
+    primary_owner: identity-api-maintainer
+    participant_owners: [ordering-maintainer]
+    depends_on: [CR-000, CR-001, CR-002, CR-007B]
+  - id: CR-009
+    title: Signed trust-envelope protocol
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+    depends_on: [CR-001, CR-007A]
+  - id: CR-010
+    title: Hierarchical artifact-manifest contract
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shared-protocol-maintainer
+    participant_owners: [storage-maintainer]
+    depends_on: [CR-000, CR-007B, CR-009]
+  - id: CR-011A
+    title: Public trust-stream producer adoption
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    participant_owners: [inventory-api-maintainer]
+    depends_on: [CR-009, CR-013]
+  - id: CR-011B
+    title: Restricted trust-stream producer adoption
+    kind: cr
+    repository: 0xHoneyJar/identity-api
+    primary_owner: identity-api-maintainer
+    participant_owners: [shadow-audit-maintainer]
+    depends_on: [CR-000, CR-008, CR-009, CR-016, CR-017]
+  - id: CR-012A
+    title: Public Ordering dependency ledger and closure
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-009, CR-011A]
+  - id: CR-012B
+    title: Restricted dependency closure and quarantine
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [identity-api-maintainer, shadow-audit-maintainer, storage-maintainer]
+    depends_on: [CR-011B, CR-012A]
+  - id: CR-013
+    title: Production signing-key custody
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: platform-deployment-owner
+    depends_on: [CR-009]
+  - id: CR-014
+    title: Deletion-aware Key Index
+    kind: cr
+    repository: 0xHoneyJar/storage-api
+    primary_owner: storage-maintainer
+    depends_on: [CR-000, CR-007B, CR-010, CR-013]
+  - id: CR-015
+    title: Restricted-data and aggregate disclosure review
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: privacy-security-owner
+    participant_owners: [identity-api-maintainer, storage-maintainer, shadow-audit-maintainer]
+    depends_on: [CR-000, CR-007B, CR-008, CR-010, CR-014]
+  - id: CR-016
+    title: Shadow Audit gate and Discord evidence producer
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shadow-audit-maintainer
+    participant_owners: [discord-application-owner]
+    depends_on: [CR-000, CR-002, CR-007B, CR-009, CR-018]
+  - id: CR-017
+    title: Gate-audit purpose consent and re-consent
+    kind: cr
+    repository: 0xHoneyJar/identity-api
+    primary_owner: identity-api-maintainer
+    participant_owners: [dashboard-maintainer]
+    depends_on: [CR-000, CR-007B, CR-008]
+  - id: CR-018
+    title: Active-guild capture feasibility
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: shadow-audit-maintainer
+    participant_owners: [identity-api-maintainer, discord-application-owner]
+    depends_on: [CR-000]
+  - id: CR-019
+    title: Machine-readable gate manifest
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: coordinator-owner
+    participant_owners: [discord-application-owner, shared-protocol-maintainer, ordering-maintainer, privacy-security-owner, sonar-api-maintainer, dashboard-release-owner]
+
+  # Sprint 1 — mainnet collection recognition (sprint.md §7)
+  - id: CR-101
+    title: Versioned resolver capability registry
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-003, CR-004]
+  - id: CR-102
+    title: Bounded resolver core
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-101]
+  - id: CR-103
+    title: EVM NFT probe adapter
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-101, CR-102]
+  - id: CR-104
+    title: Solana resolver service adapter
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-101, CR-102]
+  - id: CR-105
+    title: Exact Inventory enrichment contract
+    kind: cr
+    repository: 0xHoneyJar/inventory-api
+    primary_owner: inventory-api-maintainer
+    depends_on: [CR-001]
+  - id: CR-106
+    title: Dashboard resolver BFF
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+    depends_on: [CR-005, CR-006, CR-102]
+  - id: CR-107
+    title: Recognition observability and operator controls
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-102, CR-103, CR-104]
+  - id: CR-108
+    title: Existing collection identity and equivalence backfill
+    kind: cr
+    repository: 0xHoneyJar/inventory-api
+    primary_owner: inventory-api-maintainer
+    participant_owners: [sonar-api-maintainer, ordering-maintainer]
+    depends_on: [CR-001, CR-105]
+
+  # Sprint 2 — durable request and shared preparation (sprint.md §8)
+  - id: CR-201A
+    title: Public shared preparation persistence
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-002, CR-009, CR-012A]
+  - id: CR-201B
+    title: Restricted evidence persistence
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-007B, CR-008, CR-010, CR-011B, CR-012B, CR-013, CR-014, CR-015, CR-016, CR-017, CR-201A]
+  - id: CR-201C
+    title: Atomic admission capacity reservation
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-201A]
+  - id: CR-202
+    title: Collection-report Ordering preset
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-001, CR-002, CR-006, CR-007A, CR-009, CR-012A, CR-201A, CR-201C]
+  - id: CR-203
+    title: Sonar Kitchen cross-VM job identity migration
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-001, CR-103, CR-104]
+  - id: CR-204A
+    title: Public Ordering-to-Sonar preparation adapter
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-011A, CR-012A, CR-201A, CR-201C, CR-203]
+  - id: CR-204B
+    title: Restricted Shadow Audit and Identity preparation adapters
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [shadow-audit-maintainer, identity-api-maintainer]
+    depends_on: [CR-016, CR-017, CR-201B, CR-204A]
+  - id: CR-205
+    title: Gate Leak report generation and artifact result
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-202, CR-204B, CR-007B, CR-008, CR-010, CR-012B, CR-013, CR-014, CR-015, CR-016, CR-017, CR-201B]
+  - id: CR-206
+    title: Authenticated report list and detail projections
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    depends_on: [CR-007B, CR-010, CR-014, CR-015, CR-201B, CR-202, CR-205]
+  - id: CR-207
+    title: Backpressure and chaos proof
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [sonar-api-maintainer]
+    depends_on: [CR-204A, CR-204B, CR-205]
+  - id: CR-208
+    title: Recognition-only support demand
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: ordering-maintainer
+    participant_owners: [sonar-api-maintainer, dashboard-maintainer]
+    depends_on: [CR-006, CR-007A, CR-102]
+  - id: CR-209A
+    title: Mixed-version rollout and cutover plan
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: platform-deployment-owner
+    participant_owners: [ordering-maintainer, dashboard-maintainer, sonar-api-maintainer, identity-api-maintainer, storage-maintainer]
+    depends_on: [CR-011A, CR-011B, CR-012A, CR-012B, CR-013, CR-014, CR-016, CR-201A, CR-201B, CR-203]
+  - id: CR-209B
+    title: Production cutover rehearsal
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: platform-deployment-owner
+    participant_owners: [ordering-maintainer, dashboard-maintainer, sonar-api-maintainer, identity-api-maintainer, storage-maintainer]
+    depends_on: [CR-205, CR-206, CR-207, CR-208, CR-209A, CR-306]
+
+  # Sprint 3 — full product journey and return path (sprint.md §9)
+  - id: CR-301
+    title: Direction A collection question
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+    depends_on: [CR-106]
+  - id: CR-302
+    title: Recognizable candidate cards and report preview
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+    depends_on: [CR-301]
+  - id: CR-303
+    title: Durable generate and asynchronous branches
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+    depends_on: [CR-016, CR-017, CR-202, CR-204B, CR-205, CR-208, CR-302]
+  - id: CR-304
+    title: Reports table and report detail
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+    depends_on: [CR-206, CR-303]
+  - id: CR-305
+    title: Report attention in notification bell
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-maintainer
+    depends_on: [CR-206, CR-304]
+  - id: CR-306
+    title: Full E2E and accessibility gate
+    kind: cr
+    repository: 0xHoneyJar/freeside-dashboard
+    primary_owner: dashboard-release-owner
+    participant_owners: [dashboard-maintainer]
+    depends_on: [CR-209A, CR-303, CR-304, CR-305]
+
+  # Sprint 4 — network breadth and delivery hardening (sprint.md §10)
+  - id: CR-401
+    title: Robinhood Chain mainnet capability
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-103, CR-203]
+  - id: CR-402
+    title: Solana preparation parity
+    kind: cr
+    repository: 0xHoneyJar/sonar-api
+    primary_owner: sonar-api-maintainer
+    depends_on: [CR-104, CR-203]
+  - id: CR-403
+    title: Metadata snapshot activation decision
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: product-architecture-owner
+    participant_owners: [sonar-api-maintainer, inventory-api-maintainer, storage-maintainer]
+    depends_on: [CR-105, CR-205]
+  - id: CR-404
+    title: Capacity dashboard and operations runbook
+    kind: cr
+    repository: 0xHoneyJar/loa-freeside
+    primary_owner: operations-owner
+    participant_owners: [sonar-api-maintainer]
+    depends_on: [CR-207]
+  - id: CR-405
+    title: Optional metadata snapshot capability
+    kind: cr
+    repository: 0xHoneyJar/storage-api
+    primary_owner: storage-maintainer
+    participant_owners: [inventory-api-maintainer, ordering-maintainer]
+    depends_on: [CR-002, CR-403]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release gates (sprint.md §4). All states honestly `pending`; no evidence
+# recorded. Dependency edges derive from §4 "Blocks" + §5 checkpoint order.
+# ─────────────────────────────────────────────────────────────────────────────
+gates:
+  - id: G-1
+    title: Discord viability
+    description: Discord application owner proves current bot verification, privileged intent approval/limits, and policy viability. A denial stops T2 but not T0/T1.
+    owner: discord-application-owner
+    participant_owners: [privacy-security-owner]
+    requires_tasks: [CR-000]
+    evidence:
+      - id: EV-G-1-discord-viability-record
+        description: Signed go/no-go with versioned Discord-policy authority record, 90-day expiry, 60-day renewal cadence (CR-000 acceptance)
+        kind: external_policy
+        produced_by: [CR-000]
+        validity:
+          max_age_days: 90
+          renewal_owner: discord-application-owner
+    state: pending
+    blocks: Every restricted task; a denial stops T2 but not T0/T1
+    on_no_go:
+      closes_tiers: [T2]
+      preserves_tiers: [T0, T1]
+
+  - id: G0
+    title: Identity
+    description: Cross-VM deployment identity fixtures pass in all consumers.
+    owner: shared-protocol-maintainer
+    requires_tasks: [CR-001, CR-005]
+    evidence:
+      - id: EV-G0-identity-fixtures
+        description: CR-001 strict fixtures (EVM, Solana, multi-deployment, malformed)
+        kind: contract_fixture
+        produced_by: [CR-001]
+        validity:
+          valid_until: superseded
+      - id: EV-G0-consumer-decode-matrix
+        description: CR-005 CI contract matrix at the pinned protocol version in all three repositories
+        kind: contract_fixture
+        produced_by: [CR-005]
+        validity:
+          valid_until: superseded
+    state: pending
+    blocks: Every later sprint
+
+  - id: G1
+    title: Capability
+    description: Gate Leak prerequisites and work-key scopes are ratified.
+    owner: shared-protocol-maintainer
+    participant_owners: [shadow-audit-maintainer]
+    requires_tasks: [CR-002]
+    depends_on_gates: [G0]
+    evidence:
+      - id: EV-G1-work-key-fixtures
+        description: CR-002 table tests proving same/different keys for global, community, guild, policy, and version changes
+        kind: schema_fixture
+        produced_by: [CR-002]
+        validity:
+          valid_until: superseded
+      - id: EV-G1-representative-config-proof
+        description: Three representative live/recorded community configurations proving mapping source, ratify/revoke, migration/refusal, and parity
+        kind: operational
+        produced_by: [CR-002]
+        validity:
+          max_age_days: 90
+          renewal_owner: shadow-audit-maintainer
+    state: pending
+    blocks: Shared-work persistence
+
+  - id: G1A
+    title: Selection
+    description: Confirmed candidate snapshot remains immutable through order admission.
+    owner: ordering-maintainer
+    requires_tasks: [CR-006]
+    depends_on_gates: [G0]
+    evidence:
+      - id: EV-G1A-confirmation-races
+        description: CR-006 fixtures covering unchanged refresh, changed deployment, regrouping, revoked authorization, replay, idempotency conflict
+        kind: contract_fixture
+        produced_by: [CR-006]
+        validity:
+          valid_until: superseded
+    state: pending
+    blocks: Public order intake
+
+  - id: G1B-1
+    title: Public trust
+    description: Signed envelope plus one Sonar producer and Ordering replay consumer pass.
+    owner: shared-protocol-maintainer
+    participant_owners: [sonar-api-maintainer, ordering-maintainer]
+    requires_tasks: [CR-009, CR-011A]
+    depends_on_gates: [G0]
+    evidence:
+      - id: EV-G1B1-envelope-vectors
+        description: CR-009 shared producer/consumer envelope vectors (rotation, revocation, replay, expiry, gap repair)
+        kind: contract_fixture
+        produced_by: [CR-009]
+        validity:
+          valid_until: superseded
+      - id: EV-G1B1-sonar-ordering-replay
+        description: CR-011A duplicate, gap, epoch reset, stale key, revocation, and failover tests per producer
+        kind: contract_fixture
+        produced_by: [CR-011A]
+        validity:
+          valid_until: superseded
+    state: pending
+    blocks: Public dependency ledger
+
+  - id: G1B-2
+    title: Public closure
+    description: Public producer adoption and dependency-ledger closure pass.
+    owner: ordering-maintainer
+    requires_tasks: [CR-012A, CR-201A, CR-204A]
+    depends_on_gates: [G1B-1]
+    evidence:
+      - id: EV-G1B2-closure-backfill
+        description: CR-012A lost/duplicated/delayed edge, compromise, backfill, and mixed-version enforcement fixtures
+        kind: contract_fixture
+        produced_by: [CR-012A]
+        validity:
+          valid_until: superseded
+      - id: EV-G1B2-public-fanin-fixture-keys
+        description: CR-201A/CR-204A public fan-in using non-production fixture keys
+        kind: contract_fixture
+        produced_by: [CR-201A, CR-204A]
+        validity:
+          valid_until: superseded
+    state: pending
+    blocks: T1 public preparation
+
+  - id: G1B-3
+    title: Restricted trust
+    description: Identity and Shadow Audit authority/evidence streams, consent, gap repair, and scoped quarantine pass.
+    owner: ordering-maintainer
+    participant_owners: [identity-api-maintainer, shadow-audit-maintainer]
+    requires_tasks: [CR-008, CR-011B, CR-012B, CR-016, CR-017]
+    depends_on_gates: [G-1, G1B-1]
+    evidence:
+      - id: EV-G1B3-restricted-stream-fixtures
+        description: CR-008/CR-011B/CR-012B/CR-016/CR-017 restricted stream, consent, and quarantine fixtures
+        kind: contract_fixture
+        produced_by: [CR-008, CR-011B, CR-012B, CR-016, CR-017]
+        validity:
+          valid_until: superseded
+    state: pending
+    blocks: Restricted persistence
+
+  - id: G1B-4
+    title: Key/privacy
+    description: Production key custody, Key Index, manifests, disclosure/deletion review, and restore quarantine pass.
+    owner: privacy-security-owner
+    participant_owners: [platform-deployment-owner, storage-maintainer]
+    requires_tasks: [CR-010, CR-013, CR-014, CR-015]
+    depends_on_gates: [G-1, G1B-3]
+    evidence:
+      - id: EV-G1B4-manifest-keyindex-fixtures
+        description: CR-010/CR-014 manifest, Key Index, nonce-divergence, replica-deletion, and restore-quarantine fixtures
+        kind: contract_fixture
+        produced_by: [CR-010, CR-014]
+        validity:
+          valid_until: superseded
+      - id: EV-G1B4-key-custody-game-day
+        description: CR-013 rotation, compromise, clock-jump, time-source-loss, and recovery game days
+        kind: operational
+        produced_by: [CR-013]
+        validity:
+          max_age_days: 90
+          renewal_owner: platform-deployment-owner
+      - id: EV-G1B4-disclosure-review
+        description: CR-015 field/derivative data-flow matrix and differencing-policy privacy review
+        kind: privacy
+        produced_by: [CR-015]
+        validity:
+          max_age_days: 90
+          renewal_owner: privacy-security-owner
+    state: pending
+    blocks: Restricted artifact generation
+
+  - id: G1B-5
+    title: Restricted E2E
+    description: Restricted producers, Ordering, Storage, proxy, and deletion compose under failure.
+    owner: ordering-maintainer
+    participant_owners: [identity-api-maintainer, shadow-audit-maintainer, storage-maintainer]
+    requires_tasks: [CR-201B, CR-204B, CR-205]
+    depends_on_gates: [G1B-4, G3]
+    evidence:
+      - id: EV-G1B5-restricted-e2e
+        description: CR-201B/CR-204B/CR-205 restart, chaos, revoke-during-compute, and disposal composition evidence
+        kind: operational
+        produced_by: [CR-201B, CR-204B, CR-205]
+        validity:
+          max_age_days: 90
+          renewal_owner: ordering-maintainer
+    state: pending
+    blocks: T2 release
+
+  - id: G2A
+    title: Resolver fixtures
+    description: Bounded resolver returns honest single, multiple, partial, and empty outcomes for one enabled EVM mainnet plus Solana mainnet fixtures.
+    owner: sonar-api-maintainer
+    participant_owners: [inventory-api-maintainer, dashboard-maintainer]
+    requires_tasks: [CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107]
+    depends_on_gates: [G0]
+    evidence:
+      - id: EV-G2A-resolver-fixture-matrix
+        description: CR-101 to CR-107 (explicit, no range) fixture resolver/enrichment proof for the initial EVM-plus-Solana matrix
+        kind: contract_fixture
+        produced_by: [CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107]
+        validity:
+          valid_until: superseded
+    state: pending
+    blocks: T0 Dashboard candidate UI
+
+  - id: G2B
+    title: Production identity
+    description: Production collection backfill/parity and each additional enabled network's recognize/disable/failure packet pass.
+    owner: sonar-api-maintainer
+    participant_owners: [inventory-api-maintainer, ordering-maintainer]
+    requires_tasks: [CR-108]
+    depends_on_gates: [G2A]
+    evidence:
+      - id: EV-G2B-backfill-parity
+        description: CR-108 dry-run counts, dual-read parity, rollback, and equivalence-revocation quarantine evidence
+        kind: operational
+        produced_by: [CR-108]
+        validity:
+          max_age_days: 90
+          renewal_owner: inventory-api-maintainer
+    state: pending
+    blocks: Production resolver enablement
+
+  - id: G3-PUBLIC
+    title: Durability (public half)
+    description: Concurrent equivalent public requests yield many orders, one shared work item, one physical ingest — controlled public-chain fixtures only.
+    owner: ordering-maintainer
+    requires_tasks: [CR-201A, CR-201C, CR-204A]
+    depends_on_gates: [G1, G1A, G1B-2]
+    evidence:
+      - id: EV-G3P-public-fanin-concurrency
+        description: CR-201A 100-joiner concurrency, CR-201C 100/500/1000 linearizability, CR-204A outage/restart evidence
+        kind: load
+        produced_by: [CR-201A, CR-201C, CR-204A]
+        validity:
+          max_age_days: 90
+          renewal_owner: ordering-maintainer
+    state: pending
+    blocks: T1 public async preparation proof
+
+  - id: G3
+    title: Durability (full)
+    description: Concurrent equivalent requests yield many orders, one shared work item, one physical ingest — including restricted evidence paths.
+    owner: ordering-maintainer
+    requires_tasks: [CR-201B, CR-202, CR-204B, CR-207]
+    depends_on_gates: [G3-PUBLIC, G1B-3]
+    evidence:
+      - id: EV-G3-full-fanin
+        description: CR-202 intake/lifecycle, CR-201B restricted persistence, CR-204B adapters, CR-207 chaos/backpressure evidence
+        kind: load
+        produced_by: [CR-201B, CR-202, CR-204B, CR-207]
+        validity:
+          max_age_days: 90
+          renewal_owner: ordering-maintainer
+    state: pending
+    blocks: Public async request flow (full)
+
+  - id: G4
+    title: Artifact
+    description: Accepted request survives restart and reaches fulfilled or a typed terminal failure; recovery from terminal failure creates a new linked order.
+    owner: ordering-maintainer
+    participant_owners: [platform-deployment-owner]
+    requires_tasks: [CR-205, CR-207, CR-209A, CR-209B]
+    depends_on_gates: [G3]
+    evidence:
+      - id: EV-G4-restart-artifact-durability
+        description: CR-205/CR-207 restart-after-compute, orphan-sweep, and typed-terminal-failure evidence
+        kind: operational
+        produced_by: [CR-205, CR-207]
+        validity:
+          max_age_days: 90
+          renewal_owner: ordering-maintainer
+      - id: EV-G4-cutover-rehearsal
+        description: CR-209A plan acceptance plus CR-209B in-flight rollback game day evidence packet
+        kind: operational
+        produced_by: [CR-209A, CR-209B]
+        validity:
+          max_age_days: 90
+          renewal_owner: platform-deployment-owner
+    state: pending
+    blocks: Ready status
+
+  - id: G4A
+    title: Access
+    description: Membership revocation blocks report and artifact retrieval.
+    owner: ordering-maintainer
+    requires_tasks: [CR-206]
+    depends_on_gates: [G1B-3]
+    evidence:
+      - id: EV-G4A-revocation-access
+        description: CR-206 ACL matrix — cross-user, cross-community, revoked membership, copied storage reference
+        kind: security
+        produced_by: [CR-206]
+        validity:
+          max_age_days: 90
+          renewal_owner: ordering-maintainer
+    state: pending
+    blocks: General release
+
+  - id: G4B
+    title: Privacy
+    description: Purpose consent, anti-enumeration, hierarchical manifest, key erasure, and restore quarantine pass.
+    owner: privacy-security-owner
+    participant_owners: [identity-api-maintainer, storage-maintainer]
+    requires_tasks: [CR-206, CR-207, CR-306]
+    depends_on_gates: [G1B-4]
+    evidence:
+      - id: EV-G4B-privacy-journeys
+        description: CR-206/CR-207/CR-306 consent-revocation, anti-enumeration, manifest, erasure, and restore-quarantine journeys
+        kind: privacy
+        produced_by: [CR-206, CR-207, CR-306]
+        validity:
+          max_age_days: 90
+          renewal_owner: privacy-security-owner
+    state: pending
+    blocks: Identity rows
+
+  - id: G5
+    title: Return path
+    description: Reports remains canonical when notification delivery fails.
+    owner: dashboard-release-owner
+    participant_owners: [dashboard-maintainer, ordering-maintainer]
+    requires_tasks: [CR-304, CR-305, CR-306]
+    depends_on_gates: [G3]
+    evidence:
+      - id: EV-G5-return-path-journeys
+        description: CR-304/CR-305/CR-306 notification-failure, reload, and cross-session return-path journeys
+        kind: operational
+        produced_by: [CR-304, CR-305, CR-306]
+        validity:
+          max_age_days: 90
+          renewal_owner: dashboard-release-owner
+    state: pending
+    blocks: General release
+
+  - id: G6
+    title: Network
+    description: Each enabled network proves recognize, index, disable, and failure paths.
+    owner: sonar-api-maintainer
+    requires_tasks: [CR-401, CR-402]
+    depends_on_gates: [G2A]
+    evidence:
+      - id: EV-G6-robinhood-packet
+        description: CR-401 Robinhood Chain 4663 recognize/index/disable/failure capability packet
+        kind: operational
+        produced_by: [CR-401]
+        validity:
+          max_age_days: 90
+          renewal_owner: sonar-api-maintainer
+      - id: EV-G6-solana-parity-packet
+        description: CR-402 per-coverage-class Solana preparation parity packet
+        kind: operational
+        produced_by: [CR-402]
+        validity:
+          max_age_days: 90
+          renewal_owner: sonar-api-maintainer
+    state: pending
+    blocks: Per-network enablement
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release tiers — `tasks` is the exhaustive transitive closure (cumulative);
+# `summary` is the labeled sprint-table row it corrects/mirrors. The validator
+# recomputes closures and rejects drift in either direction.
+# ─────────────────────────────────────────────────────────────────────────────
+tiers:
+  - id: T0
+    title: Recognition
+    requires_gates: [G0, G2A]
+    entry_tasks:
+      [CR-001, CR-003, CR-004, CR-005, CR-006, CR-007A,
+       CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107, CR-208]
+    tasks:
+      [CR-001, CR-002, CR-003, CR-004, CR-005, CR-006, CR-007A,
+       CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107, CR-208]
+    acceptance: [ACCEPT-LOA, ACCEPT-SONAR, ACCEPT-INVENTORY, ACCEPT-DASHBOARD]
+    summary:
+      source: "sprint.md §4 tier table (T0 row; CR-002 added per Flatline T0/G2A finding — CR-007A depends on CR-002)"
+      gates: [G0, G2A]
+      tasks:
+        [CR-001, CR-002, CR-003, CR-004, CR-005, CR-006, CR-007A,
+         CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107, CR-208]
+
+  - id: T1
+    title: Public preparation proof
+    requires_gates: [G0, G1, G1A, G1B-1, G1B-2, G2A, G3-PUBLIC]
+    entry_tasks:
+      [CR-009, CR-011A, CR-012A, CR-013,
+       CR-201A, CR-201C, CR-202, CR-203, CR-204A]
+    tasks:
+      [CR-001, CR-002, CR-003, CR-004, CR-005, CR-006, CR-007A,
+       CR-009, CR-011A, CR-012A, CR-013,
+       CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107,
+       CR-201A, CR-201C, CR-202, CR-203, CR-204A, CR-208]
+    acceptance: [ACCEPT-LOA, ACCEPT-SONAR, ACCEPT-INVENTORY, ACCEPT-DASHBOARD]
+    summary:
+      source: "sprint.md §4 tier table (T1 row; 'public half of G3' made explicit as G3-PUBLIC)"
+      gates: [G0, G1, G1A, G1B-1, G1B-2, G2A, G3-PUBLIC]
+      tasks:
+        [CR-009, CR-011A, CR-012A, CR-013,
+         CR-201A, CR-201C, CR-202, CR-203, CR-204A]
+
+  - id: T2
+    title: Gate Leak release
+    requires_gates:
+      [G-1, G0, G1, G1A, G1B-1, G1B-2, G1B-3, G1B-4, G1B-5,
+       G2A, G3-PUBLIC, G3, G4, G4A, G4B, G5]
+    entry_tasks:
+      [CR-000, CR-007B, CR-008, CR-010, CR-011B, CR-012B, CR-014,
+       CR-015, CR-016, CR-017, CR-018, CR-108, CR-201B, CR-204B,
+       CR-205, CR-206, CR-207, CR-209A, CR-209B,
+       CR-301, CR-302, CR-303, CR-304, CR-305, CR-306]
+    tasks:
+      [CR-000, CR-001, CR-002, CR-003, CR-004, CR-005, CR-006,
+       CR-007A, CR-007B, CR-008, CR-009, CR-010, CR-011A, CR-011B,
+       CR-012A, CR-012B, CR-013, CR-014, CR-015, CR-016, CR-017, CR-018,
+       CR-101, CR-102, CR-103, CR-104, CR-105, CR-106, CR-107, CR-108,
+       CR-201A, CR-201B, CR-201C, CR-202, CR-203, CR-204A, CR-204B,
+       CR-205, CR-206, CR-207, CR-208, CR-209A, CR-209B,
+       CR-301, CR-302, CR-303, CR-304, CR-305, CR-306]
+    acceptance:
+      [ACCEPT-LOA, ACCEPT-SONAR, ACCEPT-INVENTORY, ACCEPT-DASHBOARD,
+       ACCEPT-STORAGE, ACCEPT-IDENTITY]
+    summary:
+      source: "sprint.md §4 tier table (T2 row; ranges CR-301 through CR-306 expanded to explicit IDs)"
+      gates: [G-1, G1B-3, G1B-4, G1B-5, G3, G4, G4A, G4B, G5]
+      tasks:
+        [CR-000, CR-007B, CR-008, CR-010, CR-011B, CR-012B, CR-014,
+         CR-015, CR-016, CR-017, CR-018, CR-108, CR-201B, CR-204B,
+         CR-205, CR-206, CR-207, CR-209A, CR-209B,
+         CR-301, CR-302, CR-303, CR-304, CR-305, CR-306]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Checkpoint diagrams (sprint.md §5) — scheduling summaries validated against
+# the DAG. C5's literal sprint spine ("CR-209A plan -> CR-201B") contradicts
+# CR-209A's declared dependency on CR-201B and is corrected here; the literal
+# is preserved as negative fixture checkpoint-contradicts-dag.yaml.
+# ─────────────────────────────────────────────────────────────────────────────
+checkpoints:
+  - id: C0
+    title: External go/no-go
+    source: "sprint.md §5 checkpoint table"
+    serial_spine:
+      - [CR-000]
+  - id: C1
+    title: Public envelope
+    source: "sprint.md §5 checkpoint table"
+    serial_spine:
+      - [CR-007A]
+      - [CR-009]
+      - [CR-013]
+      - [CR-011A]
+    unlocks: [CR-001, CR-003, CR-004, CR-005, CR-105]
+  - id: C2
+    title: Public closure
+    source: "sprint.md §5 checkpoint table"
+    serial_spine:
+      - [CR-011A]
+      - [CR-012A]
+      - [CR-201A, CR-201C]
+      - [CR-202, CR-204A]
+    unlocks: [CR-108, CR-203]
+  - id: C3
+    title: Restricted authority
+    source: "sprint.md §5 checkpoint table"
+    serial_spine:
+      - [CR-000]
+      - [CR-007B]
+      - [CR-008, CR-016, CR-017]
+      - [CR-011B]
+      - [CR-012B]
+    unlocks: [CR-010]
+  - id: C4
+    title: Restricted storage/privacy
+    source: "sprint.md §5 checkpoint table"
+    serial_spine:
+      - [CR-013]
+      - [CR-014]
+      - [CR-015]
+    unlocks: [CR-201B]
+  - id: C5
+    title: Restricted integration
+    source: "sprint.md §5 checkpoint table (reordered to follow the DAG — literal placed CR-209A before its own dependency CR-201B)"
+    serial_spine:
+      - [CR-201B]
+      - [CR-204B, CR-209A]
+      - [CR-205]
+      - [CR-207, CR-306]
+      - [CR-209B]
+    unlocks: [CR-301, CR-302]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Feature flags controlled by gates (CR-209A: recognition, public-preparation,
+# and restricted-report/row flags are independent; restricted rows stay
+# hard-disabled until G1B/G4B). Enabling any flag before every controlling
+# gate is `pass` is rejected as premature.
+# ─────────────────────────────────────────────────────────────────────────────
+flags:
+  - id: collection_recognition
+    description: T0 collection question, candidate recognition, and support demand surface
+    controlled_by_gates: [G0, G2A]
+    tier: T0
+    enabled: false
+  - id: public_preparation
+    description: T1 internal controlled-fixture collection identity/ownership fan-in
+    controlled_by_gates: [G0, G1, G1A, G1B-1, G1B-2, G2A, G3-PUBLIC]
+    tier: T1
+    enabled: false
+  - id: restricted_report
+    description: T2 production Gate Leak report orders, restricted evidence, and artifacts
+    controlled_by_gates: [G-1, G1B-3, G1B-4, G1B-5, G3, G4, G4A, G4B, G5]
+    tier: T2
+    enabled: false
+  - id: restricted_identity_rows
+    description: Identity-row projections within Gate Leak artifacts (hard-disabled until G1B/G4B per CR-209A)
+    controlled_by_gates: [G1B-3, G1B-4, G1B-5, G4B]
+    tier: T2
+    enabled: false
+  - id: production_resolver_enablement
+    description: Production collection identity backfill authority for resolver enablement
+    controlled_by_gates: [G2B]
+    enabled: false
+  - id: network_breadth_enablement
+    description: Additional-network enablement (Robinhood Chain 4663, Solana preparation parity)
+    controlled_by_gates: [G2B, G6]
+    enabled: false

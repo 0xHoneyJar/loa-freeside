@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "accepted_at_ms": 1784322001000,
+  "registry": {
+    "schema_version": 1,
+    "registry_id": "collection-report.fixture-registry.v1",
+    "registry_generation": 1,
+    "published_at": "2026-07-17T21:00:00.000Z",
+    "max_staleness_ms": 300000,
+    "key_class_scope": "fixture",
+    "keys": [
+      {
+        "signing_key_id": "sonar-fixture-primary",
+        "public_key_hex": "3b6a27bcceb6a42d62a8a8d02670bf526ea390765392029577b579932c950db0",
+        "producer": "sonar-api",
+        "capabilities": ["collection-report.capability-evidence.v1"],
+        "tenant_scope_digests": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        "activated_at": "2026-07-01T00:00:00.000Z",
+        "key_class": "fixture",
+        "custody_backend": "local-fixture",
+        "registry_generation": 1
+      },
+      {
+        "signing_key_id": "sonar-fixture-rotated",
+        "public_key_hex": "92de664a9627863859e1a8aaa2a6375f43adf7cbeac1d334c8a0e3693049b2c59",
+        "producer": "sonar-api",
+        "capabilities": ["collection-report.capability-evidence.v1"],
+        "tenant_scope_digests": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        "activated_at": "2026-07-10T00:00:00.000Z",
+        "key_class": "fixture",
+        "custody_backend": "local-fixture",
+        "registry_generation": 1
+      },
+      {
+        "signing_key_id": "sonar-fixture-revoked",
+        "public_key_hex": "df0e812848eb2242846d0e28c0b1a4053e843b844b62121e6e5a1789d784a49d",
+        "producer": "sonar-api",
+        "capabilities": ["collection-report.capability-evidence.v1"],
+        "tenant_scope_digests": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        "activated_at": "2026-07-01T00:00:00.000Z",
+        "revoked_at": "2026-07-15T00:00:00.000Z",
+        "key_class": "fixture",
+        "custody_backend": "local-fixture",
+        "registry_generation": 1
+      }
+    ],
+    "distribution_digest": "placeholder-regenerated-by-tests"
+  },
+  "scenarios": [
+    {
+      "id": "fresh-registry-primary",
+      "expect": "accept",
+      "signing_key_id": "sonar-fixture-primary"
+    },
+    {
+      "id": "rotation-overlap-rotated",
+      "expect": "accept",
+      "signing_key_id": "sonar-fixture-rotated"
+    },
+    {
+      "id": "revoked-key",
+      "expect": "reject",
+      "signing_key_id": "sonar-fixture-revoked",
+      "reject_reason": "revoked_signing_key"
+    },
+    {
+      "id": "unknown-key",
+      "expect": "reject",
+      "signing_key_id": "sonar-fixture-unknown",
+      "reject_reason": "unknown_signing_key"
+    },
+    {
+      "id": "stale-registry",
+      "expect": "reject",
+      "registry_published_at": "2026-07-17T20:00:00.000Z",
+      "accepted_at_ms": 1784325601000,
+      "signing_key_id": "sonar-fixture-primary",
+      "reject_reason": "registry_stale"
+    }
+  ],
+  "rotation": {
+    "event_id": "rotation-001",
+    "kind": "rotation",
+    "registry_id": "collection-report.fixture-registry.v1",
+    "previous_key_id": "sonar-fixture-primary",
+    "next_key_id": "sonar-fixture-rotated",
+    "overlap_starts_at": "2026-07-10T00:00:00.000Z",
+    "overlap_ends_at": "2026-07-20T00:00:00.000Z",
+    "issued_at": "2026-07-10T00:00:00.000Z"
+  },
+  "compromise": {
+    "event_id": "compromise-001",
+    "kind": "compromise",
+    "registry_id": "collection-report.fixture-registry.v1",
+    "signing_key_id": "sonar-fixture-primary",
+    "detected_at": "2026-07-17T21:30:00.000Z",
+    "issued_at": "2026-07-17T21:30:00.000Z"
+  }
+}
