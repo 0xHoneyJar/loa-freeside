@@ -20,17 +20,17 @@ on:
     types: [submitted, edited, dismissed]
 
 jobs:
-  attest:
-    name: independent Railway trust-root review
+  trust-tests:
+    name: credential-free exact-head trust-root tests
     permissions:
       contents: read
       pull-requests: read
-      statuses: write
     runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.prepare_tests.outputs.required }}
     steps:
       - name: Prepare exact-head trust-root tests
         id: prepare_tests
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -95,9 +95,7 @@ jobs:
             "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
 
       - name: Run trusted regression and candidate suites without credentials
-        id: trust_tests
-        if: steps.prepare_tests.outputs.required == 'true' && steps.prepare_tests.outcome == 'success'
-        continue-on-error: true
+        if: steps.prepare_tests.outputs.required == 'true'
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/railway-trust-tests"
@@ -107,12 +105,20 @@ jobs:
             "$root/candidate/.railway/plan-gate.test.mjs" \
             "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
 
+  attest:
+    name: independent Railway trust-root review
+    needs: trust-tests
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
       - name: Publish exact-head trust-root status
-        if: always()
         env:
-          PREP_OUTCOME: ${{ steps.prepare_tests.outcome }}
-          TEST_OUTCOME: ${{ steps.trust_tests.outcome }}
-          TEST_REQUIRED: ${{ steps.prepare_tests.outputs.required }}
+          TEST_JOB_RESULT: ${{ needs.trust-tests.result }}
+          TEST_REQUIRED: ${{ needs.trust-tests.outputs.required }}
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -125,10 +131,7 @@ jobs:
           changed=false
           active_config_changed=false
           trusted_config_changed=false
-          if [ "$PREP_OUTCOME" != success ]; then
-            state=failure
-            description='Trust-root test preparation or diff inventory failed'
-          elif [ "$TEST_REQUIRED" = true ] && [ "$TEST_OUTCOME" != success ]; then
+          if [ "$TEST_JOB_RESULT" != success ]; then
             state=failure
             description='Exact-head Railway trust-root tests failed'
           else
