@@ -43,7 +43,7 @@ import {
   type WhaleSource,
 } from '../audit-service.js';
 import type { CollectionRegistry } from '../ownership-source.js';
-import type { SourceResolver } from '../collection-union.js';
+import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
 import {
   verifyAssociation,
   SignedAuthMessageSchema,
@@ -66,7 +66,11 @@ import {
 } from '../role-snapshot.js';
 import { RoleSnapshotConflictError, type RoleSink } from '../role-store.js';
 import { timingSafeEqualStr } from '../crypto-util.js';
-import { computeAccessRisk, type AccessRiskResult } from '../access-risk.js';
+import {
+  computeAccessRisk,
+  type AccessRiskOutput,
+  type AccessRiskResult,
+} from '../access-risk.js';
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
@@ -322,16 +326,26 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     threshold: z.string().optional(),
   });
 
-  // Memoize the teaser. The result is DETERMINISTIC for (chain, contract, snapshot_date, threshold) within
-  // a TTL, so a repeat query must cost ZERO chain work. This — not the per-IP limiter — is what makes a
-  // flood cheap. Bounded so the map cannot grow without limit.
+  // Memoize the teaser. The result is DETERMINISTIC for (canonical collection source set,
+  // snapshot_date, threshold) within a TTL, so a repeat through ANY sibling deployment must cost ZERO
+  // chain work. This — not the per-IP limiter — is what makes a flood cheap. Bounded so the map cannot
+  // grow without limit.
   const teaserTtlMs = deps.teaserCacheTtlMs ?? 300_000; // 5 min
   const TEASER_CACHE_MAX = 500;
-  const teaserCache = new Map<string, { at: number; body: unknown }>();
+  const teaserCache = new Map<string, { at: number; body: AccessRiskOutput }>();
   // A cache entry exists only after reconstruction finishes. Coalesce an
   // identical concurrent miss so a same-key burst consumes one budget unit
   // and performs one reconstruction, not one per waiter.
   const teaserInFlight = new Map<string, Promise<AccessRiskResult>>();
+  const presentTeaserForAddress = (
+    body: AccessRiskOutput,
+    addressedChain: string,
+  ): AccessRiskOutput => {
+    const addressed = body.collection_sources.find(
+      (source) => source.chain === addressedChain,
+    );
+    return addressed ? { ...body, snapshot_block: addressed.snapshot_block } : body;
+  };
 
   app.get('/v1/access-risk', async (c) => {
     // Anti-abuse #1 — per-IP speed bump. BEST-EFFORT ONLY: the key derives from X-Forwarded-For, which the
@@ -361,6 +375,18 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       };
       return c.json({ error: r }, refusalStatus(r));
     }
+    const collectionSources = deps.sources({
+      chain: canonicalChain,
+      contract: canonicalContract,
+    });
+    if (!collectionSources || collectionSources.length === 0) {
+      const r: Refusal = {
+        code: 'unindexed-contract',
+        reason: 'contract is not in the audited collection registry',
+        retryable: false,
+      };
+      return c.json({ error: r }, refusalStatus(r));
+    }
 
     const threshold = Number(q.data.threshold ?? '1');
     if (!Number.isInteger(threshold) || threshold < 1) {
@@ -369,11 +395,12 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
     // Anti-abuse #4 — CACHE. The teaser is deterministic for these inputs, so a repeat is free. A flood of
     // identical queries (the cheapest attack) does exactly ONE reconstruction per TTL.
-    const cacheKey = `${canonicalChain}/${canonicalContract}/${q.data.snapshot_date}/${threshold}`;
+    const cacheKey =
+      `${canonicalCollectionKey(collectionSources)}/${q.data.snapshot_date}/${threshold}`;
     const now = deps.now();
     const hit = teaserCache.get(cacheKey);
     if (hit && now - hit.at < teaserTtlMs) {
-      return c.json(hit.body as Record<string, unknown>);
+      return c.json(presentTeaserForAddress(hit.body, canonicalChain));
     }
 
     let result: AccessRiskResult;
@@ -431,7 +458,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       if (oldest !== undefined) teaserCache.delete(oldest);
     }
     teaserCache.set(cacheKey, { at: now, body: result.output });
-    return c.json(result.output);
+    return c.json(presentTeaserForAddress(result.output, canonicalChain));
   });
 
   // ---- GET /v1/audit — anonymous aggregate -------------------------------

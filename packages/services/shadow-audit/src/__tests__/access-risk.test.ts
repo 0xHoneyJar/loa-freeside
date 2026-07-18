@@ -405,6 +405,86 @@ describe('GET /v1/access-risk — the union (S5-T3)', () => {
     // Neither is it cohort data: block heights and chain ids cannot back-compute a suppressed count.
   });
 
+  it('CACHE: sibling deployments share one reconstruction and one budget unit', async () => {
+    let reconstructions = 0;
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: {
+          ...bridgedOwnership,
+          balancesAt: async (args) => {
+            reconstructions++;
+            return bridgedOwnership.balancesAt(args);
+          },
+        },
+        sources: bothSources,
+        collectionRegistry: bridgedRegistry as AuditRouterDeps['collectionRegistry'],
+        teaserBudget: new FixedWindowRateLimiter({
+          limit: 1,
+          windowMs: 60_000,
+          now: () => NOW_MS,
+        }),
+        k: 1,
+      }),
+    );
+    const bera = await app.request(url());
+    const eth = await app.request(
+      `/v1/access-risk?chain=1&contract=${ETH}&snapshot_date=2026-06-01`,
+    );
+    const beraBody = (await bera.json()) as Record<string, unknown>;
+    const ethBody = (await eth.json()) as Record<string, unknown>;
+
+    expect(bera.status).toBe(200);
+    expect(eth.status).toBe(200);
+    expect(reconstructions).toBe(2); // one call per declared source, one union reconstruction total
+    expect(beraBody.run_id).toBe(ethBody.run_id);
+    expect(beraBody.inputs_hash).toBe(ethBody.inputs_hash);
+    expect(beraBody.snapshot_block).toBe(1000);
+    expect(ethBody.snapshot_block).toBe(19_000_000);
+  });
+
+  it('CACHE: concurrent sibling misses coalesce before consuming the budget', async () => {
+    let reconstructions = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: {
+          ...bridgedOwnership,
+          balancesAt: async (args) => {
+            reconstructions++;
+            await gate;
+            return bridgedOwnership.balancesAt(args);
+          },
+        },
+        sources: bothSources,
+        collectionRegistry: bridgedRegistry as AuditRouterDeps['collectionRegistry'],
+        teaserBudget: new FixedWindowRateLimiter({
+          limit: 1,
+          windowMs: 60_000,
+          now: () => NOW_MS,
+        }),
+        k: 1,
+      }),
+    );
+
+    const bera = app.request(url());
+    const eth = app.request(
+      `/v1/access-risk?chain=1&contract=${ETH}&snapshot_date=2026-06-01`,
+    );
+    await vi.waitFor(() => expect(reconstructions).toBe(2));
+    release();
+
+    const beraResponse = await bera;
+    const ethResponse = await eth;
+    expect(beraResponse.status).toBe(200);
+    expect(ethResponse.status).toBe(200);
+    expect(reconstructions).toBe(2);
+    expect(((await beraResponse.json()) as Record<string, unknown>).snapshot_block).toBe(1000);
+    expect(((await ethResponse.json()) as Record<string, unknown>).snapshot_block).toBe(19_000_000);
+  });
+
   it('FAIL-CLOSED: one unreachable source refuses the teaser (a partial union OVERSTATES stale access)', async () => {
     const app = createAuditRouter(
       makeDeps({
