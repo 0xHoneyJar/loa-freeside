@@ -207,7 +207,7 @@ export async function computeAccessRisk(
       refusal: {
         code: 'cohort-too-small',
         reason:
-          `only ${qualifiedSnapshot.length < k ? 'fewer than ' + k : k} wallets qualified at ${req.snapshotDate}; ` +
+          `only fewer than ${k} wallets qualified at ${req.snapshotDate}; ` +
           'the cohort is too small to report without deanonymizing it',
         retryable: false,
       },

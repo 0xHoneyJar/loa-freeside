@@ -125,7 +125,14 @@ const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
 
 type BoundedBodyResult = { ok: true; text: string } | { ok: false; reason: 'too-large' };
 
-/** Read and decode at most `maxBytes`, cancelling the stream as soon as it exceeds the bound. */
+/**
+ * Read and decode at most `maxBytes`, cancelling the stream as soon as it exceeds the bound.
+ *
+ * Chunk accumulation plus the final contiguous buffer peaks near 2× `maxBytes`
+ * for a maximum-size request. The authenticated single-exporter ingest lane
+ * accepts that bounded envelope; revisit with a spool or fixed-buffer strategy
+ * before increasing the cap or ingest concurrency.
+ */
 async function readBoundedText(request: Request, maxBytes: number): Promise<BoundedBodyResult> {
   const body = request.body;
   if (!body) return { ok: true, text: '' };

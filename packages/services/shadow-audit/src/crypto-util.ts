@@ -12,5 +12,6 @@ export function timingSafeEqualStr(presented: string, expected: string): boolean
   const filled = Buffer.alloc(expectedBytes.length, 0);
   presentedBytes.copy(filled, 0, 0, Math.min(presentedBytes.length, filled.length));
   const contentMatch = timingSafeEqual(filled, expectedBytes);
-  return contentMatch && presentedBytes.length === expectedBytes.length;
+  const lengthMatch = presentedBytes.length === expectedBytes.length;
+  return contentMatch && lengthMatch;
 }
