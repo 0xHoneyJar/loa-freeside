@@ -38,8 +38,10 @@ import {
   publicAuthPostureFromEnv,
   serviceTokenForPublicAuthMounts,
 } from '../src/public-auth-posture.js';
+import { createAdmissionCapacityComposition } from '../src/admission-capacity-composition.js';
 
 const { store, orchestrator, enqueue } = await createOrderingComposition();
+const { admissionCapacity } = await createAdmissionCapacityComposition(store);
 
 const serviceToken = serviceTokenFromEnv();
 const writeRoutes = writeRoutePostureFromEnv();
@@ -114,6 +116,7 @@ const app = createIntakeApp({
   resolutionService,
   resolutionStore,
   publicAuth: mountPublicAuthRoutes ? publicAuth : undefined,
+  admissionCapacity,
   healthz: {
     store: process.env.DATABASE_URL ? 'postgres' : 'memory',
     kitchen_enqueue: Boolean(enqueue),

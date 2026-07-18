@@ -58,6 +58,11 @@ export interface AdmitOrderInput {
   readonly body: Record<string, unknown>;
   readonly certificate: RecipeExpansionCertificate;
   readonly work_key: PublicPreparationWorkKeyMaterial;
+  /**
+   * Additional certified root work keys (e.g. ownership_index alongside
+   * collection_identity). All are joinPublicWork'd in the same admission txn.
+   */
+  readonly additional_root_work_keys?: readonly PublicPreparationWorkKeyMaterial[];
   readonly order_tenant_scope_digest: string;
   readonly pool_scope: CapacityPoolScope;
   readonly now_ms: number;
@@ -65,6 +70,37 @@ export interface AdmitOrderInput {
   readonly advisory_shed?: boolean;
   /** Simulated lock-wait ms for advisory shed tests. */
   readonly simulated_lock_wait_ms?: number;
+}
+
+/** Join primary + every additional certified root work key in one admission path. */
+export async function joinAllRootWorkKeys(
+  preparationStore: SharedPreparationStore,
+  input: {
+    readonly order_id: string;
+    readonly order_tenant_scope_digest: string;
+    readonly work_key: PublicPreparationWorkKeyMaterial;
+    readonly additional_root_work_keys?: readonly PublicPreparationWorkKeyMaterial[];
+    readonly now_ms: number;
+  },
+): Promise<JoinPublicWorkResult> {
+  const primary = await preparationStore.joinPublicWork({
+    order_id: input.order_id,
+    order_tenant_scope_digest: input.order_tenant_scope_digest,
+    work_key: input.work_key,
+    now_ms: input.now_ms,
+  });
+  if (primary.kind !== "joined") return primary;
+
+  for (const extra of input.additional_root_work_keys ?? []) {
+    const join = await preparationStore.joinPublicWork({
+      order_id: input.order_id,
+      order_tenant_scope_digest: input.order_tenant_scope_digest,
+      work_key: extra,
+      now_ms: input.now_ms,
+    });
+    if (join.kind !== "joined") return join;
+  }
+  return primary;
 }
 
 export type AdmitOrderResult =
@@ -494,10 +530,11 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
           if (!order) {
             throw new Error("serialization_retry");
           }
-          const join = await this.preparationStore.joinPublicWork({
+          const join = await joinAllRootWorkKeys(this.preparationStore, {
             order_id: prior.order_id,
             order_tenant_scope_digest: input.order_tenant_scope_digest,
             work_key: input.work_key,
+            additional_root_work_keys: input.additional_root_work_keys,
             now_ms: input.now_ms,
           });
           if (join.kind !== "joined") {
@@ -574,12 +611,17 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
           // Join before placeOrder so a failed join never leaves an orphan order.
           // (Postgres FK requires order-first inside one SERIALIZABLE txn; in-memory
           // has no FK — join-then-place keeps the logical txn atomic.)
-          const join: JoinPublicWorkResult = await this.preparationStore.joinPublicWork({
-            order_id,
-            order_tenant_scope_digest: input.order_tenant_scope_digest,
-            work_key: input.work_key,
-            now_ms: input.now_ms,
-          });
+          // Join every certified root work key (collection_identity + ownership_index).
+          const join: JoinPublicWorkResult = await joinAllRootWorkKeys(
+            this.preparationStore,
+            {
+              order_id,
+              order_tenant_scope_digest: input.order_tenant_scope_digest,
+              work_key: input.work_key,
+              additional_root_work_keys: input.additional_root_work_keys,
+              now_ms: input.now_ms,
+            },
+          );
           if (join.kind !== "joined") {
             throw new Error("serialization_retry");
           }

@@ -297,3 +297,32 @@ export {
   createAdmissionCapacityService,
   type AdmissionCapacityService,
 } from './admission-capacity-service.js';
+export {
+  createAdmissionCapacityComposition,
+  type AdmissionCapacityComposition,
+} from './admission-capacity-composition.js';
+export {
+  admitCollectionReportOrder,
+  buildPublicRootWorkKeysFromResolution,
+  mapCollectionReportAdmissionError,
+  bindingDigestMatchesRecord,
+  type CollectionReportAdmissionDeps,
+  type AdmitCollectionReportInput,
+  type AdmitCollectionReportResult,
+  type CollectionReportAdmissionDeny,
+  type CollectionReportAdmissionErrorCode,
+} from './collection-report-admission.js';
+export {
+  GATE_LEAK_COMPILER_VERSION,
+  GATE_LEAK_NODE_TYPES,
+  GATE_LEAK_PUBLIC_NODES_PER_DEPLOYMENT,
+  GATE_LEAK_RESTRICTED_COMMUNITY_NODES,
+  GATE_LEAK_COMPUTE_NODES,
+  GATE_LEAK_MAX_IDENTITY_LINK_PAGES,
+  compileGateLeakRecipe,
+  SelectionTooLargeError,
+  WorkflowTooLargeError,
+  type GateLeakNodeType,
+  type CompileGateLeakRecipeInput,
+  type CompiledGateLeakRecipe,
+} from './gate-leak-recipe-compiler.js';
