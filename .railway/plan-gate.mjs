@@ -94,6 +94,11 @@ function failSchema(message) {
   throw new Error(`unrecognized Railway plan schema: ${message}`);
 }
 
+function assertAllowedKeys(record, allowed, label) {
+  const unknown = Object.keys(record).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) failSchema(`${label} contains unknown fields`);
+}
+
 /**
  * Convert a validated upstream change to a value-free identifier.
  *
@@ -103,6 +108,11 @@ function failSchema(message) {
  */
 function safeChangeIdentity(change, index) {
   if (!isRecord(change)) failSchema(`change ${index} is not an object`);
+  assertAllowedKeys(
+    change,
+    new Set(['kind', 'severity', 'summary', 'details']),
+    `change ${index}`,
+  );
   const { kind, severity, summary } = change;
   if (typeof kind !== 'string' || !KNOWN_KINDS.has(kind)) {
     failSchema(`change ${index} has an unknown kind`);
@@ -139,9 +149,34 @@ function safeChangeIdentity(change, index) {
 
 function validatePlan(value) {
   if (!isRecord(value)) failSchema('top-level result is not an object');
+  assertAllowedKeys(
+    value,
+    new Set([
+      'ok',
+      'command',
+      'file',
+      'currentEnvironment',
+      'changeSet',
+      'diff',
+      'diagnostics',
+      'currentGraph',
+      'desiredGraph',
+      'stagedPatch',
+      'applyResult',
+      'deploymentId',
+      'stagedPatchId',
+    ]),
+    'top-level result',
+  );
   if (value.ok !== true) failSchema('top-level ok is not true');
   if (!isRecord(value.currentEnvironment)) failSchema('currentEnvironment is missing');
   if (!isRecord(value.changeSet)) failSchema('changeSet is missing');
+  assertAllowedKeys(
+    value.currentEnvironment,
+    new Set(['projectId', 'projectName', 'environmentId', 'environmentName']),
+    'currentEnvironment',
+  );
+  assertAllowedKeys(value.changeSet, new Set(['changes']), 'changeSet');
   if (!Array.isArray(value.changeSet.changes)) failSchema('changeSet.changes is not an array');
 
   const env = value.currentEnvironment;
@@ -249,6 +284,9 @@ try {
 }
 if (
   !isRecord(baseline) ||
+  Object.keys(baseline).some(
+    (key) => !new Set(['_comment', 'fingerprint', 'changeCount', 'changes']).has(key),
+  ) ||
   !/^[0-9a-f]{64}$/.test(baseline.fingerprint) ||
   !Number.isSafeInteger(baseline.changeCount) ||
   baseline.changeCount < 0 ||

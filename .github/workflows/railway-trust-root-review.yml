@@ -1,0 +1,117 @@
+# Independent admission path for changes to the Railway gate itself.
+#
+# Ordinary `railway-plan-gate` attests an active, byte-pinned IaC declaration.
+# It MUST NOT authorize replacement of its own workflow, evaluator, executable
+# config, tests, or toolchain. Trust-root rotation is instead admitted by an
+# exact-head Bridgebuilder review from a repository member with no blocking
+# structured findings. No Railway credential is available to this workflow.
+#
+# Bootstrap: the first merge installing this workflow has no predecessor that
+# can emit the status. Its one-time ceremony is documented in
+# `.railway/BOOTSTRAP.md`; every later rotation is evaluated by the version on
+# the default branch.
+
+name: railway-trust-root-review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, edited]
+
+jobs:
+  attest:
+    name: independent Railway trust-root review
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish exact-head trust-root status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          changed=false
+          while IFS= read -r filename; do
+            case "$filename" in
+              .github/workflows/railway-plan-gate.yml|\
+              .github/workflows/railway-trust-root-review.yml|\
+              .railway/BOOTSTRAP.md|\
+              .railway/plan-gate.mjs|\
+              .railway/plan-gate.test.mjs|\
+              .railway/trusted-tools/*)
+                changed=true
+                break
+                ;;
+            esac
+          done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+
+          state=success
+          description='Railway trust root unchanged'
+          if [ "$changed" = true ]; then
+            reviews="$RUNNER_TEMP/railway-trust-root-reviews.json"
+            result="$RUNNER_TEMP/railway-trust-root-result.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp > "$reviews"
+            REVIEWS_FILE="$reviews" RESULT_FILE="$result" node <<'NODE'
+          const { readFileSync, writeFileSync } = require('node:fs');
+
+          const head = process.env.HEAD_SHA;
+          const reviews = JSON.parse(readFileSync(process.env.REVIEWS_FILE, 'utf8')).flat();
+          const marker = `<!-- bridgebuilder-review: ${head} -->`;
+          const trustedAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+          const eligible = reviews
+            .filter(
+              (review) =>
+                review.commit_id === head &&
+                trustedAssociations.has(review.author_association) &&
+                typeof review.body === 'string' &&
+                review.body.includes(marker),
+            )
+            .sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at)));
+
+          let result = {
+            state: 'pending',
+            description: 'Awaiting exact-head member Bridgebuilder review',
+          };
+          const review = eligible[0];
+          if (review) {
+            const match = review.body.match(
+              /<!-- bridge-findings-start -->\s*```json\s*([\s\S]*?)\s*```\s*<!-- bridge-findings-end -->/,
+            );
+            if (match) {
+              try {
+                const document = JSON.parse(match[1]);
+                const findings = Array.isArray(document.findings) ? document.findings : [];
+                const blocking = findings.filter((finding) =>
+                  ['CRITICAL', 'HIGH', 'MEDIUM'].includes(finding?.severity),
+                );
+                result =
+                  blocking.length === 0
+                    ? {
+                        state: 'success',
+                        description: 'Exact-head Bridgebuilder trust-root review passed',
+                      }
+                    : {
+                        state: 'failure',
+                        description: `Bridgebuilder found ${blocking.length} blocking trust-root issue(s)`,
+                      };
+              } catch {
+                // A malformed review is not an attestation.
+              }
+            }
+          }
+          writeFileSync(process.env.RESULT_FILE, JSON.stringify(result));
+          NODE
+            state=$(jq -r '.state' "$result")
+            description=$(jq -r '.description' "$result")
+          fi
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$state" \
+            -f context=railway-trust-root-review \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PR_NUMBER"

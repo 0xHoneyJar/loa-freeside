@@ -1,6 +1,7 @@
 # S2-T2 (SDD §8, IMP-013, G-6) — operator-approved org-as-code gate.
 #
-# Runs `railway config plan` (READ-ONLY) against .railway/railway.ts and fails the PR on:
+# Runs `railway config plan` (READ-ONLY) against the default-branch executable config (after requiring the
+# reviewed `.railway/railway.ts` to be byte-identical) and fails the PR on:
 #   1. ANY destructive change (baseline-independent) — Railway IaC is declarative and will DELETE
 #      resources it does not declare. A plan against a wrongly-linked project once read
 #      "1 to add, 3 to DESTROY" (would have deleted ordering-service + its Postgres).
@@ -12,9 +13,8 @@
 # strict, value-free identities. Upstream summaries/details/diffs are never logged or persisted.
 #
 # ── SECRET-HANDLING (FAGAN + Bridgebuilder review, 2026-07-18) ─────────────────────────────────────────
-# RAILWAY_TOKEN is apply-capable, and `railway config plan` evaluates .railway/railway.ts. Therefore this
-# workflow MUST NOT run automatically on pull_request: a trusted workflow cannot sandbox PR-controlled
-# TypeScript that it later evaluates with a deployment credential.
+# RAILWAY_TOKEN is apply-capable. Therefore the credentialed runner evaluates only default-branch code;
+# reviewed TypeScript is compared byte-for-byte and never executed with the deployment credential.
 #
 # The credentialed plan is manual-only and protected by the `railway-plan` GitHub Environment:
 #   · The operator dispatches an EXACT reviewed commit SHA (not a moving branch).
@@ -34,8 +34,8 @@
 # SETUP (operator, one-time): create a protected `railway-plan` environment with required reviewers; add
 # RAILWAY_TOKEN there (Railway project token scoped to shadow-audit-api/production, project
 # 0bf95b1c-b8f2-4e60-a4a6-50089b521eb0, environment 2068efa5-0ed4-4cf3-9ae2-89120c4b18d5); remove any
-# repo-level copy; require the `railway-plan-gate` commit-status context in main's branch protection. If
-# Railway ships a read-only/plan-scoped token, replace it.
+# repo-level copy; require both `railway-plan-gate` and `railway-trust-root-review` commit-status contexts
+# in main's branch protection. If Railway ships a read-only/plan-scoped token, replace it.
 
 name: railway-plan-gate
 
@@ -74,7 +74,9 @@ jobs:
           description='Railway plan not required for this change'
           while IFS= read -r filename; do
             case "$filename" in
-              .railway/*|packages/services/shadow-audit/Dockerfile)
+              .railway/railway.ts|\
+              .railway/plan-baseline.json|\
+              packages/services/shadow-audit/Dockerfile)
                 state=pending
                 description='Awaiting protected Railway plan for this exact commit'
                 break

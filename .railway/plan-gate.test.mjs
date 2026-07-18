@@ -88,6 +88,14 @@ test('fails closed on unknown kinds', () => {
   assert.match(result.stderr, /unknown kind/);
 });
 
+test('fails closed on unknown plan fields', () => {
+  const plan = validPlan();
+  plan.unexpected = { meaning: 'producer schema changed' };
+  const result = runGate(plan);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /top-level result contains unknown fields/);
+});
+
 test('rejects and never echoes summaries that contain a value', () => {
   const plan = validPlan();
   const marker = 'SENSITIVE_MARKER_DO_NOT_PRINT';

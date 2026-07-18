@@ -8,14 +8,20 @@ under `.railway/trusted-tools/railway.ts` is a dormant trust-root copy: the CLI
 does not discover it automatically, and the bootstrap never executes it:
 
 1. Review the exact PR head with Bridgebuilder.
-2. Confirm the workflow contains no apply path and the bootstrap diff contains
-   no Railway resource declaration.
-3. Merge the bootstrap only after its exact-head review passes.
+2. Confirm there is no auto-discovered active config or apply path. Review the
+   dormant resource declaration in full because it becomes the executable
+   default-branch trust root after merge.
+3. Merge the bootstrap only after its exact-head Bridgebuilder review contains
+   no critical, high, or medium findings. This is the one-time substitute for
+   the not-yet-installed `railway-trust-root-review` status.
 4. On `main`, create the protected `railway-plan` environment with required
    reviewers, move `RAILWAY_TOKEN` into that environment, and require the
-   `railway-plan-gate` commit status for branch protection.
+   `railway-plan-gate` and `railway-trust-root-review` commit-status contexts
+   for branch protection.
 5. Every later Railway change is marked pending on its exact PR head and must
-   receive a protected manual plan status for that same SHA.
+   receive the applicable exact-head status. Active IaC uses the protected
+   manual plan; verifier/workflow/toolchain rotations use the independent
+   member-authored Bridgebuilder attestation with no Railway credential.
 
 The trusted evaluator is bound to Railway project
 `0bf95b1c-b8f2-4e60-a4a6-50089b521eb0` and production environment
