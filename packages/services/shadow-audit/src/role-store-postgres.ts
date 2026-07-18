@@ -18,6 +18,9 @@ export interface RoleSnapshotRepository {
   storeIfNewer(record: RoleSnapshotRecord): Promise<boolean>;
 }
 
+const ROLE_STORE_COMPONENT = 'role-snapshot-store';
+const ROLE_STORE_SCHEMA_VERSION = 1;
+
 /**
  * RoleSource + RoleSink over a shared repository. Multiple application instances may construct this adapter;
  * newest-wins atomicity belongs to the repository, not process memory.
@@ -50,21 +53,68 @@ export function makeRepositoryRoleStore(opts: {
   };
 }
 
-/** Service-owned Postgres repository. Schema initialization is idempotent and completes before HTTP bind. */
+/**
+ * Service-owned Postgres repository.
+ *
+ * Startup applies and verifies an append-only component migration ledger before
+ * HTTP bind. Future schema changes add a numbered step and bump
+ * ROLE_STORE_SCHEMA_VERSION; table existence alone is never treated as schema
+ * compatibility.
+ */
 export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
   constructor(private readonly sql: Sql) {}
 
   async initialize(): Promise<void> {
     await this.sql`
-      CREATE TABLE IF NOT EXISTS shadow_audit_role_snapshots (
-        community TEXT NOT NULL,
-        collection_key TEXT NOT NULL,
-        captured_at TIMESTAMPTZ NOT NULL,
-        snapshot JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (community, collection_key)
+      CREATE TABLE IF NOT EXISTS shadow_audit_schema_migrations (
+        component TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version > 0),
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (component, version)
       )
     `;
+
+    const currentRows = await this.sql<{ version: number }[]>`
+      SELECT COALESCE(MAX(version), 0)::int AS version
+      FROM shadow_audit_schema_migrations
+      WHERE component = ${ROLE_STORE_COMPONENT}
+    `;
+    const current = currentRows[0]?.version ?? 0;
+    if (current > ROLE_STORE_SCHEMA_VERSION) {
+      throw new Error(
+        `role-store schema version ${current} is newer than supported ${ROLE_STORE_SCHEMA_VERSION}`,
+      );
+    }
+
+    if (current < 1) {
+      await this.sql`
+        CREATE TABLE IF NOT EXISTS shadow_audit_role_snapshots (
+          community TEXT NOT NULL,
+          collection_key TEXT NOT NULL,
+          captured_at TIMESTAMPTZ NOT NULL,
+          snapshot JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (community, collection_key)
+        )
+      `;
+      await this.sql`
+        INSERT INTO shadow_audit_schema_migrations (component, version)
+        VALUES (${ROLE_STORE_COMPONENT}, 1)
+        ON CONFLICT (component, version) DO NOTHING
+      `;
+    }
+
+    const verifiedRows = await this.sql<{ version: number }[]>`
+      SELECT COALESCE(MAX(version), 0)::int AS version
+      FROM shadow_audit_schema_migrations
+      WHERE component = ${ROLE_STORE_COMPONENT}
+    `;
+    const verified = verifiedRows[0]?.version ?? 0;
+    if (verified !== ROLE_STORE_SCHEMA_VERSION) {
+      throw new Error(
+        `role-store schema initialization incomplete: expected ${ROLE_STORE_SCHEMA_VERSION}, got ${verified}`,
+      );
+    }
   }
 
   async load(community: string, collectionKey: string): Promise<unknown | undefined> {
@@ -96,7 +146,39 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
       WHERE shadow_audit_role_snapshots.captured_at < EXCLUDED.captured_at
       RETURNING 1 AS stored
     `;
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+
+    // Equal timestamps are normally exact replays and remain no-ops. The one
+    // exception is anti-entropy repair: if persisted JSON at that same version
+    // no longer satisfies the schema, replaying the canonical snapshot repairs
+    // it. The conditional UPDATE includes the observed corrupt JSON, so a
+    // concurrent valid repair cannot be overwritten by this stale observation.
+    const heldRows = await this.sql<{ captured_at: Date | string; snapshot: unknown }[]>`
+      SELECT captured_at, snapshot
+      FROM shadow_audit_role_snapshots
+      WHERE community = ${record.community} AND collection_key = ${record.collectionKey}
+      LIMIT 1
+    `;
+    const held = heldRows[0];
+    if (
+      !held ||
+      new Date(held.captured_at).getTime() !== new Date(record.capturedAt).getTime() ||
+      RoleSnapshotSchema.safeParse(held.snapshot).success
+    ) {
+      return false;
+    }
+
+    const repaired = await this.sql<{ stored: number }[]>`
+      UPDATE shadow_audit_role_snapshots
+      SET snapshot = ${this.sql.json(snapshot as postgres.JSONValue)}::jsonb,
+          updated_at = NOW()
+      WHERE community = ${record.community}
+        AND collection_key = ${record.collectionKey}
+        AND captured_at = ${record.capturedAt}::timestamptz
+        AND snapshot = ${this.sql.json(held.snapshot as postgres.JSONValue)}::jsonb
+      RETURNING 1 AS stored
+    `;
+    return repaired.length > 0;
   }
 }
 

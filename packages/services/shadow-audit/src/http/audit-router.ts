@@ -599,12 +599,8 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   if (deps.ingest) {
     const ingest = deps.ingest;
     app.post('/v1/role-snapshot', async (c) => {
-      // Service-token, constant-time. Missing/wrong X-Ingest-Token → 401, no body detail.
-      if (!timingSafeEqualStr(c.req.header('x-ingest-token') ?? '', ingest.token)) {
-        return new Response(null, { status: 401 });
-      }
-      // Reject an honestly declared oversize body before reading, then enforce the same limit while
-      // streaming because Content-Length is optional and caller-controlled.
+      // Reject malformed or honestly-declared oversized framing before secret-dependent work. The streamed
+      // cap below remains authoritative because Content-Length is optional and caller-controlled.
       const declaredLength = c.req.header('content-length');
       if (declaredLength !== undefined) {
         if (!/^(0|[1-9]\d*)$/.test(declaredLength)) {
@@ -613,6 +609,10 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         if (BigInt(declaredLength) > BigInt(MAX_SNAPSHOT_BYTES)) {
           return c.json({ error: 'snapshot too large' }, 413);
         }
+      }
+      // Service-token, fixed-size digest comparison. Missing/wrong X-Ingest-Token → 401, no body detail.
+      if (!timingSafeEqualStr(c.req.header('x-ingest-token') ?? '', ingest.token)) {
+        return new Response(null, { status: 401 });
       }
       // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
       // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an

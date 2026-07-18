@@ -7,7 +7,7 @@ import {
 } from '../role-store-postgres.js';
 import type { Sql } from 'postgres';
 import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
-import type { RoleSnapshot } from '../role-snapshot.js';
+import { RoleSnapshotSchema, type RoleSnapshot } from '../role-snapshot.js';
 
 const ETH = '0x' + 'a'.repeat(40);
 const BERA = '0x' + 'b'.repeat(40);
@@ -58,7 +58,10 @@ class PersistentFakeRepository implements RoleSnapshotRepository {
   async storeIfNewer(record: RoleSnapshotRecord): Promise<boolean> {
     const key = JSON.stringify([record.community, record.collectionKey]);
     const current = this.rows.get(key);
-    if (current && Date.parse(current.capturedAt) >= Date.parse(record.capturedAt)) return false;
+    if (current && Date.parse(current.capturedAt) > Date.parse(record.capturedAt)) return false;
+    if (current && Date.parse(current.capturedAt) === Date.parse(record.capturedAt)) {
+      if (RoleSnapshotSchema.safeParse(current.snapshot).success) return false;
+    }
     this.rows.set(key, structuredClone(record));
     return true;
   }
@@ -130,10 +133,34 @@ describe('repository-backed role store (arrakis-7mtwa)', () => {
     const store = makeRepositoryRoleStore({ repository, community: 'thj', sources });
 
     await expect(store.load(HONEYCOMB_KEY)).rejects.toThrow();
+    expect(await store.store(snapshot())).toBe(true);
+    expect(await store.load(HONEYCOMB_KEY)).toEqual(snapshot());
   });
 });
 
 describe('Postgres role-snapshot encoding', () => {
+  it('applies and verifies the versioned role-store migration before serving', async () => {
+    const queries: string[] = [];
+    let version = 0;
+    const tag = Object.assign(
+      (strings: TemplateStringsArray) => {
+        const query = strings.join(' ');
+        queries.push(query);
+        if (query.includes('SELECT COALESCE(MAX(version)')) return Promise.resolve([{ version }]);
+        if (query.includes('INSERT INTO shadow_audit_schema_migrations')) version = 1;
+        return Promise.resolve([]);
+      },
+      { json: (value: unknown) => value },
+    ) as unknown as Sql;
+    const repository = new PostgresRoleSnapshotRepository(tag);
+
+    await repository.initialize();
+
+    expect(queries.some((query) => query.includes('CREATE TABLE IF NOT EXISTS shadow_audit_schema_migrations'))).toBe(true);
+    expect(queries.some((query) => query.includes('CREATE TABLE IF NOT EXISTS shadow_audit_role_snapshots'))).toBe(true);
+    expect(version).toBe(1);
+  });
+
   it('uses the driver JSON encoder with the object, not a pre-stringified JSON scalar', async () => {
     let encoded: unknown;
     const tag = Object.assign(

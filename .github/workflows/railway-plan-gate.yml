@@ -125,9 +125,9 @@ jobs:
           if git cat-file -e "origin/$default_branch:.railway/plan-gate.mjs" 2>/dev/null; then
             git show "origin/$default_branch:.railway/plan-gate.mjs" > "$trusted_dir/plan-gate.mjs"
           else
-            # Bootstrap only: the first merge has no default-branch gate yet. The protected-environment
-            # reviewer must verify the exact SHA includes the reviewed bootstrap script.
-            cp .railway/plan-gate.mjs "$trusted_dir/plan-gate.mjs"
+            echo "::error::Trusted default branch has no .railway/plan-gate.mjs; refusing credentialed bootstrap."
+            echo "Land the evaluator without credentials first, then dispatch the protected plan."
+            exit 1
           fi
 
       - name: Plan gate (READ-ONLY — never applies)
