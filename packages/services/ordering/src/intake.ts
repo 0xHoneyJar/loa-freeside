@@ -134,7 +134,7 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     if (body.data.product === 'collection-report') {
       // CR-007A/CR-202 denial envelope — schema_version/code/reason (BB #496).
       const deny = (
-        status: 400 | 403 | 409 | 503,
+        status: 400 | 401 | 403 | 409 | 503,
         code: string,
         reason?: string,
       ) =>
@@ -167,6 +167,7 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
           resolutionStore: deps.resolutionStore,
           publicAuth: deps.publicAuth,
           admissionCapacity: deps.admissionCapacity,
+          orderStore: deps.store,
           now: deps.now,
         },
         {

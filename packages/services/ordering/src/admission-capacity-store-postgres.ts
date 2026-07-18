@@ -40,6 +40,7 @@ import {
 import { assertCertificateAdmissible } from "./recipe-expansion-certificate.js";
 import { digestOf } from "./digest.js";
 import { PostgresSharedPreparationStore } from "./shared-preparation-store-postgres.js";
+import type { JoinPublicWorkResult } from "./shared-preparation-store.js";
 import { digestPublicWorkKey } from "./shared-preparation-work-key.js";
 import type { OrderRecord } from "./store.js";
 
@@ -376,6 +377,32 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
     return { kind: "capacity_unavailable", reason: "lock_timeout" };
   }
 
+  /** Join primary + every additional certified root work key inside the open txn. */
+  private async joinAllRootWorkKeysInTxn(
+    client: pg.PoolClient,
+    input: AdmitOrderInput,
+    orderId: string,
+  ): Promise<JoinPublicWorkResult> {
+    const primary = await this.preparationStore.joinPublicWorkInTransaction(client, {
+      order_id: orderId,
+      order_tenant_scope_digest: input.order_tenant_scope_digest,
+      work_key: input.work_key,
+      now_ms: input.now_ms,
+    });
+    if (primary.kind !== "joined") return primary;
+
+    for (const extra of input.additional_root_work_keys ?? []) {
+      const join = await this.preparationStore.joinPublicWorkInTransaction(client, {
+        order_id: orderId,
+        order_tenant_scope_digest: input.order_tenant_scope_digest,
+        work_key: extra,
+        now_ms: input.now_ms,
+      });
+      if (join.kind !== "joined") return join;
+    }
+    return primary;
+  }
+
   private async admitOrderAttempt(input: AdmitOrderInput): Promise<AdmitOrderResult> {
     const client = await this.pool.connect();
     /** Tracks whether COMMIT/ROLLBACK already ran — finally always cleans open txns. */
@@ -418,12 +445,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         const orderRes = await client.query("SELECT * FROM orders WHERE order_id = $1", [
           row.order_id,
         ]);
-        const join = await this.preparationStore.joinPublicWorkInTransaction(client, {
-          order_id: row.order_id,
-          order_tenant_scope_digest: input.order_tenant_scope_digest,
-          work_key: input.work_key,
-          now_ms: input.now_ms,
-        });
+        const join = await this.joinAllRootWorkKeysInTxn(client, input, row.order_id);
         if (join.kind !== "joined") {
           // Route through outer admission retry loop (do not bypass as typed deny).
           await rollback();
@@ -563,12 +585,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         ],
       );
 
-      const join = await this.preparationStore.joinPublicWorkInTransaction(client, {
-        order_id,
-        order_tenant_scope_digest: input.order_tenant_scope_digest,
-        work_key: input.work_key,
-        now_ms: input.now_ms,
-      });
+      const join = await this.joinAllRootWorkKeysInTxn(client, input, order_id);
       if (join.kind !== "joined") {
         throw new Error("serialization_retry");
       }

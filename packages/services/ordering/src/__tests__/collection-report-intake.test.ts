@@ -12,10 +12,13 @@ import { createFixturePublicAuthorizationService } from "../public-authorization
 import { InMemoryAdmissionCapacityStore } from "../admission-capacity-store.js";
 import { InMemorySharedPreparationStore } from "../shared-preparation-store.js";
 import { createAdmissionCapacityService } from "../admission-capacity-service.js";
+import { buildPublicRootWorkKeysFromResolution } from "../collection-report-admission.js";
+import { createHash } from "node:crypto";
 import type {
   AuthorizationScope,
   ConfirmedResolutionRecord,
 } from "@freeside/collection-resolution-protocol";
+import { AuthorizationDeniedError } from "@freeside/public-authorization-protocol";
 
 const fixturesDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -30,7 +33,10 @@ const scope = JSON.parse(
   readFileSync(join(fixturesDir, "authorization-scope.valid.json"), "utf8"),
 ) as AuthorizationScope;
 
-function harness(nowMs = Date.parse("2026-07-16T08:10:00Z")) {
+function harness(
+  nowMs = Date.parse("2026-07-16T08:10:00Z"),
+  opts?: { denyLease?: boolean },
+) {
   const store = new InMemoryOrderStore({ now: () => nowMs });
   const resolutionStore = new InMemoryResolutionStore();
   const resolutionService = new CollectionResolutionService({
@@ -53,6 +59,14 @@ function harness(nowMs = Date.parse("2026-07-16T08:10:00Z")) {
     ),
   );
   const publicAuth = createFixturePublicAuthorizationService(authFixture);
+  if (opts?.denyLease) {
+    publicAuth.acquireLease = () => {
+      throw new AuthorizationDeniedError({
+        reason: "permission_revoked",
+        safe_code: "forbidden",
+      });
+    };
+  }
 
   const app = createIntakeApp({
     store,
@@ -63,7 +77,7 @@ function harness(nowMs = Date.parse("2026-07-16T08:10:00Z")) {
     admissionCapacity,
   });
 
-  return { app, store, resolutionStore };
+  return { app, store, resolutionStore, preparationStore };
 }
 
 function seedResolution(store: InMemoryResolutionStore, record: ConfirmedResolutionRecord) {
@@ -194,5 +208,89 @@ describe("CR-202 collection-report intake", () => {
     expect(res.status).toBe(400);
     const parsed = (await res.json()) as { code: string };
     expect(parsed.code).toBe("client_request_id_required");
+  });
+
+  it("joins all certified root work keys including ownership_index (F1)", async () => {
+    const { app, resolutionStore, preparationStore } = harness();
+    await seedResolution(resolutionStore, confirmedFixture);
+
+    const res = await app.request("/v1/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(orderBody("req-roots")),
+    });
+    expect(res.status).toBe(200);
+    const { order_id } = (await res.json()) as { order_id: string };
+
+    const rootKeys = buildPublicRootWorkKeysFromResolution(confirmedFixture);
+    expect(rootKeys.map((k) => k.capability).sort()).toEqual([
+      "collection_identity.v1",
+      "ownership_index.v1",
+    ]);
+
+    const scopeDigest = createHash("sha256")
+      .update("community:community-alpha")
+      .digest("hex");
+    for (const work_key of rootKeys) {
+      const join = await preparationStore.joinPublicWork({
+        order_id,
+        order_tenant_scope_digest: scopeDigest,
+        work_key,
+        now_ms: Date.parse("2026-07-16T08:10:00Z"),
+      });
+      expect(join.kind).toBe("joined");
+      if (join.kind === "joined") {
+        // Already created+linked at admission — not invented on re-join.
+        expect(join.created).toBe(false);
+        expect(join.work.capability).toBe(work_key.capability);
+      }
+    }
+  });
+
+  it("maps public-auth lease denial to authorization_denied (F2)", async () => {
+    const { app, resolutionStore } = harness(Date.parse("2026-07-16T08:10:00Z"), {
+      denyLease: true,
+    });
+    await seedResolution(resolutionStore, confirmedFixture);
+
+    const res = await app.request("/v1/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(orderBody("req-auth-deny")),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string; reason?: string };
+    expect(body.code).toBe("authorization_denied");
+    expect(body.code).not.toBe("resolution_scope_mismatch");
+    expect(body.reason).toBe("permission_revoked");
+  });
+
+  it("replays idempotent order without live resolution row (F3)", async () => {
+    const { app, resolutionStore } = harness();
+    await seedResolution(resolutionStore, confirmedFixture);
+
+    const first = await app.request("/v1/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(orderBody("req-gone-res")),
+    });
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as { order_id: string };
+
+    // Drop the resolution after successful admission.
+    const internal = resolutionStore as unknown as {
+      records: Map<string, ConfirmedResolutionRecord>;
+    };
+    internal.records.delete(confirmedFixture.resolution_id);
+
+    const replay = await app.request("/v1/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(orderBody("req-gone-res")),
+    });
+    expect(replay.status).toBe(200);
+    const replayBody = (await replay.json()) as { order_id: string; replay?: boolean };
+    expect(replayBody.order_id).toBe(firstBody.order_id);
+    expect(replayBody.replay).toBe(true);
   });
 });

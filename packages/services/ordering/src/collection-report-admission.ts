@@ -7,7 +7,6 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   AuthorizationScope,
   ConfirmedResolutionRecord,
-  LocalCapabilitySnapshot,
 } from "@freeside/collection-resolution-protocol";
 import {
   AuthorizationScopeMismatchError,
@@ -22,6 +21,7 @@ import type { CollectionResolutionService } from "./resolution-service.js";
 import type { ResolutionStore } from "./resolution-store.js";
 import type { PublicAuthorizationService } from "./public-authorization-service.js";
 import type { AdmissionCapacityService } from "./admission-capacity-service.js";
+import type { OrderStore } from "./store.js";
 import { buildLocalCapabilityFromRecord } from "./admission-local-capability.js";
 import {
   compileGateLeakRecipe,
@@ -42,6 +42,7 @@ export type CollectionReportAdmissionErrorCode =
   | "scope_tamper"
   | "collection_report_admission_unavailable"
   | "public_authorization_unconfigured"
+  | "authorization_denied"
   | "resolution_not_found"
   | "resolution_expired"
   | "selection_stale"
@@ -54,7 +55,7 @@ export type CollectionReportAdmissionErrorCode =
   | "missing_confirmation";
 
 export interface CollectionReportAdmissionDeny {
-  readonly status: 400 | 403 | 409 | 503;
+  readonly status: 400 | 401 | 403 | 409 | 503;
   readonly code: CollectionReportAdmissionErrorCode;
   readonly reason?: string;
 }
@@ -64,6 +65,7 @@ export interface CollectionReportAdmissionDeps {
   readonly resolutionStore: ResolutionStore;
   readonly publicAuth: PublicAuthorizationService;
   readonly admissionCapacity: AdmissionCapacityService;
+  readonly orderStore: OrderStore;
   readonly now: () => number;
 }
 
@@ -174,6 +176,29 @@ function primaryNetworkRef(record: ConfirmedResolutionRecord): string {
   return `${deployment.network.network_namespace}:${deployment.network.network_reference}`;
 }
 
+/**
+ * Reconstruct the admission body digest using the stored certificate so
+ * idempotent replay can detect content conflict without a live resolution row.
+ */
+function replayBodyDigest(input: {
+  readonly placed_by: string;
+  readonly client_request_id: string;
+  readonly binding: CollectionReportInputs;
+  readonly authorization_scope: AuthorizationScope;
+  readonly stored_certificate: unknown;
+}): string {
+  return digestOf({
+    product: "collection-report",
+    placed_by: input.placed_by,
+    client_request_id: input.client_request_id,
+    inputs: {
+      ...input.binding,
+      recipe_expansion_certificate: input.stored_certificate,
+    },
+    authorization_scope: input.authorization_scope,
+  });
+}
+
 export async function admitCollectionReportOrder(
   deps: CollectionReportAdmissionDeps,
   input: AdmitCollectionReportInput,
@@ -219,15 +244,45 @@ export async function admitCollectionReportOrder(
       authoritativeSubjectId: input.placed_by,
     });
   } catch (err) {
+    // F2: public-auth ACL/lease denials are distinct from resolution_scope_mismatch.
     const mapped = deps.publicAuth.mapDenial(err);
+    const body = mapped.body as { code?: string; reason?: string };
     return {
       kind: "deny",
       deny: {
-        status: mapped.status as 403,
-        code: "resolution_scope_mismatch",
-        reason: (mapped.body as { code?: string }).code,
+        status: mapped.status,
+        code: "authorization_denied",
+        reason: body.reason ?? body.code,
       },
     };
+  }
+
+  // F3: idempotent replay must not require a live resolution row.
+  const priorIdem = await deps.admissionCapacity.store.getIdempotency(
+    input.placed_by,
+    input.client_request_id,
+  );
+  if (priorIdem !== undefined) {
+    const order = await deps.orderStore.get(priorIdem.order_id);
+    if (order !== undefined) {
+      const storedCert = (order.inputs as { recipe_expansion_certificate?: unknown })
+        .recipe_expansion_certificate;
+      const candidateDigest = replayBodyDigest({
+        placed_by: input.placed_by,
+        client_request_id: input.client_request_id,
+        binding: input.binding,
+        authorization_scope: scope,
+        stored_certificate: storedCert,
+      });
+      if (candidateDigest !== priorIdem.body_digest) {
+        return { kind: "deny", deny: { status: 409, code: "idempotency_conflict" } };
+      }
+      return {
+        kind: "admitted",
+        order_id: priorIdem.order_id,
+        replay: true,
+      };
+    }
   }
 
   const record = await deps.resolutionStore.get(input.binding.resolution_id);
@@ -242,23 +297,16 @@ export async function admitCollectionReportOrder(
     permission: "report:create",
   };
 
-  const priorIdem = await deps.admissionCapacity.store.getIdempotency(
-    input.placed_by,
-    input.client_request_id,
-  );
-
-  if (priorIdem === undefined) {
-    try {
-      const localCapability = buildLocalCapabilityFromRecord(record);
-      await deps.resolutionService.admit(input.binding, resolutionScope, localCapability);
-    } catch (err) {
-      const mapped = mapCollectionReportAdmissionError(err);
-      if (mapped) return { kind: "deny", deny: mapped };
-      return {
-        kind: "deny",
-        deny: { status: 409, code: "selection_stale", reason: "order_binding_rejected" },
-      };
-    }
+  try {
+    const localCapability = buildLocalCapabilityFromRecord(record);
+    await deps.resolutionService.admit(input.binding, resolutionScope, localCapability);
+  } catch (err) {
+    const mapped = mapCollectionReportAdmissionError(err);
+    if (mapped) return { kind: "deny", deny: mapped };
+    return {
+      kind: "deny",
+      deny: { status: 409, code: "selection_stale", reason: "order_binding_rejected" },
+    };
   }
 
   const deploymentCount = record.selected_deployment_ids?.length ?? 0;
