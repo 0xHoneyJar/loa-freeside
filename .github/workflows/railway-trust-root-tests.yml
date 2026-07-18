@@ -49,14 +49,32 @@ jobs:
           done
 
           git fetch --no-tags origin "$DEFAULT_BRANCH"
-          git show "origin/$DEFAULT_BRANCH:.railway/plan-gate.test.mjs" \
-            > "$root/regression/.railway/plan-gate.test.mjs"
-          git show "origin/$DEFAULT_BRANCH:.railway/trusted-tools/bridge-review-attestation.test.mjs" \
-            > "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs"
-          cp .railway/plan-gate.mjs \
-            "$root/regression/.railway/plan-gate.mjs"
-          cp .railway/trusted-tools/bridge-review-attestation.mjs \
-            "$root/regression/.railway/trusted-tools/bridge-review-attestation.mjs"
+          suites=()
+          has_plan_regression=false
+          has_review_regression=false
+          git cat-file -e "origin/$DEFAULT_BRANCH:.railway/plan-gate.test.mjs" &&
+            has_plan_regression=true
+          git cat-file -e "origin/$DEFAULT_BRANCH:.railway/trusted-tools/bridge-review-attestation.test.mjs" &&
+            has_review_regression=true
+          if [ "$has_plan_regression" = true ] && [ "$has_review_regression" = true ]; then
+            git show "origin/$DEFAULT_BRANCH:.railway/plan-gate.test.mjs" \
+              > "$root/regression/.railway/plan-gate.test.mjs"
+            git show "origin/$DEFAULT_BRANCH:.railway/trusted-tools/bridge-review-attestation.test.mjs" \
+              > "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+            cp .railway/plan-gate.mjs \
+              "$root/regression/.railway/plan-gate.mjs"
+            cp .railway/trusted-tools/bridge-review-attestation.mjs \
+              "$root/regression/.railway/trusted-tools/bridge-review-attestation.mjs"
+            suites+=(
+              "$root/regression/.railway/plan-gate.test.mjs"
+              "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+            )
+          elif [ "$has_plan_regression" = true ] || [ "$has_review_regression" = true ]; then
+            echo "::error::Default branch has an incomplete Railway trust-root regression suite."
+            exit 1
+          else
+            echo "Bootstrap: default branch has no predecessor trust-root tests; candidate suites only."
+          fi
 
           cp .railway/plan-gate.mjs \
             "$root/candidate/.railway/plan-gate.mjs"
@@ -66,9 +84,9 @@ jobs:
             "$root/candidate/.railway/trusted-tools/bridge-review-attestation.mjs"
           cp .railway/trusted-tools/bridge-review-attestation.test.mjs \
             "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
-
-          timeout 60s node --test \
-            "$root/regression/.railway/plan-gate.test.mjs" \
-            "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs" \
-            "$root/candidate/.railway/plan-gate.test.mjs" \
+          suites+=(
+            "$root/candidate/.railway/plan-gate.test.mjs"
             "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+          )
+
+          timeout 60s node --test "${suites[@]}"
