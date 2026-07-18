@@ -8,8 +8,8 @@
 #      baseline in the same PR, which makes it explicit and reviewable.
 #
 # This workflow NEVER applies. `railway config apply` stays human-gated (NFR-2).
-# Secrets never reach the logs: the gate prints only change kind/severity/summary (variable NAMES, not
-# values — Railway redacts values as «hidden»).
+# Secrets never reach the logs: the gate rejects unknown plan shapes and converts recognized changes to
+# strict, value-free identities. Upstream summaries/details/diffs are never logged or persisted.
 #
 # ── SECRET-HANDLING (FAGAN + Bridgebuilder review, 2026-07-18) ─────────────────────────────────────────
 # RAILWAY_TOKEN is apply-capable, and `railway config plan` evaluates .railway/railway.ts. Therefore this
@@ -31,9 +31,10 @@
 # pending status, so stale success cannot travel forward.
 #
 # SETUP (operator, one-time): create a protected `railway-plan` environment with required reviewers; add
-# RAILWAY_TOKEN there (Railway project token scoped to shadow-audit-api/production); remove any repo-level
-# copy; require the `railway-plan-gate` commit-status context in main's branch protection. If Railway ships a
-# read-only/plan-scoped token, replace it.
+# RAILWAY_TOKEN there (Railway project token scoped to shadow-audit-api/production, project
+# 0bf95b1c-b8f2-4e60-a4a6-50089b521eb0, environment 2068efa5-0ed4-4cf3-9ae2-89120c4b18d5); remove any
+# repo-level copy; require the `railway-plan-gate` commit-status context in main's branch protection. If
+# Railway ships a read-only/plan-scoped token, replace it.
 
 name: railway-plan-gate
 
@@ -101,13 +102,15 @@ jobs:
           fetch-depth: 0
 
       - name: Verify immutable reviewed ref
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
         run: |
           set -euo pipefail
-          case "${{ inputs.commit_sha }}" in
+          case "$REQUESTED_SHA" in
             [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
             *) echo "::error::commit_sha must be an exact lowercase 40-character commit SHA"; exit 1 ;;
           esac
-          test "$(git rev-parse HEAD)" = "${{ inputs.commit_sha }}"
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
 
       - uses: actions/setup-node@v4
         with:
@@ -154,6 +157,19 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/node_modules"
           rm -rf "$GITHUB_WORKSPACE/node_modules/railway"
           ln -s "$trusted_dir/node_modules/railway" "$GITHUB_WORKSPACE/node_modules/railway"
+
+      - name: Re-attest reviewed workspace before credentials
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          git diff-index --quiet "$REQUESTED_SHA" --
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git ls-files --error-unmatch \
+            .railway/railway.ts \
+            .railway/plan-baseline.json \
+            >/dev/null
 
       - name: Plan gate (READ-ONLY — never applies)
         id: plan
