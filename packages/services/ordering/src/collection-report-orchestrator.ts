@@ -25,12 +25,17 @@ import {
 } from "./resolver.js";
 import type { PrivateOpsPublisher } from "./private-ops.js";
 import type { ProcessResult } from "./orchestrator.js";
+import type { PublicPreparationAdapter } from "./public-preparation-adapter.js";
+import type { SharedPreparationStore } from "./shared-preparation-store.js";
 
 export interface CollectionReportOrchestratorDeps {
   store: OrderStore;
   resolver: CapabilityResolver;
   now: () => number;
   opsChannel?: PrivateOpsPublisher;
+  /** CR-204A — drive linked shared preparation work while producing. */
+  preparationStore?: SharedPreparationStore;
+  publicPrepAdapter?: PublicPreparationAdapter;
 }
 
 export class CollectionReportOrchestrator {
@@ -104,9 +109,13 @@ export class CollectionReportOrchestrator {
       if (isTerminal(record.state)) return { success: true };
     }
 
-    // Hold in producing — Gate Leak artifact producer is not mounted yet.
-    // Honest UI maps this to "Preparing collection data" (not Needs attention).
     if (record.state === "producing") {
+      if (this.deps.preparationStore && this.deps.publicPrepAdapter) {
+        const linked = await this.deps.preparationStore.getActiveWorkForOrder(orderId);
+        if (linked) {
+          await this.deps.publicPrepAdapter.processWork(linked.work.work_id);
+        }
+      }
       return { success: true };
     }
 

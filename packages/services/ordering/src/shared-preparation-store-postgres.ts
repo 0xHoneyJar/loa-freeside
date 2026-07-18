@@ -787,4 +787,123 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       client.release();
     }
   }
+
+  async recordChildJobRef(input: {
+    work_item_id: string;
+    expected_lease_epoch: number;
+    external_job_ref: string;
+    now_ms: number;
+  }): Promise<PreparationWorkItemRecord> {
+    const result = await this.pool.query(
+      `UPDATE preparation_work_items AS i
+       SET external_job_ref = $3, updated_at = $4
+       FROM shared_preparation_work AS w
+       WHERE i.work_item_id = $1
+         AND i.work_id = w.work_id
+         AND i.lease_epoch = $2
+         AND w.state IN ('queued', 'preparing')
+       RETURNING i.*`,
+      [input.work_item_id, input.expected_lease_epoch, input.external_job_ref, msToIso(input.now_ms)],
+    );
+    if (result.rows.length === 0) {
+      throw new SharedPreparationFencingError("stale lease epoch for child job ref");
+    }
+    return rowToItem(result.rows[0]!);
+  }
+
+  async recordTerminalFailure(input: {
+    work_id: string;
+    expected_lease_epoch: number;
+    failure: { code: string; reason: string };
+    now_ms: number;
+  }): Promise<SharedPreparationWorkRecord> {
+    const client = await this.pool.connect();
+    const nowIso = msToIso(input.now_ms);
+    try {
+      await client.query("BEGIN");
+      const workResult = await client.query(
+        `UPDATE shared_preparation_work
+         SET state = 'failed',
+             failure_reason = $4::jsonb,
+             lease_until = NULL,
+             updated_at = $3
+         WHERE work_id = $1
+           AND lease_epoch = $2
+           AND state IN ('queued', 'preparing', 'retry_wait')
+         RETURNING *`,
+        [
+          input.work_id,
+          input.expected_lease_epoch,
+          nowIso,
+          JSON.stringify(input.failure),
+        ],
+      );
+      if (workResult.rows.length === 0) {
+        throw new SharedPreparationFencingError("stale lease epoch for terminal failure");
+      }
+      await client.query(
+        `UPDATE preparation_work_items
+         SET state = 'failed',
+             failure_reason = $3::jsonb,
+             updated_at = $2
+         WHERE work_id = $1 AND state NOT IN ('ready', 'failed')`,
+        [input.work_id, nowIso, JSON.stringify(input.failure)],
+      );
+      await client.query("COMMIT");
+      return rowToWork(workResult.rows[0]!);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listLeasableWork(limit = 64): Promise<readonly SharedPreparationWorkRecord[]> {
+    const result = await this.pool.query(
+      `SELECT * FROM shared_preparation_work
+       WHERE state IN ('queued', 'preparing')
+       ORDER BY created_at ASC
+       LIMIT $1`,
+      [limit],
+    );
+    return result.rows.map(rowToWork);
+  }
+
+  async listRetryWaitDue(input: {
+    now_ms: number;
+    limit?: number;
+  }): Promise<readonly SharedPreparationWorkRecord[]> {
+    const result = await this.pool.query(
+      `SELECT * FROM shared_preparation_work
+       WHERE state = 'retry_wait'
+         AND next_attempt_at IS NOT NULL
+         AND next_attempt_at <= $1
+       ORDER BY next_attempt_at ASC
+       LIMIT $2`,
+      [msToIso(input.now_ms), input.limit ?? 64],
+    );
+    return result.rows.map(rowToWork);
+  }
+
+  async getActiveWorkForOrder(order_id: string): Promise<
+    | { readonly work: SharedPreparationWorkRecord; readonly link: ReportWorkLinkRecord }
+    | undefined
+  > {
+    const linkResult = await this.pool.query(
+      `SELECT * FROM report_work_links
+       WHERE order_id = $1 AND detached_at IS NULL
+       ORDER BY joined_at DESC
+       LIMIT 1`,
+      [order_id],
+    );
+    if (linkResult.rows.length === 0) return undefined;
+    const link = rowToLink(linkResult.rows[0]!);
+    const workResult = await this.pool.query(
+      "SELECT * FROM shared_preparation_work WHERE work_id = $1",
+      [link.work_id],
+    );
+    if (workResult.rows.length === 0) return undefined;
+    return { work: rowToWork(workResult.rows[0]!), link };
+  }
 }

@@ -264,6 +264,36 @@ export {
 } from './shared-preparation-service.js';
 
 export {
+  COLLECTION_PREP_POOL_CAPABILITY,
+  REPORT_GENERATION_POOL_CAPABILITY,
+  PUBLIC_PREP_WORKER_LEASE_MS,
+  publicPrepWorkerEnabled,
+  publicPrepWorkerIntervalMs,
+} from './public-preparation-constants.js';
+export { sonarCommandInboxKey, sonarPhysicalJobRef } from './public-preparation-dispatch-key.js';
+export {
+  InMemoryPublicPrepDispatchStore,
+  type PublicPrepDispatchStore,
+  type PrepDispatchRecord,
+} from './public-preparation-dispatch-store.js';
+export {
+  FixturePublicPreparationSonarPort,
+  type PublicPreparationSonarPort,
+  type SonarPrepDispatchRequest,
+  type SonarPrepDispatchResult,
+} from './public-preparation-sonar-port.js';
+export {
+  PublicPreparationAdapter,
+  type PublicPreparationAdapterDeps,
+  type PublicPrepProcessResult,
+} from './public-preparation-adapter.js';
+export { PublicPreparationWorker } from './public-preparation-worker.js';
+export {
+  aggregateReadinessEvidence,
+  buildReadinessEvidenceFromDeployments,
+} from './public-preparation-evidence.js';
+
+export {
   CAPACITY_LEDGER_KINDS,
   CAPACITY_RESERVATION_STATES,
   CapacityUnavailableError,

@@ -10,6 +10,8 @@ import { CollectionReportOrchestrator } from './collection-report-orchestrator.j
 import type { TriagePorts } from './triage-ports.js';
 import { StubTriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
+import type { PublicPreparationAdapter } from './public-preparation-adapter.js';
+import type { SharedPreparationStore } from './shared-preparation-store.js';
 
 /**
  * The thin orchestrator (SDD §6) — dispatches by product to preset-specific handlers.
@@ -42,6 +44,9 @@ export interface OrchestratorDeps {
    *  EVERY CommunityOnboardingOrchestrator instance, intake included, or the choke
    *  point has teeth only on the worker path. */
   discordHealth?: CommunityOnboardingOrchestratorDeps['discordHealth'];
+  /** CR-204A public preparation substrate. */
+  preparationStore?: SharedPreparationStore;
+  publicPrepAdapter?: PublicPreparationAdapter;
 }
 
 export class OrderOrchestrator {
@@ -68,7 +73,11 @@ export class OrderOrchestrator {
       enqueue: deps.enqueue,
       discordHealth: deps.discordHealth,
     });
-    this.collectionReport = new CollectionReportOrchestrator(shared);
+    this.collectionReport = new CollectionReportOrchestrator({
+      ...shared,
+      preparationStore: deps.preparationStore,
+      publicPrepAdapter: deps.publicPrepAdapter,
+    });
   }
 
   async process(orderId: string): Promise<ProcessResult> {
