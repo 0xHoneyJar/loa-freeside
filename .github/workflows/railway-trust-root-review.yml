@@ -28,8 +28,91 @@ jobs:
       statuses: write
     runs-on: ubuntu-latest
     steps:
-      - name: Publish exact-head trust-root status
+      - name: Prepare exact-head trust-root tests
+        id: prepare_tests
+        continue-on-error: true
         env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          changed_count=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.changed_files')
+          if ! [[ "$changed_count" =~ ^[0-9]+$ ]] || [ "$changed_count" -ge 3000 ]; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          required=false
+          while IFS= read -r filename; do
+            case "$filename" in
+              .github/workflows/railway-plan-gate.yml|\
+              .github/workflows/railway-trust-root-review.yml|\
+              .railway/BOOTSTRAP.md|\
+              .railway/plan-gate.mjs|\
+              .railway/plan-gate.test.mjs|\
+              .railway/railway.ts|\
+              .railway/trusted-tools/*)
+                required=true
+                break
+                ;;
+            esac
+          done < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [ "$required" != true ]; then
+            exit 0
+          fi
+
+          root="$RUNNER_TEMP/railway-trust-tests"
+          for suite in regression candidate; do
+            mkdir -p "$root/$suite/.railway/trusted-tools"
+          done
+          fetch_raw() {
+            gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/$2?ref=$1" > "$3"
+          }
+
+          # Candidate verifier code is the subject. The old/default tests are
+          # independently trusted regression policy; the candidate tests prove
+          # new intentional behavior without replacing those old assertions.
+          fetch_raw "$HEAD_SHA" .railway/plan-gate.mjs \
+            "$root/regression/.railway/plan-gate.mjs"
+          fetch_raw "$HEAD_SHA" .railway/trusted-tools/bridge-review-attestation.mjs \
+            "$root/regression/.railway/trusted-tools/bridge-review-attestation.mjs"
+          fetch_raw "$DEFAULT_BRANCH" .railway/plan-gate.test.mjs \
+            "$root/regression/.railway/plan-gate.test.mjs"
+          fetch_raw "$DEFAULT_BRANCH" .railway/trusted-tools/bridge-review-attestation.test.mjs \
+            "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+
+          fetch_raw "$HEAD_SHA" .railway/plan-gate.mjs \
+            "$root/candidate/.railway/plan-gate.mjs"
+          fetch_raw "$HEAD_SHA" .railway/plan-gate.test.mjs \
+            "$root/candidate/.railway/plan-gate.test.mjs"
+          fetch_raw "$HEAD_SHA" .railway/trusted-tools/bridge-review-attestation.mjs \
+            "$root/candidate/.railway/trusted-tools/bridge-review-attestation.mjs"
+          fetch_raw "$HEAD_SHA" .railway/trusted-tools/bridge-review-attestation.test.mjs \
+            "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+
+      - name: Run trusted regression and candidate suites without credentials
+        id: trust_tests
+        if: steps.prepare_tests.outputs.required == 'true' && steps.prepare_tests.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/railway-trust-tests"
+          timeout 60s node --test \
+            "$root/regression/.railway/plan-gate.test.mjs" \
+            "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs" \
+            "$root/candidate/.railway/plan-gate.test.mjs" \
+            "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+
+      - name: Publish exact-head trust-root status
+        if: always()
+        env:
+          PREP_OUTCOME: ${{ steps.prepare_tests.outcome }}
+          TEST_OUTCOME: ${{ steps.trust_tests.outcome }}
+          TEST_REQUIRED: ${{ steps.prepare_tests.outputs.required }}
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -42,10 +125,12 @@ jobs:
           changed=false
           active_config_changed=false
           trusted_config_changed=false
-          changed_count=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.changed_files')
-          if ! [[ "$changed_count" =~ ^[0-9]+$ ]] || [ "$changed_count" -ge 3000 ]; then
+          if [ "$PREP_OUTCOME" != success ]; then
             state=failure
-            description='PR diff exceeds complete changed-file enumeration'
+            description='Trust-root test preparation or diff inventory failed'
+          elif [ "$TEST_REQUIRED" = true ] && [ "$TEST_OUTCOME" != success ]; then
+            state=failure
+            description='Exact-head Railway trust-root tests failed'
           else
             files="$RUNNER_TEMP/railway-trust-root-files.txt"
             gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
