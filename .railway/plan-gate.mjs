@@ -30,6 +30,9 @@
  * cannot see values. Closing that needs a separate value-attestation; out of scope.
  *
  * This gate NEVER applies. `railway config apply` stays human-gated (NFR-2).
+ * The credentialed plan evaluates only `TRUSTED_RAILWAY_CONFIG`, fetched from
+ * the default branch by CI. The reviewed `.railway/railway.ts` is required to
+ * be byte-identical but is never executed with credentials.
  *
  * Usage:
  *   node .railway/plan-gate.mjs                     # gate (CI)
@@ -39,8 +42,12 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const BASELINE = '.railway/plan-baseline.json';
+const TRUSTED_RAILWAY_CONFIG =
+  process.env.TRUSTED_RAILWAY_CONFIG ??
+  fileURLToPath(new URL('./trusted-tools/railway.ts', import.meta.url));
 const EXPECTED_TARGET = Object.freeze({
   projectId: '0bf95b1c-b8f2-4e60-a4a6-50089b521eb0',
   environmentId: '2068efa5-0ed4-4cf3-9ae2-89120c4b18d5',
@@ -173,10 +180,14 @@ const fingerprint = (normalized) => createHash('sha256').update(JSON.stringify(n
 
 function getPlan() {
   if (planFile) return JSON.parse(readFileSync(planFile, 'utf8'));
-  const out = execFileSync('railway', ['config', 'plan', '--json'], {
+  const out = execFileSync(
+    'railway',
+    ['config', 'plan', '--json', '--file', TRUSTED_RAILWAY_CONFIG],
+    {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
-  });
+    },
+  );
   return JSON.parse(out);
 }
 

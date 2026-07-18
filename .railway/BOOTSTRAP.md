@@ -3,8 +3,9 @@
 The credentialed gate cannot attest to the same change that creates its trust
 root. The first merge that adds `.github/workflows/railway-plan-gate.yml`,
 `.railway/plan-gate.mjs`, and `.railway/trusted-tools/` is therefore bootstrap
-only. It contains no `.railway/railway.ts`, so there is no reviewed resource
-declaration to execute during this bootstrap:
+only. It contains no active `.railway/railway.ts`. The resource declaration
+under `.railway/trusted-tools/railway.ts` is a dormant trust-root copy: the CLI
+does not discover it automatically, and the bootstrap never executes it:
 
 1. Review the exact PR head with Bridgebuilder.
 2. Confirm the workflow contains no apply path and the bootstrap diff contains
@@ -21,5 +22,8 @@ The trusted evaluator is bound to Railway project
 `2068efa5-0ed4-4cf3-9ae2-89120c4b18d5`. A token or checkout resolving to any
 other target fails before changes are compared or logged.
 
-The workflow fails closed when the default branch lacks any trusted evaluator
-or tool-lock file. It never falls back to code from the reviewed PR.
+The workflow fails closed when the default branch lacks any trusted evaluator,
+executable config, or tool-lock file. A later Railway PR's active
+`.railway/railway.ts` must be byte-identical to the default-branch trust-root
+copy, but the credentialed job executes only the trusted copy. Unrelated
+repository files are therefore outside the executable input closure.

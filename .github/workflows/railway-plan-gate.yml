@@ -20,8 +20,9 @@
 #   · The operator dispatches an EXACT reviewed commit SHA (not a moving branch).
 #   · Required environment reviewers approve that SHA before the job starts or receives the token.
 #   · RAILWAY_TOKEN lives in the environment, NOT as an automatically exposed repository secret.
-#   · The GATE SCRIPT is fetched from the DEFAULT branch, never the reviewed ref — otherwise a ref could edit
-#     plan-gate.mjs to exfiltrate the token after approval.
+#   · The GATE SCRIPT AND EXECUTABLE CONFIG are fetched from the DEFAULT branch, never the reviewed ref.
+#     The reviewed `.railway/railway.ts` must be byte-identical to that trusted config, but is never executed
+#     in the credentialed job. This makes the executable input closure exact instead of path-heuristic.
 #   · The Railway CLI + SDK are PINNED — `npm install -g @railway/cli` (unpinned) is arbitrary code
 #     running with the secret in env.
 #
@@ -40,7 +41,10 @@ name: railway-plan-gate
 
 on:
   # Safe sentinel: pull_request_target executes this workflow from the trusted
-  # base branch. It never checks out or executes PR-controlled code.
+  # base branch. It never checks out or executes PR-controlled code. The later
+  # credentialed job also executes only the byte-identical default-branch IaC
+  # copy, so unrelated repository files are outside the evaluator's input
+  # closure and do not need to trigger a plan.
   pull_request_target:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -128,7 +132,8 @@ jobs:
             .railway/plan-gate.mjs \
             .railway/trusted-tools/package.json \
             .railway/trusted-tools/package-lock.json \
-            .railway/trusted-tools/railway-cli.sha256
+            .railway/trusted-tools/railway-cli.sha256 \
+            .railway/trusted-tools/railway.ts
           do
             if ! git cat-file -e "origin/$default_branch:$path" 2>/dev/null; then
               echo "::error::Trusted default branch has no $path; refusing credentialed bootstrap."
@@ -139,6 +144,7 @@ jobs:
           git show "origin/$default_branch:.railway/trusted-tools/package.json" > "$trusted_dir/package.json"
           git show "origin/$default_branch:.railway/trusted-tools/package-lock.json" > "$trusted_dir/package-lock.json"
           git show "origin/$default_branch:.railway/trusted-tools/railway-cli.sha256" > "$trusted_dir/railway-cli.sha256"
+          git show "origin/$default_branch:.railway/trusted-tools/railway.ts" > "$trusted_dir/railway.ts"
           (
             cd "$trusted_dir"
             NPM_CONFIG_USERCONFIG=/dev/null npm ci \
@@ -151,13 +157,6 @@ jobs:
             mkdir -p bin
             tar -xzf railway-v4.10.0-x86_64-unknown-linux-gnu.tar.gz -C bin
           )
-          # The reviewed IaC imports `railway`. Resolve only the default-branch
-          # lockfile installation; do not let PR .npmrc or lifecycle scripts
-          # acquire code in the credentialed job.
-          mkdir -p "$GITHUB_WORKSPACE/node_modules"
-          rm -rf "$GITHUB_WORKSPACE/node_modules/railway"
-          ln -s "$trusted_dir/node_modules/railway" "$GITHUB_WORKSPACE/node_modules/railway"
-
       - name: Re-attest reviewed workspace before credentials
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
@@ -170,12 +169,17 @@ jobs:
             .railway/railway.ts \
             .railway/plan-baseline.json \
             >/dev/null
+          # The reviewed ref cannot extend the TypeScript dependency closure:
+          # credentialed evaluation uses this default-branch copy, and the
+          # reviewed declaration must be byte-identical to it.
+          cmp --silent .railway/railway.ts "$RUNNER_TEMP/railway-gate-trusted/railway.ts"
 
       - name: Plan gate (READ-ONLY — never applies)
         id: plan
         continue-on-error: true
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          TRUSTED_RAILWAY_CONFIG: ${{ runner.temp }}/railway-gate-trusted/railway.ts
         run: |
           set -euo pipefail
           if [ -z "${RAILWAY_TOKEN:-}" ]; then
