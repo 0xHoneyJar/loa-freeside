@@ -1,0 +1,74 @@
+# Unprivileged producer for Railway trust-root test evidence.
+#
+# Candidate code executes only under the ordinary pull_request event, with no
+# Railway credential and a read-only repository token. The separate trusted
+# pull_request_target/workflow_run attester consumes only this run's immutable
+# identity, repository, exact head SHA, and conclusion; it never imports an
+# artifact, output, environment value, or script from this workflow.
+
+name: railway-trust-root-tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/railway-plan-gate.yml'
+      - '.github/workflows/railway-trust-root-review.yml'
+      - '.github/workflows/railway-trust-root-tests.yml'
+      - '.railway/BOOTSTRAP.md'
+      - '.railway/plan-gate.mjs'
+      - '.railway/plan-gate.test.mjs'
+      - '.railway/railway.ts'
+      - '.railway/trusted-tools/**'
+
+permissions:
+  contents: read
+
+jobs:
+  trust-tests:
+    name: credential-free exact-head trust-root tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Run default regression and exact-head candidate suites
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/railway-trust-tests"
+          for suite in regression candidate; do
+            mkdir -p "$root/$suite/.railway/trusted-tools"
+          done
+
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          git show "origin/$DEFAULT_BRANCH:.railway/plan-gate.test.mjs" \
+            > "$root/regression/.railway/plan-gate.test.mjs"
+          git show "origin/$DEFAULT_BRANCH:.railway/trusted-tools/bridge-review-attestation.test.mjs" \
+            > "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+          cp .railway/plan-gate.mjs \
+            "$root/regression/.railway/plan-gate.mjs"
+          cp .railway/trusted-tools/bridge-review-attestation.mjs \
+            "$root/regression/.railway/trusted-tools/bridge-review-attestation.mjs"
+
+          cp .railway/plan-gate.mjs \
+            "$root/candidate/.railway/plan-gate.mjs"
+          cp .railway/plan-gate.test.mjs \
+            "$root/candidate/.railway/plan-gate.test.mjs"
+          cp .railway/trusted-tools/bridge-review-attestation.mjs \
+            "$root/candidate/.railway/trusted-tools/bridge-review-attestation.mjs"
+          cp .railway/trusted-tools/bridge-review-attestation.test.mjs \
+            "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"
+
+          timeout 60s node --test \
+            "$root/regression/.railway/plan-gate.test.mjs" \
+            "$root/regression/.railway/trusted-tools/bridge-review-attestation.test.mjs" \
+            "$root/candidate/.railway/plan-gate.test.mjs" \
+            "$root/candidate/.railway/trusted-tools/bridge-review-attestation.test.mjs"

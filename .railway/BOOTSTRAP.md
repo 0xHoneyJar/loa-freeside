@@ -52,12 +52,14 @@ An intentional config rotation changes both `.railway/railway.ts` and
    `railway-trust-root-review` validates that review without Railway credentials
    and attests the candidate SHA. That workflow also requires both config copies
    to change together and fetches them from the exact head to prove byte identity.
-   Before attestation, a credential-free job runs the old/default regression
-   suites against candidate verifier code, then runs the candidate suites too.
-   That job receives no write permission or Railway token. The status publisher
-   runs afterward on a fresh runner and consumes only GitHub's recorded job
-   result and the boolean indicating whether trust-root files changed; it never
-   receives candidate-produced files, environment values, or command outputs.
+   Before attestation, the separate `railway-trust-root-tests` workflow runs
+   under the ordinary unprivileged `pull_request` event. It executes the
+   old/default regression suites against candidate verifier code, then runs the
+   candidate suites too, with no write permission or Railway token. The trusted
+   `pull_request_target`/`workflow_run` status publisher consumes only the
+   canonical workflow-run identity, repository, exact head SHA, and conclusion;
+   it never receives candidate-produced files, environment values, or command
+   outputs, and it never executes PR-head code.
 3. Only after that success may the protected plan run. It retains the old
    default-branch evaluator, SDK lock, and CLI checksum; it extracts the
    candidate config from the attested SHA, verifies it is byte-identical to the
