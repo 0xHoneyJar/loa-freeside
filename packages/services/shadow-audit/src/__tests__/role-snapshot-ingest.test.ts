@@ -134,6 +134,20 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     expect(await store.load(KEY_A)).toMatchObject({ community: 'thj' });
   });
 
+  it('verifies sha256 against the received bytes before UTF-8 BOM decoding', async () => {
+    const store = makeInMemoryRoleStore('thj', testSources);
+    const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
+    const raw = '\uFEFF' + JSON.stringify(snapshot());
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+      'content-type': 'application/json',
+    });
+
+    expect(res.status).toBe(200);
+    expect(await store.load(KEY_A)).toMatchObject({ community: 'thj' });
+  });
+
   it('rejects a MISSING service token with 401', async () => {
     const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));

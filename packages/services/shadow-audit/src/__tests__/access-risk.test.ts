@@ -10,7 +10,7 @@
  *   · never leaks member data (no wallets/records anywhere in the response)
  *   · its own tighter per-IP limit
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createAuditRouter, type AuditRouterDeps } from '../http/audit-router.js';
 import { buildAuditApp } from '../server.js';
 import { InMemoryEventStore } from '../event-store.js';
@@ -217,6 +217,36 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect((await app.request(url())).status).toBe(200);
     expect((await app.request(url())).status).toBe(200);
     // The cheapest flood (same query repeated) costs exactly one reconstruction per TTL.
+    expect(reconstructions).toBe(1);
+  });
+
+  it('CACHE: identical concurrent misses share one reconstruction and budget unit', async () => {
+    let reconstructions = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: {
+          ...ownership,
+          balancesAt: async () => {
+            reconstructions++;
+            await gate;
+            return snapBal;
+          },
+        },
+        teaserBudget: new FixedWindowRateLimiter({ limit: 1, windowMs: 60_000, now: () => NOW_MS }),
+      }),
+    );
+
+    const first = app.request(url());
+    const second = app.request(url());
+    await vi.waitFor(() => expect(reconstructions).toBe(1));
+    release();
+
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
     expect(reconstructions).toBe(1);
   });
 

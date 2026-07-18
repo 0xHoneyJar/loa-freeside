@@ -63,7 +63,7 @@ import { createHash } from 'node:crypto';
 import { RoleSnapshotSchema } from '../role-snapshot.js';
 import type { RoleSink } from '../role-store.js';
 import { timingSafeEqualStr } from '../crypto-util.js';
-import { computeAccessRisk } from '../access-risk.js';
+import { computeAccessRisk, type AccessRiskResult } from '../access-risk.js';
 
 export interface AuditRouterDeps {
   ownership: OwnershipSource;
@@ -123,7 +123,9 @@ const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
  *  beyond that a caller is abusing the endpoint, not exporting a Discord guild. */
 const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
 
-type BoundedBodyResult = { ok: true; text: string } | { ok: false; reason: 'too-large' };
+type BoundedBodyResult =
+  | { ok: true; text: string; bytes: Uint8Array }
+  | { ok: false; reason: 'too-large' };
 
 /**
  * Read and decode at most `maxBytes`, cancelling the stream as soon as it exceeds the bound.
@@ -135,7 +137,7 @@ type BoundedBodyResult = { ok: true; text: string } | { ok: false; reason: 'too-
  */
 async function readBoundedText(request: Request, maxBytes: number): Promise<BoundedBodyResult> {
   const body = request.body;
-  if (!body) return { ok: true, text: '' };
+  if (!body) return { ok: true, text: '', bytes: new Uint8Array() };
 
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -160,7 +162,7 @@ async function readBoundedText(request: Request, maxBytes: number): Promise<Boun
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return { ok: true, text: new TextDecoder().decode(bytes) };
+    return { ok: true, text: new TextDecoder().decode(bytes), bytes };
   } finally {
     reader.releaseLock();
   }
@@ -303,6 +305,10 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const teaserTtlMs = deps.teaserCacheTtlMs ?? 300_000; // 5 min
   const TEASER_CACHE_MAX = 500;
   const teaserCache = new Map<string, { at: number; body: unknown }>();
+  // A cache entry exists only after reconstruction finishes. Coalesce an
+  // identical concurrent miss so a same-key burst consumes one budget unit
+  // and performs one reconstruction, not one per waiter.
+  const teaserInFlight = new Map<string, Promise<AccessRiskResult>>();
 
   app.get('/v1/access-risk', async (c) => {
     // Anti-abuse #1 — per-IP speed bump. BEST-EFFORT ONLY: the key derives from X-Forwarded-For, which the
@@ -343,26 +349,41 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       return c.json(hit.body as Record<string, unknown>);
     }
 
-    // Anti-abuse #5 — the HARD BOUND: a GLOBAL budget on cache MISSES (the only expensive path), keyed on a
-    // constant, NOT on the caller. This is the bound that actually holds, because it does not depend on
-    // identifying a client we fundamentally cannot identify on a public endpoint.
-    if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) {
-      return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
-    }
+    let result: AccessRiskResult;
+    const existing = teaserInFlight.get(cacheKey);
+    if (existing) {
+      result = await existing;
+    } else {
+      // Anti-abuse #5 — the HARD BOUND: a GLOBAL budget on cache MISSES (the only expensive path), keyed on
+      // a constant, NOT on the caller. FixedWindowRateLimiter.check mutates synchronously, so at most the
+      // configured number of DISTINCT misses enter reconstruction per window. The in-flight map above
+      // additionally makes identical concurrent misses share one reconstruction and one budget unit.
+      if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) {
+        return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+      }
 
-    // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
-    // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
-    const result = await computeAccessRisk(
-      {
-        chain: q.data.chain,
-        contract: q.data.contract,
-        snapshotDate: q.data.snapshot_date,
-        threshold,
-        nowUnixSeconds: Math.floor(now / 1000),
-        cta: deps.cta,
-      },
-      { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
-    );
+      // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
+      // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
+      const computation = computeAccessRisk(
+        {
+          chain: q.data.chain,
+          contract: q.data.contract,
+          snapshotDate: q.data.snapshot_date,
+          threshold,
+          nowUnixSeconds: Math.floor(now / 1000),
+          cta: deps.cta,
+        },
+        { ownership: deps.ownership, whale: deps.whale, sources: deps.sources, k: deps.k },
+      );
+      teaserInFlight.set(cacheKey, computation);
+      try {
+        result = await computation;
+      } finally {
+        // Delete only our promise so a future implementation can safely replace
+        // an entry without an older waiter erasing it.
+        if (teaserInFlight.get(cacheKey) === computation) teaserInFlight.delete(cacheKey);
+      }
+    }
     if (!result.ok) {
       // A COVERAGE refusal carries the DRIFT BOARD. The wallet-derived aggregate is refused, but the
       // counts-only board needs no wallet map — and it is the only honest answer for a community at ~0%
@@ -593,7 +614,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       if (!boundedBody.ok) return c.json({ error: 'snapshot too large' }, 413);
       const raw = boundedBody.text;
       const declared = (c.req.header('x-snapshot-sha256') ?? '').toLowerCase();
-      const actual = createHash('sha256').update(raw, 'utf8').digest('hex');
+      const actual = createHash('sha256').update(boundedBody.bytes).digest('hex');
       if (!declared || !timingSafeEqualStr(declared, actual)) {
         return c.json({ error: 'integrity check failed' }, 422);
       }
