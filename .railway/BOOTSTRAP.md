@@ -32,6 +32,9 @@ Captured Railway v4.10.0 plans identify safe service and Postgres creation as
 `resource.create` with `Create service <name>` and `Create database <name>`
 summaries. The evaluator converts only those two strict shapes into value-free
 baseline identities; other creation types fail closed until separately grounded.
+Subprocess stderr, malformed JSON, and exception messages are never reflected
+into CI logs; the public diagnostic surface is limited to fixed local codes such
+as `PLAN_EXEC_FAILED`, `PLAN_JSON_INVALID`, and `PLAN_SCHEMA_REJECTED`.
 
 The workflow fails closed when the default branch lacks any trusted evaluator,
 executable config, or tool-lock file. A later Railway PR's active

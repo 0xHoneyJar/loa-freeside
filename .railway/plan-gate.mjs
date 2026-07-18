@@ -91,8 +91,15 @@ function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function failSchema(message) {
-  throw new Error(`unrecognized Railway plan schema: ${message}`);
+class SafePlanError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+
+function failSchema() {
+  throw new SafePlanError('PLAN_SCHEMA_REJECTED');
 }
 
 function assertAllowedKeys(record, allowed, label) {
@@ -195,7 +202,7 @@ function validatePlan(value) {
     env.projectId !== EXPECTED_TARGET.projectId ||
     env.environmentId !== EXPECTED_TARGET.environmentId
   ) {
-    throw new Error('Railway plan target does not match the trusted project/environment IDs');
+    throw new SafePlanError('PLAN_TARGET_MISMATCH');
   }
 
   return value.changeSet.changes.map(safeChangeIdentity).sort();
@@ -230,16 +237,32 @@ function isCanonicalBaselineIdentity(identity) {
 const fingerprint = (normalized) => createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 
 function getPlan() {
-  if (planFile) return JSON.parse(readFileSync(planFile, 'utf8'));
-  const out = execFileSync(
-    'railway',
-    ['config', 'plan', '--json', '--file', TRUSTED_RAILWAY_CONFIG],
-    {
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
-    },
-  );
-  return JSON.parse(out);
+  if (planFile) {
+    try {
+      return JSON.parse(readFileSync(planFile, 'utf8'));
+    } catch {
+      throw new SafePlanError('PLAN_JSON_INVALID');
+    }
+  }
+  let out;
+  try {
+    out = execFileSync(
+      'railway',
+      ['config', 'plan', '--json', '--file', TRUSTED_RAILWAY_CONFIG],
+      {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+  } catch {
+    throw new SafePlanError('PLAN_EXEC_FAILED');
+  }
+  try {
+    return JSON.parse(out);
+  } catch {
+    throw new SafePlanError('PLAN_JSON_INVALID');
+  }
 }
 
 let plan;
@@ -250,7 +273,7 @@ try {
 } catch (err) {
   console.error('FAIL: Railway plan could not be evaluated safely.');
   console.error('      CI needs its protected RAILWAY_TOKEN and the exact trusted target.');
-  console.error(`      ${String(err.message ?? err).split('\n')[0]}`);
+  console.error(`      code=${err instanceof SafePlanError ? err.code : 'PLAN_EVALUATION_FAILED'}`);
   process.exit(1);
 }
 

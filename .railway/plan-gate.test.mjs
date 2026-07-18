@@ -58,6 +58,18 @@ function runGate(plan, baselineChanges = [IDENTITY]) {
   });
 }
 
+function runGateWithRawPlan(rawPlan) {
+  const cwd = mkdtempSync(join(tmpdir(), 'railway-plan-gate-raw-'));
+  const railwayDir = join(cwd, '.railway');
+  mkdirSync(railwayDir);
+  const planPath = join(cwd, 'plan.json');
+  writeFileSync(planPath, rawPlan);
+  return spawnSync(process.execPath, [GATE, '--plan-file', planPath], {
+    cwd,
+    encoding: 'utf8',
+  });
+}
+
 test('accepts the trusted target and canonical value-free baseline', () => {
   const result = runGate(validPlan());
   assert.equal(result.status, 0, result.stderr);
@@ -92,7 +104,35 @@ test('rejects unknown resource creation types without echoing producer prose', (
   };
   const result = runGate(plan);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /unknown resource-create summary/);
+  assert.match(result.stderr, /PLAN_SCHEMA_REJECTED/);
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(marker));
+});
+
+test('does not reflect malformed plan JSON through exception diagnostics', () => {
+  const marker = 'SENSITIVE_MARKER_DO_NOT_PRINT';
+  const result = runGateWithRawPlan(`{"malformed":"${marker}"`);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PLAN_JSON_INVALID/);
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(marker));
+});
+
+test('does not reflect Railway subprocess stderr through exception diagnostics', () => {
+  const marker = 'SENSITIVE_MARKER_DO_NOT_PRINT';
+  const cwd = mkdtempSync(join(tmpdir(), 'railway-plan-gate-exec-'));
+  const bin = join(cwd, 'bin');
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, 'railway'),
+    `#!/bin/sh\nprintf '%s\\n' '${marker}' >&2\nexit 1\n`,
+    { mode: 0o755 },
+  );
+  const result = spawnSync(process.execPath, [GATE], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PLAN_EXEC_FAILED/);
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(marker));
 });
 
@@ -101,7 +141,7 @@ test('fails closed when the target IDs do not match', () => {
   plan.currentEnvironment.projectId = '00000000-0000-0000-0000-000000000000';
   const result = runGate(plan);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /target does not match/);
+  assert.match(result.stderr, /PLAN_TARGET_MISMATCH/);
 });
 
 test('fails closed when changeSet is missing', () => {
@@ -109,7 +149,7 @@ test('fails closed when changeSet is missing', () => {
   delete plan.changeSet;
   const result = runGate(plan);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /changeSet is missing/);
+  assert.match(result.stderr, /PLAN_SCHEMA_REJECTED/);
 });
 
 test('fails closed on unknown kinds', () => {
@@ -117,7 +157,7 @@ test('fails closed on unknown kinds', () => {
   plan.changeSet.changes[0].kind = 'future.magic';
   const result = runGate(plan);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /unknown kind/);
+  assert.match(result.stderr, /PLAN_SCHEMA_REJECTED/);
 });
 
 test('fails closed on unknown plan fields', () => {
@@ -125,7 +165,7 @@ test('fails closed on unknown plan fields', () => {
   plan.unexpected = { meaning: 'producer schema changed' };
   const result = runGate(plan);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /top-level result contains unknown fields/);
+  assert.match(result.stderr, /PLAN_SCHEMA_REJECTED/);
 });
 
 test('rejects and never echoes summaries that contain a value', () => {
@@ -134,7 +174,7 @@ test('rejects and never echoes summaries that contain a value', () => {
   plan.changeSet.changes[0].summary = `Update shadow-audit-api source.branch ${marker}`;
   const result = runGate(plan);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /unknown resource-update summary/);
+  assert.match(result.stderr, /PLAN_SCHEMA_REJECTED/);
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(marker));
 });
 
