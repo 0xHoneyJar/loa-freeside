@@ -70,6 +70,13 @@ An intentional config rotation changes both `.railway/railway.ts` and
    The independent runner is deliberately outside ordinary trust-root rotation:
    changing it requires a separate bootstrap ceremony and may not be combined
    with verifier/config/toolchain changes that rely on its conclusion.
+   Eligible exact-head reviews use union-of-blockers semantics: one clean review
+   cannot conceal another current maintainer's critical, high, or medium finding.
+   GitHub emits no event when collaborator permission changes, so the trusted
+   default-branch workflow re-evaluates every successful open-PR attestation on
+   a five-minute schedule and republishes pending/failure if authorization was
+   revoked. This bounds—but cannot eliminate—the residual stale-authorization
+   window; merge policy must not bypass that required status.
 3. Only after that success may the protected plan run. It retains the old
    default-branch evaluator, SDK lock, and CLI checksum; it extracts the
    candidate config from the attested SHA, verifies it is byte-identical to the

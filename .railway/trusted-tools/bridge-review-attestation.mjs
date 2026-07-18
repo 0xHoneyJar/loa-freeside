@@ -169,13 +169,16 @@ export function evaluateBridgeAttestation({
     })
     .sort((a, b) => (isLaterReview(a, b) ? -1 : isLaterReview(b, a) ? 1 : 0));
 
-  const review = candidates[0];
-  if (!review) {
+  if (candidates.length === 0) {
     return pending('Awaiting exact-head independent maintainer Bridgebuilder review');
   }
 
-  const findings = parseFindings(review.body);
-  if (!findings) return failure('Bridgebuilder findings document is invalid');
+  const findings = [];
+  for (const review of candidates) {
+    const reviewFindings = parseFindings(review.body);
+    if (!reviewFindings) return failure('Bridgebuilder findings document is invalid');
+    findings.push(...reviewFindings);
+  }
   const blocking = findings.filter((finding) => BLOCKING.has(finding.severity));
   if (blocking.length > 0) {
     return failure(`Bridgebuilder found ${blocking.length} blocking trust-root issue(s)`);

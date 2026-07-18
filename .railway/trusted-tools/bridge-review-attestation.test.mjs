@@ -49,7 +49,11 @@ function evaluate(reviews, overrides = {}) {
     reviews,
     headSha: HEAD,
     prAuthor: 'author',
-    permissions: { maintainer: 'maintain', author: 'admin' },
+    permissions: {
+      maintainer: 'maintain',
+      'second-maintainer': 'admin',
+      author: 'admin',
+    },
     ...overrides,
   });
 }
@@ -120,6 +124,18 @@ test('fails closed on an unknown severity', () => {
 
 test('fails when a valid exact-head review contains a medium finding', () => {
   const result = evaluate([review({ body: body([finding('MEDIUM')]) })]);
+  assert.equal(result.state, 'failure');
+  assert.match(result.description, /1 blocking/);
+});
+
+test('fails when any current eligible reviewer reports a blocking finding', () => {
+  const clean = review();
+  const blocking = review({
+    id: 2,
+    user: { login: 'second-maintainer' },
+    body: body([finding('HIGH')]),
+  });
+  const result = evaluate([clean, blocking]);
   assert.equal(result.state, 'failure');
   assert.match(result.description, /1 blocking/);
 });

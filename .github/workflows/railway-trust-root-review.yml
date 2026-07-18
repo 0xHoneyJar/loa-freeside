@@ -21,10 +21,13 @@ on:
   workflow_run:
     workflows: [railway-trust-root-tests]
     types: [completed]
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
   attest:
     name: independent Railway trust-root review
+    if: github.event_name != 'schedule'
     permissions:
       contents: read
       pull-requests: read
@@ -208,3 +211,77 @@ jobs:
             -f context=railway-trust-root-review \
             -f description="$description" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
+
+  refresh-authorizations:
+    name: refresh Railway reviewer authorization
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Revoke stale successful attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          attestor="$RUNNER_TEMP/bridge-review-attestation.mjs"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/.railway/trusted-tools/bridge-review-attestation.mjs?ref=$DEFAULT_BRANCH" \
+            > "$attestor"
+
+          while IFS= read -r pr_number; do
+            pr="$RUNNER_TEMP/pr-$pr_number.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" > "$pr"
+            head_sha=$(jq -r '.head.sha' "$pr")
+            pr_author=$(jq -r '.user.login' "$pr")
+            current_state=$(
+              gh api "repos/$GITHUB_REPOSITORY/commits/$head_sha/status" \
+                --jq '[.statuses[] | select(.context == "railway-trust-root-review")] |
+                      sort_by(.created_at) | last | .state // "missing"'
+            )
+            if [ "$current_state" != success ]; then
+              continue
+            fi
+
+            reviews="$RUNNER_TEMP/reviews-$pr_number.json"
+            permissions="$RUNNER_TEMP/permissions-$pr_number.json"
+            result="$RUNNER_TEMP/result-$pr_number.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number/reviews" \
+              --paginate --slurp > "$reviews"
+            echo '{}' > "$permissions"
+            while IFS= read -r reviewer; do
+              case "$reviewer" in
+                ''|*[!A-Za-z0-9-]*) continue ;;
+              esac
+              permission=$(
+                gh api "repos/$GITHUB_REPOSITORY/collaborators/$reviewer/permission" \
+                  --jq '.permission' 2>/dev/null || echo none
+              )
+              jq --arg reviewer "$reviewer" --arg permission "$permission" \
+                '. + {($reviewer): $permission}' "$permissions" > "$permissions.next"
+              mv "$permissions.next" "$permissions"
+            done < <(jq -r '[.[][] | .user.login // empty] | unique[]' "$reviews")
+
+            REVIEWS_FILE="$reviews" \
+              PERMISSIONS_FILE="$permissions" \
+              HEAD_SHA="$head_sha" \
+              PR_AUTHOR="$pr_author" \
+              node "$attestor" > "$result"
+            state=$(jq -r '.state' "$result")
+            if [ "$state" = success ]; then
+              continue
+            fi
+            description=$(jq -r '.description' "$result")
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$head_sha" \
+              -f state="$state" \
+              -f context=railway-trust-root-review \
+              -f description="$description" \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$pr_number"
+          done < <(
+            gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+              --paginate --jq '.[].number'
+          )
