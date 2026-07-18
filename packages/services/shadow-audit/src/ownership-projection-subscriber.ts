@@ -40,22 +40,18 @@ export interface OwnershipActivity {
   };
 }
 
-/** chain_id → the chain name the audit's OwnershipSource keys by (order.source.chain). The SINGLE write-side
- *  source of truth; must agree with the order/registry read side (FAGAN MEDIUM-1 — divergence = silent empty). */
-const CHAIN_NAME: Record<number, string> = { 1: 'ethereum', 8453: 'base', 80094: 'berachain' };
-
 /**
  * Map a signed EVM ownership activity into an `OwnershipChange`. Returns null (the caller SKIPS, never corrupts
- * the projection) for: non-EVM, missing EVM enrichment, an UNMAPPED chain_id (don't mint a synthetic `evm:N`
- * key that can never match `order.source.chain` — FAGAN MEDIUM-1), or a missing tx/log_index (no stable identity).
+ * the projection) for: non-EVM, missing/invalid EVM enrichment, or a missing tx/log_index (no stable identity).
+ * Numeric chain ID is the canonical read/write key used by the protocol, collection registry, and sonar.
  */
 export function ownershipActivityToChange(a: OwnershipActivity): OwnershipChange | null {
   const m = a.metadata;
   if (m.chain !== 'evm' || m.contract === undefined || m.block_number === undefined || m.chain_id === undefined) {
     return null;
   }
-  const chain = CHAIN_NAME[m.chain_id];
-  if (chain === undefined) return null; // unmapped chain — skip rather than mint a non-matching key
+  if (!Number.isSafeInteger(m.chain_id) || m.chain_id <= 0) return null;
+  const chain = String(m.chain_id);
   if (typeof a.tx !== 'string' || a.tx === '' || m.log_index === undefined) return null; // no stable identity
   return {
     chain,

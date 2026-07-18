@@ -1,4 +1,4 @@
-# S2-T2 (SDD §8, IMP-013, G-6) — org-as-code agent gate.
+# S2-T2 (SDD §8, IMP-013, G-6) — operator-approved org-as-code gate.
 #
 # Runs `railway config plan` (READ-ONLY) against .railway/railway.ts and fails the PR on:
 #   1. ANY destructive change (baseline-independent) — Railway IaC is declarative and will DELETE
@@ -11,41 +11,55 @@
 # Secrets never reach the logs: the gate prints only change kind/severity/summary (variable NAMES, not
 # values — Railway redacts values as «hidden»).
 #
-# ── SECRET-HANDLING (FAGAN review, 2026-07-12) ────────────────────────────────────────────────────────
-# RAILWAY_TOKEN is apply-capable, so treat everything in the PR head as untrusted:
-#   · The GATE SCRIPT is fetched from the BASE ref, never the PR head — otherwise a PR could edit
-#     plan-gate.mjs to exfiltrate the token.
+# ── SECRET-HANDLING (FAGAN + Bridgebuilder review, 2026-07-18) ─────────────────────────────────────────
+# RAILWAY_TOKEN is apply-capable, and `railway config plan` evaluates .railway/railway.ts. Therefore this
+# workflow MUST NOT run automatically on pull_request: a trusted workflow cannot sandbox PR-controlled
+# TypeScript that it later evaluates with a deployment credential.
+#
+# The credentialed plan is manual-only and protected by the `railway-plan` GitHub Environment:
+#   · The operator dispatches an EXACT reviewed commit SHA (not a moving branch).
+#   · Required environment reviewers approve that SHA before the job starts or receives the token.
+#   · RAILWAY_TOKEN lives in the environment, NOT as an automatically exposed repository secret.
+#   · The GATE SCRIPT is fetched from the DEFAULT branch, never the reviewed ref — otherwise a ref could edit
+#     plan-gate.mjs to exfiltrate the token after approval.
 #   · The Railway CLI + SDK are PINNED — `npm install -g @railway/cli` (unpinned) is arbitrary code
 #     running with the secret in env.
-#   · A same-repo PR with the secret MISSING now FAILS rather than exiting 0 — a gate that silently goes
-#     green when unconfigured protects nothing. (Fork PRs legitimately have no secret: GitHub withholds
-#     secrets from forks on `pull_request`, so they cannot exfiltrate it — those skip with a warning.)
 #
-# RESIDUAL RISK (accepted, documented): `railway config plan` EVALUATES .railway/railway.ts — it is a
-# TypeScript program. A same-repo PR could put exfiltration code in it. That is not a privilege escalation
-# (a same-repo PR author already has repo write), and fork PRs get no secret. If Railway ever ships a
-# read-only/plan-scoped token, use it here instead.
-#
-# SETUP (operator, one-time): add repo secret RAILWAY_TOKEN — a Railway project token scoped to the
-# shadow-audit-api project + production environment (Railway → project → Settings → Tokens).
+# SETUP (operator, one-time): create a protected `railway-plan` environment with required reviewers; add
+# RAILWAY_TOKEN there (Railway project token scoped to shadow-audit-api/production); remove any repo-level
+# copy. If Railway ships a read-only/plan-scoped token, replace it.
 
 name: railway-plan-gate
 
 on:
-  pull_request:
-    paths:
-      - '.railway/**'
-      - 'packages/services/shadow-audit/Dockerfile'
   workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Exact 40-character reviewed commit SHA to plan'
+        required: true
+        type: string
 
 jobs:
   plan-gate:
-    name: railway config plan (read-only gate)
+    name: railway config plan (operator-approved)
+    environment: railway-plan
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # need the base ref to fetch the trusted gate script
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify immutable reviewed ref
+        run: |
+          set -euo pipefail
+          case "${{ inputs.commit_sha }}" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) echo "::error::commit_sha must be an exact lowercase 40-character commit SHA"; exit 1 ;;
+          esac
+          test "$(git rev-parse HEAD)" = "${{ inputs.commit_sha }}"
 
       - uses: actions/setup-node@v4
         with:
@@ -57,41 +71,26 @@ jobs:
           npm install -g @railway/cli@4.10.0
           npm install --no-save railway@3.5.5
 
-      - name: Fetch the gate script from the BASE ref (never the PR head)
-        if: github.event_name == 'pull_request'
+      - name: Fetch the gate script from the default branch
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "${{ github.base_ref }}"
-          # The PR may legitimately CHANGE .railway/railway.ts (that is what we are reviewing), but the
-          # script that runs WITH the token must be the one already on the base branch.
-          if git cat-file -e "origin/${{ github.base_ref }}:.railway/plan-gate.mjs" 2>/dev/null; then
-            git show "origin/${{ github.base_ref }}:.railway/plan-gate.mjs" > /tmp/plan-gate.mjs
+          default_branch="${{ github.event.repository.default_branch }}"
+          git fetch --no-tags origin "$default_branch"
+          if git cat-file -e "origin/$default_branch:.railway/plan-gate.mjs" 2>/dev/null; then
+            git show "origin/$default_branch:.railway/plan-gate.mjs" > /tmp/plan-gate.mjs
           else
-            # Bootstrap only: the first PR that introduces this gate has no trusted base copy yet.
-            # The plan step falls back to the checked-out PR script. Same-repo authors already have
-            # repository write access; fork PRs receive no Railway secret.
-            echo "::notice title=railway-plan-gate bootstrap::No base-ref gate exists yet; using the PR gate."
+            # Bootstrap only: the first merge has no default-branch gate yet. The protected-environment
+            # reviewer must verify the exact SHA includes the reviewed bootstrap script.
+            cp .railway/plan-gate.mjs /tmp/plan-gate.mjs
           fi
-          git show "origin/${{ github.base_ref }}:.railway/plan-baseline.json" > /tmp/plan-baseline.json || true
 
       - name: Plan gate (READ-ONLY — never applies)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          IS_SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           set -euo pipefail
           if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            if [ "${IS_SAME_REPO}" = "true" ]; then
-              echo "::error title=railway-plan-gate NOT CONFIGURED::RAILWAY_TOKEN is missing on a same-repo run."
-              echo "The destructive/drift gate cannot run, so it must NOT report success."
-              echo "Add the repo secret RAILWAY_TOKEN (project token for shadow-audit-api/production)."
-              exit 1
-            fi
-            echo "::warning title=railway-plan-gate skipped::Fork PR — GitHub withholds secrets from forks,"\
-                 "so the Railway gate cannot run here. It WILL run on the same-repo merge/branch."
-            exit 0
+            echo "::error title=railway-plan-gate NOT CONFIGURED::RAILWAY_TOKEN is missing from the protected railway-plan environment."
+            exit 1
           fi
-          # Run the BASE-ref gate script against the PR's .railway/railway.ts.
-          script=/tmp/plan-gate.mjs
-          [ -f "$script" ] || script=.railway/plan-gate.mjs   # workflow_dispatch: no PR base
-          node "$script"
+          node /tmp/plan-gate.mjs

@@ -30,9 +30,9 @@ const ACTIVITIES: OwnershipActivity[] = [
 const fedViaSubscriber = () => { const p = makeOwnershipProjection(); for (const a of ACTIVITIES) applyOwnershipActivity(p, a); return p; };
 
 describe('ownershipActivityToChange — the signed event → OwnershipChange mapping (STANDS)', () => {
-  it('maps mint/transfer/burn, carries tx:logIndex identity, chain_id → name', () => {
+  it('maps mint/transfer/burn, carries tx:logIndex identity, chain_id → canonical numeric key', () => {
     expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z', tx: '0xaa', logIndex: 2 })))
-      .toMatchObject({ chain: 'ethereum', contract: CONTRACT, block: 5, from: null, to: R1, amount: 1n, tx: '0xaa', logIndex: 2 });
+      .toMatchObject({ chain: '1', contract: CONTRACT, block: 5, from: null, to: R1, amount: 1n, tx: '0xaa', logIndex: 2 });
   });
 
   it('skips non-EVM activity (SVM is a follow-on)', () => {
@@ -40,8 +40,9 @@ describe('ownershipActivityToChange — the signed event → OwnershipChange map
     expect(ownershipActivityToChange(svm)).toBeNull();
   });
 
-  it('FAGAN MEDIUM-1: skips an UNMAPPED chain_id (no synthetic evm:N key that never matches order.source.chain)', () => {
-    expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z', chainId: 137 }))).toBeNull();
+  it('accepts any positive numeric chain_id without a slug allowlist drift seam', () => {
+    expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z', chainId: 137 })))
+      .toMatchObject({ chain: '137' });
   });
 
   it('FAGAN HIGH-3 guard: value "0" or null → 1 token (the ERC-721 form), not a zero move', () => {
@@ -75,25 +76,7 @@ const rawSonarFixture: OwnershipSource = {
 };
 
 describe('event → handler → projection → audit, END TO END (BEARS-LOAD)', () => {
-  /**
-   * ⚠ S5-T3 FINDING — PARKED, not fixed here. This path cannot run against the ratified chain identity.
-   *
-   * `ChainSchema` is now the NUMERIC chain id ("1"), because that is what the registry keys on and what the
-   * chain-scoped sonar query requires. But `ownershipActivityToChange` maps `chain_id → SLUG`
-   * (`CHAIN_NAME = { 1: 'ethereum', … }`, ownership-projection-subscriber.ts:45), and the projection is keyed
-   * by that slug — so an Order addressing chain "1" finds NO events, and a slug-addressed Order is refused by
-   * the schema.
-   *
-   * The two OwnershipSource implementations have therefore always required MUTUALLY EXCLUSIVE chain formats:
-   * the deployed sonar adapter refuses any non-numeric chain (`ownership-source.ts:56`), while this projection
-   * only answers to slugs. Neither could ever have served the other's Orders. Making the chain type honest did
-   * not create the conflict — it surfaced it at the boundary instead of at runtime.
-   *
-   * The fix is one line in the subscriber's CHAIN_NAME table, which is inside the FENCED
-   * `ownership-projection-*` set this sprint is explicitly forbidden from touching or wiring. So it is named
-   * here and skipped, rather than silently "fixed" (un-parking by stealth) or deleted (hiding the finding).
-   */
-  it.skip('the audit reading a SUBSCRIBER-FED projection reproduces the fixture picture (BLOCKED: slug-vs-numeric chain key — see above)', async () => {
+  it('the audit reading a subscriber-fed numeric-chain projection reproduces the fixture picture', async () => {
     const fromEvents = await runAudit(req, { ownership: makeProjectionOwnershipSource(fedViaSubscriber()), whale, roles, sources });
     const fromFixture = await runAudit(req, { ownership: rawSonarFixture, whale, roles, sources });
     expect(fromEvents).toEqual(fromFixture);

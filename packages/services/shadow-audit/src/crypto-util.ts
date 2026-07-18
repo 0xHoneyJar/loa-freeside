@@ -1,17 +1,17 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 /**
- * Constant-time string comparison with no length oracle.
+ * Compare bounded, fixed-size digests instead of variable-length secrets.
  *
- * Always execute timingSafeEqual against the expected byte length, then apply
- * the length constraint to already-computed booleans.
+ * Header parsing already exposes attacker-controlled input length to the
+ * transport. The public cap prevents oversized allocation/work here; hashing
+ * then gives timingSafeEqual two fixed-size values without revealing the
+ * expected secret's length through the comparison primitive.
  */
 export function timingSafeEqualStr(presented: string, expected: string): boolean {
   const presentedBytes = Buffer.from(presented);
-  const expectedBytes = Buffer.from(expected);
-  const filled = Buffer.alloc(expectedBytes.length, 0);
-  presentedBytes.copy(filled, 0, 0, Math.min(presentedBytes.length, filled.length));
-  const contentMatch = timingSafeEqual(filled, expectedBytes);
-  const lengthMatch = presentedBytes.length === expectedBytes.length;
-  return contentMatch && lengthMatch;
+  if (presentedBytes.length > 4096) return false;
+  const presentedDigest = createHash('sha256').update(presentedBytes).digest();
+  const expectedDigest = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(presentedDigest, expectedDigest);
 }
