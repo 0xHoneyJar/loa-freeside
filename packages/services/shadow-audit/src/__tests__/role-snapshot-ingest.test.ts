@@ -200,6 +200,19 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     expect(await store.load(KEY_A)).toBeUndefined();
   });
 
+  it('rejects a future-dated snapshot before it can poison newest-wins ordering', async () => {
+    const store = makeInMemoryRoleStore('thj', testSources);
+    const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
+    const raw = JSON.stringify(snapshot({ captured_at: '2099-01-01T00:00:00.000Z' }));
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+    });
+
+    expect(res.status).toBe(422);
+    expect(await store.load(KEY_A)).toBeUndefined();
+  });
+
   it('rejects INVALID json with 400', async () => {
     const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink: store } }));

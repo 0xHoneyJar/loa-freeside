@@ -60,7 +60,10 @@ import {
   type RunEvent,
 } from '../event-store.js';
 import { createHash } from 'node:crypto';
-import { RoleSnapshotSchema } from '../role-snapshot.js';
+import {
+  ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+  RoleSnapshotSchema,
+} from '../role-snapshot.js';
 import type { RoleSink } from '../role-store.js';
 import { timingSafeEqualStr } from '../crypto-util.js';
 import { computeAccessRisk, type AccessRiskResult } from '../access-risk.js';
@@ -633,6 +636,12 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       }
       const parsed = RoleSnapshotSchema.safeParse(json);
       if (!parsed.success) return c.json({ error: 'invalid role snapshot' }, 422);
+      if (
+        Date.parse(parsed.data.captured_at) >
+        deps.now() + ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS
+      ) {
+        return c.json({ error: 'captured_at exceeds allowed clock skew' }, 422);
+      }
 
       // The community is caller-supplied and becomes a STORAGE KEY (one file per community+collection).
       // Without this gate, a token-holder could mint unbounded distinct communities and grow the store

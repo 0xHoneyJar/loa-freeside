@@ -15,6 +15,9 @@
  */
 
 import { z } from 'zod';
+
+/** Exporter clock skew tolerated before newest-wins ordering refuses the snapshot. */
+export const ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 import { ChainSchema } from '@freeside/shadow-audit-protocol';
 
 export const RoleSnapshotEntrySchema = z

@@ -60,7 +60,12 @@ class PersistentFakeRepository implements RoleSnapshotRepository {
     const current = this.rows.get(key);
     if (current && Date.parse(current.capturedAt) > Date.parse(record.capturedAt)) return false;
     if (current && Date.parse(current.capturedAt) === Date.parse(record.capturedAt)) {
-      if (RoleSnapshotSchema.safeParse(current.snapshot).success) return false;
+      const currentValid = RoleSnapshotSchema.safeParse(current.snapshot);
+      if (currentValid.success) {
+        const incoming = RoleSnapshotSchema.parse(record.snapshot);
+        if (JSON.stringify(currentValid.data) === JSON.stringify(incoming)) return false;
+        throw new Error(`role-store: conflicting valid snapshots share captured_at ${record.capturedAt}`);
+      }
     }
     this.rows.set(key, structuredClone(record));
     return true;
@@ -92,6 +97,12 @@ describe('repository-backed role store (arrakis-7mtwa)', () => {
     expect(await b.store(older)).toBe(false);
     expect((await b.load(HONEYCOMB_KEY))?.captured_at).toBe(newer.captured_at);
     expect(await a.store(newer)).toBe(false); // exact replay
+    await expect(
+      a.store({
+        ...newer,
+        entries: [{ discord_user_id: 'different', wallet: '0x' + '4'.repeat(40), role_ids: ['hc'] }],
+      }),
+    ).rejects.toThrow(/conflicting valid snapshots/);
   });
 
   it('isolates sibling collections and configured communities', async () => {
@@ -148,6 +159,18 @@ describe('Postgres role-snapshot encoding', () => {
         queries.push(query);
         if (query.includes('SELECT COALESCE(MAX(version)')) return Promise.resolve([{ version }]);
         if (query.includes('INSERT INTO shadow_audit_schema_migrations')) version = 1;
+        if (query.includes('FROM information_schema.columns')) {
+          return Promise.resolve([
+            { column_name: 'community', data_type: 'text', is_nullable: 'NO' },
+            { column_name: 'collection_key', data_type: 'text', is_nullable: 'NO' },
+            { column_name: 'captured_at', data_type: 'timestamp with time zone', is_nullable: 'NO' },
+            { column_name: 'snapshot', data_type: 'jsonb', is_nullable: 'NO' },
+            { column_name: 'updated_at', data_type: 'timestamp with time zone', is_nullable: 'NO' },
+          ]);
+        }
+        if (query.includes('FROM pg_constraint')) {
+          return Promise.resolve([{ columns: ['community', 'collection_key'] }]);
+        }
         return Promise.resolve([]);
       },
       { json: (value: unknown) => value },
@@ -161,10 +184,30 @@ describe('Postgres role-snapshot encoding', () => {
     expect(version).toBe(1);
   });
 
+  it('fails initialization when the migration ledger and live catalog disagree', async () => {
+    const tag = Object.assign(
+      (strings: TemplateStringsArray) => {
+        const query = strings.join(' ');
+        if (query.includes('SELECT COALESCE(MAX(version)')) return Promise.resolve([{ version: 1 }]);
+        if (query.includes('FROM information_schema.columns')) return Promise.resolve([]);
+        return Promise.resolve([]);
+      },
+      { json: (value: unknown) => value },
+    ) as unknown as Sql;
+
+    await expect(new PostgresRoleSnapshotRepository(tag).initialize()).rejects.toThrow(
+      /schema drift/,
+    );
+  });
+
   it('uses the driver JSON encoder with the object, not a pre-stringified JSON scalar', async () => {
     let encoded: unknown;
+    let upsertQuery = '';
     const tag = Object.assign(
-      (_strings: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve([{ stored: 1 }]),
+      (strings: TemplateStringsArray, ..._values: unknown[]) => {
+        upsertQuery = strings.join(' ');
+        return Promise.resolve([{ stored: 1 }]);
+      },
       {
         json(value: unknown) {
           encoded = value;
@@ -182,5 +225,23 @@ describe('Postgres role-snapshot encoding', () => {
       snapshot: valid,
     })).toBe(true);
     expect(encoded).toEqual(valid);
+    expect(upsertQuery).toContain("captured_at > NOW() + INTERVAL '5 minutes'");
+  });
+
+  it('rejects a future ordering timestamp even when called outside the HTTP adapter', async () => {
+    const tag = Object.assign(
+      (_strings: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve([]),
+      { json: (value: unknown) => value },
+    ) as unknown as Sql;
+    const now = Date.UTC(2026, 6, 18, 12, 0, 0);
+    const repository = new PostgresRoleSnapshotRepository(tag, () => now);
+    const future = snapshot({ captured_at: '2099-01-01T00:00:00.000Z' });
+
+    await expect(repository.storeIfNewer({
+      community: future.community,
+      collectionKey: HONEYCOMB_KEY,
+      capturedAt: future.captured_at,
+      snapshot: future,
+    })).rejects.toThrow(/clock skew/);
   });
 });

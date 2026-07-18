@@ -1,5 +1,9 @@
 import postgres, { type Sql } from 'postgres';
-import { RoleSnapshotSchema, type RoleSnapshot } from './role-snapshot.js';
+import {
+  ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+  RoleSnapshotSchema,
+  type RoleSnapshot,
+} from './role-snapshot.js';
 import { canonicalRoleCollectionKey, type DurableRoleStore } from './role-store.js';
 import type { SourceResolver } from './collection-union.js';
 
@@ -20,6 +24,9 @@ export interface RoleSnapshotRepository {
 
 const ROLE_STORE_COMPONENT = 'role-snapshot-store';
 const ROLE_STORE_SCHEMA_VERSION = 1;
+
+const canonicalSnapshotJson = (snapshot: RoleSnapshot): string =>
+  JSON.stringify(RoleSnapshotSchema.parse(snapshot));
 
 /**
  * RoleSource + RoleSink over a shared repository. Multiple application instances may construct this adapter;
@@ -62,7 +69,10 @@ export function makeRepositoryRoleStore(opts: {
  * compatibility.
  */
 export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
-  constructor(private readonly sql: Sql) {}
+  constructor(
+    private readonly sql: Sql,
+    private readonly now: () => number = () => Date.now(),
+  ) {}
 
   async initialize(): Promise<void> {
     await this.sql`
@@ -115,6 +125,46 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
         `role-store schema initialization incomplete: expected ${ROLE_STORE_SCHEMA_VERSION}, got ${verified}`,
       );
     }
+
+    const columns = await this.sql<
+      { column_name: string; data_type: string; is_nullable: 'YES' | 'NO' }[]
+    >`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'shadow_audit_role_snapshots'
+    `;
+    const requiredColumns = new Map([
+      ['community', ['text', 'NO']],
+      ['collection_key', ['text', 'NO']],
+      ['captured_at', ['timestamp with time zone', 'NO']],
+      ['snapshot', ['jsonb', 'NO']],
+      ['updated_at', ['timestamp with time zone', 'NO']],
+    ]);
+    for (const [name, [dataType, nullable]] of requiredColumns) {
+      const column = columns.find((candidate) => candidate.column_name === name);
+      if (!column || column.data_type !== dataType || column.is_nullable !== nullable) {
+        throw new Error(`role-store schema drift: required column ${name} is missing or incompatible`);
+      }
+    }
+
+    const primaryKeys = await this.sql<{ columns: string[] }[]>`
+      SELECT array_agg(attribute.attname ORDER BY key_column.ordinality) AS columns
+      FROM pg_constraint AS constraint_row
+      JOIN LATERAL unnest(constraint_row.conkey) WITH ORDINALITY
+        AS key_column(attnum, ordinality) ON TRUE
+      JOIN pg_attribute AS attribute
+        ON attribute.attrelid = constraint_row.conrelid
+       AND attribute.attnum = key_column.attnum
+      WHERE constraint_row.contype = 'p'
+        AND constraint_row.conrelid = 'shadow_audit_role_snapshots'::regclass
+      GROUP BY constraint_row.oid
+    `;
+    if (JSON.stringify(primaryKeys[0]?.columns) !== JSON.stringify(['community', 'collection_key'])) {
+      throw new Error(
+        'role-store schema drift: primary key must be (community, collection_key)',
+      );
+    }
   }
 
   async load(community: string, collectionKey: string): Promise<unknown | undefined> {
@@ -129,6 +179,10 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
 
   async storeIfNewer(record: RoleSnapshotRecord): Promise<boolean> {
     const snapshot = RoleSnapshotSchema.parse(record.snapshot);
+    const capturedAtMs = new Date(record.capturedAt).getTime();
+    if (capturedAtMs > this.now() + ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS) {
+      throw new Error('role-store: captured_at exceeds the allowed five-minute clock skew');
+    }
     const rows = await this.sql<{ stored: number }[]>`
       INSERT INTO shadow_audit_role_snapshots (
         community, collection_key, captured_at, snapshot, updated_at
@@ -144,6 +198,10 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
           snapshot = EXCLUDED.snapshot,
           updated_at = NOW()
       WHERE shadow_audit_role_snapshots.captured_at < EXCLUDED.captured_at
+         OR (
+           shadow_audit_role_snapshots.captured_at > NOW() + INTERVAL '5 minutes'
+           AND EXCLUDED.captured_at <= NOW() + INTERVAL '5 minutes'
+         )
       RETURNING 1 AS stored
     `;
     if (rows.length > 0) return true;
@@ -160,12 +218,15 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
       LIMIT 1
     `;
     const held = heldRows[0];
-    if (
-      !held ||
-      new Date(held.captured_at).getTime() !== new Date(record.capturedAt).getTime() ||
-      RoleSnapshotSchema.safeParse(held.snapshot).success
-    ) {
+    if (!held || new Date(held.captured_at).getTime() !== capturedAtMs) {
       return false;
+    }
+    const heldValid = RoleSnapshotSchema.safeParse(held.snapshot);
+    if (heldValid.success) {
+      if (canonicalSnapshotJson(heldValid.data) === canonicalSnapshotJson(snapshot)) return false;
+      throw new Error(
+        `role-store: conflicting valid snapshots share captured_at ${record.capturedAt}`,
+      );
     }
 
     const repaired = await this.sql<{ stored: number }[]>`
