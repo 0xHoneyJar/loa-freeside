@@ -11,6 +11,7 @@ import {
 } from './role-store.js';
 import type { SourceResolver } from './collection-union.js';
 import { PostgresFixedWindowRateLimiter } from './postgres-rate-limiter.js';
+import { RoleSourceDataError } from './audit-service.js';
 
 /** Database row owned by the role-store adapter. `snapshot` is validated at both boundaries. */
 export interface RoleSnapshotRecord {
@@ -47,7 +48,10 @@ export function makeRepositoryRoleStore(opts: {
   return {
     async load(collectionKey: string): Promise<RoleSnapshot | undefined> {
       const raw = await repository.load(community, collectionKey.toLowerCase());
-      return raw === undefined ? undefined : RoleSnapshotSchema.parse(raw);
+      if (raw === undefined) return undefined;
+      const parsed = RoleSnapshotSchema.safeParse(raw);
+      if (!parsed.success) throw new RoleSourceDataError();
+      return parsed.data;
     },
     async store(snap: RoleSnapshot): Promise<boolean> {
       const valid = RoleSnapshotSchema.parse(snap);

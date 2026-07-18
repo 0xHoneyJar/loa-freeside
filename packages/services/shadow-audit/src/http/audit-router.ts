@@ -287,6 +287,61 @@ async function readBody(c: Context): Promise<{ body: unknown; isForm: boolean }>
 export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const app = new Hono();
   const runWindow = deps.runWindowMs ?? DEFAULT_RUN_WINDOW_MS;
+  const COVERAGE_DRIFT_CACHE_TTL_MS = 60_000;
+  const COVERAGE_DRIFT_CACHE_MAX = 200;
+  const coverageDriftCache = new Map<string, { at: number; result: AuditServiceResult }>();
+  const aggregateInFlight = new Map<string, Promise<AuditServiceResult>>();
+
+  const aggregateCacheKey = (order: Order, snapshotDate: string): string => {
+    const sourceSet = deps.sources({
+      chain: order.source.chain,
+      contract: order.source.contract_address,
+    });
+    const collection = sourceSet ? canonicalCollectionKey(sourceSet) : 'unindexed';
+    return JSON.stringify([
+      collection,
+      order.community.name,
+      snapshotDate,
+      order.gating_rule.threshold,
+      deps.k ?? null,
+    ]);
+  };
+
+  /**
+   * Coverage refusals deliberately carry a counts-only drift board, which needs
+   * full collection reconstruction. Cache that stable diagnostic briefly so a
+   * polling dashboard does not replay every declared chain on every 422.
+   */
+  const aggregateAudit = async (order: Order, snapshotDate: string): Promise<AuditServiceResult> => {
+    const key = aggregateCacheKey(order, snapshotDate);
+    const now = deps.now();
+    const cached = coverageDriftCache.get(key);
+    if (cached && now - cached.at < COVERAGE_DRIFT_CACHE_TTL_MS) return cached.result;
+    if (cached) coverageDriftCache.delete(key);
+
+    const active = aggregateInFlight.get(key);
+    if (active) return active;
+    const computation = audit(deps, order, snapshotDate, false);
+    aggregateInFlight.set(key, computation);
+    try {
+      const result = await computation;
+      if (
+        !result.ok &&
+        result.refusal.code === 'role-coverage-too-low' &&
+        'drift' in result &&
+        result.drift
+      ) {
+        if (coverageDriftCache.size >= COVERAGE_DRIFT_CACHE_MAX) {
+          const oldest = coverageDriftCache.keys().next().value;
+          if (oldest !== undefined) coverageDriftCache.delete(oldest);
+        }
+        coverageDriftCache.set(key, { at: now, result });
+      }
+      return result;
+    } finally {
+      if (aggregateInFlight.get(key) === computation) aggregateInFlight.delete(key);
+    }
+  };
 
   const isRateLimited = (c: Context): boolean =>
     !deps.rateLimiter.check(deps.clientKey(c.req.header('x-forwarded-for'))).allowed;
@@ -411,8 +466,22 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       // replica. Install the promise BEFORE awaiting that remote decision, so identical local misses
       // cannot race through the budget and consume multiple deployment units.
       const computation: Promise<AccessRiskResult> = (async () => {
-        if (deps.teaserBudget && !(await deps.teaserBudget.check('deployment')).allowed) {
-          return { ok: false, refusal: rateLimitRefusal };
+        if (deps.teaserBudget) {
+          try {
+            if (!(await deps.teaserBudget.check('deployment')).allowed) {
+              return { ok: false, refusal: rateLimitRefusal };
+            }
+          } catch {
+            console.error(JSON.stringify({ event: 'teaser_budget_unavailable' }));
+            return {
+              ok: false,
+              refusal: {
+                code: 'upstream-exhausted',
+                reason: 'reconstruction budget unavailable',
+                retryable: true,
+              },
+            };
+          }
         }
         // Anti-abuse #3 (k-anon + meaningful-or-refuse) lives in computeAccessRisk: a sub-k denominator is
         // REFUSED (cohort-too-small) rather than served as a vacuous "no risk" or a back-computable ratio.
@@ -474,13 +543,15 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     const built = buildOrder(q.data);
     if (!built.ok) return c.json({ error: 'invalid order params' }, 400);
 
-    const result = await audit(deps, built.order, q.data.snapshot_date, false);
+    const result = await aggregateAudit(built.order, q.data.snapshot_date);
     if (!result.ok) {
       // A COVERAGE refusal carries the DRIFT BOARD. The wallet-derived aggregate is refused, but the
       // counts-only board needs no wallet map — and it is the only honest answer for a community at ~0%
       // identity coverage (thj). Omitting it here would mean every JSON consumer (the dashboard) shows an
       // empty state for exactly the community this was built for. The HTML view already renders it; the
       // JSON must too, or the drift is visible only to whoever curls the server.
+      // Contract proof: freeside-dashboard's strict `AuditRefusalSchema` explicitly admits optional
+      // `drift`, and its client test decodes this exact 422 shape. Success and refusal are separate schemas.
       return c.json(
         'drift' in result && result.drift
           ? { error: result.refusal, drift: result.drift }
@@ -627,7 +698,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     }
     const built = buildOrder(q.data);
     if (!built.ok) return c.html('<p>invalid order params</p>', 400);
-    const result = await audit(deps, built.order, q.data.snapshot_date, false);
+    const result = await aggregateAudit(built.order, q.data.snapshot_date);
     if (!result.ok) {
       // A COVERAGE refusal still carries the drift board (the counts-only report needs no wallet map).
       // Rendering the refusal alone would deny the report to the exact community it was built for: thj is

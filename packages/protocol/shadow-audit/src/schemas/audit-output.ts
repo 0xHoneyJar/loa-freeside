@@ -34,8 +34,11 @@ export const AuditAggregateSchema = z
     newly_eligible: CohortCountSchema,
     /** The "confront number": role-holders who no longer qualify. */
     stale_access: CohortCountSchema,
-    /** Top-holder share in [0,1] (whale concentration). */
-    whale_concentration: z.number().min(0).max(1),
+    /**
+     * Top-holder share in [0,1]. NULL when the source fails or a multi-source
+     * collection has no ratified economic-supply reconciliation rule.
+     */
+    whale_concentration: z.number().min(0).max(1).nullable(),
     stale_access_risk_band: RiskBandSchema,
 
     // ── ROLE COVERAGE — what we could NOT see (bug 20260712-486383) ────────────────────────────

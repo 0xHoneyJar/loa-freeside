@@ -44,6 +44,7 @@ export {
   type AuditRequest,
   type AuditDeps,
   type AuditServiceResult,
+  RoleSourceDataError,
 } from './audit-service.js';
 export {
   RunEventSchema,

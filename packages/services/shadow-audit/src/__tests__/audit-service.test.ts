@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { AuditOutputSchema, type Order } from '@freeside/shadow-audit-protocol';
 import {
+  RoleSourceDataError,
   runAudit,
   type AuditDeps,
   type AuditRequest,
@@ -98,6 +99,27 @@ describe('runAudit — refusals', () => {
     const r = await runAudit(req(), deps({ roles: rolesNone }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.refusal.code).toBe('external-mode');
+  });
+
+  it('maps a corrupt role snapshot to a non-retryable typed refusal', async () => {
+    const r = await runAudit(
+      req(),
+      deps({ roles: { load: async () => { throw new RoleSourceDataError(); } } }),
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal).toMatchObject({ code: 'reconstruction-failed', retryable: false });
+  });
+
+  it('maps a role-source outage to a retryable typed refusal', async () => {
+    const r = await runAudit(
+      req(),
+      deps({ roles: { load: async () => { throw new Error('database unavailable'); } } }),
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusal).toMatchObject({ code: 'upstream-exhausted', retryable: true });
+    expect(r.refusal.reason).not.toContain('database unavailable');
   });
 
   it('refuses (reconstruction-failed) when ownership throws', async () => {
@@ -269,9 +291,10 @@ describe('runAudit — multi-source collections (S5-T3)', () => {
   const bridgedReq = req({ order: beraOrder, includeRecords: true });
 
   it('a wallet holding ONLY on ethereum qualifies for an audit addressed via the berachain contract', async () => {
+    let whaleCalls = 0;
     const r = await runAudit(bridgedReq, {
       ownership: chainAware,
-      whale,
+      whale: { concentration: async () => { whaleCalls++; return 0.3; } },
       roles: bridgedRoles,
       sources: bothSources,
     });
@@ -286,6 +309,8 @@ describe('runAudit — multi-source collections (S5-T3)', () => {
     // Evidence is the balance on the chain the wallet actually holds on — checkable against ONE chain.
     const ethRec = r.output.records!.find((rec) => rec.wallet === ETH_ONLY);
     expect(ethRec?.evidence.balance_at_snapshot).toBe(1);
+    expect(r.output.aggregate.whale_concentration).toBeNull();
+    expect(whaleCalls).toBe(0);
   });
 
   it('UNION ≠ single-chain: the same fixture brands all six ethereum holders stale when a source is dropped', async () => {

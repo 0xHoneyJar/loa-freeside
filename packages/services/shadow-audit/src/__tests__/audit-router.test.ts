@@ -311,6 +311,26 @@ describe('role coverage on the wire (bug 20260712-486383)', () => {
     expect(body.error.retryable).toBe(false); // re-running changes nothing; the missing links do
   });
 
+  it('caches the expensive drift reconstruction carried by a coverage refusal', async () => {
+    let reconstructions = 0;
+    const app = createAuditRouter(
+      makeDeps({
+        roles: coverageRoles(1, 515),
+        ownership: {
+          ...ownership,
+          balancesAt: async (args) => {
+            reconstructions++;
+            return ownership.balancesAt(args);
+          },
+        },
+      }),
+    );
+
+    expect((await app.request(GET_URL)).status).toBe(422);
+    expect((await app.request(GET_URL)).status).toBe(422);
+    expect(reconstructions).toBe(1);
+  });
+
   it('GET /v1/audit (the JSON channel the dashboard reads) carries the coverage signal', async () => {
     // 14/20 = 70%: served, but labelled. 6 unmatched >= k → exact cohort, so the ratio is publishable.
     const app = createAuditRouter(makeDeps({ roles: coverageRoles(14, 20), k: 5 }));

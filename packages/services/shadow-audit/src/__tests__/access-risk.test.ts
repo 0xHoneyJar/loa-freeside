@@ -225,6 +225,28 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect((await hit(3)).status).toBe(429); // budget spent — rotation did not help
   });
 
+  it('fails closed with a typed 503 when the shared budget is unavailable', async () => {
+    const app = createAuditRouter(
+      makeDeps({
+        teaserBudget: {
+          check: async () => {
+            throw new Error('database unavailable');
+          },
+        },
+      }),
+    );
+
+    const response = await app.request(url());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'upstream-exhausted',
+        reason: 'reconstruction budget unavailable',
+        retryable: true,
+      },
+    });
+  });
+
   it('CACHE: an identical repeat query does ZERO chain work', async () => {
     let reconstructions = 0;
     const app = createAuditRouter(

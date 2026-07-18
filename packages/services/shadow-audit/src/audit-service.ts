@@ -26,7 +26,7 @@ import {
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
-import { collectionKey, resolveRoles, type RoleSnapshot } from './role-snapshot.js';
+import { resolveRoles, type RoleSnapshot } from './role-snapshot.js';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
 import { redactEndpoints } from './rpc-pool.js';
 import { computeDrift, countQualifying, roleMemberCount } from './drift-floors.js';
@@ -35,7 +35,6 @@ import {
   maxBalanceAcross,
   qualifiesAnySource,
   reconstructUnion,
-  sumAcross,
   UNION_SEMANTICS,
   walletsAcross,
   type SourceResolver,
@@ -67,6 +66,14 @@ export interface RoleSource {
    * collection A's audit compute stale-access against collection B's role-holders.
    */
   load(collection: string): Promise<RoleSnapshot | undefined>;
+}
+
+/** Persisted role data exists but cannot satisfy the current wire schema. Retrying cannot repair it. */
+export class RoleSourceDataError extends Error {
+  constructor() {
+    super('role snapshot is incompatible with the current schema');
+    this.name = 'RoleSourceDataError';
+  }
 }
 
 export interface AuditRequest {
@@ -170,7 +177,20 @@ export async function runAudit(
 
   // 2. Mode — dogfood-full or refuse (external / no snapshot). A community gates SEVERAL collections;
   //    the Honeycomb audit must read the Honeycomb gate's role-holders, never a sibling's.
-  const loaded = await deps.roles.load(collectionId);
+  let loaded: RoleSnapshot | undefined;
+  try {
+    loaded = await deps.roles.load(collectionId);
+  } catch (error) {
+    const corrupt = error instanceof RoleSourceDataError;
+    return {
+      ok: false,
+      refusal: {
+        code: corrupt ? 'reconstruction-failed' : 'upstream-exhausted',
+        reason: corrupt ? 'role snapshot is invalid and must be re-ingested' : 'role snapshot source unavailable',
+        retryable: !corrupt,
+      },
+    };
+  }
   // Belt and braces: a source that ignores the key (and hands back some OTHER collection's snapshot)
   // must not produce an audit. The loaded snapshot names a DEPLOYMENT, so canonicalize it through the
   // SAME registry before comparing — comparing deployment keys is exactly the bug this fixes.
@@ -252,19 +272,18 @@ export async function runAudit(
     (w) => qualifies(curBals, w) && !roleWallets.has(w),
   );
 
-  // 4. Whale concentration (best-effort; clamped to [0,1]) — over the SUMMED cross-chain supply.
-  //    Summing is correct HERE and wrong for qualification: concentration is a share-of-supply metric, and a
-  //    token exists on exactly one chain at a time, so a per-wallet cross-chain sum counts each live token
-  //    once. Qualification stays `any-source` (see UNION_SEMANTICS). Summing here is also what makes the
-  //    number DETERMINISTIC: computing it on "the deployment the caller happened to address" would give two
-  //    different outputs for one `inputs_hash` (which fingerprints the whole source set, not the addressing).
-  let whale = 0;
-  try {
-    whale = await deps.whale.concentration(sumAcross(curBals));
-  } catch {
-    whale = 0;
+  // 4. Whale concentration. Match the public teaser's epistemic contract: without collection-specific
+  // economic-supply reconciliation, a multi-source sum may count bridge escrow plus represented supply.
+  // A failed source is equally unknown. Both are NULL, never 0 ("no whale risk").
+  let whale: number | null = null;
+  if (perSource.length === 1) {
+    try {
+      whale = await deps.whale.concentration(curBals[0]!);
+      whale = Math.min(1, Math.max(0, whale));
+    } catch {
+      whale = null;
+    }
   }
-  whale = Math.min(1, Math.max(0, whale));
 
   // 5. Aggregate (k-anonymized cohorts + deterministic metrics).
   const soldLapsedCohort = kAnonCohort(soldLapsed.length, k);

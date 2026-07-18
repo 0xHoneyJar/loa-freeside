@@ -18,14 +18,22 @@
 
 import { readFile } from 'node:fs/promises';
 import { RoleSnapshotSchema, collectionKey, type RoleSnapshot } from './role-snapshot.js';
-import type { RoleSource } from './audit-service.js';
+import { RoleSourceDataError, type RoleSource } from './audit-service.js';
 
 export function makeFileRoleSource(path: string | undefined): RoleSource {
   return {
     async load(collection: string): Promise<RoleSnapshot | undefined> {
       if (!path) return undefined; // no export configured → external-mode refusal downstream
       const raw = await readFile(path, 'utf8'); // missing file → throws → fail loud (misconfig surfaces)
-      const snap = RoleSnapshotSchema.parse(JSON.parse(raw)); // invalid shape → throws → never serve wrong data
+      let decoded: unknown;
+      try {
+        decoded = JSON.parse(raw);
+      } catch {
+        throw new RoleSourceDataError();
+      }
+      const parsed = RoleSnapshotSchema.safeParse(decoded);
+      if (!parsed.success) throw new RoleSourceDataError();
+      const snap = parsed.data;
       // The file is ONE collection's export. Serving it for another collection would audit this gate's
       // role-holders against that collection's on-chain holders — the silent-catastrophe class.
       return collectionKey(snap.collection) === collection.toLowerCase() ? snap : undefined;
