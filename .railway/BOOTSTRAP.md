@@ -34,3 +34,20 @@ executable config, or tool-lock file. A later Railway PR's active
 `.railway/railway.ts` must be byte-identical to the default-branch trust-root
 copy, but the credentialed job executes only the trusted copy. Unrelated
 repository files are therefore outside the executable input closure.
+
+## Trust-root rotation sequence
+
+An intentional config rotation changes both `.railway/railway.ts` and
+`.railway/trusted-tools/railway.ts` to identical bytes in one PR:
+
+1. Both exact-head statuses begin pending.
+2. A non-author maintainer/admin runs Bridgebuilder. The default-branch
+   `railway-trust-root-review` validates that review without Railway credentials
+   and attests the candidate SHA.
+3. Only after that success may the protected plan run. It retains the old
+   default-branch evaluator, SDK lock, and CLI checksum; it extracts the
+   candidate config from the attested SHA, verifies it is byte-identical to the
+   active config, then evaluates that exact candidate.
+4. The PR merges only when both contexts succeed. If review is dismissed, the
+   candidate changes again, or the plan fails, no trust-root state advances;
+   `main` remains the rollback root.

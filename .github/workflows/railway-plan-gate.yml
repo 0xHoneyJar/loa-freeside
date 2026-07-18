@@ -21,8 +21,9 @@
 #   · Required environment reviewers approve that SHA before the job starts or receives the token.
 #   · RAILWAY_TOKEN lives in the environment, NOT as an automatically exposed repository secret.
 #   · The GATE SCRIPT AND EXECUTABLE CONFIG are fetched from the DEFAULT branch, never the reviewed ref.
-#     The reviewed `.railway/railway.ts` must be byte-identical to that trusted config, but is never executed
-#     in the credentialed job. This makes the executable input closure exact instead of path-heuristic.
+#     Normally the reviewed `.railway/railway.ts` must be byte-identical to that config. A rotation may use
+#     a candidate only after the separate credential-free trust-root status attests the exact SHA and its
+#     active/trusted copies are byte-identical. This makes the executable input closure explicit.
 #   · The Railway CLI + SDK are PINNED — `npm install -g @railway/cli` (unpinned) is arbitrary code
 #     running with the secret in env.
 #
@@ -161,6 +162,7 @@ jobs:
           )
       - name: Re-attest reviewed workspace before credentials
         env:
+          GH_TOKEN: ${{ github.token }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
         run: |
           set -euo pipefail
@@ -171,10 +173,28 @@ jobs:
             .railway/railway.ts \
             .railway/plan-baseline.json \
             >/dev/null
-          # The reviewed ref cannot extend the TypeScript dependency closure:
-          # credentialed evaluation uses this default-branch copy, and the
-          # reviewed declaration must be byte-identical to it.
-          cmp --silent .railway/railway.ts "$RUNNER_TEMP/railway-gate-trusted/railway.ts"
+          trusted_config="$RUNNER_TEMP/railway-gate-trusted/railway.ts"
+          if ! cmp --silent .railway/railway.ts "$trusted_config"; then
+            # Rotation protocol: the old/default evaluator and toolchain remain
+            # authoritative, but may plan an exact candidate config after the
+            # independent credential-free trust-root workflow attests this SHA.
+            trust_state=$(
+              gh api "repos/$GITHUB_REPOSITORY/commits/$REQUESTED_SHA/status" \
+                --jq '[.statuses[] | select(.context == "railway-trust-root-review")][0].state // "missing"'
+            )
+            if [ "$trust_state" != success ]; then
+              echo "::error::Candidate Railway config lacks a successful exact-head trust-root attestation."
+              exit 1
+            fi
+            git ls-files --error-unmatch .railway/trusted-tools/railway.ts >/dev/null
+            candidate="$RUNNER_TEMP/railway-gate-trusted/candidate-railway.ts"
+            git show "$REQUESTED_SHA:.railway/trusted-tools/railway.ts" > "$candidate"
+            if ! cmp --silent .railway/railway.ts "$candidate"; then
+              echo "::error::Active and independently attested candidate Railway configs differ."
+              exit 1
+            fi
+            mv "$candidate" "$trusted_config"
+          fi
 
       - name: Plan gate (READ-ONLY — never applies)
         id: plan
@@ -188,8 +208,8 @@ jobs:
             echo "::error title=railway-plan-gate NOT CONFIGURED::RAILWAY_TOKEN is missing from the protected railway-plan environment."
             exit 1
           fi
-          # Keep cwd at the reviewed workspace so the trusted CLI evaluates
-          # .railway/railway.ts while its SDK resolves through the trusted link.
+          # Keep cwd at the reviewed workspace for the baseline, but evaluate
+          # only the default or independently attested config in RUNNER_TEMP.
           PATH="$RUNNER_TEMP/railway-gate-trusted/bin:$PATH" \
             node "$RUNNER_TEMP/railway-gate-trusted/plan-gate.mjs"
 

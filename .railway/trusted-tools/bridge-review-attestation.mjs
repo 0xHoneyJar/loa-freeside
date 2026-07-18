@@ -4,7 +4,15 @@ import { pathToFileURL } from 'node:url';
 
 const TRUSTED_PERMISSIONS = new Set(['admin', 'maintain']);
 const ACCEPTED_REVIEW_STATES = new Set(['APPROVED', 'COMMENTED']);
-const SEVERITIES = new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'PRAISE']);
+const SEVERITIES = new Set([
+  'CRITICAL',
+  'HIGH',
+  'MEDIUM',
+  'LOW',
+  'PRAISE',
+  'SPECULATION',
+  'REFRAME',
+]);
 const BLOCKING = new Set(['CRITICAL', 'HIGH', 'MEDIUM']);
 const DOCUMENT_KEYS = new Set(['schema_version', 'findings']);
 const FINDING_KEYS = new Set([
@@ -30,10 +38,13 @@ const REQUIRED_STRING_FIELDS = [
   'file',
   'description',
   'suggestion',
+];
+const OPTIONAL_STRING_FIELDS = [
   'faang_parallel',
   'metaphor',
   'teachable_moment',
   'connection',
+  'decision_trail',
 ];
 
 const pending = (description) => ({ state: 'pending', description });
@@ -94,12 +105,16 @@ function parseFindings(body) {
         (field) => typeof finding[field] !== 'string' || finding[field].length === 0,
       ) ||
       !SEVERITIES.has(finding.severity) ||
-      typeof finding.confidence !== 'number' ||
-      !Number.isFinite(finding.confidence) ||
-      finding.confidence < 0 ||
-      finding.confidence > 1 ||
-      (finding.decision_trail !== undefined &&
-        (typeof finding.decision_trail !== 'string' || finding.decision_trail.length === 0)) ||
+      (finding.confidence !== undefined &&
+        (typeof finding.confidence !== 'number' ||
+          !Number.isFinite(finding.confidence) ||
+          finding.confidence < 0 ||
+          finding.confidence > 1)) ||
+      OPTIONAL_STRING_FIELDS.some(
+        (field) =>
+          finding[field] !== undefined &&
+          (typeof finding[field] !== 'string' || finding[field].length === 0),
+      ) ||
       ids.has(finding.id)
     ) {
       return null;

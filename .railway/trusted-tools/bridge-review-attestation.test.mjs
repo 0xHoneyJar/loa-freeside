@@ -58,6 +58,22 @@ test('accepts a non-author maintainer exact-head review with no blocking finding
   assert.equal(evaluate([review()]).state, 'success');
 });
 
+test('accepts the canonical unenriched Bridgebuilder finding fixture shape', () => {
+  const core = finding('LOW');
+  delete core.confidence;
+  delete core.faang_parallel;
+  delete core.metaphor;
+  delete core.teachable_moment;
+  delete core.connection;
+  assert.equal(evaluate([review({ body: body([core]) })]).state, 'success');
+});
+
+for (const severity of ['SPECULATION', 'REFRAME']) {
+  test(`accepts non-blocking ${severity} severity`, () => {
+    assert.equal(evaluate([review({ body: body([finding(severity)]) })]).state, 'success');
+  });
+}
+
 test('rejects a review from the pull-request author', () => {
   const result = evaluate(
     [review({ user: { login: 'author' } })],
