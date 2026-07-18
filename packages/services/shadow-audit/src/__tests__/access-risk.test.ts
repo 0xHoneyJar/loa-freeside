@@ -202,11 +202,11 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect(seen.size).toBe(1);
   });
 
-  it('HARD BOUND: rotating the client key does NOT bypass the global reconstruction budget', async () => {
+  it('PER-REPLICA HARD BOUND: rotating the client key does NOT bypass the reconstruction budget', async () => {
     // The live probe (2026-07-12) sent 9 requests with rotating X-Forwarded-For against the 6/min per-IP
     // teaser limit and NONE were limited — the caller supplies the key, so per-IP is not a bound at all.
-    // The global budget is keyed on a CONSTANT, so identity-rotation buys nothing. Per-IP is left wide
-    // open here precisely to prove the global bound is what bites.
+    // The per-replica budget is keyed on a CONSTANT, so identity-rotation buys nothing in this process.
+    // Per-IP is left wide open here precisely to prove that identity-independent bound is what bites.
     const app = createAuditRouter(
       makeDeps({
         teaserRateLimiter: new FixedWindowRateLimiter({ limit: 999, windowMs: 60_000, now: () => NOW_MS }),
@@ -357,6 +357,27 @@ describe('GET /v1/access-risk — the union (S5-T3)', () => {
     // Only W6 genuinely sold. W5 bridged — it still holds the collection, on ethereum.
     expect(body.sold_lapsed).toEqual({ kind: 'exact', value: 1 });
     expect(body.stale_access_upper_bound).toEqual({ kind: 'exact', value: 1 });
+  });
+
+  it('does not double-count bridge escrow when estimating whale concentration', async () => {
+    const concentration = vi.fn(async () => 0.25);
+    const app = createAuditRouter(
+      makeDeps({
+        ownership: bridgedOwnership,
+        whale: { concentration },
+        sources: bothSources,
+        collectionRegistry: bridgedRegistry as AuditRouterDeps['collectionRegistry'],
+        k: 1,
+      }),
+    );
+
+    const response = await app.request(url());
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(body.whale_concentration).toBeNull();
+    expect(body.disclosure).toContain('bridge escrow');
+    expect(concentration).not.toHaveBeenCalled();
   });
 
   it('DIFFERENTIAL: the single-source teaser reports the bridger as churned out; the union does not', async () => {

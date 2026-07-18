@@ -47,8 +47,8 @@ export interface AuditServerConfig {
   /** S2-T3: per-IP limit for the PUBLIC /v1/access-risk teaser (default 6 req / 60s). BEST-EFFORT — keyed
    *  on caller-supplied X-Forwarded-For; a live probe evaded it by rotating the header. */
   teaserRateLimit?: { limit: number; windowMs: number };
-  /** S2-T3 HARD BOUND: global cap on teaser chain-reconstructions (cache misses), keyed on a constant so
-   *  no header/IP rotation can raise it. Default 30 / 60s. */
+  /** S2-T3 PER-REPLICA HARD BOUND: teaser chain-reconstructions (cache misses), keyed on a constant so
+   *  no header/IP rotation can raise it inside one process. Default 30 / 60s. */
   teaserBudget?: { limit: number; windowMs: number };
   /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
@@ -121,9 +121,10 @@ export function buildAuditApp(
   // Tighter default for the unauthenticated teaser (S2-T3): 6/min per IP. BEST-EFFORT — the client key
   // comes from caller-supplied X-Forwarded-For (a live probe evaded it by rotating the header).
   const teaserRl = config.teaserRateLimit ?? { limit: 6, windowMs: 60_000 };
-  // The HARD bound (FAGAN 2026-07-12): a GLOBAL cap on teaser cache-MISSES — i.e. on actual chain
-  // reconstructions — keyed on a constant, so no amount of IP/header rotation raises it. 30/min bounds
-  // worst-case RPC spend on the public endpoint regardless of caller identity.
+  // The per-replica HARD bound (FAGAN 2026-07-12): a cap on teaser cache-MISSES — i.e. actual chain
+  // reconstructions — keyed on a constant, so no amount of IP/header rotation raises it inside this
+  // process. The MVP is single-replica. Do not scale horizontally until this limiter is backed by shared
+  // state; otherwise deployment-wide capacity grows by the replica count.
   const teaserBudgetCfg = config.teaserBudget ?? { limit: 30, windowMs: 60_000 };
 
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
@@ -183,7 +184,7 @@ export function buildAuditApp(
       windowMs: teaserRl.windowMs,
       now,
     }),
-    // The bound that actually holds: identity-INDEPENDENT global cap on chain reconstructions.
+    // The bound that actually holds in this process: identity-independent, per-replica reconstruction cap.
     teaserBudget: new FixedWindowRateLimiter({
       limit: teaserBudgetCfg.limit,
       windowMs: teaserBudgetCfg.windowMs,

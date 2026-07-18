@@ -45,7 +45,6 @@ import type { OwnershipSource, WhaleSource } from './audit-service.js';
 import {
   qualifiesAnySource,
   reconstructUnion,
-  sumAcross,
   UNION_SEMANTICS,
   walletsAcross,
   type SourceResolver,
@@ -114,7 +113,10 @@ export interface AccessRiskOutput {
    * When n is suppressed, no true-ratio-derived number may be emitted at all.
    */
   holder_turnover: number | null;
-  /** NULL when the whale source failed — a failed computation must never read as "no whale risk". */
+  /**
+   * NULL when the whale source failed OR the collection has multiple deployments whose economic supply
+   * cannot be reconciled safely. A missing value must never read as "no whale risk".
+   */
   whale_concentration: number | null;
   /**
    * Risk band. When `sold_lapsed` is exact, this is the true band. When suppressed, it is the band of the
@@ -137,7 +139,8 @@ const DISCLOSURE =
   'the CEILING on stale access attributable to sales, not the actual stale-access set. The real number ' +
   'requires your role snapshot (who actually holds the role today). Computed across EVERY chain your ' +
   'collection is deployed on: a wallet that qualifies on any one of them still qualifies, so moving a ' +
-  'token between chains is not counted as selling it.';
+  'token between chains is not counted as selling it. Whale concentration is unavailable for multi-chain ' +
+  'collections until bridge escrow and represented supply can be reconciled without double-counting.';
 
 export async function computeAccessRisk(
   req: AccessRiskRequest,
@@ -215,16 +218,18 @@ export async function computeAccessRisk(
   }
 
   // 4. Whale concentration. A FAILED computation must be NULL, never 0 — on a public, sales-facing payload
-  //    a coerced 0 reads as an affirmative "no whale risk", which is a silent lie.
-  //    Measured over the SUMMED cross-chain supply (see sumAcross): concentration is a share-of-supply
-  //    metric, so summing is right here — and it keeps the number independent of WHICH deployment the
-  //    caller addressed, which the shared inputs_hash requires.
+  //    a coerced 0 reads as an affirmative "no whale risk", which is a silent lie. The same applies to a
+  //    multi-source collection: summing deployments may double-count bridge escrow + represented supply,
+  //    while taking either deployment alone would understate concentration. Until the collection registry
+  //    carries explicit economic-supply reconciliation rules, the only honest multi-source result is NULL.
   let whale: number | null = null;
-  try {
-    const w = await deps.whale.concentration(sumAcross(curBals));
-    whale = Math.min(1, Math.max(0, w));
-  } catch {
-    whale = null;
+  if (perSource.length === 1) {
+    try {
+      const w = await deps.whale.concentration(curBals[0]!);
+      whale = Math.min(1, Math.max(0, w));
+    } catch {
+      whale = null;
+    }
   }
 
   // 5. Aggregate — k-anon every cohort.

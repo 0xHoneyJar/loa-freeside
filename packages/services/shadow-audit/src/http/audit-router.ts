@@ -107,13 +107,14 @@ export interface AuditRouterDeps {
    *  BEST-EFFORT ONLY — do NOT rely on this as the abuse bound. It is keyed on the client identifier
    *  derived from X-Forwarded-For, which is CALLER-SUPPLIED. A live probe (2026-07-12) sent 9 requests with
    *  rotating XFF against the 6/min teaser and NONE were limited. Treat per-IP as a speed bump; the real
-   *  bound is `teaserBudget` + the cache below. */
+   *  per-replica bound is `teaserBudget` + the cache below. */
   teaserRateLimiter?: RateLimiter;
   /**
-   * S2-T3 HARD BOUND (FAGAN 2026-07-12): a GLOBAL budget on the expensive path, keyed on a CONSTANT — not
-   * on the client. Because the caller identity on a public endpoint is unforgeable-by-nobody, the only
-   * bound that actually holds is one that does not depend on identity at all. This caps total chain
-   * reconstructions per window no matter who calls, how many IPs they rotate, or what headers they forge.
+   * S2-T3 PER-REPLICA HARD BOUND (FAGAN 2026-07-12): an identity-independent budget on the expensive path,
+   * keyed on a CONSTANT — not on the client. This caps chain reconstructions handled by this process per
+   * window no matter who calls, how many IPs they rotate, or what headers they forge. It is deliberately
+   * not described as deployment-global: multiple replicas multiply this budget until it moves to a shared
+   * store. The MVP deployment is single-replica; scaling it requires a distributed limiter first.
    */
   teaserBudget?: RateLimiter;
   /** S2-T3: TTL for memoizing the (deterministic) teaser result, so repeat queries cost ZERO chain work. */
@@ -380,11 +381,11 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (existing) {
       result = await existing;
     } else {
-      // Anti-abuse #5 — the HARD BOUND: a GLOBAL budget on cache MISSES (the only expensive path), keyed on
-      // a constant, NOT on the caller. FixedWindowRateLimiter.check mutates synchronously, so at most the
-      // configured number of DISTINCT misses enter reconstruction per window. The in-flight map above
-      // additionally makes identical concurrent misses share one reconstruction and one budget unit.
-      if (deps.teaserBudget && !deps.teaserBudget.check('global').allowed) {
+      // Anti-abuse #5 — the per-replica HARD BOUND on cache MISSES (the only expensive path), keyed on a
+      // constant, NOT on the caller. FixedWindowRateLimiter.check mutates synchronously, so at most the
+      // configured number of DISTINCT misses enter reconstruction per process/window. The in-flight map
+      // above additionally makes identical concurrent misses share one reconstruction and one budget unit.
+      if (deps.teaserBudget && !deps.teaserBudget.check('replica').allowed) {
         return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
       }
 
