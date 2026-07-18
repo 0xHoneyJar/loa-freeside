@@ -25,7 +25,7 @@
  *   (community, collection). Tracked deviation-with-rationale in the sprint report.
  */
 
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { RoleSnapshotSchema, type RoleSnapshot } from './role-snapshot.js';
@@ -90,18 +90,6 @@ function keyOf(snap: RoleSnapshot, sources: SourceResolver): string {
 /** A store that is BOTH the audit's read port (`RoleSource`) and the ingestion write port (`RoleSink`). */
 export interface DurableRoleStore extends RoleSource, RoleSink {}
 
-/** Constant-time string compare (no length/timing oracle) — used for the ingestion service-token. */
-export function timingSafeEqualStr(presented: string, expected: string): boolean {
-  const p = Buffer.from(presented);
-  const e = Buffer.from(expected);
-  // Pad to the reference length so timingSafeEqual always runs; enforce length on the resulting booleans
-  // (never short-circuit on length — that leaks the correct length as a timing oracle). Mirrors server.ts §12.3.
-  const filled = Buffer.alloc(e.length, 0);
-  p.copy(filled, 0, 0, Math.min(p.length, filled.length));
-  const contentMatch = timingSafeEqual(filled, e);
-  return contentMatch && p.length === e.length;
-}
-
 /** Per-(community, collection) filename — sha256 of the store key, so an arbitrary community or contract
  *  string can never traverse the data dir (both are caller-supplied; a raw name could carry `/` or `..`).
  *  Both fields are recorded INSIDE the JSON, so the on-boot scan rebuilds the map from file contents, not
@@ -132,11 +120,18 @@ export function makeDurableRoleStore(opts: {
     try {
       const snap = RoleSnapshotSchema.parse(JSON.parse(readFileSync(join(dir, name), 'utf8')));
       latest.set(keyOf(snap, sources), snap);
-    } catch {
+    } catch (error) {
       // A corrupt/foreign file must not crash boot; skip it (the next ingestion overwrites cleanly).
       // NOTE (S5-T1): a snapshot written BEFORE `collection` existed on the wire lands here — it no longer
       // parses, so it is dropped rather than served under a guessed collection. Re-POST it (one exporter
       // command); the store is a cache of the exporter's output, never a source of truth.
+      console.warn(
+        JSON.stringify({
+          event: 'role_snapshot_startup_skip',
+          file: name,
+          error_type: error instanceof Error ? error.name : 'UnknownError',
+        }),
+      );
     }
   }
 

@@ -161,18 +161,47 @@ if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
 }
 const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore });
 
-for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-  process.once(signal, () => {
-    if (!postgresConnection) {
-      process.exit(0);
-    }
-    void postgresConnection.close().finally(() => process.exit(0));
-  });
-}
-
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(
     `[shadow-audit-api] listening on http://0.0.0.0:${info.port} · operated=${process.env.OPERATED_COMMUNITIES ?? '(unset!)'} · key=${process.env.SHADOW_AUDIT_API_KEY ? 'set' : 'OPEN'}`,
   );
 });
+
+let shutdownStarted = false;
+async function shutdown(signal: 'SIGTERM' | 'SIGINT'): Promise<void> {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  console.log(`[shadow-audit-api] ${signal}: draining HTTP requests`);
+
+  const forceExit = setTimeout(() => {
+    console.error('[shadow-audit-api] graceful shutdown timed out');
+    process.exit(1);
+  }, 5_000);
+  forceExit.unref();
+
+  try {
+    // Stop accepting new work and wait for active requests before closing the database they may still use.
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    await postgresConnection?.close();
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (error) {
+    console.error(
+      `[shadow-audit-api] graceful shutdown failed: ${error instanceof Error ? error.name : 'UnknownError'}`,
+    );
+    clearTimeout(forceExit);
+    process.exit(1);
+  }
+}
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    void shutdown(signal);
+  });
+}

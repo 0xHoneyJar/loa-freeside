@@ -19,13 +19,13 @@
  * never half-serve named records.
  */
 
-import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 import type { CollectionIndex } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
 import { makeDurableRoleStore, type DurableRoleStore } from './role-store.js';
+import { timingSafeEqualStr } from './crypto-util.js';
 import { makeBalanceWhaleSource } from './whale-source.js';
 import { InMemoryEventStore } from './event-store.js';
 import { InMemoryNonceStore } from './association-verifier.js';
@@ -204,8 +204,8 @@ export function buildAuditApp(
   const app = new Hono();
   // X-API-Key gate (the dashboard's access-audit client sends `X-API-Key`). /healthz stays open for
   // deploy health checks. Defense-in-depth on top of the deploy's own network boundary.
-  if (config.apiKey) {
-    const keyBuf = Buffer.from(config.apiKey);
+  const apiKey = config.apiKey;
+  if (apiKey) {
     app.use('*', async (c, next) => {
       // /healthz + the OPEN capability read (membership only, no member data) skip the key gate.
       // /v1/role-snapshot is exempt too — it is a DIFFERENT principal (the service exporter) authenticated
@@ -222,16 +222,8 @@ export function buildAuditApp(
         /^\/v1\/collections\/[^/]+\/[^/]+$/.test(c.req.path)
       )
         return next();
-      const got = Buffer.from(c.req.header('x-api-key') ?? '');
-      // §12.3 constant-time verify: always run timingSafeEqual — never short-circuit on length mismatch.
-      // A `got.length === keyBuf.length &&` guard placed BEFORE timingSafeEqual turns the key length
-      // into a timing oracle (attacker learns correct length in O(1)). Fix: pad/truncate the received
-      // value to the reference length so timingSafeEqual always executes, then enforce the length
-      // constraint on already-computed booleans (no timing leak from `&&` on plain booleans).
-      const filled = Buffer.alloc(keyBuf.length, 0);
-      got.copy(filled, 0, 0, Math.min(got.length, filled.length));
-      const contentMatch = timingSafeEqual(filled, keyBuf);
-      const ok = contentMatch && got.length === keyBuf.length;
+      // One shared constant-time primitive protects both API-key and ingest-token boundaries.
+      const ok = timingSafeEqualStr(c.req.header('x-api-key') ?? '', apiKey);
       if (!ok) return new Response(null, { status: 401 }); // §12.3: no body detail on auth failure
       await next();
     });

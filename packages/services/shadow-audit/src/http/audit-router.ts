@@ -61,7 +61,8 @@ import {
 } from '../event-store.js';
 import { createHash } from 'node:crypto';
 import { RoleSnapshotSchema } from '../role-snapshot.js';
-import { timingSafeEqualStr, type RoleSink } from '../role-store.js';
+import type { RoleSink } from '../role-store.js';
+import { timingSafeEqualStr } from '../crypto-util.js';
 import { computeAccessRisk } from '../access-risk.js';
 
 export interface AuditRouterDeps {
@@ -121,6 +122,42 @@ const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
 /** Hard cap on an ingested role snapshot (S1-T4). ~10 MB comfortably holds a very large guild export;
  *  beyond that a caller is abusing the endpoint, not exporting a Discord guild. */
 const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
+
+type BoundedBodyResult = { ok: true; text: string } | { ok: false; reason: 'too-large' };
+
+/** Read and decode at most `maxBytes`, cancelling the stream as soon as it exceeds the bound. */
+async function readBoundedText(request: Request, maxBytes: number): Promise<BoundedBodyResult> {
+  const body = request.body;
+  if (!body) return { ok: true, text: '' };
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytesRead = 0;
+
+  try {
+    while (true) {
+      // oxlint-disable-next-line no-await-in-loop -- stream chunks must be consumed sequentially
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > maxBytes) {
+        // oxlint-disable-next-line no-await-in-loop -- cancel the same reader before returning
+        await reader.cancel('snapshot too large');
+        return { ok: false, reason: 'too-large' };
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(bytesRead);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { ok: true, text: new TextDecoder().decode(bytes) };
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 type RefusalStatus = 404 | 422 | 429 | 503;
 
@@ -536,8 +573,8 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       if (!timingSafeEqualStr(c.req.header('x-ingest-token') ?? '', ingest.token)) {
         return new Response(null, { status: 401 });
       }
-      // Bound the body BEFORE reading it. A valid token is not a licence to stream multi-GB into sha256 +
-      // JSON.parse; a leaked/compromised token would otherwise be a trivial memory-exhaustion vector.
+      // Reject an honestly declared oversize body before reading, then enforce the same limit while
+      // streaming because Content-Length is optional and caller-controlled.
       const declaredLen = Number(c.req.header('content-length') ?? '0');
       if (Number.isFinite(declaredLen) && declaredLen > MAX_SNAPSHOT_BYTES) {
         return c.json({ error: 'snapshot too large' }, 413);
@@ -545,10 +582,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
       // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an
       // integrity failure, not a parse error.
-      const raw = await c.req.text();
-      if (Buffer.byteLength(raw, 'utf8') > MAX_SNAPSHOT_BYTES) {
-        return c.json({ error: 'snapshot too large' }, 413); // Content-Length absent or lied
-      }
+      const boundedBody = await readBoundedText(c.req.raw, MAX_SNAPSHOT_BYTES);
+      if (!boundedBody.ok) return c.json({ error: 'snapshot too large' }, 413);
+      const raw = boundedBody.text;
       const declared = (c.req.header('x-snapshot-sha256') ?? '').toLowerCase();
       const actual = createHash('sha256').update(raw, 'utf8').digest('hex');
       if (!declared || !timingSafeEqualStr(declared, actual)) {
@@ -582,7 +618,21 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         return c.json({ error: 'collection is not in the audited collection registry', chain, contract }, 422);
       }
 
-      const stored = await ingest.sink.store(parsed.data);
+      let stored: boolean;
+      try {
+        stored = await ingest.sink.store(parsed.data);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: 'role_snapshot_store_failed',
+            community: parsed.data.community,
+            collection: parsed.data.collection,
+            captured_at: parsed.data.captured_at,
+            error_type: error instanceof Error ? error.name : 'UnknownError',
+          }),
+        );
+        return c.json({ error: { code: 'snapshot-store-failed', retryable: true } }, 503);
+      }
       // Minimal receipt — the exporter reconciles on (community, collection, captured_at, entries), no member
       // data echoed. `stored:false` means an equal-or-newer snapshot is already held FOR THIS COLLECTION
       // (replay / out-of-order delivery); it is a successful no-op, NOT an error — the exporter is

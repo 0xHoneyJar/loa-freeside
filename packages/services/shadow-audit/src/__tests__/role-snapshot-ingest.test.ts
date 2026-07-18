@@ -7,7 +7,7 @@
  * ingest config → route 404), the audit reading the ingested snapshot (the seam), restart durability, and
  * the S5-T1 multi-collection invariants (siblings coexist; monotonicity is per-collection).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -253,6 +253,41 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
       'content-length': String(11 * 1024 * 1024), // declares > 10 MB cap
     });
     expect(res.status).toBe(413);
+  });
+
+  it('aborts an oversized streamed body when Content-Length is absent', async () => {
+    const store = makeInMemoryRoleStore('thj', testSources);
+    const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));
+    const raw = 'x'.repeat(10 * 1024 * 1024 + 1);
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it('returns a structured retryable 503 when durable storage fails', async () => {
+    const sink: RoleSink = {
+      store: async () => {
+        throw new Error('database unavailable');
+      },
+    };
+    const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink } }));
+    const raw = JSON.stringify(snapshot());
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const res = await postSnapshot(app, raw, {
+        'x-ingest-token': TOKEN,
+        'x-snapshot-sha256': sha256hex(raw),
+      });
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({
+        error: { code: 'snapshot-store-failed', retryable: true },
+      });
+      expect(log).toHaveBeenCalledOnce();
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('does NOT mount the route when ingestion is unconfigured (fail-closed → 404)', async () => {

@@ -1,7 +1,4 @@
 /**
-import { runAudit, type Balances } from '../audit-service.js';
-import type { Order } from '@freeside/shadow-audit-protocol';
-import type { RoleSnapshot } from '../role-snapshot.js';
  * S5-T4 — the two provable drift floors.
  *
  * Grounded on the LIVE board (2026-07-12). thj has ~0% discord→wallet coverage, so the audit cannot name
