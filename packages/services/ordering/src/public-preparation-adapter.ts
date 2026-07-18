@@ -65,7 +65,8 @@ function prepIngredientJobs(
     ingredient: "sonar" as const,
     kind: "http_enqueue" as const,
     external_ref: item.external_job_ref ?? item.work_item_id,
-    idempotency_key: ingredientJobIdempotencyKey(orderId, "sonar"),
+    // Distinct per child — multi-deployment must not collide on orderId:sonar.
+    idempotency_key: `${ingredientJobIdempotencyKey(orderId, "sonar")}:${item.work_item_id}`,
     enqueued_at_unix: Math.floor(work.updated_at_unix_ms / 1000),
   }));
 }
@@ -143,11 +144,14 @@ export class PublicPreparationAdapter {
       });
     }
 
+    let activeLease:
+      | { reservation_id: string; expected_version: number }
+      | undefined;
     if (this.deps.capacityStore) {
       const links = await this.deps.preparationStore.listActiveLinks(workId);
       const firstOrder = links[0]?.order_id;
       if (firstOrder) {
-        await this.deps.capacityStore.acquireActiveExecutionLease({
+        const acquired = await this.deps.capacityStore.acquireActiveExecutionLease({
           order_id: firstOrder,
           pool_scope: {
             network_ref: work.finality_policy_version.split(":")[0] ?? "public",
@@ -155,6 +159,12 @@ export class PublicPreparationAdapter {
           },
           now_ms: now,
         });
+        if (acquired.kind === "acquired") {
+          activeLease = {
+            reservation_id: acquired.reservation.reservation_id,
+            expected_version: acquired.reservation.reservation_version,
+          };
+        }
       }
     }
 
@@ -222,10 +232,23 @@ export class PublicPreparationAdapter {
     });
     if (finalized.kind === "ready") {
       await this.advanceLinkedOrders(finalized.work);
+      await this.releaseActiveExecutionLease(activeLease);
       return { kind: "advanced", work_id: workId };
     }
     await this.syncOrderPrepProjection(workId, work, afterItems);
     return { kind: "idle" };
+  }
+
+  private async releaseActiveExecutionLease(
+    lease: { reservation_id: string; expected_version: number } | undefined,
+  ): Promise<void> {
+    if (!lease || !this.deps.capacityStore) return;
+    await this.deps.capacityStore.releaseReservation({
+      reservation_id: lease.reservation_id,
+      expected_version: lease.expected_version,
+      reason: "prep_ready",
+      now_ms: this.deps.now(),
+    });
   }
 
   async reconcileLostDispatches(nowMs: number): Promise<void> {

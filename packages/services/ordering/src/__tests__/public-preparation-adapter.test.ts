@@ -122,11 +122,6 @@ async function admitOrder(
   return result;
 }
 
-/** Advance past worker lease so a subsequent processWork can reclaim. */
-function expireLease(now: { value: number }): void {
-  now.value += 31_000;
-}
-
 describe("CR-204A public preparation adapter", () => {
   it("creates/joins work at admission before Sonar dispatch", async () => {
     const h = makeHarness();
@@ -154,8 +149,10 @@ describe("CR-204A public preparation adapter", () => {
     const firstCalls = h.sonar.dispatchCalls.length;
     const firstKeys = new Set(h.sonar.dispatchCalls.map((c) => c.command_inbox_key));
 
-    expireLease({ value: now });
-    await h.adapter.processWork(admitted.work_id);
+    // Advance the live harness clock past PUBLIC_PREP_WORKER_LEASE_MS so reclaim runs.
+    now += 31_000;
+    const redelivered = await h.adapter.processWork(admitted.work_id);
+    expect(redelivered.kind).not.toBe("busy");
     expect(h.sonar.dispatchCalls.length).toBe(firstCalls);
     expect(new Set(h.sonar.dispatchCalls.map((c) => c.command_inbox_key))).toEqual(firstKeys);
   });
@@ -322,10 +319,25 @@ describe("CR-204A public preparation adapter", () => {
     }
 
     now += 31_000;
+    await h.capacity.reconcileExpiredActiveLeases({ now_ms: now });
+    const activeBefore = (await h.capacity.snapshotAccounting()).active_execution.consumed;
     const result = await h.adapter.processWork(admitted.work_id);
     expect(result.kind).toBe("advanced");
     const work = await h.preparationStore.getWork(admitted.work_id);
     expect(work?.state).toBe("ready");
+
+    const order = await h.orderStore.get(admitted.order.order_id);
+    const keys = (order?.ingredient_jobs ?? []).map((j) => j.idempotency_key);
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+    for (const key of keys) {
+      expect(key).toContain(admitted.order.order_id);
+      expect(key).toContain("sonar");
+    }
+
+    // Ready path must release the active execution lease acquired on this tick.
+    const activeAfter = (await h.capacity.snapshotAccounting()).active_execution.consumed;
+    expect(activeAfter).toBe(activeBefore);
   });
 
   it("advances every linked eligible order when work becomes ready", async () => {
