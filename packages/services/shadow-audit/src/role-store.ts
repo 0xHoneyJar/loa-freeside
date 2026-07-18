@@ -46,6 +46,16 @@ export interface RoleSink {
   store(snap: RoleSnapshot): Promise<boolean>;
 }
 
+/** Two different valid snapshots claim the same monotonic version. Retrying cannot resolve this. */
+export class RoleSnapshotConflictError extends Error {
+  readonly code = 'ROLE_SNAPSHOT_VERSION_CONFLICT';
+
+  constructor() {
+    super('role-store: conflicting valid snapshots share captured_at');
+    this.name = 'RoleSnapshotConflictError';
+  }
+}
+
 /** True iff `candidate` was captured strictly after `existing`. Equal timestamps are NOT newer (a replay). */
 function isNewer(candidate: RoleSnapshot, existing: RoleSnapshot | undefined): boolean {
   if (!existing) return true;

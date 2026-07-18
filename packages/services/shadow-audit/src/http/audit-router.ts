@@ -64,7 +64,7 @@ import {
   ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS,
   RoleSnapshotSchema,
 } from '../role-snapshot.js';
-import type { RoleSink } from '../role-store.js';
+import { RoleSnapshotConflictError, type RoleSink } from '../role-store.js';
 import { timingSafeEqualStr } from '../crypto-util.js';
 import { computeAccessRisk, type AccessRiskResult } from '../access-risk.js';
 
@@ -694,6 +694,21 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       try {
         stored = await ingest.sink.store(parsed.data);
       } catch (error) {
+        if (error instanceof RoleSnapshotConflictError) {
+          console.error(
+            JSON.stringify({
+              event: 'role_snapshot_version_conflict',
+              community: parsed.data.community,
+              collection: parsed.data.collection,
+              captured_at: parsed.data.captured_at,
+              error_type: error.name,
+            }),
+          );
+          return c.json(
+            { error: { code: 'snapshot-version-conflict', retryable: false } },
+            409,
+          );
+        }
         console.error(
           JSON.stringify({
             event: 'role_snapshot_store_failed',

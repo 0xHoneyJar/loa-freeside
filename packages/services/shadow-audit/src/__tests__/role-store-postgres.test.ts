@@ -8,6 +8,7 @@ import {
 import type { Sql } from 'postgres';
 import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
 import { RoleSnapshotSchema, type RoleSnapshot } from '../role-snapshot.js';
+import { RoleSnapshotConflictError } from '../role-store.js';
 
 const ETH = '0x' + 'a'.repeat(40);
 const BERA = '0x' + 'b'.repeat(40);
@@ -64,7 +65,7 @@ class PersistentFakeRepository implements RoleSnapshotRepository {
       if (currentValid.success) {
         const incoming = RoleSnapshotSchema.parse(record.snapshot);
         if (JSON.stringify(currentValid.data) === JSON.stringify(incoming)) return false;
-        throw new Error(`role-store: conflicting valid snapshots share captured_at ${record.capturedAt}`);
+        throw new RoleSnapshotConflictError();
       }
     }
     this.rows.set(key, structuredClone(record));
@@ -175,7 +176,7 @@ describe('Postgres role-snapshot encoding', () => {
       },
       { json: (value: unknown) => value },
     ) as unknown as Sql;
-    const repository = new PostgresRoleSnapshotRepository(tag);
+    const repository = new PostgresRoleSnapshotRepository(tag, sources);
 
     await repository.initialize();
 
@@ -195,7 +196,7 @@ describe('Postgres role-snapshot encoding', () => {
       { json: (value: unknown) => value },
     ) as unknown as Sql;
 
-    await expect(new PostgresRoleSnapshotRepository(tag).initialize()).rejects.toThrow(
+    await expect(new PostgresRoleSnapshotRepository(tag, sources).initialize()).rejects.toThrow(
       /schema drift/,
     );
   });
@@ -215,7 +216,7 @@ describe('Postgres role-snapshot encoding', () => {
         },
       },
     ) as unknown as Sql;
-    const repository = new PostgresRoleSnapshotRepository(tag);
+    const repository = new PostgresRoleSnapshotRepository(tag, sources);
     const valid = snapshot();
 
     expect(await repository.storeIfNewer({
@@ -234,7 +235,7 @@ describe('Postgres role-snapshot encoding', () => {
       { json: (value: unknown) => value },
     ) as unknown as Sql;
     const now = Date.UTC(2026, 6, 18, 12, 0, 0);
-    const repository = new PostgresRoleSnapshotRepository(tag, () => now);
+    const repository = new PostgresRoleSnapshotRepository(tag, sources, () => now);
     const future = snapshot({ captured_at: '2099-01-01T00:00:00.000Z' });
 
     await expect(repository.storeIfNewer({
@@ -243,5 +244,33 @@ describe('Postgres role-snapshot encoding', () => {
       capturedAt: future.captured_at,
       snapshot: future,
     })).rejects.toThrow(/clock skew/);
+  });
+
+  it('rejects caller metadata that contradicts the validated snapshot', async () => {
+    let queried = false;
+    const tag = Object.assign(
+      (_strings: TemplateStringsArray, ..._values: unknown[]) => {
+        queried = true;
+        return Promise.resolve([]);
+      },
+      { json: (value: unknown) => value },
+    ) as unknown as Sql;
+    const repository = new PostgresRoleSnapshotRepository(tag, sources);
+    const valid = snapshot();
+
+    for (const record of [
+      { community: 'other', collectionKey: HONEYCOMB_KEY, capturedAt: valid.captured_at },
+      { community: valid.community, collectionKey: HJ1_KEY, capturedAt: valid.captured_at },
+      {
+        community: valid.community,
+        collectionKey: HONEYCOMB_KEY,
+        capturedAt: '2026-07-12T12:00:01.000Z',
+      },
+    ]) {
+      await expect(
+        repository.storeIfNewer({ ...record, snapshot: valid }),
+      ).rejects.toThrow(/metadata does not match/);
+    }
+    expect(queried).toBe(false);
   });
 });

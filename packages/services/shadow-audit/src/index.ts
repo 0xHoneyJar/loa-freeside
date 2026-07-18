@@ -79,6 +79,9 @@ export {
 } from './rate-limiter.js';
 export { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 export {
+  RoleSnapshotConflictError,
+} from './role-store.js';
+export {
   makeRepositoryRoleStore,
   PostgresRoleSnapshotRepository,
   connectPostgresRoleSnapshotRepository,

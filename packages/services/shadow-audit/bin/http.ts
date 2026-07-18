@@ -155,7 +155,7 @@ if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
   if (!community || !config.databaseUrl) {
     throw new Error('Postgres role-store configuration is incomplete');
   }
-  postgresConnection = connectPostgresRoleSnapshotRepository(config.databaseUrl);
+  postgresConnection = connectPostgresRoleSnapshotRepository(config.databaseUrl, sources);
   await postgresConnection.repository.initialize();
   roleStore = makeRepositoryRoleStore({ repository: postgresConnection.repository, community, sources });
 }

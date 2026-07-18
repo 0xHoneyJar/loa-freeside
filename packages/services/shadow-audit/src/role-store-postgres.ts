@@ -4,7 +4,11 @@ import {
   RoleSnapshotSchema,
   type RoleSnapshot,
 } from './role-snapshot.js';
-import { canonicalRoleCollectionKey, type DurableRoleStore } from './role-store.js';
+import {
+  canonicalRoleCollectionKey,
+  RoleSnapshotConflictError,
+  type DurableRoleStore,
+} from './role-store.js';
 import type { SourceResolver } from './collection-union.js';
 
 /** Database row owned by the role-store adapter. `snapshot` is validated at both boundaries. */
@@ -71,6 +75,7 @@ export function makeRepositoryRoleStore(opts: {
 export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
   constructor(
     private readonly sql: Sql,
+    private readonly sources: SourceResolver,
     private readonly now: () => number = () => Date.now(),
   ) {}
 
@@ -179,7 +184,17 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
 
   async storeIfNewer(record: RoleSnapshotRecord): Promise<boolean> {
     const snapshot = RoleSnapshotSchema.parse(record.snapshot);
-    const capturedAtMs = new Date(record.capturedAt).getTime();
+    const community = snapshot.community;
+    const collectionKey = canonicalRoleCollectionKey(snapshot, this.sources).toLowerCase();
+    const capturedAt = snapshot.captured_at;
+    if (
+      record.community !== community ||
+      record.collectionKey.toLowerCase() !== collectionKey ||
+      record.capturedAt !== capturedAt
+    ) {
+      throw new Error('role-store: record metadata does not match the validated snapshot');
+    }
+    const capturedAtMs = new Date(capturedAt).getTime();
     if (capturedAtMs > this.now() + ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS) {
       throw new Error('role-store: captured_at exceeds the allowed five-minute clock skew');
     }
@@ -187,9 +202,9 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
       INSERT INTO shadow_audit_role_snapshots (
         community, collection_key, captured_at, snapshot, updated_at
       ) VALUES (
-        ${record.community},
-        ${record.collectionKey},
-        ${record.capturedAt}::timestamptz,
+        ${community},
+        ${collectionKey},
+        ${capturedAt}::timestamptz,
         ${this.sql.json(snapshot as postgres.JSONValue)}::jsonb,
         NOW()
       )
@@ -214,7 +229,7 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
     const heldRows = await this.sql<{ captured_at: Date | string; snapshot: unknown }[]>`
       SELECT captured_at, snapshot
       FROM shadow_audit_role_snapshots
-      WHERE community = ${record.community} AND collection_key = ${record.collectionKey}
+      WHERE community = ${community} AND collection_key = ${collectionKey}
       LIMIT 1
     `;
     const held = heldRows[0];
@@ -224,18 +239,16 @@ export class PostgresRoleSnapshotRepository implements RoleSnapshotRepository {
     const heldValid = RoleSnapshotSchema.safeParse(held.snapshot);
     if (heldValid.success) {
       if (canonicalSnapshotJson(heldValid.data) === canonicalSnapshotJson(snapshot)) return false;
-      throw new Error(
-        `role-store: conflicting valid snapshots share captured_at ${record.capturedAt}`,
-      );
+      throw new RoleSnapshotConflictError();
     }
 
     const repaired = await this.sql<{ stored: number }[]>`
       UPDATE shadow_audit_role_snapshots
       SET snapshot = ${this.sql.json(snapshot as postgres.JSONValue)}::jsonb,
           updated_at = NOW()
-      WHERE community = ${record.community}
-        AND collection_key = ${record.collectionKey}
-        AND captured_at = ${record.capturedAt}::timestamptz
+      WHERE community = ${community}
+        AND collection_key = ${collectionKey}
+        AND captured_at = ${capturedAt}::timestamptz
         AND snapshot = ${this.sql.json(held.snapshot as postgres.JSONValue)}::jsonb
       RETURNING 1 AS stored
     `;
@@ -248,10 +261,13 @@ export interface PostgresRoleSnapshotConnection {
   close(): Promise<void>;
 }
 
-export function connectPostgresRoleSnapshotRepository(databaseUrl: string): PostgresRoleSnapshotConnection {
+export function connectPostgresRoleSnapshotRepository(
+  databaseUrl: string,
+  sources: SourceResolver,
+): PostgresRoleSnapshotConnection {
   const sql = postgres(databaseUrl, { max: 5, connect_timeout: 10, idle_timeout: 20 });
   return {
-    repository: new PostgresRoleSnapshotRepository(sql),
+    repository: new PostgresRoleSnapshotRepository(sql, sources),
     close: () => sql.end({ timeout: 5 }),
   };
 }

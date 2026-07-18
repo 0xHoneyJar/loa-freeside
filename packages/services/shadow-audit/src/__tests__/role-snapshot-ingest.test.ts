@@ -16,7 +16,12 @@ import { createAuditRouter, type AuditRouterDeps } from '../http/audit-router.js
 import { InMemoryEventStore } from '../event-store.js';
 import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
-import { makeInMemoryRoleStore, makeDurableRoleStore, type RoleSink } from '../role-store.js';
+import {
+  makeInMemoryRoleStore,
+  makeDurableRoleStore,
+  RoleSnapshotConflictError,
+  type RoleSink,
+} from '../role-store.js';
 import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
 import { collectionKey, type RoleSnapshot } from '../role-snapshot.js';
@@ -323,6 +328,30 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({
         error: { code: 'snapshot-store-failed', retryable: true },
+      });
+      expect(log).toHaveBeenCalledOnce();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('returns a non-retryable 409 for conflicting snapshots at one captured_at', async () => {
+    const sink: RoleSink = {
+      store: async () => {
+        throw new RoleSnapshotConflictError();
+      },
+    };
+    const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink } }));
+    const raw = JSON.stringify(snapshot());
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const res = await postSnapshot(app, raw, {
+        'x-ingest-token': TOKEN,
+        'x-snapshot-sha256': sha256hex(raw),
+      });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: { code: 'snapshot-version-conflict', retryable: false },
       });
       expect(log).toHaveBeenCalledOnce();
     } finally {
