@@ -1,0 +1,287 @@
+# Independent admission path for changes to the Railway gate itself.
+#
+# Ordinary `railway-plan-gate` attests an active, byte-pinned IaC declaration.
+# It MUST NOT authorize replacement of its own workflow, evaluator, executable
+# config, tests, or toolchain. Trust-root rotation is instead admitted by an
+# exact-head Bridgebuilder review from a non-author maintainer/admin with no
+# blocking structured findings. No Railway credential is available here.
+#
+# Bootstrap: the first merge installing this workflow has no predecessor that
+# can emit the status. Its one-time ceremony is documented in
+# `.railway/BOOTSTRAP.md`; every later rotation is evaluated by the version on
+# the default branch.
+
+name: railway-trust-root-review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  workflow_run:
+    workflows: [railway-trust-root-tests]
+    types: [completed]
+  schedule:
+    - cron: '*/5 * * * *'
+
+jobs:
+  attest:
+    name: independent Railway trust-root review
+    if: github.event_name != 'schedule'
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish exact-head trust-root status
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          case "$HEAD_SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) echo "::error::No exact pull-request head was available."; exit 1 ;;
+          esac
+          case "$PR_NUMBER" in
+            ''|*[!0-9]*) echo "::error::No pull-request number was available."; exit 1 ;;
+          esac
+          pr="$RUNNER_TEMP/railway-trust-root-pr.json"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$pr"
+          if [ "$(jq -r '.head.sha' "$pr")" != "$HEAD_SHA" ] ||
+            [ "$(jq -r '.state' "$pr")" != open ]
+          then
+            echo "::error::Workflow metadata does not identify the current open PR head."
+            exit 1
+          fi
+          PR_AUTHOR=$(jq -r '.user.login' "$pr")
+
+          state=success
+          description='Railway trust root unchanged'
+          changed=false
+          active_config_changed=false
+          trusted_config_changed=false
+          changed_count=$(jq -r '.changed_files' "$pr")
+          if ! [[ "$changed_count" =~ ^[0-9]+$ ]] || [ "$changed_count" -ge 3000 ]; then
+            state=failure
+            description='PR diff exceeds complete changed-file enumeration'
+          fi
+          files="$RUNNER_TEMP/railway-trust-root-files.txt"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+            --paginate --jq '.[].filename' > "$files"
+          while IFS= read -r filename; do
+            case "$filename" in
+              .railway/railway.ts)
+                changed=true
+                active_config_changed=true
+                ;;
+              .railway/trusted-tools/railway.ts)
+                changed=true
+                trusted_config_changed=true
+                ;;
+              .github/workflows/railway-plan-gate.yml|\
+              .github/workflows/railway-trust-root-review.yml|\
+              .github/workflows/railway-trust-root-tests.yml|\
+              .railway/BOOTSTRAP.md|\
+              .railway/plan-gate.mjs|\
+              .railway/plan-gate.test.mjs|\
+              .railway/trusted-tools/*)
+                changed=true
+                ;;
+            esac
+          done < "$files"
+
+          if [ "$state" != failure ] && [ "$changed" = true ]; then
+            default_runner="$RUNNER_TEMP/railway-trust-root-tests.default.yml"
+            candidate_runner="$RUNNER_TEMP/railway-trust-root-tests.candidate.yml"
+            if ! gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.github/workflows/railway-trust-root-tests.yml?ref=$DEFAULT_BRANCH" \
+              > "$default_runner"
+            then
+              state=pending
+              description='Bootstrap requires explicit exact-head review'
+            elif ! gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.github/workflows/railway-trust-root-tests.yml?ref=$HEAD_SHA" \
+              > "$candidate_runner" ||
+              ! cmp --silent "$default_runner" "$candidate_runner"
+            then
+              state=failure
+              description='Independent trust-test runner differs from default branch'
+            fi
+          fi
+
+          if [ "$state" = success ] && [ "$changed" = true ]; then
+            test_run="$RUNNER_TEMP/railway-trust-root-test-run.json"
+            if [ "$EVENT_NAME" = workflow_run ]; then
+              case "$WORKFLOW_RUN_ID" in
+                ''|*[!0-9]*) state=failure ;;
+                *) gh api "repos/$GITHUB_REPOSITORY/actions/runs/$WORKFLOW_RUN_ID" > "$test_run" ;;
+              esac
+            else
+              runs="$RUNNER_TEMP/railway-trust-root-test-runs.json"
+              gh api \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/railway-trust-root-tests.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=10" \
+                > "$runs" 2>/dev/null || echo '{"workflow_runs":[]}' > "$runs"
+              jq --arg sha "$HEAD_SHA" \
+                '[.workflow_runs[] | select(.head_sha == $sha)] |
+                 sort_by(.created_at) | last // {}' \
+                "$runs" > "$test_run"
+            fi
+            test_state=$(
+              jq -r --arg sha "$HEAD_SHA" --arg repo "$GITHUB_REPOSITORY" \
+                'if .name == "railway-trust-root-tests" and
+                    .path == ".github/workflows/railway-trust-root-tests.yml" and
+                    .event == "pull_request" and
+                    .head_sha == $sha and
+                    .head_repository.full_name == $repo and
+                    .conclusion == "success"
+                 then "success" else "pending" end' \
+                "$test_run" 2>/dev/null || echo pending
+            )
+            if [ "$test_state" != success ]; then
+              state=pending
+              description='Awaiting credential-free exact-head trust-root tests'
+            fi
+          fi
+
+          if [ "$state" = success ]; then
+            if [ "$active_config_changed" = true ] || [ "$trusted_config_changed" = true ]; then
+              if [ "$active_config_changed" != true ] || [ "$trusted_config_changed" != true ]; then
+                state=failure
+                description='Active and trusted Railway configs must rotate together'
+              else
+                active_config="$RUNNER_TEMP/active-railway.ts"
+                trusted_config="$RUNNER_TEMP/trusted-railway.ts"
+                if ! gh api -H 'Accept: application/vnd.github.raw+json' \
+                  "repos/$GITHUB_REPOSITORY/contents/.railway/railway.ts?ref=$HEAD_SHA" \
+                  > "$active_config" ||
+                  ! gh api -H 'Accept: application/vnd.github.raw+json' \
+                  "repos/$GITHUB_REPOSITORY/contents/.railway/trusted-tools/railway.ts?ref=$HEAD_SHA" \
+                  > "$trusted_config" ||
+                  ! cmp --silent "$active_config" "$trusted_config"
+                then
+                  state=failure
+                  description='Active and trusted Railway configs differ at exact head'
+                fi
+              fi
+            fi
+          fi
+
+          if [ "$state" = success ] && [ "$changed" = true ]; then
+            reviews="$RUNNER_TEMP/railway-trust-root-reviews.json"
+            permissions="$RUNNER_TEMP/railway-trust-root-permissions.json"
+            attestor="$RUNNER_TEMP/bridge-review-attestation.mjs"
+            result="$RUNNER_TEMP/railway-trust-root-result.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp > "$reviews"
+            gh api \
+              -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.railway/trusted-tools/bridge-review-attestation.mjs?ref=$DEFAULT_BRANCH" \
+              > "$attestor"
+
+            echo '{}' > "$permissions"
+            while IFS= read -r reviewer; do
+              case "$reviewer" in
+                ''|*[!A-Za-z0-9-]*) continue ;;
+              esac
+              permission=$(
+                gh api "repos/$GITHUB_REPOSITORY/collaborators/$reviewer/permission" \
+                  --jq '.permission' 2>/dev/null || echo none
+              )
+              jq --arg reviewer "$reviewer" --arg permission "$permission" \
+                '. + {($reviewer): $permission}' "$permissions" > "$permissions.next"
+              mv "$permissions.next" "$permissions"
+            done < <(jq -r '[.[][] | .user.login // empty] | unique[]' "$reviews")
+
+            REVIEWS_FILE="$reviews" \
+              PERMISSIONS_FILE="$permissions" \
+              HEAD_SHA="$HEAD_SHA" \
+              PR_AUTHOR="$PR_AUTHOR" \
+              node "$attestor" > "$result"
+            state=$(jq -r '.state' "$result")
+            description=$(jq -r '.description' "$result")
+          fi
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$state" \
+            -f context=railway-trust-root-review \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
+
+  refresh-authorizations:
+    name: refresh Railway reviewer authorization
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Revoke stale successful attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          attestor="$RUNNER_TEMP/bridge-review-attestation.mjs"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/.railway/trusted-tools/bridge-review-attestation.mjs?ref=$DEFAULT_BRANCH" \
+            > "$attestor"
+
+          while IFS= read -r pr_number; do
+            pr="$RUNNER_TEMP/pr-$pr_number.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" > "$pr"
+            head_sha=$(jq -r '.head.sha' "$pr")
+            pr_author=$(jq -r '.user.login' "$pr")
+            current_state=$(
+              gh api "repos/$GITHUB_REPOSITORY/commits/$head_sha/status" \
+                --jq '[.statuses[] | select(.context == "railway-trust-root-review")] |
+                      sort_by(.created_at) | last | .state // "missing"'
+            )
+            if [ "$current_state" != success ]; then
+              continue
+            fi
+
+            reviews="$RUNNER_TEMP/reviews-$pr_number.json"
+            permissions="$RUNNER_TEMP/permissions-$pr_number.json"
+            result="$RUNNER_TEMP/result-$pr_number.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number/reviews" \
+              --paginate --slurp > "$reviews"
+            echo '{}' > "$permissions"
+            while IFS= read -r reviewer; do
+              case "$reviewer" in
+                ''|*[!A-Za-z0-9-]*) continue ;;
+              esac
+              permission=$(
+                gh api "repos/$GITHUB_REPOSITORY/collaborators/$reviewer/permission" \
+                  --jq '.permission' 2>/dev/null || echo none
+              )
+              jq --arg reviewer "$reviewer" --arg permission "$permission" \
+                '. + {($reviewer): $permission}' "$permissions" > "$permissions.next"
+              mv "$permissions.next" "$permissions"
+            done < <(jq -r '[.[][] | .user.login // empty] | unique[]' "$reviews")
+
+            REVIEWS_FILE="$reviews" \
+              PERMISSIONS_FILE="$permissions" \
+              HEAD_SHA="$head_sha" \
+              PR_AUTHOR="$pr_author" \
+              node "$attestor" > "$result"
+            state=$(jq -r '.state' "$result")
+            if [ "$state" = success ]; then
+              continue
+            fi
+            description=$(jq -r '.description' "$result")
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$head_sha" \
+              -f state="$state" \
+              -f context=railway-trust-root-review \
+              -f description="$description" \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$pr_number"
+          done < <(
+            gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+              --paginate --jq '.[].number'
+          )
