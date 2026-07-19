@@ -57,6 +57,12 @@ describe('rpc-pool — endpoint URLs never reach a caller (arrakis-qf5kc)', () =
     expect(redactEndpoints(SECRET_URL)).not.toContain('SuperSecretApiKey123');
   });
 
+  it('scrubs schemeless provider hosts and credential paths from DNS/connect errors', () => {
+    const message =
+      'connect ECONNREFUSED eth-mainnet.g.alchemy.com:443/v2/SuperSecretApiKey123';
+    expect(redactEndpoints(message)).toBe('connect ECONNREFUSED <endpoint>');
+  });
+
   it('the refusal returned to the caller carries no endpoint URL (the actual leak path)', async () => {
     const C = '0x' + 'a'.repeat(40);
     const order: Order = {

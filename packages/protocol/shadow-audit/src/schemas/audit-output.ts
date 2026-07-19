@@ -135,6 +135,16 @@ export const AuditAggregateSchema = AuditAggregateShapeSchema_UNREFINED.superRef
         message: `role_coverage === 1 contradicts unmatched_role_holders === ${unmatched.value} (coverage must be < 1)`,
       });
     }
+
+    // (3) The inverse must hold too: zero unmatched means every role-holder
+    // resolved, so coverage can only be the exact ratio 1.
+    if (unmatched.kind === 'exact' && unmatched.value === 0 && coverage !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['role_coverage'],
+        message: 'exactly zero unmatched role-holders requires role_coverage === 1',
+      });
+    }
   });
 export type AuditAggregate = z.infer<typeof AuditAggregateSchema>;
 

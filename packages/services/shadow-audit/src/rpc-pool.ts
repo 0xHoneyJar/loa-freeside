@@ -78,7 +78,15 @@ export function parseRpcUrls(raw: string): string[] {
  * host-only or query-only scrub would still leak the credential.
  */
 export function redactEndpoints(message: string): string {
-  return message.replace(/\bhttps?:\/\/\S+/gi, '<endpoint>');
+  return message
+    .replace(/\bhttps?:\/\/\S+/gi, '<endpoint>')
+    // Some clients omit the scheme in DNS/TLS/connect errors. Redact the
+    // complete host[:port][/path] form too: provider keys commonly live in
+    // the path or subdomain.
+    .replace(
+      /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s|]*)?/gi,
+      '<endpoint>',
+    );
 }
 
 export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {

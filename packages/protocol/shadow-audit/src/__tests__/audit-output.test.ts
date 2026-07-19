@@ -142,6 +142,15 @@ describe('AuditAggregateSchema — the coverage/k-anon invariant has teeth', () 
     ).toBe(true);
   });
 
+  it('REJECTS zero unmatched beside partial or unknown coverage', () => {
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'exact', value: 0 }, role_coverage: 0.9 })),
+    ).toBe(false);
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'exact', value: 0 }, role_coverage: null })),
+    ).toBe(false);
+  });
+
   it('ACCEPTS an EXACT cohort with its true ratio (>= k cannot be back-computed into a hidden number)', () => {
     expect(
       parse(agg({ unmatched_role_holders: { kind: 'exact', value: 6 }, role_coverage: 0.7 })),
