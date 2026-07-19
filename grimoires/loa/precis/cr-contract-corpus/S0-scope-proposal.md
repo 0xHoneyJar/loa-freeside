@@ -1,5 +1,11 @@
 ---
-status: awaiting-operator-S0-ruling
+status: S0-RULED-AND-FROZEN
+ruling: >-
+  2026-07-19, operator zksoju via AskUserQuestion: scope = all 5 families;
+  all 4 exclusions confirmed; org-private, no redactions, review bodies =
+  model_output; S13/P3 authority = zksoju; freeze = origin/main
+  af06417992d15f982a1192236279f436b963c4e8 + gh snapshot same day.
+  Corpus sealed: corpus/manifest.md + checksums.sha256.
 date: 2026-07-19
 run_mode: manual (fixture-labeled — no attested host on this machine; see brief)
 trust_tier: ai-derived
