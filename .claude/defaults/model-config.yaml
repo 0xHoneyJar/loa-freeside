@@ -468,6 +468,24 @@ providers:
         pricing:
           input_per_mtok: 5000000    # $5.00 per million tokens
           output_per_mtok: 25000000  # $25.00 per million tokens
+      claude-sonnet-5:
+        # cycle-120 C-D2: cheval catalog entry for Claude Sonnet 5.
+        auth_type: http_api
+        dispatch_group: anthropic-claude
+        capabilities: [chat, tools, function_calling]
+        context_window: 1000000
+        token_param: max_tokens
+        # model max is 128K; 16K matches sonnet-4-6 default
+        max_output_tokens: 16000
+        fallback_chain:
+          - anthropic:claude-sonnet-4-6
+          - anthropic:claude-haiku-4-5-20251001
+          - anthropic:claude-headless
+        pricing:
+          # confirmed 2026-07-07 via claude-api reference (cached 2026-06-24);
+          # standard rate, intro $2/$10 through 2026-08-31
+          input_per_mtok: 3000000    # $3.00 per million tokens
+          output_per_mtok: 15000000  # $15.00 per million tokens
       claude-sonnet-4-6:
         # cycle-110 sprint-2a T2.3 (SDD §3.2): auth_type + dispatch_group migration.
         auth_type: http_api
@@ -552,40 +570,6 @@ providers:
         # than downgrade; per-request honesty is loa#1006).
         extra:
           cli_model: fable
-
-  # ===========================================================================
-  # Cursor — expert-SWE review voice via the `cursor-agent` CLI
-  # ===========================================================================
-  # A third independent cross-model review voice alongside Claude (anthropic)
-  # and GPT/codex (openai). Cursor fronts an OpenAI-class model line, but the
-  # corpus + agent harness are Cursor's, so it earns a DEDICATED top-level
-  # provider (resolved as `cursor:cursor-headless`) rather than sitting under
-  # `openai`. CLI auth via `cursor-agent login` (~/.cursor/cli-config.json);
-  # no API key consumed. Adapter: cursor_headless_adapter.py (provider
-  # type `cursor-headless`). Single-model provider: there is no HTTP entry —
-  # cursor is CLI-only here.
-  cursor:
-    type: cursor-headless
-    # endpoint and auth are ignored; CLI login is file-based.
-    connect_timeout: 10.0
-    read_timeout: 600.0
-    models:
-      cursor-headless:
-        auth_type: headless
-        dispatch_group: cursor-agent
-        kind: cli                       # CLI transport, not HTTP
-        capabilities: [chat, code]      # No tools, no structured_json
-        # cursor-agent serves Cursor's OWN model line; composer-2.5 (Composer
-        # 2.5) is Cursor's proprietary SWE model — a genuinely distinct corpus
-        # from codex/GPT, which is the point of slotting it into the council.
-        # CLI-verified id (`cursor-agent --list-models`); ~200k window.
-        # Operator-overridable via extra.cli_model (e.g. composer-2.5-fast).
-        context_window: 200000
-        # No pricing entry — CLI uses operator's Cursor subscription.
-        # cli_model is the literal model passed to `cursor-agent --model
-        # <name>` (the CLI doesn't recognize the Loa alias).
-        extra:
-          cli_model: composer-2.5
 
   # ===========================================================================
   # AWS Bedrock — cycle-096 (issue #652)
@@ -717,6 +701,43 @@ providers:
         extra:
           cli_model: grok-composer-2.5-fast
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Cursor Composer — a CLI-only headless provider (no HTTP sibling; auth is
+  # Cursor's subscription, `cursor-agent login`). `type: cursor-headless` maps
+  # directly to CursorHeadlessAdapter. A headless CLI is a multi-model client,
+  # NOT a single-company port: `cursor-agent models` spans Claude/GPT/Gemini/
+  # Grok/Kimi/Composer (CLIs cross-serve). Cheval pins this `cursor` entry to
+  # Cursor's OWN distinct-corpus models — the Composer line (Moonshot-Kimi base
+  # + agentic RL) — via cli_model; cross-served models are reached through their
+  # own company providers. `cursor-agent models` → composer-2.5 (current) +
+  # composer-2.5-fast (default). Both kind:cli, chain-terminal (NO fallback_chain
+  # — lint-enforced), NO pricing (subscription → metered $0).
+  cursor:
+    type: cursor-headless
+    # endpoint + auth are ignored; auth is cursor-agent's own login.
+    endpoint: ""
+    models:
+      composer-2.5:
+        auth_type: headless
+        dispatch_group: cursor-composer
+        kind: cli
+        capabilities: [chat, code]      # No tools, no structured_json
+        # Cursor Composer 2.5 (current). Declared window is a conservative floor
+        # so cheval's enforce_context_window does not fall back to the 128000
+        # global default; refine when Cursor publishes the Composer 2.5 spec.
+        context_window: 200000
+        # No pricing entry — CLI uses the operator's Cursor subscription.
+        extra:
+          cli_model: composer-2.5
+      composer-2.5-fast:
+        auth_type: headless
+        dispatch_group: cursor-composer
+        kind: cli
+        capabilities: [chat, code]
+        context_window: 200000
+        extra:
+          cli_model: composer-2.5-fast
+
 # Aliases (short names → provider:model-id)
 aliases:
   gemini-2.0: "google:gemini-2.0-flash"  # Backward-compat alias
@@ -728,6 +749,7 @@ aliases:
   reviewer: "openai:gpt-5.5"
   reasoning: "openai:gpt-5.5"
   cheap: "anthropic:claude-sonnet-4-6"  # Budget-conscious model
+  claude-sonnet-5: "anthropic:claude-sonnet-5"  # Bare alias (cycle-120 C-D2)
   fable: "anthropic:claude-fable-5"     # Top intelligence tier (2026-06-10 intel-routing review)
   opus: "anthropic:claude-opus-4-8"     # High-quality model (retargeted 4-6→4-7 cycle-082; 4-7→4-8 cycle-114)
   # cycle-095 Sprint 2 (Task 2.3): tiny tier alias points at Haiku 4.5.
@@ -780,14 +802,10 @@ aliases:
 
   # cycle-104 Sprint 2 T2.4: headless aliases (kind: cli). Each terminates
   # its company's fallback_chain. Operator must install the underlying CLI
-  # binary (`claude`, `codex`, `gemini`, `cursor-agent`) per the headless-mode
-  # runbook.
+  # binary (`claude`, `codex`, `gemini`) per the headless-mode runbook.
   claude-headless: "anthropic:claude-headless"
   codex-headless: "openai:codex-headless"
   gemini-headless: "google:gemini-headless"
-  # cursor-headless is a standalone review voice (no within-company chain — it
-  # is its own provider). Bare-name convenience alias for `cursor:cursor-headless`.
-  cursor-headless: "cursor:cursor-headless"
 
   # #1089: key-based Gemini terminal — the HTTP / GOOGLE_API_KEY path (auth_type
   # http_api) as an alternative to the deprecated `gemini-headless` CLI ("Gemini
@@ -805,6 +823,15 @@ aliases:
   grok-composer: "xai:grok-composer-2.5-fast"
   grok-fast: "xai:grok-composer-2.5-fast"
   grok-headless: "xai:grok-build"
+
+  # Cursor Composer aliases (kind: cli) — one company-port, two Composer models.
+  # Operator must `cursor-agent login`. `cursor-headless` mirrors the *-headless
+  # family naming (→ composer-2.5, the current Composer); `cursor-fast` exposes
+  # the fast variant. These names are what tier_groups.mappings + skill bindings
+  # reference.
+  cursor-composer: "cursor:composer-2.5"
+  cursor-fast: "cursor:composer-2.5-fast"
+  cursor-headless: "cursor:composer-2.5"
 
 # Backward-compat aliases (legacy model IDs → canonical provider:model-id)
 # Used by gen-adapter-maps.sh to reproduce the hand-maintained bash map
@@ -954,25 +981,6 @@ agents:
     temperature: 0.5
     requires:
       thinking_traces: preferred
-  # Third FAGAN council voice — Cursor's expert-SWE corpus, distinct from
-  # Claude and GPT/codex. Bound DIRECTLY to cursor:cursor-headless (not a
-  # shared alias) so it always resolves to the cursor provider. Replaces the
-  # kimi voice for operators who have `cursor-agent` but not Kimi. The
-  # code-review system prompt is supplied by the council caller at invocation
-  # (parity with jam-reviewer-gpt, which carries no persona field here).
-  jam-reviewer-cursor:
-    model: cursor:cursor-headless
-    temperature: 0.3
-  # FAGAN council Claude voice via the HEADLESS terminal (anthropic:claude-headless),
-  # NOT the native runtime. jam-reviewer-claude (above) is model:native +
-  # native_runtime:true, so the resolver refuses to dispatch it to a remote/headless
-  # model (NATIVE_RUNTIME_REQUIRED) and it cannot serve as a council voice. This
-  # additive sibling binds DIRECTLY to anthropic:claude-headless (subscription CLI
-  # auth, no API key) so the council gets a real Claude corpus as its 4th distinct
-  # family. The native voice (jam-reviewer-claude) stays intact for native jam geometry.
-  jam-reviewer-claude-headless:
-    model: anthropic:claude-headless
-    temperature: 0.3
   jam-synthesizer:
     model: cheap
     temperature: 0.3

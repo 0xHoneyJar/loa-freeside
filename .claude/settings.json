@@ -262,6 +262,12 @@
       "Bash(vercel deploy:*)",
       "Bash(vercel dev:*)",
       "Bash(vercel build:*)",
+      "Bash(fly:*)",
+      "Bash(fly deploy:*)",
+      "Bash(fly status:*)",
+      "Bash(fly logs:*)",
+      "Bash(railway:*)",
+      "Bash(railway deploy:*)",
       "Bash(aws:*)",
       "Bash(aws s3:*)",
       "Bash(aws ec2:*)",
@@ -380,7 +386,6 @@
       "Bash(bash:*)",
       "Bash(sh:*)",
       "Bash(zsh:*)",
-      "Bash(cd:*)",
       "Write(grimoires/**)",
       "Edit(grimoires/**)",
       "Write(.beads/**)",
@@ -462,7 +467,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/scripts/upgrade-health-check.sh"
+            "command": ".claude/scripts/upgrade-health-check.sh"
           }
         ]
       }
@@ -473,26 +478,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/scripts/check-updates.sh --notify",
+            "command": ".claude/scripts/check-updates.sh --notify",
             "async": true,
             "once": true
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/session-start/loa-l6-surface-handoffs.sh",
+            "command": ".claude/hooks/session-start/loa-l6-surface-handoffs.sh",
             "async": true,
             "once": true
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/session-start/loa-l7-surface-soul.sh",
+            "command": ".claude/hooks/session-start/loa-l7-surface-soul.sh",
             "async": true,
             "once": true
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/session-start/loa-run-mode-session-title.sh",
+            "command": ".claude/hooks/session-start/loa-run-mode-session-title.sh",
             "async": true,
+            "once": true
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/loa-kf-surface.sh",
             "once": true
           }
         ]
@@ -504,7 +514,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/pre-compact-marker.sh"
+            "command": ".claude/hooks/pre-compact-marker.sh"
           }
         ]
       }
@@ -515,7 +525,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/post-compact-reminder.sh"
+            "command": ".claude/hooks/post-compact-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-session-limit-reminder.sh"
           }
         ]
       }
@@ -526,7 +540,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/scripts/cleanup-context.sh --prompt"
+            "command": ".claude/scripts/cleanup-context.sh --prompt"
           }
         ]
       },
@@ -535,11 +549,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/block-destructive-bash.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/block-destructive-bash.sh"
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/team-role-guard.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/team-role-guard.sh"
           }
         ]
       },
@@ -548,15 +562,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/team-role-guard-write.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/team-role-guard-write.sh"
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/spiral-dispatch-guard.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/spiral-dispatch-guard.sh"
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/zone-write-guard.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/zone-write-guard.sh"
           }
         ]
       },
@@ -565,7 +579,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/adversarial-review-gate.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/adversarial-review-gate.sh"
           }
         ]
       },
@@ -574,11 +588,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/team-skill-guard.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/team-skill-guard.sh"
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/spiral-skill-sentinel.sh"
+            "command": ".claude/hooks/hook-guard.sh .claude/hooks/safety/spiral-skill-sentinel.sh"
           }
         ]
       }
@@ -589,7 +603,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/audit/mutation-logger.sh"
+            "command": ".claude/hooks/audit/mutation-logger.sh"
           }
         ]
       },
@@ -598,7 +612,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/audit/write-mutation-logger.sh"
+            "command": ".claude/hooks/audit/write-mutation-logger.sh"
           }
         ]
       },
@@ -607,7 +621,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/audit/write-mutation-logger.sh"
+            "command": ".claude/hooks/audit/write-mutation-logger.sh"
           }
         ]
       },
@@ -616,7 +630,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/quality/karpathy-surgical-diff-check.sh"
+            "command": ".claude/hooks/quality/karpathy-surgical-diff-check.sh"
           }
         ]
       }
@@ -627,11 +641,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/safety/run-mode-stop-guard.sh"
+            "command": ".claude/hooks/safety/run-mode-stop-guard.sh"
           },
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/hygiene/settings-cleanup.sh"
+            "command": ".claude/hooks/hygiene/settings-cleanup.sh"
           }
         ]
       }
@@ -642,7 +656,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/scripts/permission-audit.sh log",
+            "command": ".claude/scripts/permission-audit.sh log",
             "async": true
           }
         ]

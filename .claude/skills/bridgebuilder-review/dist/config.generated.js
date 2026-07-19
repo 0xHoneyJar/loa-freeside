@@ -64,6 +64,13 @@ export const GENERATED_MODEL_REGISTRY = {
         capabilities: ["chat", "function_calling", "tools"],
         pricing: { inputPerMtok: 3000000, outputPerMtok: 15000000 },
     },
+    "claude-sonnet-5": {
+        provider: "anthropic",
+        modelId: "claude-sonnet-5",
+        contextWindow: 1000000,
+        capabilities: ["chat", "function_calling", "tools"],
+        pricing: { inputPerMtok: 3000000, outputPerMtok: 15000000 },
+    },
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
         provider: "bedrock",
         modelId: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -91,6 +98,18 @@ export const GENERATED_MODEL_REGISTRY = {
         contextWindow: 200000,
         capabilities: ["chat", "function_calling", "tools"],
         pricing: { inputPerMtok: 3000000, outputPerMtok: 15000000 },
+    },
+    "composer-2.5": {
+        provider: "cursor",
+        modelId: "composer-2.5",
+        contextWindow: 200000,
+        capabilities: ["chat", "code"],
+    },
+    "composer-2.5-fast": {
+        provider: "cursor",
+        modelId: "composer-2.5-fast",
+        contextWindow: 200000,
+        capabilities: ["chat", "code"],
     },
     "deep-research-pro": {
         provider: "google",

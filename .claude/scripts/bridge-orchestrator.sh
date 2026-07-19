@@ -300,6 +300,36 @@ preflight() {
 # Resume Logic
 # =============================================================================
 
+# Restore run parameters frozen at JACK_IN from the persisted .config block,
+# so a resumed run reuses the params it started with rather than reverting to
+# the hardcoded script defaults. A resume deliberately restores from state
+# (NOT a live re-read of .loa.config.yaml): init_bridge_state snapshots these
+# at JACK_IN precisely to freeze them for the run's lifetime, and re-reading
+# config would let a mid-run edit silently drift an in-flight bridge.
+#
+# Precedence mirrors load_bridge_config: DEPTH/PER_SPRINT restore only when the
+# operator did NOT re-pass an explicit CLI override (CLI_DEPTH/CLI_PER_SPRINT).
+# FLATLINE_THRESHOLD/CONSECUTIVE_FLATLINE have no CLI flag, so always restore.
+# The `// <default>` fallbacks keep old-schema state files (written before
+# consecutive_flatline was persisted) resumable.
+#
+# MUST be called from bridge_main BEFORE handle_resume — handle_resume runs in
+# a command substitution ($(...)) subshell, so global assignments inside it
+# would not reach the parent shell.
+restore_bridge_config_from_state() {
+  [[ -f "$BRIDGE_STATE_FILE" ]] || return 0
+  command -v jq &>/dev/null || return 0
+
+  if [[ -z "$CLI_DEPTH" ]]; then
+    DEPTH=$(jq -r ".config.depth // $DEPTH" "$BRIDGE_STATE_FILE")
+  fi
+  if [[ -z "$CLI_PER_SPRINT" ]]; then
+    PER_SPRINT=$(jq -r ".config.per_sprint // $PER_SPRINT" "$BRIDGE_STATE_FILE")
+  fi
+  FLATLINE_THRESHOLD=$(jq -r ".config.flatline_threshold // $FLATLINE_THRESHOLD" "$BRIDGE_STATE_FILE")
+  CONSECUTIVE_FLATLINE=$(jq -r ".config.consecutive_flatline // $CONSECUTIVE_FLATLINE" "$BRIDGE_STATE_FILE")
+}
+
 handle_resume() {
   if [[ ! -f "$BRIDGE_STATE_FILE" ]]; then
     echo "ERROR: No bridge state file found for resume" >&2
@@ -368,6 +398,7 @@ bridge_main() {
   local start_iteration=0
 
   if [[ "$RESUME" == "true" ]]; then
+    restore_bridge_config_from_state
     start_iteration=$(handle_resume)
   else
     # Fresh start
@@ -383,7 +414,7 @@ bridge_main() {
     local branch
     branch=$(git branch --show-current 2>/dev/null || echo "unknown")
 
-    init_bridge_state "$bridge_id" "$DEPTH" "$PER_SPRINT" "$FLATLINE_THRESHOLD" "$branch" "$BRIDGE_REPO"
+    init_bridge_state "$bridge_id" "$DEPTH" "$PER_SPRINT" "$FLATLINE_THRESHOLD" "$branch" "$BRIDGE_REPO" "$CONSECUTIVE_FLATLINE"
     update_bridge_state "JACK_IN"
 
     echo ""
@@ -419,73 +450,6 @@ bridge_main() {
       source="findings"
     fi
     update_iteration "$iteration" "in_progress" "$source"
-
-    # 2-pre: Capability Discovery (cycle-047, Sprint 390)
-    # Config-gated: capabilities.discovery.enabled (default: false)
-    local cap_discovery_enabled
-    cap_discovery_enabled=$(yq '.capabilities.discovery.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
-    if [[ "$cap_discovery_enabled" == "true" ]]; then
-      if [[ -f "$SCRIPT_DIR/lib/capability-lib.sh" ]]; then
-        source "$SCRIPT_DIR/lib/capability-lib.sh"
-
-        # Resolve base branch from config (default: "main")
-        local cap_base_branch
-        cap_base_branch=$(yq '.run_bridge.base_branch // "main"' "$CONFIG_FILE" 2>/dev/null || echo "main")
-
-        # Discover all registered capabilities
-        local all_caps
-        all_caps=$(discover_capabilities 2>/dev/null) || all_caps="[]"
-        local cap_count
-        cap_count=$(echo "$all_caps" | jq 'length' 2>/dev/null) || cap_count=0
-
-        if [[ "$cap_count" -gt 0 ]]; then
-          # Match capabilities against changed files
-          local changed_files
-          changed_files=$(git diff --name-only "${cap_base_branch}...HEAD" 2>/dev/null || echo "")
-
-          if [[ -n "$changed_files" ]]; then
-            local matched_caps
-            matched_caps=$(echo "$changed_files" | xargs -I{} echo "{}" | match_capabilities 2>/dev/null) || matched_caps="[]"
-            local matched_count
-            matched_count=$(echo "$matched_caps" | jq 'length' 2>/dev/null) || matched_count=0
-
-            if [[ "$matched_count" -gt 0 ]]; then
-              # Resolve execution ordering
-              local matched_ids
-              matched_ids=$(echo "$matched_caps" | jq -r '.[].id' 2>/dev/null)
-              local ordered_chain
-              ordered_chain=$(echo "$matched_ids" | xargs resolve_ordering 2>/dev/null) || ordered_chain="[]"
-
-              # Allocate budgets
-              local total_budget
-              total_budget=$(yq '.capabilities.discovery.total_budget // 200000' "$CONFIG_FILE" 2>/dev/null || echo "200000")
-              local budget_alloc
-              budget_alloc=$(echo "$matched_ids" | xargs allocate_budgets "$total_budget" 2>/dev/null) || budget_alloc="[]"
-
-              echo "[CAPABILITY] Discovered $matched_count capabilities: $(echo "$matched_caps" | jq -r '[.[].id] | join(", ")' 2>/dev/null)"
-              echo "[CAPABILITY] Execution order: $(echo "$ordered_chain" | jq -r 'join(" → ")' 2>/dev/null)"
-
-              # Log to bridge state (discovery only — no dynamic execution yet)
-              if command -v jq &>/dev/null && [[ -f "$BRIDGE_STATE_FILE" ]]; then
-                jq --argjson iter "$iteration" \
-                   --argjson chain "$ordered_chain" \
-                   --argjson budgets "$budget_alloc" \
-                  '.iterations = [(.iterations // [])[] |
-                    if .iteration == ($iter | tonumber) then
-                      . + {capability_chain: $chain, capability_budgets: $budgets}
-                    else . end]' \
-                  "$BRIDGE_STATE_FILE" > "$BRIDGE_STATE_FILE.tmp" 2>/dev/null && \
-                  mv "$BRIDGE_STATE_FILE.tmp" "$BRIDGE_STATE_FILE"
-              fi
-            else
-              echo "[CAPABILITY] No capabilities matched changed files"
-            fi
-          fi
-        else
-          echo "[CAPABILITY] No capability manifests found"
-        fi
-      fi
-    fi
 
     # 2a: Sprint Plan
     if [[ $iteration -eq 1 ]] && [[ -z "$FROM_PHASE" || "$FROM_PHASE" == "sprint-plan" ]]; then
@@ -743,31 +707,6 @@ bridge_main() {
       fi
     fi
 
-    # 2i-pre: Economic Feedback Signal (cycle-047, Sprint 389)
-    # Config-gated: run_bridge.economic_feedback.enabled (default: false)
-    local economic_enabled
-    economic_enabled=$(yq '.run_bridge.economic_feedback.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
-    if [[ "$economic_enabled" == "true" ]]; then
-      if [[ -f "$SCRIPT_DIR/lib/economic-lib.sh" ]]; then
-        source "$SCRIPT_DIR/lib/economic-lib.sh"
-        local econ_result
-        econ_result=$(compute_marginal_value "$BRIDGE_STATE_FILE" 2>/dev/null || echo '{"signal":"NO_DATA"}')
-        local econ_signal
-        econ_signal=$(echo "$econ_result" | jq -r '.signal' 2>/dev/null)
-
-        # Log to bridge state
-        jq --argjson econ "$econ_result" --arg iter "$iteration" \
-          '.iterations = [(.iterations // [])[] | if .iteration == ($iter | tonumber) then . + {economic_feedback: $econ} else . end]' \
-          "$BRIDGE_STATE_FILE" > "$BRIDGE_STATE_FILE.tmp" 2>/dev/null && \
-          mv "$BRIDGE_STATE_FILE.tmp" "$BRIDGE_STATE_FILE"
-
-        if [[ "$econ_signal" == "DIMINISHING_RETURNS" ]]; then
-          echo "[ECONOMIC] DIMINISHING_RETURNS signal detected"
-          echo "SIGNAL:DIMINISHING_RETURNS:$iteration"
-        fi
-      fi
-    fi
-
     # 2i: Flatline Detection
     echo "[FLATLINE] Checking flatline condition..."
     echo "SIGNAL:FLATLINE_CHECK:$iteration"
@@ -814,6 +753,27 @@ bridge_main() {
       exit 0
     fi
   done
+
+  # cycle-116 D5: record which of the two termination modes fired — kaironic
+  # flatline (the `break` above) vs natural exhaustion of the depth cap —
+  # since both otherwise fall through silently to the same code below.
+  local term_reason
+  term_reason=$(bridge_termination_reason "$CONSECUTIVE_FLATLINE")
+  if command -v jq &>/dev/null && [[ -f "$BRIDGE_STATE_FILE" ]]; then
+    jq --arg reason "$term_reason" \
+      '.finalization.termination_reason = $reason' "$BRIDGE_STATE_FILE" > "$BRIDGE_STATE_FILE.tmp"
+    mv "$BRIDGE_STATE_FILE.tmp" "$BRIDGE_STATE_FILE"
+  fi
+
+  if [[ "$term_reason" == "max_depth" ]]; then
+    echo ""
+    echo "═══════════════════════════════════════════════════"
+    echo "  MAX ITERATIONS REACHED"
+    echo "  Depth cap ($DEPTH) exhausted without kaironic flatline"
+    echo "  empirical: code PRs plateau at 2 iters (cycles 102-114 record)"
+    echo "  Override: run_bridge.defaults.depth (.loa.config.yaml) or --depth N (CLI)"
+    echo "═══════════════════════════════════════════════════"
+  fi
 
   # cycle-114 FR-11: the per-iteration loop tags are loop-scoped — clear them so
   # the divergent-exploration (RESEARCHING) + finalization phases below, which

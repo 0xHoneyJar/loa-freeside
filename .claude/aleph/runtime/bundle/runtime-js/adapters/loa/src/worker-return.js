@@ -1,0 +1,216 @@
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { basename, dirname, join, resolve, } from 'node:path';
+import { LOA_WORKER_VALIDATION_FORMAT, } from './types.js';
+import { assertNoSymlinkComponents, sha256Digest, stableJson, stableJsonBytes, writeFileAtomic, writeJsonAtomic, } from './fs.js';
+import { verifyWorkerBundle } from './worker-bundle.js';
+import { contractExemplarToJsonSchema, validateWorkerReturnContract, } from '../../../scripts/lib/worker-return-contract.js';
+export { contractExemplarToJsonSchema };
+const VALIDATED_TOKEN = Symbol('validated-worker-return');
+/**
+ * Resolve the sole quarantine directory permitted for a sealed worker call.
+ * The worker bundle itself must occupy the matching canonical run slot so a
+ * caller cannot choose a different run root and then smuggle a return into a
+ * canonical ledger, verification directory, or another call's quarantine.
+ */
+export function canonicalWorkerReturnRoot(workerBundleRootInput, callId, suppliedReturnRoot) {
+    const workerBundleRoot = resolve(workerBundleRootInput);
+    const workerBundlesRoot = dirname(workerBundleRoot);
+    const controlRoot = dirname(workerBundlesRoot);
+    const runDir = dirname(controlRoot);
+    const expectedWorkerBundleRoot = join(runDir, 'control', 'worker-bundles', callId);
+    if (basename(workerBundleRoot) !== callId
+        || basename(workerBundlesRoot) !== 'worker-bundles'
+        || basename(controlRoot) !== 'control'
+        || workerBundleRoot !== expectedWorkerBundleRoot) {
+        throw new Error(`worker bundle root must be the canonical control/worker-bundles/${callId} path`);
+    }
+    const expectedReturnRoot = join(runDir, 'control', 'worker-returns', callId);
+    const actualReturnRoot = suppliedReturnRoot === undefined
+        ? expectedReturnRoot
+        : resolve(suppliedReturnRoot);
+    if (actualReturnRoot !== expectedReturnRoot) {
+        throw new Error(`worker return root must exactly match control/worker-returns/${callId} in the sealed run`);
+    }
+    assertNoSymlinkComponents(runDir, expectedReturnRoot);
+    return expectedReturnRoot;
+}
+function deepFreezeJson(value) {
+    if (typeof value !== 'object' || value === null || Object.isFrozen(value))
+        return value;
+    if (Array.isArray(value)) {
+        for (const entry of value)
+            deepFreezeJson(entry);
+    }
+    else {
+        for (const entry of Object.values(value))
+            deepFreezeJson(entry);
+    }
+    return Object.freeze(value);
+}
+export class ValidatedWorkerReturn {
+    callId;
+    data;
+    dataDigest;
+    rawDigest;
+    contractDigest;
+    validationDigest;
+    simulation;
+    #canonicalBytes;
+    #token;
+    constructor(token, callId, data, rawDigest, contractDigest, validationDigest, simulation) {
+        if (token !== VALIDATED_TOKEN)
+            throw new Error('validated returns are created only by validation');
+        const canonicalBytes = stableJsonBytes(data);
+        const canonicalClone = JSON.parse(canonicalBytes.toString('utf8'));
+        this.#token = token;
+        this.#canonicalBytes = Buffer.from(canonicalBytes);
+        this.callId = callId;
+        this.data = deepFreezeJson(canonicalClone);
+        this.dataDigest = sha256Digest(canonicalBytes);
+        this.rawDigest = rawDigest;
+        this.contractDigest = contractDigest;
+        this.validationDigest = validationDigest;
+        this.simulation = simulation === null
+            ? null
+            : Object.freeze({ kind: simulation.kind });
+        Object.freeze(this);
+    }
+    isAuthentic() {
+        try {
+            this.assertAuthenticAndIntact();
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    canonicalBytes() {
+        this.assertAuthenticAndIntact();
+        return Buffer.from(this.#canonicalBytes);
+    }
+    assertAuthenticAndIntact() {
+        if (this.#token !== VALIDATED_TOKEN) {
+            throw new Error('worker return does not carry the validation brand');
+        }
+        const currentBytes = stableJsonBytes(this.data);
+        if (!currentBytes.equals(this.#canonicalBytes)
+            || sha256Digest(currentBytes) !== this.dataDigest) {
+            throw new Error('validated worker return data failed its integrity check');
+        }
+        return this.data;
+    }
+}
+function parseRaw(raw) {
+    if (Buffer.isBuffer(raw) || typeof raw === 'string') {
+        const bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'utf8');
+        try {
+            return { value: JSON.parse(bytes.toString('utf8')), bytes };
+        }
+        catch (error) {
+            return {
+                value: null,
+                bytes,
+                error: `worker return is invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
+    }
+    try {
+        const bytes = stableJsonBytes(raw);
+        return {
+            value: JSON.parse(bytes.toString('utf8')),
+            bytes,
+        };
+    }
+    catch (error) {
+        return {
+            value: null,
+            bytes: Buffer.from(String(raw), 'utf8'),
+            error: `worker return is not serializable JSON: ${error instanceof Error ? error.message : String(error)}`,
+        };
+    }
+}
+export function validateWorkerDispatch(request, receipt) {
+    if (receipt.format !== 'aleph-loa-worker-dispatch/v1'
+        || receipt.call_id !== request.call_id
+        || !receipt.context_id
+        || receipt.fresh_context !== true
+        || receipt.inherited_context !== false
+        || receipt.filesystem !== 'bundle-read-only') {
+        throw new Error('worker dispatch receipt does not prove required isolation');
+    }
+    if (receipt.simulation !== null
+        && (typeof receipt.simulation !== 'object'
+            || Object.keys(receipt.simulation).length !== 1
+            || receipt.simulation.kind !== 'fixture-simulated')) {
+        throw new Error('worker dispatch receipt has an invalid simulation marker');
+    }
+    if (request.kind === 'refuter'
+        && request.isolation.producer_context_id
+        && receipt.context_id === request.isolation.producer_context_id) {
+        throw new Error('fresh-context refuter reused the producer context');
+    }
+    if (receipt.producer_context_id !== request.isolation.producer_context_id) {
+        throw new Error('worker dispatch receipt producer context disagrees with request');
+    }
+    if (stableJson(receipt.model_identity) !== stableJson(request.model_identity)) {
+        throw new Error('worker dispatch used an unpinned model identity');
+    }
+}
+export function validateWorkerReturn(options) {
+    const workerRoot = resolve(options.workerBundleRoot);
+    const request = verifyWorkerBundle(workerRoot);
+    const returnRoot = canonicalWorkerReturnRoot(workerRoot, request.call_id, options.returnRoot);
+    validateWorkerDispatch(request, options.dispatchReceipt);
+    mkdirSync(returnRoot, { recursive: true });
+    const parsed = parseRaw(options.raw);
+    const rawDigest = sha256Digest(parsed.bytes);
+    writeFileAtomic(join(returnRoot, 'raw.json'), parsed.bytes);
+    const contractPath = join(workerRoot, 'contracts', 'output.json');
+    if (!existsSync(contractPath))
+        throw new Error('worker bundle omits its Core output contract');
+    const contractBytes = readFileSync(contractPath);
+    const contractDigest = sha256Digest(contractBytes);
+    if (contractDigest !== request.output_contract.digest) {
+        throw new Error('worker output contract digest mismatch');
+    }
+    if (!request.output_contract.selector.startsWith('output-contract:')
+        || request.output_contract.selector.length === 'output-contract:'.length) {
+        throw new Error('worker output contract selector is invalid');
+    }
+    const errors = [];
+    let canonicalValue = null;
+    if (parsed.error) {
+        errors.push(parsed.error);
+    }
+    else {
+        let example;
+        try {
+            example = JSON.parse(contractBytes.toString('utf8'));
+        }
+        catch (error) {
+            throw new Error(`sealed Core output contract is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const validation = validateWorkerReturnContract(parsed.bytes, example);
+        errors.push(...validation.errors);
+        canonicalValue = validation.canonicalValue;
+    }
+    const report = {
+        format: LOA_WORKER_VALIDATION_FORMAT,
+        call_id: request.call_id,
+        contract_digest: contractDigest,
+        raw_digest: rawDigest,
+        simulation: options.dispatchReceipt.simulation,
+        result: errors.length > 0 ? 'FAIL' : 'PASS',
+        errors,
+    };
+    writeJsonAtomic(join(returnRoot, 'validation.json'), report);
+    if (errors.length > 0)
+        return { report, validated: null };
+    const validationDigest = sha256Digest(stableJsonBytes(report));
+    const validated = new ValidatedWorkerReturn(VALIDATED_TOKEN, request.call_id, canonicalValue, rawDigest, contractDigest, validationDigest, options.dispatchReceipt.simulation);
+    writeFileAtomic(join(returnRoot, 'validated.json'), validated.canonicalBytes());
+    return {
+        report,
+        validated,
+    };
+}

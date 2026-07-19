@@ -27,10 +27,11 @@ from loa_cheval.types import ConfigError, ProviderConfig
 #   from `claude-code:session` (NATIVE_PROVIDER) — that's the in-process
 #   native runtime; this is a subprocess CLI invocation. See
 #   claude_headless_adapter.py.
-# - cursor-headless: routes through `cursor-agent --print` (Cursor Agent CLI)
-#   for Cursor subscription auth (no API key consumed). A distinct expert-SWE
-#   review voice — its own corpus/harness, so a dedicated `cursor` provider
-#   rather than sitting under `openai`. See cursor_headless_adapter.py.
+# - cursor-headless: routes through `cursor-agent -p` (Cursor Agent CLI) for
+#   Cursor subscription auth (no API key consumed). Brings the Composer model
+#   line (Moonshot-Kimi base + agentic RL) in as a distinct-corpus voice for
+#   consensus panels. Read-only + sandboxed (the prompt is untrusted). See
+#   cursor_headless_adapter.py.
 # - grok-headless: routes through `grok --prompt-file ... --output-format json`
 #   (xAI Grok Build CLI) for xAI subscription auth (OIDC; no API key consumed).
 #   A headless CLI is a multi-model client (`grok models` → grok-build +

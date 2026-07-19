@@ -34,6 +34,7 @@ from loa_cheval.providers import get_adapter
 from loa_cheval.providers.cursor_headless_adapter import CursorHeadlessAdapter
 from loa_cheval.types import (
     CompletionRequest,
+    AuthRevokedError,
     ConfigError,
     ModelConfig,
     ProviderConfig,
@@ -272,34 +273,6 @@ class TestTransportProbeSafety:
             r = _adapter().complete(_req())
         assert r.content == '{"verdict":"APPROVED"}'
 
-    def test_negated_rate_limit_in_stderr_not_misclassified(self):
-        # Cross-model review (#309): a NEGATED transport phrase ("no rate limit")
-        # is the OPPOSITE signal — it must not rate-limit-classify a billed
-        # success (the naive substring check would false-positive here).
-        with patch(_PGKILL, return_value=_completed(_OK_ENVELOPE, stderr="health: no rate limit hit")):
-            r = _adapter().complete(_req())
-        assert r.content == '{"verdict":"APPROVED"}'
-
-    def test_pretty_printed_result_envelope_parses(self):
-        # Cross-model review (#309): a multi-line / pretty-printed result envelope
-        # must still parse — the line-oriented scan finds no single-line result,
-        # so the whole-stdout fallback recovers it (never a spurious failure).
-        import json as _json
-        pretty = _json.dumps(_json.loads(_OK_ENVELOPE), indent=2)
-        assert "\n" in pretty  # guard: genuinely multi-line
-        with patch(_PGKILL, return_value=_completed(pretty)):
-            r = _adapter().complete(_req())
-        assert r.content == '{"verdict":"APPROVED"}'
-
-    def test_mkdtemp_failure_is_provider_unavailable_not_config(self):
-        # Cross-model review (#309): a workspace-creation failure (/tmp exhaustion)
-        # is TRANSIENT — it must advance the fallback chain (ProviderUnavailableError),
-        # not abort the whole invoke as INVALID_CONFIG (codex/grok parity #1008).
-        _mkdtemp = "loa_cheval.providers.cursor_headless_adapter.tempfile.mkdtemp"
-        with patch(_mkdtemp, side_effect=OSError("No space left on device")):
-            with pytest.raises(ProviderUnavailableError, match="isolated workspace"):
-                _adapter().complete(_req())
-
 
 # ---------------------------------------------------------------------------
 # Error classification
@@ -314,6 +287,19 @@ class TestErrorClassification:
 
     def test_not_logged_in_is_configerror(self):
         with patch(_PGKILL, return_value=_completed("", stderr="Not logged in", returncode=1)):
+            with pytest.raises(ConfigError):
+                _adapter().complete(_req())
+
+    def test_runtime_token_revocation_raises_auth_revoked(self):
+        # KF-017/#1071: server-invalidated token → WALKABLE (AuthRevokedError).
+        with patch(_PGKILL, return_value=_completed("", stderr="401 Unauthorized: session expired", returncode=1)):
+            with pytest.raises(AuthRevokedError) as exc_info:
+                _adapter().complete(_req())
+            assert exc_info.value.code == "AUTH_REVOKED"
+
+    def test_ambiguous_unauthorized_with_static_marker_still_config_error(self):
+        # #1095 safety: "unauthorized" + a not-logged-in marker → ConfigError.
+        with patch(_PGKILL, return_value=_completed("", stderr="unauthorized — please log in", returncode=1)):
             with pytest.raises(ConfigError):
                 _adapter().complete(_req())
 

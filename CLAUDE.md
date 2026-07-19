@@ -68,6 +68,10 @@ ln -s ../../tools/check-beacon-domain.sh .git/hooks/pre-commit
 
 Mirrors the CI check; catches violations before push.
 
+## Known Failures (check BEFORE triaging any degradation)
+
+Consult the known-failures **INDEX**, not the full log: the SessionStart hook (`.claude/hooks/loa-kf-surface.sh`, when `known_failures.surface_at_session_start` is enabled) prints a compact symptom → KF table; otherwise regenerate via `bash .claude/scripts/grimoire-index.sh` and read the `## kf` section of `grimoires/loa/INDEX.md`. On a symptom match, open `grimoires/loa/known-failures.md` at that `## KF-NNN:` heading and read only its **Reading guide**. Record recurrences and new entries via `.claude/scripts/lib/kf-write-lib.sh` (`recur` / `attempt` / `new`) — never hand-edit the ledger. **Recurrence ≥ 3 is structural**: route through the upstream issue, do not retry listed attempts.
+
 ### Three orthogonal planes (mental model)
 
 When working on a change, identify which **plane** it belongs to. A building spans all three inside its one repo:

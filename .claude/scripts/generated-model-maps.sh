@@ -26,6 +26,7 @@ declare -A MODEL_PROVIDERS=(
     ["claude-opus-4-8"]="anthropic"
     ["claude-opus-4-7"]="anthropic"
     ["claude-opus-4-6"]="anthropic"
+    ["claude-sonnet-5"]="anthropic"
     ["claude-sonnet-4-6"]="anthropic"
     ["claude-sonnet-4-5-20250929"]="anthropic"
     ["claude-haiku-4-5-20251001"]="anthropic"
@@ -36,10 +37,13 @@ declare -A MODEL_PROVIDERS=(
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="bedrock"
     ["grok-build"]="xai"
     ["grok-composer-2.5-fast"]="xai"
+    ["composer-2.5"]="cursor"
+    ["composer-2.5-fast"]="cursor"
     ["gemini-2.0"]="google"
     ["reviewer"]="openai"
     ["reasoning"]="openai"
     ["cheap"]="anthropic"
+    ["claude-sonnet-5"]="anthropic"
     ["fable"]="anthropic"
     ["opus"]="anthropic"
     ["tiny"]="anthropic"
@@ -60,6 +64,9 @@ declare -A MODEL_PROVIDERS=(
     ["grok-composer"]="xai"
     ["grok-fast"]="xai"
     ["grok-headless"]="xai"
+    ["cursor-composer"]="cursor"
+    ["cursor-fast"]="cursor"
+    ["cursor-headless"]="cursor"
     ["gpt-5.2-codex"]="openai"
     ["gpt-5.3-codex"]="openai"
     ["claude-opus-4-8"]="anthropic"
@@ -94,6 +101,7 @@ declare -A MODEL_IDS=(
     ["claude-opus-4-8"]="claude-opus-4-8"
     ["claude-opus-4-7"]="claude-opus-4-7"
     ["claude-opus-4-6"]="claude-opus-4-6"
+    ["claude-sonnet-5"]="claude-sonnet-5"
     ["claude-sonnet-4-6"]="claude-sonnet-4-6"
     ["claude-sonnet-4-5-20250929"]="claude-sonnet-4-5-20250929"
     ["claude-haiku-4-5-20251001"]="claude-haiku-4-5-20251001"
@@ -104,10 +112,13 @@ declare -A MODEL_IDS=(
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="us.anthropic.claude-haiku-4-5-20251001-v1:0"
     ["grok-build"]="grok-build"
     ["grok-composer-2.5-fast"]="grok-composer-2.5-fast"
+    ["composer-2.5"]="composer-2.5"
+    ["composer-2.5-fast"]="composer-2.5-fast"
     ["gemini-2.0"]="gemini-2.0-flash"
     ["reviewer"]="gpt-5.5"
     ["reasoning"]="gpt-5.5"
     ["cheap"]="claude-sonnet-4-6"
+    ["claude-sonnet-5"]="claude-sonnet-5"
     ["fable"]="claude-fable-5"
     ["opus"]="claude-opus-4-8"
     ["tiny"]="claude-haiku-4-5-20251001"
@@ -128,6 +139,9 @@ declare -A MODEL_IDS=(
     ["grok-composer"]="grok-composer-2.5-fast"
     ["grok-fast"]="grok-composer-2.5-fast"
     ["grok-headless"]="grok-build"
+    ["cursor-composer"]="composer-2.5"
+    ["cursor-fast"]="composer-2.5-fast"
+    ["cursor-headless"]="composer-2.5"
     ["gpt-5.2-codex"]="gpt-5.3-codex"
     ["gpt-5.3-codex"]="gpt-5.3-codex"
     ["claude-opus-4-8"]="claude-opus-4-8"
@@ -166,6 +180,7 @@ declare -A MODEL_AUTH_TYPE=(
     ["claude-opus-4-8"]="http_api"
     ["claude-opus-4-7"]="http_api"
     ["claude-opus-4-6"]="http_api"
+    ["claude-sonnet-5"]="http_api"
     ["claude-sonnet-4-6"]="http_api"
     ["claude-sonnet-4-5-20250929"]="http_api"
     ["claude-haiku-4-5-20251001"]="http_api"
@@ -176,6 +191,8 @@ declare -A MODEL_AUTH_TYPE=(
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="aws_iam"
     ["grok-build"]="headless"
     ["grok-composer-2.5-fast"]="headless"
+    ["composer-2.5"]="headless"
+    ["composer-2.5-fast"]="headless"
 )
 
 declare -A MODEL_DISPATCH_GROUP=(
@@ -195,6 +212,7 @@ declare -A MODEL_DISPATCH_GROUP=(
     ["claude-opus-4-8"]="anthropic-claude"
     ["claude-opus-4-7"]="anthropic-claude"
     ["claude-opus-4-6"]="anthropic-claude"
+    ["claude-sonnet-5"]="anthropic-claude"
     ["claude-sonnet-4-6"]="anthropic-claude"
     ["claude-sonnet-4-5-20250929"]="anthropic-claude"
     ["claude-haiku-4-5-20251001"]="anthropic-claude"
@@ -205,6 +223,8 @@ declare -A MODEL_DISPATCH_GROUP=(
     ["us.anthropic.claude-haiku-4-5-20251001-v1:0"]="bedrock-anthropic"
     ["grok-build"]="xai-grok"
     ["grok-composer-2.5-fast"]="xai-grok"
+    ["composer-2.5"]="cursor-composer"
+    ["composer-2.5-fast"]="cursor-composer"
 )
 
 declare -A COST_INPUT=(
@@ -222,6 +242,7 @@ declare -A COST_INPUT=(
     ["claude-opus-4-8"]="0.005"
     ["claude-opus-4-7"]="0.005"
     ["claude-opus-4-6"]="0.005"
+    ["claude-sonnet-5"]="0.003"
     ["claude-sonnet-4-6"]="0.003"
     ["claude-sonnet-4-5-20250929"]="0.003"
     ["claude-haiku-4-5-20251001"]="0.001"
@@ -233,6 +254,7 @@ declare -A COST_INPUT=(
     ["reviewer"]="0.005"
     ["reasoning"]="0.005"
     ["cheap"]="0.003"
+    ["claude-sonnet-5"]="0.003"
     ["fable"]="0.01"
     ["opus"]="0.005"
     ["tiny"]="0.001"
@@ -278,6 +300,7 @@ declare -A COST_OUTPUT=(
     ["claude-opus-4-8"]="0.025"
     ["claude-opus-4-7"]="0.025"
     ["claude-opus-4-6"]="0.025"
+    ["claude-sonnet-5"]="0.015"
     ["claude-sonnet-4-6"]="0.015"
     ["claude-sonnet-4-5-20250929"]="0.015"
     ["claude-haiku-4-5-20251001"]="0.005"
@@ -289,6 +312,7 @@ declare -A COST_OUTPUT=(
     ["reviewer"]="0.03"
     ["reasoning"]="0.03"
     ["cheap"]="0.015"
+    ["claude-sonnet-5"]="0.015"
     ["fable"]="0.05"
     ["opus"]="0.025"
     ["tiny"]="0.005"
@@ -345,7 +369,13 @@ declare -a VALID_FLATLINE_MODELS=(
     claude-opus-4.8
     claude-sonnet-4-5-20250929
     claude-sonnet-4-6
+    claude-sonnet-5
     codex-headless
+    composer-2.5
+    composer-2.5-fast
+    cursor-composer
+    cursor-fast
+    cursor-headless
     deep-research-pro
     deep-thinker
     fable
