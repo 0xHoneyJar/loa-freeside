@@ -1,9 +1,10 @@
 {
   "$comment": [
-    "THE GATE MAP — which incumbent Discord role gates which collection, for community `thj`.",
+    "CANDIDATE GATE-MAP EVIDENCE — possible incumbent Discord role-to-collection edges for community `thj`.",
     "",
     "S5-T5 / AC-8: NO ROLE→COLLECTION EDGE MAY BE INFERRED SILENTLY. This file is the reviewable,",
-    "operator-ratifiable source of truth. Every edge carries its PROVENANCE, and an edge that is not",
+    "operator-ratifiable research evidence. This file is deliberately under docs/, has NO runtime loader,",
+    "and is not deploy configuration. Every edge carries its PROVENANCE, and an edge that is not",
     "`operator-confirmed` MUST NOT be used to serve a customer-facing audit — a wrong edge means the",
     "audit computes drift for role X against collection Y, which is a confidently-wrong audit of exactly",
     "the class this cycle exists to prevent (and it would be invisible: the numbers would look plausible).",

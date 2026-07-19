@@ -124,22 +124,3 @@ export function maxBalanceAcross(balances: readonly Balances[], wallet: string):
   }
   return max;
 }
-
-/**
- * Per-wallet balances SUMMED across deployments — for share-of-SUPPLY metrics (whale concentration)
- * ONLY, never for qualification.
- *
- * Why summing is sound here and rejected there: a token exists on exactly one chain at a time (a
- * bridge burns/locks on the origin before minting on the destination), so a cross-chain sum counts
- * each live token once and yields the collection's true circulating supply. Qualification is a
- * different question — "does this wallet meet the gate?" — where summing would let sub-threshold
- * dust on several chains add up into access, and would double-count a token mid-bridge if a chain's
- * view lags. Hence `any-source` for the gate, `sumAcross` for the supply metric.
- */
-export function sumAcross(balances: readonly Balances[]): Balances {
-  const merged: Balances = new Map();
-  for (const b of balances) {
-    for (const [w, v] of b) merged.set(w, (merged.get(w) ?? 0n) + v);
-  }
-  return merged;
-}
