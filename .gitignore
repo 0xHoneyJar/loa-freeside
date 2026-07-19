@@ -439,3 +439,6 @@ themes/packages/services/*.d.ts.map
 # Cross-org external handoffs are durable publications (e.g. GV6 theatre bundles, echelon-core#178)
 !grimoires/loa/a2a/external/
 !grimoires/loa/a2a/external/**
+
+# bv (beads viewer) local config and caches
+.bv/
