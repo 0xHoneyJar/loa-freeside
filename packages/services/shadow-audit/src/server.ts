@@ -20,7 +20,7 @@
  */
 
 import { Hono } from 'hono';
-import type { Cta } from '@freeside/shadow-audit-protocol';
+import { SHADOW_AUDIT_PROTOCOL_VERSION, type Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
 import type { CollectionIndex } from './ownership-source.js';
 import { makeFileRoleSource } from './role-source.js';
@@ -54,6 +54,8 @@ export interface AuditServerConfig {
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
    *  the role source falls back to the file at `roleSnapshotPath` (existing behavior). */
   ingestToken?: string;
+  /** Ordered current + previous service tokens for zero-downtime rotation. */
+  ingestTokens?: readonly string[];
   /** S1-T4: directory the durable role store writes ingested snapshots to (default `./data/role-snapshots`). */
   roleSnapshotDir?: string;
   /** arrakis-7mtwa: explicit persistence backend. Production Railway uses postgres; file is local fallback. */
@@ -126,6 +128,7 @@ export function buildAuditApp(
   // The production HARD bound is shared through Postgres. Tests/local file mode retain the in-memory
   // implementation so the router remains independently testable.
   const teaserBudgetCfg = config.teaserBudget ?? { limit: 30, windowMs: 60_000 };
+  const ingestTokens = config.ingestTokens ?? (config.ingestToken === undefined ? [] : [config.ingestToken]);
 
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
   // the ingestion sink (POST /v1/role-snapshot writes it, load() reads it — the SAME instance, so an
@@ -133,7 +136,7 @@ export function buildAuditApp(
   // unchanged (no ingestion surface mounted — fail-closed).
   let roles: RoleSource;
   let ingest: AuditRouterDeps['ingest'];
-  if (config.ingestToken) {
+  if (ingestTokens.length > 0) {
     if (!collections) {
       throw new Error(
         'ROLE_SNAPSHOT_INGEST_TOKEN is set but COLLECTION_REGISTRY is unavailable — ingestion requires the audited collection index.',
@@ -170,7 +173,7 @@ export function buildAuditApp(
         sources: collections.sources,
       });
     roles = store;
-    ingest = { token: config.ingestToken, sink: store };
+    ingest = { tokens: ingestTokens, sink: store };
   } else {
     roles = makeFileRoleSource(config.roleSnapshotPath);
   }
@@ -240,7 +243,7 @@ export function buildAuditApp(
       await next();
     });
   }
-  app.get('/healthz', (c) => c.json({ ok: true }));
+  app.get('/healthz', (c) => c.json({ ok: true, shadow_audit_protocol_version: SHADOW_AUDIT_PROTOCOL_VERSION }));
   app.route('/', createAuditRouter(deps));
   return app;
 }
@@ -276,8 +279,27 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
   if (roleSnapshotStore === 'postgres' && !env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required when ROLE_SNAPSHOT_STORE=postgres');
   }
-  if (roleSnapshotStore === 'postgres' && !env.ROLE_SNAPSHOT_INGEST_TOKEN) {
-    throw new Error('ROLE_SNAPSHOT_INGEST_TOKEN is required when ROLE_SNAPSHOT_STORE=postgres');
+  let ingestTokens: string[] | undefined;
+  if (env.ROLE_SNAPSHOT_INGEST_TOKENS !== undefined) {
+    let parsedTokens: unknown;
+    try {
+      parsedTokens = JSON.parse(env.ROLE_SNAPSHOT_INGEST_TOKENS);
+    } catch {
+      throw new Error('ROLE_SNAPSHOT_INGEST_TOKENS must be a JSON array of non-empty strings');
+    }
+    if (
+      !Array.isArray(parsedTokens) ||
+      parsedTokens.length === 0 ||
+      parsedTokens.some((token) => typeof token !== 'string' || token.length === 0)
+    ) {
+      throw new Error('ROLE_SNAPSHOT_INGEST_TOKENS must be a non-empty JSON array of non-empty strings');
+    }
+    ingestTokens = [...new Set(parsedTokens)];
+  } else if (env.ROLE_SNAPSHOT_INGEST_TOKEN) {
+    ingestTokens = [env.ROLE_SNAPSHOT_INGEST_TOKEN];
+  }
+  if (roleSnapshotStore === 'postgres' && !ingestTokens) {
+    throw new Error('ROLE_SNAPSHOT_INGEST_TOKEN or ROLE_SNAPSHOT_INGEST_TOKENS is required when ROLE_SNAPSHOT_STORE=postgres');
   }
   return {
     apiKey: env.SHADOW_AUDIT_API_KEY || undefined,
@@ -285,6 +307,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
     cta: { product, conversation },
     roleSnapshotPath: env.ROLE_SNAPSHOT_PATH || undefined,
     ingestToken: env.ROLE_SNAPSHOT_INGEST_TOKEN || undefined,
+    ingestTokens,
     roleSnapshotDir: env.ROLE_SNAPSHOT_DIR || undefined,
     roleSnapshotStore,
     databaseUrl: env.DATABASE_URL || undefined,

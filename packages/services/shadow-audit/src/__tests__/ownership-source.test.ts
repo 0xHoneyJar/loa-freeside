@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { makeRpcBlockTimeResolver, type JsonRpcCall } from '../block-time-resolver.js';
-import { makeSonarOwnershipSource, registryFromMap } from '../ownership-source.js';
+import { buildCollectionIndex, makeSonarOwnershipSource, registryFromMap } from '../ownership-source.js';
 import type { Balances } from '../audit-service.js';
 
 const C = '0x' + 'a'.repeat(40);
@@ -92,5 +92,39 @@ describe('makeSonarOwnershipSource — assembly', () => {
   it('registryFromMap is case-insensitive on the contract', async () => {
     const reg = registryFromMap({ ['80094/' + C.toUpperCase()]: { collection: 'x', standard: 'erc721' } });
     expect(reg({ chain: '80094', contract: C.toLowerCase() })?.collection).toBe('x');
+  });
+});
+
+describe('buildCollectionIndex — explicit collection identity', () => {
+  it('does not union unrelated deployments that share a belt-gateway query id', () => {
+    const index = buildCollectionIndex({
+      '1/0xaaa': { collection: 'reused-query-id', standard: 'erc721', union: 'world-a:collection' },
+      '80094/0xbbb': { collection: 'reused-query-id', standard: 'erc721', union: 'world-b:collection' },
+    });
+
+    expect(index.sources({ chain: '1', contract: '0xaaa' })).toEqual([{ chain: '1', contract: '0xaaa' }]);
+    expect(index.sources({ chain: '80094', contract: '0xbbb' })).toEqual([
+      { chain: '80094', contract: '0xbbb' },
+    ]);
+  });
+
+  it('unions deployments only when the explicit union key matches', () => {
+    const index = buildCollectionIndex({
+      '1/0xaaa': { collection: 'honeycomb', standard: 'erc721', union: 'thj:honeycomb' },
+      '80094/0xbbb': { collection: 'honeycomb', standard: 'erc721', union: 'thj:honeycomb' },
+    });
+
+    expect(index.sources({ chain: '1', contract: '0xaaa' })).toEqual([
+      { chain: '1', contract: '0xaaa' },
+      { chain: '80094', contract: '0xbbb' },
+    ]);
+  });
+
+  it('fails at boot when an entry omits the explicit union key', () => {
+    expect(() =>
+      buildCollectionIndex({
+        '1/0xaaa': { collection: 'ambiguous', standard: 'erc721' } as never,
+      }),
+    ).toThrow(/no explicit union key/);
   });
 });

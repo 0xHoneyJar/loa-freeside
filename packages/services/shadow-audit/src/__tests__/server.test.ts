@@ -34,7 +34,7 @@ const fakeOwnership = (snap: Balances, cur: Balances): OwnershipSource => ({
 /** S5-T3: the app needs the collection INDEX — the membership lookup AND the deployment set the audit
  *  unions. Without it the app is fail-closed (see the `no registry` test below). */
 const collections = buildCollectionIndex({
-  [COLLECTION_KEY]: { collection: 'honeycomb', standard: 'erc721' },
+  [COLLECTION_KEY]: { collection: 'honeycomb', standard: 'erc721', union: 'honeycomb' },
 });
 
 /** Write a valid RoleSnapshot to a temp file and return its path + a cleanup fn. */
@@ -179,7 +179,7 @@ describe('buildAuditApp — the deployment composition root', () => {
     const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), collections);
     const res = await app.request('/healthz');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, shadow_audit_protocol_version: '2' });
   });
 
   it('X-API-Key gate: a missing/wrong key → 401', async () => {
@@ -271,6 +271,26 @@ describe('configFromEnv — fail loud on missing required config', () => {
     expect(cfg.cta).toEqual({ product: 'https://p', conversation: 'https://c' });
     expect(cfg.apiKey).toBe('k');
   });
+
+  it('accepts overlapping ingest tokens for zero-downtime rotation', () => {
+    const cfg = configFromEnv({
+      OPERATED_COMMUNITIES: 'thj',
+      CTA_PRODUCT: 'https://p',
+      CTA_CONVERSATION: 'https://c',
+      ROLE_SNAPSHOT_INGEST_TOKENS: '["current-token","previous-token"]',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.ingestTokens).toEqual(['current-token', 'previous-token']);
+  });
+
+  it('fails loud on malformed overlapping ingest-token config', () => {
+    const base = { OPERATED_COMMUNITIES: 'thj', CTA_PRODUCT: 'https://p', CTA_CONVERSATION: 'https://c' };
+    expect(() =>
+      configFromEnv({ ...base, ROLE_SNAPSHOT_INGEST_TOKENS: '["current-token",""]' } as NodeJS.ProcessEnv),
+    ).toThrow(/non-empty/);
+    expect(() =>
+      configFromEnv({ ...base, ROLE_SNAPSHOT_INGEST_TOKENS: 'not-json' } as NodeJS.ProcessEnv),
+    ).toThrow(/JSON array/);
+  });
 });
 
 describe('buildAuditApp — postgres role-store composition', () => {
@@ -325,7 +345,11 @@ describe('capability read security boundary (FR-2 / PRD §Security boundary)', (
   const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[R1, 1n]]));
 
   it('GET /v1/collections is OPEN even when an X-API-Key is configured', async () => {
-    const app = buildAuditApp(ownership, baseConfig({ apiKey: 'secret' }), buildCollectionIndex({ '1/0xabc': { collection: 'azuki', standard: 'erc721' } }));
+    const app = buildAuditApp(
+      ownership,
+      baseConfig({ apiKey: 'secret' }),
+      buildCollectionIndex({ '1/0xabc': { collection: 'azuki', standard: 'erc721', union: 'azuki' } }),
+    );
     // no key header → still 200 (capability read carries no member data)
     const res = await app.request('/v1/collections/1/0xABC');
     expect(res.status).toBe(200);

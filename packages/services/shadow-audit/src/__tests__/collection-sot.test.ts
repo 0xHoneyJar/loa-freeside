@@ -65,7 +65,7 @@ describe('shadow-audit settle gate — collapse onto the ratified ledger (S3-T2,
 
   it('env COLLECTION_REGISTRY still overrides (deprecated break-glass, back-compat)', () => {
     const r = loadRegistry({
-      envRegistry: '{"80094/0xabc": {"collection":"legacy","standard":"erc721"}}',
+      envRegistry: '{"80094/0xabc": {"collection":"legacy","standard":"erc721","union":"legacy"}}',
       registryFromEnv: (raw) => ({ map: JSON.parse(raw), chains: new Set<string>(['80094']) }),
     });
     expect(r.registry({ chain: '80094', contract: '0xabc' })).toEqual({ collection: 'legacy', standard: 'erc721' });

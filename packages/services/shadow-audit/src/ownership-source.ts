@@ -24,6 +24,15 @@ export interface CollectionRef {
   readonly standard: TokenStandard;
 }
 
+/**
+ * Boot-time collection declaration. `collection` is only the belt-gateway query id and is not an
+ * identity: the same id can legitimately exist on unrelated chains. `union` is the explicit assertion
+ * that deployments belong to the same logical collection and must be reconstructed together.
+ */
+export interface CollectionIndexEntry extends CollectionRef {
+  readonly union: string;
+}
+
 /** Resolve a chain+contract to its belt-gateway collection, or undefined for an unknown one. */
 export type CollectionRegistry = (args: { chain: string; contract: string }) => CollectionRef | undefined;
 
@@ -48,6 +57,9 @@ export interface SonarOwnershipOpts {
   readonly confirmations?: number;
 }
 
+const collectionRegistryKey = (chain: string, contract: string): string =>
+  `${chain}/${contract}`.toLowerCase();
+
 export function makeSonarOwnershipSource(opts: SonarOwnershipOpts): OwnershipSource {
   const confirmations = opts.confirmations ?? 12;
 
@@ -64,9 +76,12 @@ export function makeSonarOwnershipSource(opts: SonarOwnershipOpts): OwnershipSou
     // chainId is LOAD-BEARING: collection ids repeat across chains (Honeycomb + HoneyJar1-6 exist on both
     // Ethereum and Berachain). Querying sonar by collection alone merged every chain's transfers into one
     // replay and reconstruction threw "mint of already-owned tokenId 1" against the live Honeycomb.
+    if (!/^[1-9]\d*$/.test(chain)) {
+      throw new Error(`shadow-audit: chain "${chain}" is not a canonical positive numeric chain id — refusing to query sonar unscoped`);
+    }
     const chainId = Number(chain);
-    if (!Number.isInteger(chainId)) {
-      throw new Error(`shadow-audit: chain "${chain}" is not a numeric chain id — refusing to query sonar unscoped`);
+    if (!Number.isSafeInteger(chainId)) {
+      throw new Error(`shadow-audit: chain "${chain}" exceeds JavaScript's safe integer range — refusing to query sonar unscoped`);
     }
     const own = await opts.sonar.ownershipAtBlock({
       collection: ref.collection,
@@ -111,37 +126,50 @@ export function makeSonarOwnershipSource(opts: SonarOwnershipOpts): OwnershipSou
  * itself is DEPLOY config — `bin/http.ts` parses it from `COLLECTION_REGISTRY` (JSON). Kept here so the
  * lookup (case-normalization) is one tested function, not re-implemented at the composition root.
  *
- * The SOURCE SET is derived by grouping entries on their `collection` id (S5-T3): two rows sharing a
- * collection id ARE the same collection on two chains — that is exactly what Honeycomb-on-eth and
- * Honeycomb-on-bera are. So any one of them resolves to all of them, and an audit addressed at either
- * reconstructs both. The grouping is INTENTIONALLY implicit in the id rather than a second "sources" field
- * a deploy could forget to keep in sync with the rows.
+ * The SOURCE SET is derived by grouping entries on their explicit `union` key (S5-T3). `collection` is a
+ * belt-gateway query id, not a globally unique identity, so sharing that value never silently merges two
+ * deployments. The ratified snapshot supplies its ledger `collection_key`; the deprecated env override
+ * must assert the same identity explicitly.
  */
-export function buildCollectionIndex(map: Record<string, CollectionRef>): CollectionIndex {
+export function buildCollectionIndex(map: Record<string, CollectionIndexEntry>): CollectionIndex {
   const norm = new Map<string, CollectionRef>();
-  const byCollection = new Map<string, CollectionSource[]>();
+  const unionForKey = new Map<string, string>();
+  const byUnion = new Map<string, CollectionSource[]>();
   for (const [k, v] of Object.entries(map)) {
     const key = k.toLowerCase();
-    norm.set(key, v);
+    if (norm.has(key)) {
+      throw new Error(`shadow-audit: duplicate collection registry key after case normalization: ${key}`);
+    }
+    if (typeof v.union !== 'string' || v.union.length === 0) {
+      throw new Error(`shadow-audit: collection registry entry ${key} has no explicit union key`);
+    }
+    norm.set(key, { collection: v.collection, standard: v.standard });
+    unionForKey.set(key, v.union);
     const [chain, contract] = key.split('/');
     if (!chain || !contract) continue;
-    const group = byCollection.get(v.collection) ?? [];
+    const group = byUnion.get(v.union) ?? [];
     group.push({ chain, contract });
-    byCollection.set(v.collection, group);
+    byUnion.set(v.union, group);
   }
   // Canonical order, so the source set (hence the inputs_hash) never depends on map iteration order.
-  for (const group of byCollection.values()) {
+  for (const group of byUnion.values()) {
     group.sort((a, b) => (a.chain === b.chain ? a.contract.localeCompare(b.contract) : a.chain.localeCompare(b.chain)));
   }
-  const registry: CollectionRegistry = ({ chain, contract }) => norm.get(`${chain}/${contract}`.toLowerCase());
+  const registry: CollectionRegistry = ({ chain, contract }) => norm.get(collectionRegistryKey(chain, contract));
   const sources: SourceResolver = (args) => {
-    const ref = registry(args);
-    return ref ? byCollection.get(ref.collection) : undefined;
+    const union = unionForKey.get(collectionRegistryKey(args.chain, args.contract));
+    return union ? byUnion.get(union) : undefined;
   };
   return { registry, sources };
 }
 
 /** Back-compat shorthand for the lookup half of the index. */
 export function registryFromMap(map: Record<string, CollectionRef>): CollectionRegistry {
-  return buildCollectionIndex(map).registry;
+  const norm = new Map(
+    Object.entries(map).map(([key, ref]) => [
+      key.toLowerCase(),
+      { collection: ref.collection, standard: ref.standard },
+    ]),
+  );
+  return ({ chain, contract }) => norm.get(collectionRegistryKey(chain, contract));
 }

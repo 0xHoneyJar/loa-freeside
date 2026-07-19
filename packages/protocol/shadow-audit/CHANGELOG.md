@@ -15,3 +15,6 @@
 - Existing stored `inputs_hash` and derived `run_id` values are not comparable
   with values emitted by 0.2.0. Replay and correlation consumers must retain
   the producer protocol version or treat pre-0.2 values as a separate lineage.
+- `SHADOW_AUDIT_PROTOCOL_VERSION` is now exported as `"2"` and the service
+  exposes it on `/healthz` so deploy gates can reject an incompatible producer
+  before routing traffic.

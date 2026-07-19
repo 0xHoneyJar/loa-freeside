@@ -11,7 +11,11 @@
  */
 
 import { z } from 'zod';
-import { buildCollectionIndex, type CollectionRef, type CollectionRegistry } from './ownership-source.js';
+import {
+  buildCollectionIndex,
+  type CollectionIndexEntry,
+  type CollectionRegistry,
+} from './ownership-source.js';
 import type { SourceResolver } from './collection-union.js';
 
 /** One ratified entity as the ledger folded it (the snapshot row). */
@@ -68,7 +72,7 @@ function serveReason(e: EntitySnapshot): string | null {
  * a confidently-wrong stale-access set is not.
  */
 export function buildRegistryFromSnapshot(snapshot: RatifiedSnapshot): CollapseResult {
-  const map: Record<string, CollectionRef> = {};
+  const map: Record<string, CollectionIndexEntry> = {};
   const chains = new Set<string>();
   const included: string[] = [];
   const excluded: Record<string, string> = {};
@@ -99,6 +103,7 @@ export function buildRegistryFromSnapshot(snapshot: RatifiedSnapshot): CollapseR
       map[`${e.chain}/${e.contract}`] = {
         collection: collectionKey,
         standard: e.token_standard as 'erc721' | 'erc1155',
+        union: collectionKey,
       };
       chains.add(e.chain);
       included.push(`${e.chain}:${e.contract}`);
@@ -121,7 +126,7 @@ export function loadRegistry(opts: {
   /** Parses the env JSON into the raw `"<chain>/<contract>"` map. The INDEX (lookup + source set) is built
    *  here, not by the caller, so the env path and the ratified path can never disagree about what a
    *  collection's deployments are (S5-T3). */
-  registryFromEnv: (raw: string) => { map: Record<string, CollectionRef>; chains: Set<string> };
+  registryFromEnv: (raw: string) => { map: Record<string, CollectionIndexEntry>; chains: Set<string> };
 }): CollapseResult {
   if (opts.envRegistry) {
     const { map, chains } = opts.registryFromEnv(opts.envRegistry);

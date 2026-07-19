@@ -107,7 +107,13 @@ export interface AuditRouterDeps {
   runWindowMs?: number;
   /** S1-T4 (IMP-009): role-snapshot ingestion. Absent → the POST /v1/role-snapshot route is NOT mounted
    *  (fail-closed: no ingest token configured ⇒ no ingestion surface, never an open one). */
-  ingest?: { token: string; sink: RoleSink };
+  ingest?: {
+    /** Current and previous tokens may overlap during a rotation. */
+    tokens?: readonly string[];
+    /** Backward-compatible single-token injection for tests/local callers. */
+    token?: string;
+    sink: RoleSink;
+  };
   /** S2-T3 (IMP-006): dedicated, TIGHTER limiter for the PUBLIC teaser. That route is unauthenticated and
    *  does real chain work (RPC + reconstruction), so it must not share the authed routes' budget. Falls
    *  back to `rateLimiter` when absent.
@@ -141,9 +147,9 @@ type BoundedBodyResult =
  * Read and decode at most `maxBytes`, cancelling the stream as soon as it exceeds the bound.
  *
  * Chunk accumulation plus the final contiguous buffer peaks near 2× `maxBytes`
- * for a maximum-size request. The authenticated single-exporter ingest lane
- * accepts that bounded envelope; revisit with a spool or fixed-buffer strategy
- * before increasing the cap or ingest concurrency.
+ * for a maximum-size request. The authenticated ingest lane enforces one
+ * in-flight body per process below, bounding aggregate buffering as well as
+ * per-request size.
  */
 async function readBoundedText(request: Request, maxBytes: number): Promise<BoundedBodyResult> {
   const body = request.body;
@@ -665,6 +671,14 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
   // so an unconfigured deploy has NO ingestion surface (fail-closed), never an open one.
   if (deps.ingest) {
     const ingest = deps.ingest;
+    const ingestTokens = ingest.tokens ?? (ingest.token === undefined ? [] : [ingest.token]);
+    if (ingestTokens.length === 0 || ingestTokens.some((token) => token.length === 0)) {
+      throw new Error('role-snapshot ingestion requires at least one non-empty token');
+    }
+    // A role export is intentionally a single-writer lane. The body reader can hold close to twice the
+    // byte cap while joining stream chunks, so enforce the concurrency assumption instead of leaving it
+    // in prose. Cross-replica writes remain serialized by the durable repository's version constraint.
+    let ingestInFlight = false;
     app.post('/v1/role-snapshot', async (c) => {
       // Reject malformed or honestly-declared oversized framing before secret-dependent work. The streamed
       // cap below remains authoritative because Content-Length is optional and caller-controlled.
@@ -678,9 +692,21 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         }
       }
       // Service-token, fixed-size digest comparison. Missing/wrong X-Ingest-Token → 401, no body detail.
-      if (!timingSafeEqualStr(c.req.header('x-ingest-token') ?? '', ingest.token)) {
+      const presentedToken = c.req.header('x-ingest-token') ?? '';
+      let ingestAuthorized = false;
+      // Compare every configured token so the match position does not become an observable rotation hint.
+      for (const token of ingestTokens) {
+        ingestAuthorized = timingSafeEqualStr(presentedToken, token) || ingestAuthorized;
+      }
+      if (!ingestAuthorized) {
         return new Response(null, { status: 401 });
       }
+      if (ingestInFlight) {
+        c.header('Retry-After', '1');
+        return c.json({ error: { code: 'ingest-busy', retryable: true } }, 429);
+      }
+      ingestInFlight = true;
+      try {
       // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
       // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an
       // integrity failure, not a parse error.
@@ -774,6 +800,9 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         captured_at: parsed.data.captured_at,
         entries: parsed.data.entries.length,
       });
+      } finally {
+        ingestInFlight = false;
+      }
     });
   }
 

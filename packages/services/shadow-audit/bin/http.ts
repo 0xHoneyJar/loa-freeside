@@ -9,8 +9,8 @@
  * half-wired audit):
  *   OPERATED_COMMUNITIES   comma-separated community names this deploy audits (dogfood-full)
  *   CTA_PRODUCT, CTA_CONVERSATION   the product + conversation door URLs
- *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155" } }
- *                          Entries sharing a `collection` id are ONE collection deployed on several chains
+ *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155", "union": "<logical collection id>" } }
+ *                          Entries sharing an explicit `union` id are ONE collection deployed on several chains
  *                          (S5-T3): an audit addressed at any of them reconstructs the UNION of all of them,
  *                          and refuses outright if any one is unreachable. Chains are NUMERIC ids ("1",
  *                          "80094") — the same id the sonar query is scoped by.
@@ -31,7 +31,7 @@ import { serve } from '@hono/node-server';
 import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
 import { buildAuditApp, configFromEnv, validateApiKeyEnv } from '../src/server.js';
-import { makeSonarOwnershipSource, type CollectionRef } from '../src/ownership-source.js';
+import { makeSonarOwnershipSource, type CollectionIndexEntry } from '../src/ownership-source.js';
 import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
@@ -63,13 +63,19 @@ try {
 // `collection` would match no Transfers → an empty, silently-wrong audit.
 const RegistrySchema = z.record(
   z.string(),
-  z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
+  z
+    .object({
+      collection: z.string().min(1),
+      standard: z.enum(['erc721', 'erc1155']),
+      union: z.string().min(1),
+    })
+    .strict(),
 );
 
-function loadRegistryFromEnv(): { map: Record<string, CollectionRef>; chains: Set<string> } {
+function loadRegistryFromEnv(): { map: Record<string, CollectionIndexEntry>; chains: Set<string> } {
   const raw = process.env.COLLECTION_REGISTRY;
   if (!raw) {
-    throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard })');
+    throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard, union })');
   }
   let parsed: unknown;
   try {
@@ -83,8 +89,8 @@ function loadRegistryFromEnv(): { map: Record<string, CollectionRef>; chains: Se
     const chain = key.split('/')[0];
     if (chain) chains.add(chain);
   }
-  // Entries sharing a `collection` id ARE one collection on several chains (S5-T3) — the index groups them
-  // into the source set the audit reconstructs as a union. Two rows with the SAME chain+contract but
+  // Entries sharing an explicit `union` id ARE one collection on several chains (S5-T3) — a belt-gateway
+  // `collection` query id is not treated as identity. Two rows with the SAME chain+contract but
   // different collection ids would be a config defect; the map key makes that unrepresentable.
   return { map, chains };
 }

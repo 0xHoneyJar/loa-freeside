@@ -140,6 +140,60 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     expect(await store.load(KEY_A)).toMatchObject({ community: 'thj' });
   });
 
+  it('accepts both current and previous tokens during rotation', async () => {
+    const store = makeInMemoryRoleStore('thj', testSources);
+    const app = createAuditRouter(
+      makeDeps({
+        roles: store,
+        ingest: { tokens: ['current-token', 'previous-token'], sink: store },
+      }),
+    );
+    const raw = JSON.stringify(snapshot());
+    const current = await postSnapshot(app, raw, {
+      'x-ingest-token': 'current-token',
+      'x-snapshot-sha256': sha256hex(raw),
+    });
+    expect(current.status).toBe(200);
+    const previous = await postSnapshot(app, raw, {
+      'x-ingest-token': 'previous-token',
+      'x-snapshot-sha256': sha256hex(raw),
+    });
+    expect(previous.status).toBe(200);
+  });
+
+  it('admits only one buffered ingest body at a time', async () => {
+    let releaseStore!: () => void;
+    let enteredStore!: () => void;
+    const storeEntered = new Promise<void>((resolve) => {
+      enteredStore = resolve;
+    });
+    const storeReleased = new Promise<void>((resolve) => {
+      releaseStore = resolve;
+    });
+    const sink: RoleSink = {
+      store: async () => {
+        enteredStore();
+        await storeReleased;
+        return true;
+      },
+    };
+    const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink } }));
+    const raw = JSON.stringify(snapshot());
+    const headers = {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+    };
+
+    const first = postSnapshot(app, raw, headers);
+    await storeEntered;
+    const second = await postSnapshot(app, raw, headers);
+    expect(second.status).toBe(429);
+    expect(second.headers.get('retry-after')).toBe('1');
+
+    releaseStore();
+    expect((await first).status).toBe(200);
+  });
+
   it('verifies sha256 against the received bytes before UTF-8 BOM decoding', async () => {
     const store = makeInMemoryRoleStore('thj', testSources);
     const app = createAuditRouter(makeDeps({ roles: store, ingest: { token: TOKEN, sink: store } }));

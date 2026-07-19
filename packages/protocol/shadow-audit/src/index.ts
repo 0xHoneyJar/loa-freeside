@@ -95,5 +95,6 @@ export {
   type AuditSource,
   AuditInputsSchema,
   type AuditInputs,
+  SHADOW_AUDIT_PROTOCOL_VERSION,
   computeInputsHash,
 } from './inputs-hash.js';

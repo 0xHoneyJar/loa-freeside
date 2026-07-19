@@ -19,6 +19,12 @@ import { BlockNumberSchema, ChainSchema, EthAddressSchema } from './schemas/comm
 import { GatingRuleSchema } from './schemas/order.js';
 import { jcsCanonicalize, sha256Hex } from './jcs.js';
 
+/**
+ * Wire-visible version of the sealed inputs_hash algorithm. Increment whenever the accepted input shape or
+ * canonical hash material changes. Deployment gates compare this value before routing traffic.
+ */
+export const SHADOW_AUDIT_PROTOCOL_VERSION = '2';
+
 /** ONE reconstructed deployment of the collection: where it lives + the block it was read at. */
 export const AuditSourceSchema = z
   .object({
