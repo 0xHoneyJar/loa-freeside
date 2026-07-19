@@ -395,6 +395,21 @@ describe('validateApiKeyEnv — §12.3 fail-closed startup guard', () => {
     expect(() => validateApiKeyEnv({ SHADOW_AUDIT_ALLOW_ANON: 'dev-only' } as NodeJS.ProcessEnv)).not.toThrow();
   });
 
+  it('rejects the dev escape in production or Railway environments', () => {
+    expect(() =>
+      validateApiKeyEnv({
+        NODE_ENV: 'production',
+        SHADOW_AUDIT_ALLOW_ANON: 'dev-only',
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/SHADOW_AUDIT_API_KEY/);
+    expect(() =>
+      validateApiKeyEnv({
+        RAILWAY_ENVIRONMENT_ID: 'production-environment',
+        SHADOW_AUDIT_ALLOW_ANON: 'dev-only',
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/SHADOW_AUDIT_API_KEY/);
+  });
+
   it('allows startup when SHADOW_AUDIT_API_KEY is set', () => {
     expect(() => validateApiKeyEnv({ SHADOW_AUDIT_API_KEY: 'some-secret' } as NodeJS.ProcessEnv)).not.toThrow();
   });

@@ -77,16 +77,32 @@ export function parseRpcUrls(raw: string): string[] {
  * (`alchemy.com/v2/<KEY>`, `infura.io/v3/<KEY>`), and quicknode also puts a token in the subdomain — so a
  * host-only or query-only scrub would still leak the credential.
  */
-export function redactEndpoints(message: string): string {
-  return message
-    .replace(/\bhttps?:\/\/\S+/gi, '<endpoint>')
-    // Some clients omit the scheme in DNS/TLS/connect errors. Redact the
-    // complete host[:port][/path] form too: provider keys commonly live in
-    // the path or subdomain.
-    .replace(
-      /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s|]*)?/gi,
+export function redactEndpoints(message: string, configuredEndpoints: readonly string[] = []): string {
+  let redacted = message;
+  for (const endpoint of configuredEndpoints) {
+    let parsed: URL;
+    try {
+      parsed = new URL(endpoint);
+    } catch {
+      continue;
+    }
+    // Scrub exact configured literals before the generic URL pass. DNS/TLS
+    // clients may omit the scheme while retaining host, port, path, and key.
+    const candidates = [
+      endpoint,
+      endpoint.replace(/^[a-z]+:\/\//i, ''),
+      `${parsed.host}${parsed.pathname}${parsed.search}`,
+    ].sort((a, b) => b.length - a.length);
+    for (const candidate of candidates) {
+      if (candidate) redacted = redacted.split(candidate).join('<endpoint>');
+    }
+    const escapedHostname = parsed.hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    redacted = redacted.replace(
+      new RegExp(`${escapedHostname}(?::\\d+)?(?:/[^\\s|]*)?`, 'gi'),
       '<endpoint>',
     );
+  }
+  return redacted.replace(/\bhttps?:\/\/\S+/gi, '<endpoint>');
 }
 
 export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {
@@ -134,6 +150,7 @@ export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {
           // The ordinal is enough to debug a pool ("endpoint 2 of 3 failed") and identifies nothing.
           const safeMessage = redactEndpoints(
             e instanceof Error ? e.message : String(e),
+            urls,
           );
           failures.push(`endpoint ${idx + 1} of ${urls.length}: ${safeMessage}`);
           if (attempt < attemptsPerUrl - 1) await sleep(backoffMs * 2 ** attempt);
@@ -143,6 +160,7 @@ export function makeRpcPool(opts: RpcPoolOpts): JsonRpcCall {
     throw new Error(
       redactEndpoints(
         `RPC ${method} failed on all ${urls.length} endpoint(s) — ${failures.join(' | ')}`,
+        urls,
       ),
     );
   };

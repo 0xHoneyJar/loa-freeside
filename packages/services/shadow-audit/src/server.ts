@@ -92,7 +92,11 @@ function failClosedAuth(): AuditRouterDeps['auth'] {
  */
 export function validateApiKeyEnv(env: NodeJS.ProcessEnv = process.env): void {
   if (env.SHADOW_AUDIT_API_KEY) return;
-  if (env.SHADOW_AUDIT_ALLOW_ANON === 'dev-only') {
+  const localDev =
+    env.NODE_ENV !== 'production' &&
+    !env.RAILWAY_PROJECT_ID &&
+    !env.RAILWAY_ENVIRONMENT_ID;
+  if (env.SHADOW_AUDIT_ALLOW_ANON === 'dev-only' && localDev) {
     console.warn(
       '[shadow-audit-api] WARNING: SHADOW_AUDIT_ALLOW_ANON=dev-only — running open/unauthenticated. ' +
         'This escape is for local dev only; NEVER set it in production.',
