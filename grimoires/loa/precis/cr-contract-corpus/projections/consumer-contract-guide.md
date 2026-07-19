@@ -2,7 +2,8 @@
 artifact: projection
 projection_type: consumer-contract-guide
 rendered_from: precis.md @ content_hash 4fc9104c4e76a869
-status: awaiting-P3-acceptance
+status: P3-ACCEPTED
+p3_acceptance: operator zksoju, 2026-07-19 (via AskUserQuestion; distribution = pointer issues)
 taint: fixture-simulated
 use_label: use_as_background_only
 date: 2026-07-19
