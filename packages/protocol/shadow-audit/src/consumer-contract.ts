@@ -22,6 +22,7 @@ export const AnonymousAuditOutputSchema = AuditOutputSchema.pick({
   run_id: true,
   mode: true,
   inputs_hash: true,
+  protocol_version: true,
   aggregate: true,
   cta: true,
 });

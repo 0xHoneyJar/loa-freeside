@@ -17,12 +17,14 @@ import {
   tokenGatingPolicy,
   type AuditAggregate,
   type AuditOutput,
+  type CohortCount,
   type Cta,
   type Order,
   type Refusal,
   diffShadow,
   type DiscrepancyReport,
   type DriftReport,
+  SHADOW_AUDIT_PROTOCOL_VERSION,
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
@@ -332,8 +334,9 @@ export async function runAudit(
   // Role coverage — the blind spot, stated (486383). The unmatched cohort is k-anon'd like every other
   // cohort; the RATIO is published only when it cannot back-compute a suppressed numerator: either the
   // cohort is exact (>= k), or it is empty (zero identifies nobody). "Rounding is not suppression."
-  const unmatchedCohort = kAnonCohort(unmatched.length, k);
-  const coverageRatioIsSafe = unmatchedCohort.kind === 'exact' || unmatched.length === 0;
+  const unmatchedCohort: CohortCount =
+    unmatched.length === 0 ? { kind: 'exact', value: 0 } : kAnonCohort(unmatched.length, k);
+  const coverageRatioIsSafe = unmatchedCohort.kind === 'exact';
 
   // 5b. THE DRIFT REPORT (S5-T4) — the answer that needs NO wallet map.
   //
@@ -490,6 +493,7 @@ export async function runAudit(
     run_id,
     mode: 'dogfood-full',
     inputs_hash,
+    protocol_version: SHADOW_AUDIT_PROTOCOL_VERSION,
     aggregate,
     ...(records ? { records, methodology, drift } : {}),
     ...(comparison ? { comparison } : {}),

@@ -2,6 +2,7 @@
   "run_id": "run_01HXYZABCDEF",
   "mode": "dogfood-full",
   "inputs_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "protocol_version": "2",
   "aggregate": {
     "holder_turnover": 0.25,
     "sold_lapsed": { "kind": "exact", "value": 42 },

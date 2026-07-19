@@ -166,6 +166,13 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     expect(r.output.methodology).toBeUndefined(); // the methodology travels WITH the authed delta, not the anon response
     // CONTRACT-PARITY GUARD: the anon response keys must stay byte-stable — freeside-dashboard strict-decodes
     // GET /v1/audit with onExcessProperty:error, so any NEW top-level field silently breaks the integration.
-    expect(Object.keys(r.output).sort()).toEqual(['aggregate', 'cta', 'inputs_hash', 'mode', 'run_id']);
+    expect(Object.keys(r.output).sort()).toEqual([
+      'aggregate',
+      'cta',
+      'inputs_hash',
+      'mode',
+      'protocol_version',
+      'run_id',
+    ]);
   });
 });

@@ -86,5 +86,11 @@ export function computeInputsHash(inputs: AuditInputs): string {
       snapshot_block: s.snapshot_block,
     }))
     .sort((a, b) => (a.chain === b.chain ? a.contract.localeCompare(b.contract) : a.chain.localeCompare(b.chain)));
-  return sha256Hex(jcsCanonicalize({ sources, rule: v.rule }));
+  return sha256Hex(
+    jcsCanonicalize({
+      hash_version: SHADOW_AUDIT_PROTOCOL_VERSION,
+      sources,
+      rule: v.rule,
+    }),
+  );
 }

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { RiskBandSchema } from './common.js';
 import { AccessDecisionRecordSchema } from './access-decision-record.js';
 import { DiscrepancyReportSchema } from '../discrepancy.js';
+import { SHADOW_AUDIT_PROTOCOL_VERSION } from '../inputs-hash.js';
 
 /**
  * A cohort size that honors k-anonymity (SDD §11 / AC-7): an EXACT count is
@@ -90,14 +91,14 @@ export const AuditAggregateSchema = AuditAggregateShapeSchema.superRefine((agg, 
 
     // (1) A SUPPRESSED cohort may not be accompanied by a true ratio — that back-computes the
     //     suppressed numerator (`unmatched = total × (1 − coverage)`) and defeats the bucket entirely.
-    //     The sole exemption is full coverage (ratio 1 ⇔ zero unmatched), which identifies nobody.
-    if (unmatched.kind === 'bucketed' && coverage !== null && coverage !== 1) {
+    //     Zero is encoded explicitly as exact 0, so every bucket represents a suppressed non-zero value.
+    if (unmatched.kind === 'bucketed' && coverage !== null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['role_coverage'],
         message:
           'role_coverage must be null when unmatched_role_holders is k-anon-suppressed (a true ratio ' +
-          'beside a suppressed cohort back-computes it). Only role_coverage === 1 (zero unmatched) is exempt.',
+          'beside a suppressed cohort back-computes it). Zero unmatched must be encoded as exact 0.',
       });
     }
 
@@ -438,6 +439,8 @@ export const AuditOutputSchema = z
     inputs_hash: z
       .string()
       .regex(/^[0-9a-f]{64}$/, 'inputs_hash must be 64-char lowercase hex'),
+    /** Versions both the wire contract and the `hash_version` embedded in the inputs_hash preimage. */
+    protocol_version: z.literal(SHADOW_AUDIT_PROTOCOL_VERSION),
     aggregate: AuditAggregateSchema,
     /** The settle-context — travels with the AUTHED delta (alongside `records`/`comparison`): the rule + snapshot
      *  the delta was computed under, so a buyer can verify it matches the incumbent's policy. Kept OUT of the anon

@@ -535,7 +535,7 @@ describe('runAudit — role coverage (bug 20260712-486383)', () => {
     expect(r.uncertain).toBe(false);
     expect(r.output.aggregate.coverage_uncertain).toBe(false);
     expect(r.output.aggregate.role_coverage).toBe(1);
-    expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'bucketed', bucket: '<5' });
+    expect(r.output.aggregate.unmatched_role_holders).toEqual({ kind: 'exact', value: 0 });
   });
 });
 

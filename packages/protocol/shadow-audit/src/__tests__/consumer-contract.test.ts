@@ -42,10 +42,13 @@ describe('freeside-dashboard strict consumer lock', () => {
   it('fails when the producer wire shape drifts beyond the pinned dashboard consumer', () => {
     const lock = consumerLock();
     expect(SHADOW_AUDIT_PROTOCOL_VERSION).toBe(lock.shadow_audit_protocol_version);
-    expect(Object.keys(AnonymousAuditOutputSchema.shape).toSorted()).toEqual(
+    // oxlint-disable-next-line unicorn/no-array-sort -- TypeScript target predates ES2023 toSorted
+    expect(Object.keys(AnonymousAuditOutputSchema.shape).sort()).toEqual(
       lock.anonymous_audit_output_fields,
     );
-    expect(Object.keys(AuditAggregateShapeSchema.shape).toSorted()).toEqual(lock.aggregate_fields);
-    expect(Object.keys(AuditRefusalEnvelopeSchema.shape).toSorted()).toEqual(lock.refusal_envelope_fields);
+    // oxlint-disable-next-line unicorn/no-array-sort -- TypeScript target predates ES2023 toSorted
+    expect(Object.keys(AuditAggregateShapeSchema.shape).sort()).toEqual(lock.aggregate_fields);
+    // oxlint-disable-next-line unicorn/no-array-sort -- TypeScript target predates ES2023 toSorted
+    expect(Object.keys(AuditRefusalEnvelopeSchema.shape).sort()).toEqual(lock.refusal_envelope_fields);
   });
 });

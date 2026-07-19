@@ -130,9 +130,15 @@ describe('AuditAggregateSchema — the coverage/k-anon invariant has teeth', () 
     ).toBe(true);
   });
 
-  it('ACCEPTS full coverage (ratio 1 ⇔ zero unmatched — an empty cohort identifies nobody)', () => {
+  it('REJECTS full coverage beside a bucket that could hide a non-zero unmatched cohort', () => {
     expect(
       parse(agg({ unmatched_role_holders: { kind: 'bucketed', bucket: '<5' }, role_coverage: 1 })),
+    ).toBe(false);
+  });
+
+  it('ACCEPTS full coverage only when zero unmatched is encoded explicitly', () => {
+    expect(
+      parse(agg({ unmatched_role_holders: { kind: 'exact', value: 0 }, role_coverage: 1 })),
     ).toBe(true);
   });
 
