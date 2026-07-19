@@ -277,9 +277,15 @@ describe('configFromEnv — fail loud on missing required config', () => {
       OPERATED_COMMUNITIES: 'thj',
       CTA_PRODUCT: 'https://p',
       CTA_CONVERSATION: 'https://c',
+      ROLE_SNAPSHOT_STORE: 'postgres',
+      DATABASE_URL: 'postgres://db/shadow',
       ROLE_SNAPSHOT_INGEST_TOKENS: '["current-token","previous-token"]',
     } as NodeJS.ProcessEnv);
-    expect(cfg.ingestTokens).toEqual(['current-token', 'previous-token']);
+    expect(cfg).toMatchObject({
+      roleSnapshotStore: 'postgres',
+      databaseUrl: 'postgres://db/shadow',
+      ingestTokens: ['current-token', 'previous-token'],
+    });
   });
 
   it('fails loud on malformed overlapping ingest-token config', () => {

@@ -157,7 +157,10 @@ const config = configFromEnv();
 let postgresConnection: PostgresRoleSnapshotConnection | undefined;
 let roleStore;
 let teaserBudget;
-if (config.ingestToken && config.roleSnapshotStore === 'postgres') {
+// `configFromEnv` has already normalized singular/plural ingest-token forms and requires at least one for
+// Postgres. Initialize from the selected backend, not from one legacy input shape, so token rotation cannot
+// validate successfully and then fail to wire the repository.
+if (config.roleSnapshotStore === 'postgres') {
   const community = config.operatedCommunities[0];
   if (!community || !config.databaseUrl) {
     throw new Error('Postgres role-store configuration is incomplete');

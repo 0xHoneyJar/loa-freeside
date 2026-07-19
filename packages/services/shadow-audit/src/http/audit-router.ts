@@ -138,6 +138,8 @@ const DEFAULT_RUN_WINDOW_MS = 86_400_000; // 24h
 /** Hard cap on an ingested role snapshot (S1-T4). ~10 MB comfortably holds a very large guild export;
  *  beyond that a caller is abusing the endpoint, not exporting a Discord guild. */
 const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
+/** At most ~40 MiB of aggregate request buffering (2 × roughly 2× MAX_SNAPSHOT_BYTES). */
+const MAX_CONCURRENT_INGESTS = 2;
 
 type BoundedBodyResult =
   | { ok: true; text: string; bytes: Uint8Array }
@@ -147,9 +149,9 @@ type BoundedBodyResult =
  * Read and decode at most `maxBytes`, cancelling the stream as soon as it exceeds the bound.
  *
  * Chunk accumulation plus the final contiguous buffer peaks near 2× `maxBytes`
- * for a maximum-size request. The authenticated ingest lane enforces one
- * in-flight body per process below, bounding aggregate buffering as well as
- * per-request size.
+ * for a maximum-size request. The authenticated ingest lane enforces a small
+ * process-wide bulkhead below, bounding aggregate buffering as well as
+ * per-request size without serializing every sibling collection export.
  */
 async function readBoundedText(request: Request, maxBytes: number): Promise<BoundedBodyResult> {
   const body = request.body;
@@ -675,10 +677,10 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     if (ingestTokens.length === 0 || ingestTokens.some((token) => token.length === 0)) {
       throw new Error('role-snapshot ingestion requires at least one non-empty token');
     }
-    // A role export is intentionally a single-writer lane. The body reader can hold close to twice the
-    // byte cap while joining stream chunks, so enforce the concurrency assumption instead of leaving it
-    // in prose. Cross-replica writes remain serialized by the durable repository's version constraint.
-    let ingestInFlight = false;
+    // The body reader can hold close to twice the byte cap while joining stream chunks. A two-slot bulkhead
+    // enforces the heap bound while allowing sibling collection exports to overlap. Cross-replica writes
+    // remain serialized by the durable repository's version constraint.
+    let ingestsInFlight = 0;
     app.post('/v1/role-snapshot', async (c) => {
       // Reject malformed or honestly-declared oversized framing before secret-dependent work. The streamed
       // cap below remains authoritative because Content-Length is optional and caller-controlled.
@@ -701,11 +703,11 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       if (!ingestAuthorized) {
         return new Response(null, { status: 401 });
       }
-      if (ingestInFlight) {
+      if (ingestsInFlight >= MAX_CONCURRENT_INGESTS) {
         c.header('Retry-After', '1');
         return c.json({ error: { code: 'ingest-busy', retryable: true } }, 429);
       }
-      ingestInFlight = true;
+      ingestsInFlight += 1;
       try {
       // Byte-exact integrity: sha256 of the EXACT bytes received must equal the declared header — guards a
       // truncated/tampered body in transit. Validate BEFORE JSON.parse so a corrupt body is rejected as an
@@ -801,7 +803,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         entries: parsed.data.entries.length,
       });
       } finally {
-        ingestInFlight = false;
+        ingestsInFlight -= 1;
       }
     });
   }

@@ -161,19 +161,21 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     expect(previous.status).toBe(200);
   });
 
-  it('admits only one buffered ingest body at a time', async () => {
-    let releaseStore!: () => void;
-    let enteredStore!: () => void;
-    const storeEntered = new Promise<void>((resolve) => {
-      enteredStore = resolve;
+  it('bounds buffered ingest bodies without serializing sibling exports globally', async () => {
+    let releaseStores!: () => void;
+    let enteredStores = 0;
+    let resolveTwoEntered!: () => void;
+    const twoEntered = new Promise<void>((resolve) => {
+      resolveTwoEntered = resolve;
     });
-    const storeReleased = new Promise<void>((resolve) => {
-      releaseStore = resolve;
+    const storesReleased = new Promise<void>((resolve) => {
+      releaseStores = resolve;
     });
     const sink: RoleSink = {
       store: async () => {
-        enteredStore();
-        await storeReleased;
+        enteredStores += 1;
+        if (enteredStores === 2) resolveTwoEntered();
+        await storesReleased;
         return true;
       },
     };
@@ -185,13 +187,15 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     };
 
     const first = postSnapshot(app, raw, headers);
-    await storeEntered;
-    const second = await postSnapshot(app, raw, headers);
-    expect(second.status).toBe(429);
-    expect(second.headers.get('retry-after')).toBe('1');
+    const second = postSnapshot(app, raw, headers);
+    await twoEntered;
+    const third = await postSnapshot(app, raw, headers);
+    expect(third.status).toBe(429);
+    expect(third.headers.get('retry-after')).toBe('1');
 
-    releaseStore();
+    releaseStores();
     expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
   });
 
   it('verifies sha256 against the received bytes before UTF-8 BOM decoding', async () => {

@@ -40,6 +40,8 @@ When ingestion uses Postgres, startup creates the latest-snapshot table before b
 one validated snapshot per `(community, canonical collection)` and replaces it only with a strictly newer
 capture. Snapshot rows contain member identifiers, wallets, and role IDs; keep the database private, do not
 expose `DATABASE_URL`, and treat database exports/backups as sensitive operator data.
+The ingest route admits at most two concurrent bodies per process (about 40 MiB worst-case aggregate
+buffering); exporters must retry `429 ingest-busy` responses using `Retry-After`.
 
 ### Contract deploy order
 
