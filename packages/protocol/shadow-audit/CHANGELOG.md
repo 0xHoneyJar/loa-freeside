@@ -18,8 +18,9 @@
 - `SHADOW_AUDIT_PROTOCOL_VERSION` is now exported as `"2"` and the service
   exposes it on `/healthz` so deploy gates can reject an incompatible producer
   before routing traffic.
-- `AuditAggregateShapeSchema` exposes the composable Zod object API while
-  `AuditAggregateSchema` remains the fully refined wire validator.
+- `AuditAggregateShapeSchema_UNREFINED` exposes the composable Zod object API
+  for schema construction and field introspection only; the explicit name
+  prevents it from being mistaken for the fully refined wire validator.
 - `dashboard-consumer-lock.json` pins the merged strict consumer commit,
   source hash, protocol version, success fields, aggregate fields, and
   refusal-envelope fields. Protocol CI now fails when producer shape drifts

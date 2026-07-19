@@ -40,6 +40,8 @@ When ingestion uses Postgres, startup creates the latest-snapshot table before b
 one validated snapshot per `(community, canonical collection)` and replaces it only with a strictly newer
 capture. Snapshot rows contain member identifiers, wallets, and role IDs; keep the database private, do not
 expose `DATABASE_URL`, and treat database exports/backups as sensitive operator data.
+The runtime migration ledger in `role-store-postgres.ts` is the sole schema authority; startup applies and
+verifies each version before serving. There is no separate operator-run SQL migration path to drift from it.
 The ingest route admits at most two concurrent bodies per process (about 40 MiB worst-case aggregate
 buffering); exporters must retry `429 ingest-busy` responses using `Retry-After`.
 The public teaser reconstruction budget is shared across replicas but partitioned by canonical collection,

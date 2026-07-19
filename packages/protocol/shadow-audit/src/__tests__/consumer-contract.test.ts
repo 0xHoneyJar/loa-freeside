@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  AuditAggregateShapeSchema,
+  AuditAggregateShapeSchema_UNREFINED,
   AnonymousAuditOutputSchema,
   AuditRefusalEnvelopeSchema,
   SHADOW_AUDIT_PROTOCOL_VERSION,
@@ -47,7 +47,7 @@ describe('freeside-dashboard strict consumer lock', () => {
       lock.anonymous_audit_output_fields,
     );
     // oxlint-disable-next-line unicorn/no-array-sort -- TypeScript target predates ES2023 toSorted
-    expect(Object.keys(AuditAggregateShapeSchema.shape).sort()).toEqual(lock.aggregate_fields);
+    expect(Object.keys(AuditAggregateShapeSchema_UNREFINED.shape).sort()).toEqual(lock.aggregate_fields);
     // oxlint-disable-next-line unicorn/no-array-sort -- TypeScript target predates ES2023 toSorted
     expect(Object.keys(AuditRefusalEnvelopeSchema.shape).sort()).toEqual(lock.refusal_envelope_fields);
   });

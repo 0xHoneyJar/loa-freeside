@@ -130,6 +130,17 @@ export function buildAuditApp(
   const teaserBudgetCfg = config.teaserBudget ?? { limit: 30, windowMs: 60_000 };
   const ingestTokens = config.ingestTokens ?? (config.ingestToken === undefined ? [] : [config.ingestToken]);
 
+  // Storage mode is authoritative even when ingestion is disabled. Never silently
+  // discard an injected durable store and fall back to a file source.
+  if (config.roleSnapshotStore === 'postgres' && !runtime.roleStore) {
+    throw new Error('ROLE_SNAPSHOT_STORE=postgres requires an initialized Postgres role store');
+  }
+  if (config.roleSnapshotStore === 'postgres' && !runtime.teaserBudget) {
+    throw new Error(
+      'ROLE_SNAPSHOT_STORE=postgres requires a deployment-shared Postgres teaser budget',
+    );
+  }
+
   // S1-T4: when a service ingest token is configured, the DURABLE store is BOTH the audit's role source and
   // the ingestion sink (POST /v1/role-snapshot writes it, load() reads it — the SAME instance, so an
   // ingested snapshot is immediately auditable). Without a token, keep the existing file-backed source
@@ -154,14 +165,6 @@ export function buildAuditApp(
         'Role-snapshot ingestion currently requires exactly one OPERATED_COMMUNITIES entry per deployment',
       );
     }
-    if (config.roleSnapshotStore === 'postgres' && !runtime.roleStore) {
-      throw new Error('ROLE_SNAPSHOT_STORE=postgres requires an initialized Postgres role store');
-    }
-    if (config.roleSnapshotStore === 'postgres' && !runtime.teaserBudget) {
-      throw new Error(
-        'ROLE_SNAPSHOT_STORE=postgres requires a deployment-shared Postgres teaser budget',
-      );
-    }
     const store =
       runtime.roleStore ??
       makeDurableRoleStore({
@@ -174,6 +177,8 @@ export function buildAuditApp(
       });
     roles = store;
     ingest = { tokens: ingestTokens, sink: store };
+  } else if (config.roleSnapshotStore === 'postgres') {
+    roles = runtime.roleStore!;
   } else {
     roles = makeFileRoleSource(config.roleSnapshotPath);
   }

@@ -132,6 +132,16 @@ const baseConfig = (over: Partial<AuditServerConfig> = {}): AuditServerConfig =>
 describe('buildAuditApp — the deployment composition root', () => {
   const ownership = fakeOwnership(new Map([[R1, 1n], [R2, 1n]]), new Map([[Y, 1n]])); // R1,R2 sold → R1 stale; Y new
 
+  it('never falls back to file storage when postgres is selected without ingestion', () => {
+    expect(() =>
+      buildAuditApp(
+        ownership,
+        baseConfig({ roleSnapshotStore: 'postgres', ingestTokens: [] }),
+        collections,
+      ),
+    ).toThrow(/initialized Postgres role store/);
+  });
+
   it('GET /v1/audit serves the k-anon aggregate for an operated community', async () => {
     const { path, cleanup } = tempRoleSnapshot('thj', R1);
     try {

@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  AuditAggregateShapeSchema,
+  AuditAggregateShapeSchema_UNREFINED,
   AuditOutputSchema,
   CohortCountSchema,
 } from '../index.js';
@@ -23,7 +23,7 @@ function recordFixture(): unknown {
 
 describe('AuditOutputSchema', () => {
   it('exports a composable aggregate object alongside the refined wire schema', () => {
-    expect(AuditAggregateShapeSchema.pick({ stale_access: true }).safeParse({
+    expect(AuditAggregateShapeSchema_UNREFINED.pick({ stale_access: true }).safeParse({
       stale_access: { kind: 'exact', value: 5 },
     }).success).toBe(true);
   });

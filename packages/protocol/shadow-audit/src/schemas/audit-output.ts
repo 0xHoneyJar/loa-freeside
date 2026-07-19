@@ -27,8 +27,12 @@ export const CohortCountSchema = z.discriminatedUnion('kind', [
 ]);
 export type CohortCount = z.infer<typeof CohortCountSchema>;
 
-/** Composable object form for consumers that need `.shape`, `.pick()`, or `.extend()`. */
-export const AuditAggregateShapeSchema = z
+/**
+ * UNREFINED composable object form for schema construction and field introspection only.
+ * Never use this export to parse wire input: it does not carry AuditAggregateSchema's
+ * cross-field privacy refinements.
+ */
+export const AuditAggregateShapeSchema_UNREFINED = z
   .object({
     /**
      * sold_lapsed / snapshot_holders, in [0,1]. NULL when `sold_lapsed` is
@@ -88,7 +92,7 @@ export const AuditAggregateShapeSchema = z
   .strict();
 
 /** Validated wire schema. Refinement intentionally wraps the composable object export above. */
-export const AuditAggregateSchema = AuditAggregateShapeSchema.superRefine((agg, ctx) => {
+export const AuditAggregateSchema = AuditAggregateShapeSchema_UNREFINED.superRefine((agg, ctx) => {
     if (agg.sold_lapsed.kind === 'bucketed' && agg.holder_turnover !== null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
