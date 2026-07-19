@@ -1,100 +1,85 @@
-2:// TODO: Fix TypeScript type errors
-424:      // TODO: Check for completed verification in identity service
-2:// TODO: Fix TypeScript type errors
-60: * TODO (Task 3.1): AuditBackedInteractionHistoryProvider wires
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-14: * - DUO_API_HOSTNAME: Duo API hostname (e.g., api-XXXXXXXX.duosecurity.com)
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
-2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
-2:// TODO: Fix interface mismatches - ICoexistenceStorage changed
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-10: * 2. Create member_profiles with temporary nyms (Member_XXXXXX)
-2:// TODO: Fix TypeScript type errors
-2:// TODO: Fix TypeScript type errors
-23:// TODO: Pull from provider APIs dynamically.
-168:   * TODO: Implement full streak tracking with daily activity table
-204:   * TODO: Implement full streak tracking with daily activity table
-277:    // TODO: Wire up full GuildJoinHandler when storage adapter is ready
-5: * Sprint 120: Cache & Subscriber Metrics (TODO)
-25:  // Sprint 120: Cache metrics (TODO)
-98:  // TODO Sprint 120: Add cache metrics
-103:  // TODO Sprint 120: Add propagation latency histogram
-331:    // TODO: Increment Prometheus counter when metrics are implemented
-188:  // TODO: Implement actual RPC call via RPCPool (S-2)
-189:  // TODO: Check against community eligibility rules
-223:  // TODO: Implement batch RPC calls
-251:  // TODO: Implement community sync
-186:  // TODO: Create community record in PostgreSQL if not exists
-187:  // TODO: Send welcome message / setup prompt
-208:  // TODO: Mark community as inactive / schedule cleanup
-227:  // TODO: Create profile if not exists
-228:  // TODO: Check eligibility rules and assign roles
-242:  // TODO: Update profile last_active / mark as inactive
-262:  // TODO: Sync role changes with profile tier
-1662: * TODO: Implement when tier_history table is added
-9:  const goodData = "XXX";
-85:  const badData = "XXX";
-115:  // const badData = 'XXX';
-130:  // const badData = 'XXX';
-159:  const goodData = ["XXX"];
-160:  const badData = "XXX";
-174:  const goodData = { string: "XXX" };
-220://   const badData = "XXX";
-292:  const badData = Promise.resolve("XXX");
-32:  includesFromIndex2.parse("XXXincludesXX");
-24:  includesFromIndex2.parse("XXXincludesXX");
-175:// TODO
-10:  const goodData = "XXX";
-86:  const badData = "XXX";
-116:  // const badData = 'XXX';
-131:  // const badData = 'XXX';
-160:  const goodData = ["XXX"];
-161:  const badData = "XXX";
-175:  const goodData = { string: "XXX" };
-221:  const badData = "XXX";
-300:  const badData = Promise.resolve("XXX");
-130:    // TODO: PerformanceNodeEntry is missing
-1650:        // TODO: this interface never existed; remove in next major
-902:    // TODO: Just Plain Wrong™ (see also nodejs/node#57392)
-1069:    // TODO: execFile exceptions can take many forms... this accurately describes none of them
-159:        start(instance: object): number; // TODO: avoid DOM dependency until WASM moved to own lib.
-169:        initialize(instance: object): void; // TODO: avoid DOM dependency until WASM moved to own lib.
-176:        readonly wasiImport: NodeJS.Dict<any>; // TODO: Narrow to DOM types
-2:// TODO: remove once this package no longer supports TS 5.1, and replace with a
-177:             * Shorthand for marking a suite as `TODO`. This is the same as calling {@link suite} with `options.todo` set to `true`.
-202:         * Shorthand for marking a test as `TODO`. This is the same as calling {@link test} with `options.todo` set to `true`.
-906:             * This function adds a `TODO` directive to the test's output. If `message` is
-912:             *   // This test is marked as `TODO`
-917:             * @param message Optional `TODO` message.
-991:             * If truthy, the test marked as `TODO`. If a string is provided, that string is displayed in
-992:             * the test results as the reason why the test is `TODO`.
-14:  // TODO: Implement .ts files loading support for Windows
-453:        // TODO: remove globals in future version
-2594:    // TODO: remove in future major
-2597:    // TODO: remove in future major
-4124:    // TODO: remove default in future major version
-4171:    // TODO: remove default in future major version
-6:// TODO: remove once this package no longer supports TS 5.5, and replace NodeJS.BuiltinIteratorReturn with BuiltinIteratorReturn.
-107:    export type CustomInspectFunction = (depth: number, options: InspectOptionsStylized) => any; // TODO: , inspect: inspect
-98:    // TODO: Add `EventEmitter` close
-31:// TODO: currently returns (aliased) `any`, waiting for strong typed `thread-stream`
-28:     * TODO - Do we want to clone it too?
-28:     * TODO - Do we want to clone it too?
-28:     * TODO - Do we want to clone it too?
-28:     * TODO - Do we want to clone it too?
-59:// TODO: some recusive type inference so it would check correct order of input/output inside rest?
-87:// TODO: refactor
-78:    // We write odd & even Yi at same time. Even: 0bXXXXX0 Odd:  0bXXXXX1
-16: * TODO: remove
+packages/core/ports/agent-gateway.ts:22:// TODO(hounfour): When ModelPort lands, make MODEL_ALIAS_VALUES config-driven or derive from provider capabilities
+packages/cli/src/commands/server/backup/index.ts:55:        // TODO: Set backend from current context
+packages/cli/src/commands/server/backup/index.ts:159:        // TODO: Set backend from current context
+packages/adapters/dist/chain/two-tier-provider.d.ts:172:     * @deprecated Use getTier1Provider() instead
+packages/adapters/chain/two-tier-provider.ts:606:   * @deprecated Use getTier1Provider() instead
+packages/events/tests/roundtrip.test.ts:99:// --- helpers for waiting (deterministic — TODO follow-up bead wdd) -----------
+packages/events/scripts/new-schema.mjs:69: * TODO: replace the placeholder field with the real payload shape.
+packages/events/scripts/new-schema.mjs:72:  // TODO: real fields. Placeholder so the skeleton compiles + the registry wires.
+packages/services/ordering/src/fulfillment-orchestrator.ts:87:  /** @deprecated The channel-health gate moved to CommunityOnboardingOrchestrator.advanceIngredient
+apps/worker/src/consumers/index.ts:12:/** @deprecated Use CommandNatsConsumer instead */
+apps/worker/src/consumers/index.ts:14:/** @deprecated Use EventNatsConsumer instead */
+apps/worker/src/data/database.ts:1662: * TODO: Implement when tier_history table is added
+apps/worker/src/handlers/registration.ts:1:// @ts-nocheck
+apps/worker/src/consumers/EligibilityNatsConsumer.ts:188:  // TODO: Implement actual RPC call via RPCPool (S-2)
+apps/worker/src/consumers/EligibilityNatsConsumer.ts:189:  // TODO: Check against community eligibility rules
+apps/worker/src/consumers/EligibilityNatsConsumer.ts:223:  // TODO: Implement batch RPC calls
+apps/worker/src/consumers/EligibilityNatsConsumer.ts:251:  // TODO: Implement community sync
+apps/worker/src/handlers/commands/resume.ts:1:// @ts-nocheck
+apps/worker/src/infrastructure/tracing/OTLPExporter.ts:1:// @ts-nocheck
+apps/worker/src/handlers/commands/setup.ts:1:// @ts-nocheck
+themes/sietch/src/discord/commands/onboard.ts:1:// @ts-nocheck
+themes/sietch/src/discord/commands/onboard.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/config.ts:729:    /** @deprecated No longer used - eligibility now uses balanceOf + burn detection */
+themes/sietch/src/packages/core/protocol/capability-mesh.ts:60: * TODO (Task 3.1): AuditBackedInteractionHistoryProvider wires
+themes/sietch/src/discord/commands/admin-takeover.ts:1:// @ts-nocheck
+themes/sietch/src/discord/commands/admin-takeover.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/types/index.ts:1242: * @deprecated Use WaterSharerGrant instead - kept for backwards compatibility
+themes/sietch/src/discord/commands/verify.ts:424:      // TODO: Check for completed verification in identity service
+themes/sietch/src/packages/core/ports/index.ts:1:// @ts-nocheck
+themes/sietch/src/packages/core/ports/index.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/security/ApiKeyManager.ts:1:// @ts-nocheck
+themes/sietch/src/packages/security/ApiKeyManager.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/security/mfa/DuoMfaVerifier.ts:14: * - DUO_API_HOSTNAME: Duo API hostname (e.g., api-XXXXXXXX.duosecurity.com)
+themes/sietch/src/packages/security/KillSwitchProtocol.ts:1:// @ts-nocheck
+themes/sietch/src/packages/security/KillSwitchProtocol.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/wizard/WizardSessionStore.ts:1:// @ts-nocheck
+themes/sietch/src/packages/wizard/WizardSessionStore.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/wizard/WizardEngine.ts:1:// @ts-nocheck
+themes/sietch/src/packages/wizard/WizardEngine.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/synthesis/SynthesisQueue.ts:1:// @ts-nocheck
+themes/sietch/src/packages/synthesis/SynthesisQueue.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/adapters/coexistence/MigrationEngine.ts:1:// @ts-nocheck
+themes/sietch/src/packages/adapters/coexistence/MigrationEngine.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/adapters/coexistence/MigrationEngine.ts:440:    // and unit-tested despite this file being @ts-nocheck. It adds the
+themes/sietch/src/packages/synthesis/SynthesisWorker.ts:1:// @ts-nocheck
+themes/sietch/src/packages/synthesis/SynthesisWorker.ts:2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
+themes/sietch/src/packages/adapters/coexistence/takeover-confirmation.ts:6: * Extracted from MigrationEngine (that file is `// @ts-nocheck`) so this safety gate is
+themes/sietch/src/packages/adapters/coexistence/cutover-readiness.ts:5: * Extracted from MigrationEngine.checkReadiness (that file is `// @ts-nocheck`) so
+themes/sietch/src/packages/security/AuditLogPersistence.ts:1:// @ts-nocheck
+themes/sietch/src/packages/security/AuditLogPersistence.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/adapters/billing/AgentWalletPrototype.ts:41:/** @deprecated Use IRedisClient from packages/shared/atomic-counter instead */
+themes/sietch/src/packages/adapters/billing/AgentWalletPrototype.ts:334:   * @deprecated Use getRemainingDailyBudget (async) instead.
+themes/sietch/src/packages/adapters/coexistence/ShadowLedger.ts:1:// @ts-nocheck
+themes/sietch/src/packages/adapters/coexistence/ShadowLedger.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/synthesis/ReconciliationController.ts:1:// @ts-nocheck
+themes/sietch/src/packages/synthesis/ReconciliationController.ts:2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
+themes/sietch/src/packages/adapters/coexistence/CoexistenceStorage.ts:1:// @ts-nocheck
+themes/sietch/src/packages/adapters/coexistence/CoexistenceStorage.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/adapters/manifest/HybridManifestRepository.ts:1:// @ts-nocheck
+themes/sietch/src/packages/adapters/manifest/HybridManifestRepository.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/adapters/storage/schema.ts:1216: * @deprecated Use ParallelChannelTemplate directly
+themes/sietch/src/packages/infrastructure/PolicyAsCodePreGate.ts:1:// @ts-nocheck
+themes/sietch/src/packages/infrastructure/PolicyAsCodePreGate.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/infrastructure/EnhancedHITLApprovalGate.ts:1:// @ts-nocheck
+themes/sietch/src/packages/infrastructure/EnhancedHITLApprovalGate.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/packages/jobs/coexistence/ShadowSyncJob.ts:1:// @ts-nocheck
+themes/sietch/src/packages/jobs/coexistence/ShadowSyncJob.ts:2:// TODO: Fix interface mismatches - ICoexistenceStorage changed
+themes/sietch/src/packages/adapters/billing/CreditLedgerAdapter.ts:62:/** @deprecated Use sqliteTimestamp() from protocol/timestamps.ts */
+themes/sietch/src/packages/adapters/billing/CreditLedgerAdapter.ts:64:/** @deprecated Use sqliteFutureTimestamp() from protocol/timestamps.ts */
+themes/sietch/src/db/migrations/003_migrate_v1_members.ts:10: * 2. Create member_profiles with temporary nyms (Member_XXXXXX)
+themes/sietch/src/packages/jobs/coexistence/RollbackWatcherJob.ts:1:// @ts-nocheck
+themes/sietch/src/packages/jobs/coexistence/RollbackWatcherJob.ts:2:// TODO: Fix interface mismatches with ICoexistenceStorage (StoredCommunityBasic vs string)
+themes/sietch/src/api/docs/openapi.ts:1:// @ts-nocheck
+themes/sietch/src/api/docs/openapi.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/api/routes/pricing.routes.ts:23:// TODO: Pull from provider APIs dynamically.
+themes/sietch/src/api/routes/coexistence.routes.ts:1:// @ts-nocheck
+themes/sietch/src/api/routes/coexistence.routes.ts:2:// TODO: Fix TypeScript type errors
+themes/sietch/src/services/StatsService.ts:168:   * TODO: Implement full streak tracking with daily activity table
+themes/sietch/src/services/StatsService.ts:204:   * TODO: Implement full streak tracking with daily activity table
+themes/sietch/src/services/config/configMetrics.ts:5: * Sprint 120: Cache & Subscriber Metrics (TODO)
+themes/sietch/src/services/config/configMetrics.ts:25:  // Sprint 120: Cache metrics (TODO)
+themes/sietch/src/services/config/configMetrics.ts:98:  // TODO Sprint 120: Add cache metrics
+themes/sietch/src/services/config/configMetrics.ts:103:  // TODO Sprint 120: Add propagation latency histogram
+themes/sietch/src/services/billing/WebhookService.ts:331:    // TODO: Increment Prometheus counter when metrics are implemented
+themes/sietch/src/services/discord/handlers/EventHandler.ts:277:    // TODO: Wire up full GuildJoinHandler when storage adapter is ready

@@ -1,5 +1,23 @@
 # Notes
 
+## Ride Session 2026-07-19 — Reality Refresh (delta 9b0f4a12 → b5df718a, 287 commits)
+
+Non-interactive refresh ride on branch `coord/collection-report-coordinator-f09.30`. PRD/SDD PRESERVED (active cadence-ledger cycle docs — do not overwrite). Highlights:
+
+- **Protocol layer 4 → 10 packages**: 6 new v1.0.0 wire contracts under `packages/protocol/` (collection, collection-resolution, dependency-ledger CR-012A, public-authorization CR-007A, signing-key-custody CR-013, trust-envelope CR-009) + NEW `@freeside/collection-report-gates` (CR-019, bin `check-gate-manifest`)
+- **`ordering` is now a registered registry cell** (`runtime_state: deployed`) — first in-repo cell; ABSENT from CLAUDE.md building list → drift N-1, top recommended fix
+- **sietch frozen this delta** (2 files / 287 commits) — all 07-06 monolith numbers (48 route modules, 23 Discord/12 Telegram cmds, 68 TS + 19 SQL migrations) still valid
+- **Drift 5/10** (was 4/10): reality-file staleness healed by this ride; billing-no-repo / mediums-not-built / ledger-dual-home / dual-money-rails ALL still open (hub-thinning 07-17 findings carried)
+- **Consistency 5/10**: new protocol layer is 10/10 uniform (pulls score up); C-1..C-5 collisions remain; NEW: `ordering` slug breaks `*-api` convention (C-6), protocol versioning split v0.1.0 vs v1.0.0 (C-7)
+- **Governance verified**: `.github/CODEOWNERS` present, 369 semver tags (v7.77.0), 40 CI workflows — 07-17 assumptions closed
+- **Counts refreshed**: 620 test files · 334 unique env refs · 85 debt markers (43 TODO, 28 @ts-nocheck) · 130 Hono/Express route registrations (ordering largest at 24)
+- **Ground-truth REFRESHED** (same day, `/ride --ground-truth` follow-up): 5 GT files regenerated at `grimoires/loa/ground-truth/` from the fresh reality spokes (protocol 4→10, ordering cell, CR-019 gates, 40 CI, sietch-frozen all carried); checksums.json re-generated mechanically (30 files, b5df718a); token budgets all PASS (index 450/500, spokes ≤536/2000). Note: `grimoires/loa/gt/` still holds empty 03-31 stubs — dead dir, candidate for removal
+- **Hygiene NEW**: `.beads/.write.lock.orphaned-20260717`, 114 tracked `.pyc` in `.claude/`, 23 loose billing `.ts` at `packages/services/` root
+- **Phase 8 (legacy deprecation) skipped** — same rationale as 2026-05-18/07-06 rides
+- Trajectory: `grimoires/loa/a2a/trajectory/riding-20260719.jsonl`
+
+---
+
 ## Ride Session 2026-05-18 — Codebase Re-Ride
 
 The Loa rode through. Replaced 3-month-stale reality artifacts. Highlights:

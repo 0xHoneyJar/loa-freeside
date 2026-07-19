@@ -1,50 +1,130 @@
-router.delete('/:id
-router.delete('/:id/sandbox-access/:sandboxId
-router.delete('/sandbox/:sandboxId/reset
-router.delete('/sessions/:sessionId
-router.get('/
-router.get('/:guildId/shadow/divergences
-router.get('/:guildId/status
-router.get('/:id
-router.get('/:id/identity
-router.get('/:id/provenance
-router.get('/:id/sandbox-access
-router.get('/:sessionId
-router.get('/:sessionId/status
-router.get('/.well-known/jwks.json
-router.get('/admin/stats
-router.get('/api/agents/budget
-router.get('/api/agents/health
-router.get('/api/agents/models
-router.get('/callback
-router.get('/config
-router.get('/discord
-router.get('/history
-router.get('/me
-router.get('/protected
-router.get('/rewards
-router.get('/sessions
-router.get('/verify
-router.patch('/:id
-router.patch('/:userId/thresholds
-router.post('/
-router.post('/:guildId/emergency-backup
-router.post('/:guildId/mode
-router.post('/:guildId/rollback
-router.post('/:id/disable
-router.post('/:id/enable
-router.post('/:id/reset-password
-router.post('/:id/sandbox-access
-router.post('/:sessionId
-router.post('/api/agents/invoke
-router.post('/api/agents/stream
-router.post('/change-password
-router.post('/config
-router.post('/endpoint
-router.post('/inference
-router.post('/login
-router.post('/logout
-router.post('/refresh
-router.post('/register
-router.post('/run
-router.post('/usage-reports
+themes/sietch/src/telegram/bot.ts:207: *   app.post('/telegram/webhook', telegramWebhookHandler);
+themes/sietch/src/packages/security/NaibSecurityGuard.ts:356:   * app.delete('/channel/:id',
+themes/sietch/src/api/middleware.ts:397: * router.get('/admin/stats', (req, res) => { ... });
+themes/sietch/src/api/middleware/dashboardAuth.ts:125:   * router.get('/config', requireDashboardAuth, handler);
+themes/sietch/src/api/middleware/dashboardAuth.ts:217:   * router.post('/config', requireDashboardAuth, liveAdminCheck, handler);
+themes/sietch/src/api/middleware/developer-key-auth.ts:156: *   router.post('/inference', (req: DeveloperKeyRequest, res) => {
+themes/sietch/src/api/middleware/auth.ts:176: * router.get('/protected', (req, res) => {
+themes/sietch/src/api/middleware/auth.ts:382: * router.patch('/:userId/thresholds', requireAuth, requireQARole, handler);
+themes/sietch/src/api/middleware/auth.ts:417: * router.delete('/sandbox/:sandboxId/reset', requireAuth, requireAdminRole, handler);
+themes/sietch/src/api/middleware/rate-limit.ts:367: * router.post('/endpoint', writeLimiter, handler);
+themes/sietch/src/api/routes/users.routes.ts:127:  router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:169:  router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:217:  router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:256:  router.patch('/:id', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:312:  router.post('/:id/disable', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:357:  router.post('/:id/enable', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:402:  router.delete('/:id', requireRoles('admin'), async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:447:  router.post('/:id/reset-password', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:493:  router.post('/:id/sandbox-access', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:548:  router.delete('/:id/sandbox-access/:sandboxId', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/users.routes.ts:603:  router.get('/:id/sandbox-access', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/verify.routes.ts:322:  router.get('/:sessionId', sessionRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+themes/sietch/src/api/routes/verify.routes.ts:417:  router.post('/:sessionId', postRateLimiter, sessionRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+themes/sietch/src/api/routes/verify.routes.ts:529:  router.get('/:sessionId/status', sessionRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+themes/sietch/src/api/routes/agent-identity.routes.ts:37:  router.post('/register', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agent-identity.routes.ts:82:  router.get('/:id/provenance', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agent-identity.routes.ts:99:  router.get('/:id/identity', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:142:  router.get('/.well-known/jwks.json', (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:196:  router.get('/api/agents/health', setDefaultRateLimitPolicy, killSwitch(agentEnabled), async (_req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:214:  router.post('/api/agents/invoke', ...authMiddlewares, async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:246:  router.post('/api/agents/stream', ...authMiddlewares, async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:340:  router.get('/api/agents/models', ...authMiddlewares, (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:350:  router.get('/api/agents/budget', ...authMiddlewares, async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agents.routes.ts:403:  router.post('/usage-reports', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/simulation.routes.ts:202:  router.post(
+themes/sietch/src/api/routes/simulation.routes.ts:256:  router.delete(
+themes/sietch/src/api/routes/simulation.routes.ts:295:  router.get(
+themes/sietch/src/api/routes/simulation.routes.ts:326:  router.get(
+themes/sietch/src/api/routes/simulation.routes.ts:358:  router.patch(
+themes/sietch/src/api/routes/simulation.routes.ts:413:  router.delete(
+themes/sietch/src/api/routes/simulation.routes.ts:452:  router.post(
+themes/sietch/src/api/routes/simulation.routes.ts:546:  router.get(
+themes/sietch/src/api/routes/simulation.routes.ts:582:  router.patch(
+themes/sietch/src/api/routes/simulation.routes.ts:639:  router.delete(
+themes/sietch/src/api/routes/score-rewards.routes.ts:38:router.get('/rewards', (req: Request, res: Response) => {
+themes/sietch/src/api/routes/coexistence.routes.ts:126:  router.get('/:guildId/status', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/coexistence.routes.ts:219:  router.post('/:guildId/mode', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/coexistence.routes.ts:315:  router.post('/:guildId/rollback', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/coexistence.routes.ts:384:  router.get('/:guildId/shadow/divergences', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/coexistence.routes.ts:455:  router.post('/:guildId/emergency-backup', async (req: AuthenticatedRequest, res: Response) => {
+themes/sietch/src/api/routes/reconciliation-admin.routes.ts:34:  router.post('/run', async (_req: Request, res: Response) => {
+themes/sietch/src/api/routes/reconciliation-admin.routes.ts:47:  router.get('/history', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/restore.routes.ts:239:  router.get(
+themes/sietch/src/api/routes/dashboard/restore.routes.ts:294:  router.post(
+themes/sietch/src/api/routes/dashboard/restore.routes.ts:384:  router.post(
+themes/sietch/src/api/routes/auth.routes.ts:101:  router.post('/login', authRateLimiter, strictAuthRateLimiter, async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/auth.routes.ts:160:  router.post('/logout', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/auth.routes.ts:190:  router.get('/me', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/auth.routes.ts:236:  router.post('/refresh', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/auth.routes.ts:276:  router.get('/sessions', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/auth.routes.ts:329:  router.delete('/sessions/:sessionId', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/auth.routes.ts:475:  router.get('/verify', authRateLimiter, strictAuthRateLimiter, (req: Request, res: Response) => {
+themes/sietch/src/api/routes/admin/agent-config.ts:139:  router.get(
+themes/sietch/src/api/routes/admin/agent-config.ts:162:  router.put(
+themes/sietch/src/api/routes/admin/agent-config.ts:210:  router.post(
+themes/sietch/src/api/routes/admin/agent-config.ts:247:  router.post(
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:456:  router.get('/discord', (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:507:  router.get('/callback', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:636:  router.post('/login', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:734:  router.post('/logout', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:792:  router.get('/me', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:860:  router.post('/refresh', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/dashboard/auth.routes.ts:951:  router.post('/change-password', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/admin/byok.routes.ts:109:  router.post(
+themes/sietch/src/api/routes/admin/byok.routes.ts:147:  router.get(
+themes/sietch/src/api/routes/admin/byok.routes.ts:164:  router.delete(
+themes/sietch/src/api/routes/admin/byok.routes.ts:189:  router.post(
+themes/sietch/src/api/routes/dashboard/drift.routes.ts:116:  router.get(
+themes/sietch/src/api/routes/dashboard/drift.routes.ts:171:  router.post(
+packages/services/shadow-audit/src/server.ts:106:  app.get('/healthz', (c) => c.json({ ok: true }));
+packages/services/shadow-audit/src/server.ts:107:  app.route('/', createAuditRouter(deps));
+packages/services/shadow-audit/src/http/audit-router.ts:198:  app.get('/v1/collections/:chain/:contract', (c) => {
+packages/services/shadow-audit/src/http/audit-router.ts:211:  app.get('/v1/audit', async (c) => {
+packages/services/shadow-audit/src/http/audit-router.ts:249:  app.post('/v1/audit', async (c) => {
+packages/services/shadow-audit/src/http/audit-router.ts:290:  app.post('/v1/audit/reaction', async (c) => {
+packages/services/shadow-audit/src/http/audit-router.ts:314:  app.post('/v1/audit/contact', async (c) => {
+packages/services/shadow-audit/src/http/audit-router.ts:335:  app.get('/v1/audit/view', async (c) => {
+packages/services/shadow-mode/src/http/shadow-router.ts:25:  app.get('/health', (c) => c.json({ ok: true, service: 'shadow-mode-api' }));
+packages/services/shadow-mode/src/http/shadow-router.ts:27:  app.post('/events', async (c) => {
+packages/services/shadow-mode/src/http/shadow-router.ts:55:  app.get('/communities/:id/member-graph', async (c) =>
+packages/services/shadow-mode/src/http/shadow-router.ts:59:  app.get('/communities/:id/unresolved', async (c) =>
+packages/services/shadow-mode/src/http/shadow-router.ts:63:  app.get('/communities/:id/shadow/divergences', async (c) =>
+packages/services/shadow-mode/src/http/shadow-router.ts:67:  app.post('/communities/:id/reports/access-audit', async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:79:  app.post("/v1/capability-demands", async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:134:  app.get("/v1/capability-demands/triage-aggregate", async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:143:  app.post("/v1/capability-demands/support-events", async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:175:  app.get("/v1/capability-demands", async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:231:  app.get("/v1/capability-demands/:demand_id", async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:278:  app.delete("/v1/capability-demands/:demand_id", async (c) => {
+packages/services/ordering/src/capability-demand-http.ts:316:  app.post("/v1/capability-demands/:demand_id/decline", async (c) => {
+packages/services/ordering/src/resolution-http.ts:244:  app.post("/v1/collection-resolutions", async (c) => {
+packages/services/ordering/src/resolution-http.ts:263:  app.post("/v1/collection-resolutions/:id/confirm", async (c) => {
+packages/services/ordering/src/resolution-http.ts:284:  app.post("/v1/collection-resolutions/:id/refresh", async (c) => {
+packages/services/ordering/src/report-attention-http.ts:54:  app.post(
+packages/services/ordering/src/frontend.ts:23:  app.route('/', createIntakeApp(deps));
+packages/services/ordering/src/frontend.ts:25:  app.get('/', (c) => c.html(FORM_PAGE));
+packages/services/ordering/src/frontend.ts:26:  app.get('/track/:id', (c) => c.html(trackPage(c.req.param('id'))));
+packages/services/ordering/src/collection-report-http.ts:137:  app.get("/v1/collection-reports", async (c) => {
+packages/services/ordering/src/collection-report-http.ts:205:  app.get("/v1/collection-reports/:order_id", async (c) => {
+packages/services/ordering/src/intake.ts:92:  app.post('/v1/orders', async (c) => {
+packages/services/ordering/src/intake.ts:248:  app.get('/v1/orders/:id', async (c) => {
+packages/services/ordering/src/intake.ts:255:  app.get('/healthz', (c) =>
+packages/services/ordering/src/intake.ts:269:    app.post('/v1/orders/:id/advance-ingredient', async (c) => {
+packages/services/ordering/src/intake.ts:302:    app.post('/v1/orders/:id/reprobe', async (c) => {
+packages/services/ordering/src/dependency-ledger-http.ts:48:  app.post("/v1/dependency-ledger/inbox/envelopes", async (c) => {
+packages/services/ordering/src/dependency-ledger-http.ts:107:  app.get("/v1/dependency-ledger/derivatives/:derivative_kind/:derivative_id", (c) => {
+packages/services/ordering/src/dependency-ledger-http.ts:136:  app.get("/v1/dependency-ledger/metrics", (c) => {
+apps/mcp-gateway/src/app.ts:207:app.get("/healthz", (c) => c.text("ok"));
+apps/mcp-gateway/src/app.ts:212:app.get("/.well-known/federation.json", (c) => {
+apps/mcp-gateway/src/app.ts:222:app.get("/internal/federation.json", (c) => {
+apps/mcp-gateway/src/app.ts:235:app.get("/schema/tenant.json", (c) => c.json(JSONSchema.make(TenantSchema)));
+apps/mcp-gateway/src/app.ts:236:app.get("/schema/tenants.json", (c) => c.json(JSONSchema.make(TenantsSchema)));
+apps/mcp-gateway/src/app.ts:237:app.get("/schema/federation.json", (c) => c.json(JSONSchema.make(FederationManifestSchema)));
+apps/mcp-gateway/src/app.ts:243:app.get("/.well-known/beacon-schema/v2.json", (c) => c.json(BeaconV2JsonSchema));
+apps/mcp-gateway/src/app.ts:245:app.get("/status.json", (c) => {
+apps/mcp-gateway/src/app.ts:288:app.get("/", (c) => c.html(renderIndex()));
+apps/freeside-operator-dash/src/app.ts:204:app.get("/", async (c) => {
+apps/freeside-operator-dash/src/app.ts:210:app.get("/healthz", (c) => {
+apps/freeside-operator-dash/src/app.ts:214:app.get("/api/state", async (c) => {
+apps/freeside-operator-dash/src/app.ts:263:app.get("/api/events", (c) => {

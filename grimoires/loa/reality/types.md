@@ -2,13 +2,14 @@
 source_type: ai-autogen
 use_label: usable
 read_state: read
-as_of: 2026-07-06
-generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
+as_of: 2026-07-19
+generated_by: /ride reality refresh (delta 9b0f4a12 → b5df718a)
+git_sha: b5df718a
 ---
 
 # Types, Data Models & Contracts — loa-freeside (current)
 
-> Generated 2026-07-06 by /ride. CODE IS TRUTH. Dual-persistence: legacy SQLite (sietch v1) + PostgreSQL (Drizzle, current).
+> Generated 2026-07-19 by /ride (refreshing 2026-07-06 capture). CODE IS TRUTH. Dual-persistence: legacy SQLite (sietch v1) + PostgreSQL (Drizzle, current).
 
 ## PostgreSQL — Drizzle (multi-tenant, RLS)
 `packages/adapters/storage/schema.ts:50-476` — **9 tables**, all tenant-scoped via FK to `communities.id`; RLS enforces `community_id = app.current_community_id()`:
@@ -36,6 +37,14 @@ generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
 - **registry schema** `packages/freeside-registry/src/registry.ts` — `ModuleEntry` (git_url, beacon_url NullOr, deployment_url, visibility public|unlisted|internal, runtime_state), `ServiceBlock` (ADR-012: deployment_url, health_path, expected_status, auth_class none|static-key, expected_body_marker, probed_at, probe_source), `Expectations[]` (discriminated by probe_kind: http|graphql-lag|event-max-age). Filters: service.deployment_url must equal entry deployment_url; target-less http expectation requires a service block.
 - **BeaconV3** `packages/beacon-schema/src/beacon-v3.ts` — identity schema (slug, publisher, is/is_not, cycle_state, composes_with, acvp_invariants, sealed_schemas sha256-of-JCS).
 - **shadow-mode protocol** `packages/protocol/shadow-mode/src/schemas/` — eligibility verdict (status/source/tier/score), subject/collection-entity (JCS canonical), divergence (`match|freeside_higher|incumbent_higher|mismatch`).
+- **NEW v1.0.0 protocol packages (collection-report cycle, 2026-07-06 → 07-19)** under `packages/protocol/`:
+  - `collection/` — cross-VM collection identity, capability-version, canonical digest, finality-bound wire contract
+  - `collection-resolution/` — durable collection-resolution + stale-selection contracts (Ordering-owned confirmation sessions)
+  - `dependency-ledger/` — CR-012A reverse-dependency ledger, inbox closure, quarantine, reconciliation
+  - `public-authorization/` — CR-007A subject-resource-action authorization, grant projection watermarks, short-lived leases
+  - `signing-key-custody/` — CR-013 KMS/HSM signing-key custody; pinned registry distribution; fixture vs production class separation
+  - `trust-envelope/` — CR-009 Ed25519-signed trust-envelope wire contract + stream sequencing (sequence_gap does NOT skip or poison event_id — fix 0791a090)
+- **collection-report-gates** `packages/collection-report-gates/` — CR-019 machine-readable release-gate manifest + deterministic validator (`manifest/`, `test-vectors/`).
 - **events** `@0xhoneyjar/events` — envelope/jcs/signer/topics; schemas: nft-mint-detected, nft-activity, registry.
 - **nats-schemas** `@freeside/nats-schemas` — event-data, gateway-event, interaction-payload, usage-finalized (Rust↔TS wire).
 

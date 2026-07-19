@@ -2,13 +2,14 @@
 source_type: ai-autogen
 use_label: usable
 read_state: read
-as_of: 2026-07-06
-generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
+as_of: 2026-07-19
+generated_by: /ride reality refresh (delta 9b0f4a12 → b5df718a)
+git_sha: b5df718a
 ---
 
 # API & Command Surface — loa-freeside (current, in-repo)
 
-> Generated 2026-07-06 by /ride. In-repo surfaces only (external cells expose their own). CODE IS TRUTH.
+> Generated 2026-07-19 by /ride (refreshing 2026-07-06 capture). In-repo surfaces only (external cells expose their own). CODE IS TRUTH.
 
 ## REST (themes/sietch — Express 5)
 - **48 route modules → 300+ endpoints** (`themes/sietch/src/api/routes/index.ts`). Server init `themes/sietch/src/api/server.ts:119-761`.
@@ -22,12 +23,13 @@ generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
   - `billing.routes.ts`: crypto payments (Paddle / NOWPayments)
 - **Auth middleware**: `requireAuth`, `requireRoles`, `requireApiKey`, `requireDashboardAuth`. Security: helmet CSP, `memberRateLimiter` / `webhookRateLimiter`, cookie parser, CORS.
 
-## REST (in-repo services — Hono)
-- `packages/services/shadow-audit` → `bin/http.ts` (Access-Risk Audit API)
-- `packages/services/ordering` → `bin/http.ts` + `bin/worker.ts` + `bin/fulfillment-orchestrator.ts`
-- `packages/services/shadow-mode` → `src/index.ts` (member-graph ledger)
-- `packages/freeside-registry` → `/federation.json` manifest endpoint
-- `apps/mcp-gateway` → `bin/http.ts` (Hono; MCP federation v0.3)
+## REST (in-repo services — Hono; 130 raw route registrations scanned 2026-07-19)
+- `packages/services/ordering` → `bin/http.ts` + `bin/worker.ts` + `bin/fulfillment-orchestrator.ts` — **24 route registrations** (largest in-repo Hono surface; grew through the CR cycle: collection-report list/detail projections CR-206, attention receipts + mark-seen CR-305, capability demand lifecycle CR-208, public authorization CR-007A). Registered in registry.yaml as cell `ordering`, runtime_state deployed.
+- `packages/services/shadow-audit` → `bin/http.ts` (Access-Risk Audit API) — 8 registrations
+- `packages/services/shadow-mode` → `src/index.ts` (member-graph ledger) — 6 registrations
+- `packages/freeside-registry` → serves HTTP `GET /federation.json` manifest endpoint
+- `apps/mcp-gateway` → `bin/http.ts` (Hono; MCP federation v0.3) — 9 registrations
+- `apps/freeside-operator-dash` — 4 registrations
 
 ## Discord (discord.js) — 23 commands
 `themes/sietch/src/discord/commands/`: admin-migrate, agent, buy-credits, onboard, threshold, verify, water-share, directory, leaderboard, naib, position, profile, register-waitlist, resume, simulation, stats, admin-badge, admin-stats, admin-takeover, admin-water-share, alerts, badges. Pattern `Command = { name, description, handler, options }`; `requireAdminRole` / `requireAuth`.
@@ -47,6 +49,9 @@ generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
 - `POST /telegram/webhook` (secret-token guarded)
 - Discord interactions; x402 payment paths; Stripe (billing).
 
+## Package bins (6)
+`freeside-cli`, `gaib` (@freeside/cli), `dune-meter`, `events-lint` (@0xhoneyjar/events), `build-beacon-json` (beacon-schema), **`check-gate-manifest`** (NEW — collection-report-gates CR-019).
+
 ## Delta vs 2026-05-18 corpse
-- **NEW**: freeside-cli (federation verbs), apps/mcp-gateway (federation v0.3), freeside-operator-dash (events tracing), `/federation.json`, ordering/kitchen/fulfill order-system verbs.
+- **NEW**: freeside-cli (federation verbs), apps/mcp-gateway (federation v0.3), freeside-operator-dash (events tracing), the HTTP `GET federation.json` manifest endpoint, ordering/kitchen/fulfill order-system verbs.
 - **Corrected**: corpse implied a single monolith REST surface; today the surface is split across sietch (Express) + in-repo Hono services + external cells.

@@ -1,16 +1,17 @@
 # Behaviors — Ground Truth
 
-> Refreshed 2026-07-06 by /ride. Source: `reality/entry-points.md`, `reality/architecture-overview.md`.
+> Refreshed 2026-07-19 by /ride. Source: `reality/entry-points.md`, `reality/architecture-overview.md`.
 
 ## Scheduled / cron
-- **9 Trigger.dev** scheduled tasks.
+- **9 Trigger.dev** scheduled tasks; BullMQ / queue jobs.
 - Registry `expectations[]` cadence ledger (probe kinds: http | graphql-lag [sonar chain-lag] | event-max-age).
-- **39 GitHub Actions** workflows: ci, cluster-compliance, security-audit, deploy-staging/production, e2e-billing, post-merge, secret-scanning, container-security.
+- **40 GitHub Actions** workflows: ci, cluster-compliance, security-audit, deploy-staging/production, e2e-billing, post-merge, secret-scanning, container-security.
 
 ## Event handlers
-- **NATS JetStream** (worker `main-nats.ts`): 4 consumers — command, event, eligibility, usage — + agent-gateway routing + ownership re-verification.
+- **NATS JetStream** (worker `main-nats.ts`): 4 consumers — command, event, eligibility, usage — + agent-gateway routing + ownership re-verification; fallback on agent-init failure.
 - **RabbitMQ** (ingestor path, coexistence/legacy).
-- Cross-cell events verified before routing (`@0xhoneyjar/events`: JCS + Ed25519).
+- Cross-cell events verified before routing (`@0xhoneyjar/events`: JCS + Ed25519). Trust-envelope stream sequencing: sequence_gap does NOT skip or poison event_id (fix 0791a090).
+- **ordering** runs durable state + idempotency + outbox via `bin/worker.ts` + `bin/fulfillment-orchestrator.ts`.
 - Discord + Telegram + webhook handlers (sietch).
 
 ## Feature flags
@@ -25,8 +26,8 @@ Every PostgreSQL tenant table scoped by `community_id`; RLS `= app.current_commu
 - **sonar-api** ← none.
 - **ghost**: identity ES256 `/v1/auth/service-jwt` unused; JWKS 404s.
 
-## Deployment state (probe 2026-06-19)
-Deployed: sonar (+belt-gateway), score, storage, identity, inventory (401 auth-gated), activities. Scaffolded: mint (routeless 404), ledger (not deployed). Not-built runtime: mediums (npm lib), events (in-repo lib). **All beacon subdomains 404** (DNS not pointed + routes unshipped).
+## Deployment state (registry read 2026-07-19; live probe 2026-06-19)
+Registry declares 7 deployed: sonar, score, storage, identity, inventory, activities, **ordering** (in-repo cell, newly registered). Scaffolded: mint, ledger. Not-built: mediums, events. Last live probe (06-19): inventory 401 auth-gated, mint routeless 404, ledger not deployed; **all beacon subdomains 404** (DNS not pointed + routes unshipped). Re-probe: `freeside-cli doctor --remote`.
 
 ## Budget / agent
 Redis Lua atomic budget reservation (ADR-001); ensemble routing via `POOL_PROVIDER_HINTS`; BYOK egress isolation; per-model accounting; capability audit events.

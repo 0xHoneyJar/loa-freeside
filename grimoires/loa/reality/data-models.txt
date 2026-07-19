@@ -1,60 +1,1240 @@
-async function acquireBackfillLock
-async function adjustRedisBudgetLimit
-async function allocateAdvisoryLock
-async function allocateForUpdate
-async function allocateRange
-async function cacheSnapshot
-async function consumeNonce
-async function deleteSession
-async function ensureConstantTime
-async function exchangeCodeForToken
-async function expireSingleLot
-async function fetchDiscordUser
-async function fetchHourlyBuckets
-async function fetchUserGuilds
-async function getAvailableBalance
-async function getCachedSnapshot
-async function getCheckpointById
-async function getSession
-async function handleChatMessage
-async function pollNowpaymentsStatus
-async function reconcilePayment
-async function replayStateWithClient
-async function requireCommunityMatch
-async function rollupCommunity
-async function runVerificationAsync
-async function storeNonce
-async function storeSession
-async function tryInlinePayment
-async function verifyBackfillWithClient
-export async function acquireFenceToken
-export async function allocateSequence
-export async function assertCommunityScope
-export async function backfillAll
-export async function backfillCommunity
-export async function checkConservation
-export async function computeSnapshot
-export async function debitLots
-export async function fetchUserRoles
-export async function finalizePg
-export async function getCurrentFenceToken
-export async function getJwksFromDb
-export async function getLatestSnapshot
-export async function getLotBalances
-export async function getPurposeBreakdown
-export async function getTotalBalance
-export async function getUnclassifiedRate
-export async function insertPublicKey
-export async function isGovernancePending
-export async function isKeyActive
-export async function mintCreditLot
-export async function processPaymentForLedger
-export async function reconcile
-export async function refreshJwksCache
-export async function replayGovernanceHistory
-export async function replayState
-export async function requireApiKeyAsync
-export async function requireAuth
-export async function requireLocalAuth
-export async function revokeKey
-export async function runDebitRollup
+packages/core/dist/ports/parallel-mode.d.ts:15:export interface TierRoleConfig {
+packages/core/dist/ports/parallel-mode.d.ts:28:export interface INamespacedRoleManager {
+packages/core/dist/ports/parallel-mode.d.ts:118:export interface IChannelStrategyManager {
+packages/core/dist/ports/parallel-mode.d.ts:198:export interface IParallelMode {
+packages/core/dist/ports/parallel-mode.d.ts:270:export interface ParallelModeReadiness {
+packages/core/dist/ports/parallel-mode.d.ts:300:export interface ParallelModeSyncResult {
+packages/core/dist/ports/wizard-session-store.d.ts:19:export interface SessionValidationResult {
+packages/core/dist/ports/wizard-session-store.d.ts:30:export interface StateTransitionResult {
+packages/core/dist/ports/wizard-session-store.d.ts:41:export interface SessionStats {
+packages/core/dist/ports/wizard-session-store.d.ts:63:export interface IWizardSessionStore {
+packages/core/dist/ports/wizard-session-store.d.ts:173:export type CreateWizardSessionStore = (options: {
+packages/core/dist/ports/shadow-sync.d.ts:16:export interface ShadowSyncOptions {
+packages/core/dist/ports/shadow-sync.d.ts:27:export interface MemberFetchOptions {
+packages/core/dist/ports/shadow-sync.d.ts:38:export interface MemberFetchResult<T> {
+packages/core/dist/ports/shadow-sync.d.ts:51:export interface ShadowDigest {
+packages/core/dist/ports/shadow-sync.d.ts:85:export interface IShadowSync {
+packages/core/dist/ports/migration.d.ts:16:export interface IMigrationEngine {
+packages/core/dist/ports/migration.d.ts:79:export interface IRollbackManager {
+packages/core/dist/ports/migration.d.ts:117:export interface IIncumbentHealthMonitor {
+packages/core/dist/ports/migration.d.ts:151:export interface IBackupActivationService {
+packages/core/dist/ports/migration.d.ts:182:export interface IMigrationAuditTrail {
+packages/core/dist/ports/migration.d.ts:215:export interface IMigrationStrategyExecutor {
+packages/core/dist/ports/migration.d.ts:259:export interface IMigrationStateStore {
+packages/core/dist/ports/migration.d.ts:288:export interface ISnapshotStore {
+packages/core/dist/ports/migration.d.ts:310:export interface IMigrationAndRollback extends IMigrationEngine, IRollbackManager, IIncumbentHealthMonitor, IBackupActivationService {
+packages/core/dist/ports/theme-provider.d.ts:11:export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
+packages/core/dist/ports/theme-provider.d.ts:30:export type BadgeEvaluatorType = 'join_order' | 'tenure' | 'tier_reached' | 'recent_activity' | 'manual_grant' | 'balance_stability' | 'market_survival' | 'activity_streak' | 'event_participation' | 'rank_tenure' | 'referrals';
+packages/core/dist/ports/theme-provider.d.ts:35:export type BadgeRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+packages/core/dist/ports/theme-provider.d.ts:54:export interface TierConfig {
+packages/core/dist/ports/theme-provider.d.ts:90:export interface BadgeConfig {
+packages/core/dist/ports/theme-provider.d.ts:131:export interface NamingConfig {
+packages/core/dist/ports/theme-provider.d.ts:148:export interface TierResult {
+packages/core/dist/ports/theme-provider.d.ts:163:export interface EarnedBadge {
+packages/core/dist/ports/theme-provider.d.ts:176:export interface Profile {
+packages/core/dist/ports/theme-provider.d.ts:199:export interface ProfileHistory {
+packages/core/dist/ports/theme-provider.d.ts:234:export interface IThemeProvider {
+packages/core/dist/ports/theme-provider.d.ts:279:export interface ThemeValidationResult {
+packages/core/dist/ports/chain-provider.d.ts:12:export type Address = `0x${string}`;
+packages/core/dist/ports/chain-provider.d.ts:14:export type ChainId = number | string;
+packages/core/dist/ports/chain-provider.d.ts:16:export type AssetType = 'token' | 'nft' | 'native';
+packages/core/dist/ports/chain-provider.d.ts:18:export interface AssetConfig {
+packages/core/dist/ports/chain-provider.d.ts:33:export type ActionType = 'swap' | 'stake' | 'provide_liquidity' | 'mint' | 'burn' | 'transfer' | 'vote' | 'delegate';
+packages/core/dist/ports/chain-provider.d.ts:35:export interface ActionHistoryConfig {
+packages/core/dist/ports/chain-provider.d.ts:46:export interface RankedHolder {
+packages/core/dist/ports/chain-provider.d.ts:57:export interface CrossChainScore {
+packages/core/dist/ports/chain-provider.d.ts:68:export type EligibilitySource = 'native' | 'dune_sim' | 'score_service' | 'native_degraded' | 'dune_sim_degraded';
+packages/core/dist/ports/chain-provider.d.ts:70:export interface EligibilityResult {
+packages/core/dist/ports/chain-provider.d.ts:100:export interface IChainProvider {
+packages/core/dist/ports/chain-provider.d.ts:267:export interface ChainConfig {
+packages/core/dist/ports/chain-provider.d.ts:286:export interface ChainProviderOptions {
+packages/core/dist/ports/glimpse-mode.d.ts:14:export interface GlimpseContext {
+packages/core/dist/ports/glimpse-mode.d.ts:27:export interface LeaderboardQueryOptions {
+packages/core/dist/ports/glimpse-mode.d.ts:38:export interface ProfileDirectoryQueryOptions {
+packages/core/dist/ports/glimpse-mode.d.ts:51:export interface BadgeShowcaseQueryOptions {
+packages/core/dist/ports/glimpse-mode.d.ts:60:export interface IGlimpseManager {
+packages/core/dist/ports/glimpse-mode.d.ts:115:export interface IMigrationReadinessChecker {
+packages/core/dist/ports/glimpse-mode.d.ts:150:export interface IGlimpseAndReadiness extends IGlimpseManager, IMigrationReadinessChecker {
+packages/core/dist/ports/wizard-engine.d.ts:15:export interface StepResult {
+packages/core/dist/ports/wizard-engine.d.ts:34:export interface StepContext {
+packages/core/dist/ports/wizard-engine.d.ts:53:export interface StepInput {
+packages/core/dist/ports/wizard-engine.d.ts:64:export interface InitStepInput {
+packages/core/dist/ports/wizard-engine.d.ts:70:export interface ChainSelectInput {
+packages/core/dist/ports/wizard-engine.d.ts:76:export interface AssetConfigInput {
+packages/core/dist/ports/wizard-engine.d.ts:82:export interface EligibilityRulesInput {
+packages/core/dist/ports/wizard-engine.d.ts:88:export interface RoleMappingInput {
+packages/core/dist/ports/wizard-engine.d.ts:94:export interface ChannelStructureInput {
+packages/core/dist/ports/wizard-engine.d.ts:101:export interface ReviewStepInput {
+packages/core/dist/ports/wizard-engine.d.ts:107:export interface DeployStepInput {
+packages/core/dist/ports/wizard-engine.d.ts:113:export interface WizardFunnelStats {
+packages/core/dist/ports/wizard-engine.d.ts:135:export interface StepAnalytics {
+packages/core/dist/ports/wizard-engine.d.ts:160:export interface IWizardEngine {
+packages/core/dist/ports/wizard-engine.d.ts:286:export interface IWizardStepHandler {
+packages/core/dist/ports/shadow-ledger.d.ts:15:export interface DivergenceQueryOptions {
+packages/core/dist/ports/shadow-ledger.d.ts:34:export interface PredictionQueryOptions {
+packages/core/dist/ports/shadow-ledger.d.ts:53:export interface IShadowLedger {
+packages/core/dist/ports/feature-gate.d.ts:15:export interface FeatureAccessResult {
+packages/core/dist/ports/feature-gate.d.ts:30:export interface FeatureAccessContext {
+packages/core/dist/ports/feature-gate.d.ts:43:export interface FeatureOverride {
+packages/core/dist/ports/feature-gate.d.ts:62:export interface IFeatureGate {
+packages/core/dist/ports/feature-gate.d.ts:159:export type FeatureGateMiddleware = (communityId: string, guildId: string, next: () => Promise<void>) => Promise<void>;
+packages/core/dist/ports/agent-gateway.d.ts:11:export type AccessLevel = 'free' | 'pro' | 'enterprise';
+packages/core/dist/ports/agent-gateway.d.ts:17:export type ModelAlias = (typeof MODEL_ALIAS_VALUES)[number];
+packages/core/dist/ports/agent-gateway.d.ts:19:export type AgentPlatform = 'discord' | 'telegram';
+packages/core/dist/ports/agent-gateway.d.ts:21:export interface AgentRequestContext {
+packages/core/dist/ports/agent-gateway.d.ts:48:export interface AgentMessage {
+packages/core/dist/ports/agent-gateway.d.ts:53:export type EnsembleStrategy = 'best_of_n' | 'consensus' | 'fallback';
+packages/core/dist/ports/agent-gateway.d.ts:55:export interface EnsembleParams {
+packages/core/dist/ports/agent-gateway.d.ts:62:export interface AgentInvokeRequest {
+packages/core/dist/ports/agent-gateway.d.ts:79:export interface ToolCall {
+packages/core/dist/ports/agent-gateway.d.ts:85:export interface UsageInfo {
+packages/core/dist/ports/agent-gateway.d.ts:91:export interface AgentInvokeResponse {
+packages/core/dist/ports/agent-gateway.d.ts:127:export type AgentStreamEvent = {
+packages/core/dist/ports/agent-gateway.d.ts:163:export interface BudgetStatus {
+packages/core/dist/ports/agent-gateway.d.ts:172:export interface AgentHealthStatus {
+packages/core/dist/ports/agent-gateway.d.ts:190:export interface IAgentGateway {
+packages/core/dist/ports/agent-gateway.d.ts:231:export interface AgentGatewayOptions {
+packages/core/dist/ports/vault-client.d.ts:17:export interface VaultConfig {
+packages/core/dist/ports/vault-client.d.ts:36:export interface VaultHealthStatus {
+packages/core/dist/ports/vault-client.d.ts:49:export interface TransitKeyInfo {
+packages/core/dist/ports/vault-client.d.ts:77:export interface IVaultClient {
+packages/core/dist/ports/vault-client.d.ts:172:export interface KillSwitchState {
+packages/core/dist/ports/vault-client.d.ts:185:export interface KillSwitchRequest {
+packages/core/dist/ports/vault-client.d.ts:203:export interface IKillSwitch {
+packages/core/dist/ports/vault-client.d.ts:233:export interface MfaVerificationResult {
+packages/core/dist/ports/vault-client.d.ts:246:export interface IMfaVerifier {
+packages/core/dist/ports/vault-client.d.ts:274:export interface EncryptedOAuthTokens {
+packages/core/dist/ports/vault-client.d.ts:289:export interface DecryptedOAuthTokens {
+packages/core/dist/ports/vault-client.d.ts:309:export interface IOAuthTokenEncryption {
+packages/core/dist/ports/vault-client.d.ts:328:export interface WalletChallenge {
+packages/core/dist/ports/vault-client.d.ts:346:export interface IWalletVerification {
+packages/core/dist/ports/interaction-history.d.ts:15:export interface InteractionRecord {
+packages/core/dist/ports/interaction-history.d.ts:21:export interface InteractionHistoryProvider {
+packages/core/dist/ports/score-service.d.ts:14:export interface RankedHoldersRequest {
+packages/core/dist/ports/score-service.d.ts:31:export interface AddressRankRequest {
+packages/core/dist/ports/score-service.d.ts:46:export interface ActionHistoryRequest {
+packages/core/dist/ports/score-service.d.ts:61:export interface CrossChainScoreRequest {
+packages/core/dist/ports/score-service.d.ts:72:export interface HealthCheckRequest {
+packages/core/dist/ports/score-service.d.ts:79:export interface RankedHolderProto {
+packages/core/dist/ports/score-service.d.ts:92:export interface RankedHoldersResponse {
+packages/core/dist/ports/score-service.d.ts:103:export interface AddressRankResponse {
+packages/core/dist/ports/score-service.d.ts:116:export interface ActionHistoryResponse {
+packages/core/dist/ports/score-service.d.ts:127:export interface ChainScore {
+packages/core/dist/ports/score-service.d.ts:136:export interface CrossChainScoreResponse {
+packages/core/dist/ports/score-service.d.ts:149:export type HealthStatus = 'SERVING' | 'NOT_SERVING' | 'UNKNOWN';
+packages/core/dist/ports/score-service.d.ts:153:export interface HealthCheckResponse {
+packages/core/dist/ports/score-service.d.ts:165:export interface IScoreServiceClient {
+packages/core/dist/ports/score-service.d.ts:225:export interface ScoreServiceClientConfig {
+packages/core/dist/ports/storage-provider.d.ts:15:export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
+packages/core/dist/ports/storage-provider.d.ts:19:export interface Community {
+packages/core/dist/ports/storage-provider.d.ts:34:export interface CommunitySettings {
+packages/core/dist/ports/storage-provider.d.ts:44:export type NewCommunity = Omit<Community, 'id' | 'createdAt' | 'updatedAt'>;
+packages/core/dist/ports/storage-provider.d.ts:48:export interface Profile {
+packages/core/dist/ports/storage-provider.d.ts:68:export interface ProfileMetadata {
+packages/core/dist/ports/storage-provider.d.ts:82:export interface NotificationPreferences {
+packages/core/dist/ports/storage-provider.d.ts:92:export type NewProfile = Omit<Profile, 'id' | 'createdAt' | 'updatedAt'>;
+packages/core/dist/ports/storage-provider.d.ts:96:export interface Badge {
+packages/core/dist/ports/storage-provider.d.ts:110:export interface BadgeMetadata {
+packages/core/dist/ports/storage-provider.d.ts:123:export type NewBadge = Omit<Badge, 'id' | 'createdAt'>;
+packages/core/dist/ports/storage-provider.d.ts:127:export interface QueryOptions {
+packages/core/dist/ports/storage-provider.d.ts:140:export interface PaginatedResult<T> {
+packages/core/dist/ports/storage-provider.d.ts:151:export interface BadgeLineageNode {
+packages/core/dist/ports/storage-provider.d.ts:180:export interface IStorageProvider {
+packages/core/dist/ports/storage-provider.d.ts:299:export interface StorageProviderOptions {
+packages/core/dist/ports/storage-provider.d.ts:310:export type StorageProviderFactory = (options: StorageProviderOptions) => Promise<IStorageProvider>;
+packages/core/dist/ports/storage-provider.d.ts:314:export interface StorageValidationResult {
+packages/core/dist/ports/synthesis-engine.d.ts:17:export type SynthesisJobType = 'create_role' | 'delete_role' | 'assign_role' | 'remove_role' | 'create_channel' | 'delete_channel' | 'update_permissions';
+packages/core/dist/ports/synthesis-engine.d.ts:21:export interface CreateRolePayload {
+packages/core/dist/ports/synthesis-engine.d.ts:31:export interface DeleteRolePayload {
+packages/core/dist/ports/synthesis-engine.d.ts:37:export interface AssignRolePayload {
+packages/core/dist/ports/synthesis-engine.d.ts:44:export interface RemoveRolePayload {
+packages/core/dist/ports/synthesis-engine.d.ts:51:export interface CreateChannelPayload {
+packages/core/dist/ports/synthesis-engine.d.ts:61:export interface DeleteChannelPayload {
+packages/core/dist/ports/synthesis-engine.d.ts:67:export interface UpdatePermissionsPayload {
+packages/core/dist/ports/synthesis-engine.d.ts:74:export interface PermissionOverwrite {
+packages/core/dist/ports/synthesis-engine.d.ts:83:export type SynthesisPayload = CreateRolePayload | DeleteRolePayload | AssignRolePayload | RemoveRolePayload | CreateChannelPayload | DeleteChannelPayload | UpdatePermissionsPayload;
+packages/core/dist/ports/synthesis-engine.d.ts:87:export interface SynthesisJob<T extends SynthesisPayload = SynthesisPayload> {
+packages/core/dist/ports/synthesis-engine.d.ts:102:export type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'delayed';
+packages/core/dist/ports/synthesis-engine.d.ts:106:export interface SynthesisJobInfo {
+packages/core/dist/ports/synthesis-engine.d.ts:131:export interface BatchSynthesisResult {
+packages/core/dist/ports/synthesis-engine.d.ts:146:export interface TokenBucketStatus {
+packages/core/dist/ports/synthesis-engine.d.ts:159:export interface SynthesisEngineStats {
+packages/core/dist/ports/synthesis-engine.d.ts:186:export interface ISynthesisEngine {
+packages/core/dist/ports/synthesis-engine.d.ts:272:export interface IGlobalTokenBucket {
+packages/core/dist/domain/verification-tiers.d.ts:18:export type VerificationTier = 'incumbent_only' | 'arrakis_basic' | 'arrakis_full';
+packages/core/dist/domain/verification-tiers.d.ts:22:export type Feature = 'shadow_tracking' | 'public_leaderboard_hidden_wallets' | 'admin_shadow_digest' | 'profile_view' | 'conviction_preview' | 'position_check' | 'threshold_check' | 'full_badges' | 'tier_progression' | 'social_features' | 'profile_directory' | 'badge_showcase' | 'conviction_alerts' | 'role_management' | 'channel_gating';
+packages/core/dist/domain/verification-tiers.d.ts:26:export interface FeatureSet {
+packages/core/dist/domain/verification-tiers.d.ts:97:export interface CommunityVerificationStatus {
+packages/core/dist/domain/verification-tiers.d.ts:116:export interface TierUpgradeRequirements {
+packages/core/dist/domain/migration.d.ts:16:export type MigrationStrategy = 'instant' | 'gradual' | 'parallel_forever' | 'arrakis_primary';
+packages/core/dist/domain/migration.d.ts:20:export type MigrationStatus = 'pending' | 'in_progress' | 'in_progress_gradual' | 'completed' | 'rolled_back' | 'paused' | 'failed';
+packages/core/dist/domain/migration.d.ts:24:export type RollbackTrigger = 'manual' | 'access_loss' | 'error_rate' | 'incumbent_failure' | 'api_failure';
+packages/core/dist/domain/migration.d.ts:28:export interface RollbackThresholds {
+packages/core/dist/domain/migration.d.ts:41:export interface MigrationConfig {
+packages/core/dist/domain/migration.d.ts:60:export interface MigrationState {
+packages/core/dist/domain/migration.d.ts:91:export interface ReadinessCheck {
+packages/core/dist/domain/migration.d.ts:106:export interface MigrationReadiness {
+packages/core/dist/domain/migration.d.ts:123:export interface RollbackRequest {
+packages/core/dist/domain/migration.d.ts:136:export interface RollbackResult {
+packages/core/dist/domain/migration.d.ts:153:export interface PreMigrationSnapshot {
+packages/core/dist/domain/migration.d.ts:168:export interface MemberRoleSnapshot {
+packages/core/dist/domain/migration.d.ts:179:export type IncumbentHealthStatus = 'healthy' | 'warning' | 'critical' | 'dead';
+packages/core/dist/domain/migration.d.ts:183:export interface IncumbentHealthCheck {
+packages/core/dist/domain/migration.d.ts:200:export interface IncumbentHealthThresholds {
+packages/core/dist/domain/migration.d.ts:211:export interface BackupActivationRequest {
+packages/core/dist/domain/migration.d.ts:224:export interface BackupActivationResult {
+packages/core/dist/domain/migration.d.ts:239:export type MigrationAuditEventType = 'migration_started' | 'migration_completed' | 'migration_failed' | 'migration_paused' | 'migration_resumed' | 'batch_started' | 'batch_completed' | 'rollback_started' | 'rollback_completed' | 'rollback_failed' | 'health_check' | 'backup_activated' | 'backup_deactivated' | 'threshold_triggered' | 'config_updated';
+packages/core/dist/domain/migration.d.ts:243:export interface MigrationAuditEvent {
+packages/core/dist/domain/migration.d.ts:266:export interface AuditQueryOptions {
+packages/core/dist/domain/parallel-mode.d.ts:18:export type RolePositionStrategy = 'below_incumbent' | 'bottom' | 'custom';
+packages/core/dist/domain/parallel-mode.d.ts:26:export type PermissionMode = 'none' | 'view_only' | 'inherit';
+packages/core/dist/domain/parallel-mode.d.ts:30:export interface NamespacedRoleConfig {
+packages/core/dist/domain/parallel-mode.d.ts:48:export interface RoleSyncResult {
+packages/core/dist/domain/parallel-mode.d.ts:61:export interface RoleSyncError {
+packages/core/dist/domain/parallel-mode.d.ts:72:export interface MemberEligibility {
+packages/core/dist/domain/parallel-mode.d.ts:90:export type ChannelStrategy = 'none' | 'additive_only' | 'parallel_mirror' | 'custom';
+packages/core/dist/domain/parallel-mode.d.ts:95:export interface AdditiveChannelConfig {
+packages/core/dist/domain/parallel-mode.d.ts:113:export interface MirrorChannelConfig {
+packages/core/dist/domain/parallel-mode.d.ts:126:export interface CustomChannelConfig {
+packages/core/dist/domain/parallel-mode.d.ts:144:export interface ChannelStrategyConfig {
+packages/core/dist/domain/parallel-mode.d.ts:165:export interface ParallelModeConfig {
+packages/core/dist/domain/parallel-mode.d.ts:186:export interface ParallelModeStatus {
+packages/core/dist/domain/parallel-mode.d.ts:207:export interface DiscordRole {
+packages/core/dist/domain/parallel-mode.d.ts:228:export interface DiscordChannel {
+packages/core/dist/domain/parallel-mode.d.ts:245:export type ParallelModeEventType = 'parallel_mode.enabled' | 'parallel_mode.disabled' | 'parallel_mode.role.created' | 'parallel_mode.role.assigned' | 'parallel_mode.role.removed' | 'parallel_mode.channel.created' | 'parallel_mode.sync.completed' | 'parallel_mode.error';
+packages/core/dist/domain/parallel-mode.d.ts:249:export interface ParallelModeEvent {
+packages/core/dist/domain/coexistence.d.ts:14:export type IncumbentType = 'collabland' | 'matrica' | 'guild_xyz' | 'other' | 'none';
+packages/core/dist/domain/coexistence.d.ts:18:export type EvidenceType = 'bot_id' | 'channel_name' | 'role_name' | 'role_membership';
+packages/core/dist/domain/coexistence.d.ts:22:export interface Evidence {
+packages/core/dist/domain/coexistence.d.ts:33:export interface IncumbentInfo {
+packages/core/dist/domain/coexistence.d.ts:44:export interface ShadowMemberState {
+packages/core/dist/domain/coexistence.d.ts:65:export type DivergenceType = 'false_positive' | 'false_negative';
+packages/core/dist/domain/coexistence.d.ts:69:export interface ShadowDivergence {
+packages/core/dist/domain/coexistence.d.ts:90:export type PredictionType = 'role_grant' | 'role_revoke' | 'tier_change';
+packages/core/dist/domain/coexistence.d.ts:94:export interface ShadowPrediction {
+packages/core/dist/domain/coexistence.d.ts:117:export interface ShadowSyncResult {
+packages/core/dist/domain/coexistence.d.ts:136:export interface IncumbentState {
+packages/core/dist/domain/coexistence.d.ts:145:export interface ArrakisEligibilityResult {
+packages/core/dist/domain/coexistence.d.ts:158:export type CoexistenceMode = 'shadow' | 'parallel' | 'primary' | 'disabled';
+packages/core/dist/domain/coexistence.d.ts:162:export interface CoexistenceConfig {
+packages/core/dist/domain/glimpse-mode.d.ts:14:export type GlimpseVisibility = 'hidden' | 'blurred' | 'locked' | 'preview' | 'full';
+packages/core/dist/domain/glimpse-mode.d.ts:18:export interface GlimpseModeConfig {
+packages/core/dist/domain/glimpse-mode.d.ts:45:export interface GlimpseLeaderboardEntry {
+packages/core/dist/domain/glimpse-mode.d.ts:62:export interface GlimpseLeaderboard {
+packages/core/dist/domain/glimpse-mode.d.ts:83:export interface GlimpseProfileCard {
+packages/core/dist/domain/glimpse-mode.d.ts:104:export interface GlimpseProfileDirectory {
+packages/core/dist/domain/glimpse-mode.d.ts:125:export interface GlimpseBadge {
+packages/core/dist/domain/glimpse-mode.d.ts:146:export interface GlimpseBadgeShowcase {
+packages/core/dist/domain/glimpse-mode.d.ts:167:export interface PreviewProfile {
+packages/core/dist/domain/glimpse-mode.d.ts:219:export type UnlockMessageType = 'migration_cta' | 'admin_action_required' | 'readiness_check' | 'custom';
+packages/core/dist/domain/glimpse-mode.d.ts:223:export interface UnlockMessage {
+packages/core/dist/domain/glimpse-mode.d.ts:244:export interface MigrationReadinessCheck {
+packages/core/dist/domain/glimpse-mode.d.ts:261:export interface MigrationReadinessRequirements {
+packages/core/dist/domain/glimpse-mode.d.ts:278:export interface MigrationReadinessResult {
+packages/core/dist/domain/glimpse-mode.d.ts:299:export interface GlimpseModeStatus {
+packages/core/dist/domain/wizard.d.ts:44:export type ChainId = 'ethereum' | 'polygon' | 'arbitrum' | 'base' | 'berachain';
+packages/core/dist/domain/wizard.d.ts:48:export interface ChainConfig {
+packages/core/dist/domain/wizard.d.ts:61:export type AssetType = 'erc20' | 'erc721' | 'erc1155' | 'native';
+packages/core/dist/domain/wizard.d.ts:65:export interface AssetConfig {
+packages/core/dist/domain/wizard.d.ts:86:export type EligibilityRuleType = 'min_balance' | 'nft_ownership' | 'min_hold_duration' | 'score_threshold';
+packages/core/dist/domain/wizard.d.ts:90:export interface EligibilityRuleConfig {
+packages/core/dist/domain/wizard.d.ts:105:export interface TierRoleMapping {
+packages/core/dist/domain/wizard.d.ts:120:export type ChannelTemplate = 'none' | 'additive_only' | 'parallel_mirror' | 'custom';
+packages/core/dist/domain/wizard.d.ts:124:export type ChannelType = 'text' | 'voice' | 'category';
+packages/core/dist/domain/wizard.d.ts:128:export interface ChannelPermissionOverride {
+packages/core/dist/domain/wizard.d.ts:141:export interface ChannelConfig {
+packages/core/dist/domain/wizard.d.ts:158:export type DeploymentStatus = 'pending' | 'roles_creating' | 'roles_created' | 'channels_creating' | 'channels_created' | 'permissions_setting' | 'completed' | 'failed';
+packages/core/dist/domain/wizard.d.ts:163:export interface CommunityManifest {
+packages/core/dist/domain/wizard.d.ts:191:export interface WizardSessionData {
+packages/core/dist/domain/wizard.d.ts:221:export interface WizardSession {
+packages/core/dist/domain/wizard.d.ts:246:export type NewWizardSession = Omit<WizardSession, 'id' | 'createdAt' | 'updatedAt' | 'expiresAt'>;
+packages/core/ports/migration.ts:37:export interface IMigrationEngine {
+packages/core/ports/migration.ts:123:export interface IRollbackManager {
+packages/core/ports/migration.ts:172:export interface IIncumbentHealthMonitor {
+packages/core/ports/migration.ts:220:export interface IBackupActivationService {
+packages/core/ports/migration.ts:258:export interface IMigrationAuditTrail {
+packages/core/ports/migration.ts:299:export interface IMigrationStrategyExecutor {
+packages/core/ports/migration.ts:369:export interface IMigrationStateStore {
+packages/core/ports/migration.ts:419:export interface ISnapshotStore {
+packages/core/ports/migration.ts:449:export interface IMigrationAndRollback
+packages/core/ports/shadow-sync.ts:25:export interface ShadowSyncOptions {
+packages/core/ports/shadow-sync.ts:37:export interface MemberFetchOptions {
+packages/core/ports/shadow-sync.ts:49:export interface MemberFetchResult<T> {
+packages/core/ports/shadow-sync.ts:67:export interface ShadowDigest {
+packages/core/ports/shadow-sync.ts:106:export interface IShadowSync {
+packages/core/ports/feature-gate.ts:21:export interface FeatureAccessResult {
+packages/core/ports/feature-gate.ts:37:export interface FeatureAccessContext {
+packages/core/ports/feature-gate.ts:51:export interface FeatureOverride {
+packages/core/ports/feature-gate.ts:75:export interface IFeatureGate {
+packages/core/ports/feature-gate.ts:203:export type FeatureGateMiddleware = (
+packages/core/ports/feature-gate.ts:216:export class FeatureAccessDeniedError extends Error {
+packages/core/ports/score-service.ts:19:export interface RankedHoldersRequest {
+packages/core/ports/score-service.ts:37:export interface AddressRankRequest {
+packages/core/ports/score-service.ts:53:export interface ActionHistoryRequest {
+packages/core/ports/score-service.ts:69:export interface CrossChainScoreRequest {
+packages/core/ports/score-service.ts:81:export interface HealthCheckRequest {
+packages/core/ports/score-service.ts:93:export interface RankedHolderProto {
+packages/core/ports/score-service.ts:107:export interface RankedHoldersResponse {
+packages/core/ports/score-service.ts:119:export interface AddressRankResponse {
+packages/core/ports/score-service.ts:133:export interface ActionHistoryResponse {
+packages/core/ports/score-service.ts:145:export interface ChainScore {
+packages/core/ports/score-service.ts:155:export interface CrossChainScoreResponse {
+packages/core/ports/score-service.ts:169:export type HealthStatus = 'SERVING' | 'NOT_SERVING' | 'UNKNOWN';
+packages/core/ports/score-service.ts:174:export interface HealthCheckResponse {
+packages/core/ports/score-service.ts:191:export interface IScoreServiceClient {
+packages/core/ports/score-service.ts:263:export interface ScoreServiceClientConfig {
+packages/core/ports/glimpse-mode.ts:30:export interface GlimpseContext {
+packages/core/ports/glimpse-mode.ts:44:export interface LeaderboardQueryOptions {
+packages/core/ports/glimpse-mode.ts:56:export interface ProfileDirectoryQueryOptions {
+packages/core/ports/glimpse-mode.ts:70:export interface BadgeShowcaseQueryOptions {
+packages/core/ports/glimpse-mode.ts:80:export interface IGlimpseManager {
+packages/core/ports/glimpse-mode.ts:192:export interface IMigrationReadinessChecker {
+packages/core/ports/glimpse-mode.ts:243:export interface IGlimpseAndReadiness extends IGlimpseManager, IMigrationReadinessChecker {
+packages/core/ports/theme-provider.ts:16:export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
+packages/core/ports/theme-provider.ts:40:export type BadgeEvaluatorType =
+packages/core/ports/theme-provider.ts:59:export type BadgeRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+packages/core/ports/theme-provider.ts:83:export interface TierConfig {
+packages/core/ports/theme-provider.ts:124:export interface BadgeConfig {
+packages/core/ports/theme-provider.ts:170:export interface NamingConfig {
+packages/core/ports/theme-provider.ts:192:export interface TierResult {
+packages/core/ports/theme-provider.ts:208:export interface EarnedBadge {
+packages/core/ports/theme-provider.ts:226:export interface Profile {
+packages/core/ports/theme-provider.ts:250:export interface ProfileHistory {
+packages/core/ports/theme-provider.ts:290:export interface IThemeProvider {
+packages/core/ports/theme-provider.ts:345:export interface ThemeValidationResult {
+packages/core/ports/synthesis-engine.ts:23:export type SynthesisJobType =
+packages/core/ports/synthesis-engine.ts:35:export interface CreateRolePayload {
+packages/core/ports/synthesis-engine.ts:46:export interface DeleteRolePayload {
+packages/core/ports/synthesis-engine.ts:53:export interface AssignRolePayload {
+packages/core/ports/synthesis-engine.ts:61:export interface RemoveRolePayload {
+packages/core/ports/synthesis-engine.ts:69:export interface CreateChannelPayload {
+packages/core/ports/synthesis-engine.ts:80:export interface DeleteChannelPayload {
+packages/core/ports/synthesis-engine.ts:87:export interface UpdatePermissionsPayload {
+packages/core/ports/synthesis-engine.ts:95:export interface PermissionOverwrite {
+packages/core/ports/synthesis-engine.ts:105:export type SynthesisPayload =
+packages/core/ports/synthesis-engine.ts:121:export interface SynthesisJob<T extends SynthesisPayload = SynthesisPayload> {
+packages/core/ports/synthesis-engine.ts:137:export type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'delayed';
+packages/core/ports/synthesis-engine.ts:142:export interface SynthesisJobInfo {
+packages/core/ports/synthesis-engine.ts:172:export interface BatchSynthesisResult {
+packages/core/ports/synthesis-engine.ts:192:export interface TokenBucketStatus {
+packages/core/ports/synthesis-engine.ts:210:export interface SynthesisEngineStats {
+packages/core/ports/synthesis-engine.ts:242:export interface ISynthesisEngine {
+packages/core/ports/synthesis-engine.ts:367:export interface IGlobalTokenBucket {
+packages/core/ports/vault-client.ts:22:export interface VaultConfig {
+packages/core/ports/vault-client.ts:42:export interface VaultHealthStatus {
+packages/core/ports/vault-client.ts:56:export interface TransitKeyInfo {
+packages/core/ports/vault-client.ts:89:export interface IVaultClient {
+packages/core/ports/vault-client.ts:212:export interface KillSwitchState {
+packages/core/ports/vault-client.ts:226:export interface KillSwitchRequest {
+packages/core/ports/vault-client.ts:245:export interface IKillSwitch {
+packages/core/ports/vault-client.ts:283:export interface MfaVerificationResult {
+packages/core/ports/vault-client.ts:297:export interface IMfaVerifier {
+packages/core/ports/vault-client.ts:332:export interface EncryptedOAuthTokens {
+packages/core/ports/vault-client.ts:348:export interface DecryptedOAuthTokens {
+packages/core/ports/vault-client.ts:369:export interface IOAuthTokenEncryption {
+packages/core/ports/vault-client.ts:394:export interface WalletChallenge {
+packages/core/ports/vault-client.ts:413:export interface IWalletVerification {
+packages/core/ports/wizard-engine.ts:32:export interface StepResult {
+packages/core/ports/wizard-engine.ts:52:export interface StepContext {
+packages/core/ports/wizard-engine.ts:72:export interface StepInput {
+packages/core/ports/wizard-engine.ts:88:export interface InitStepInput {
+packages/core/ports/wizard-engine.ts:95:export interface ChainSelectInput {
+packages/core/ports/wizard-engine.ts:102:export interface AssetConfigInput {
+packages/core/ports/wizard-engine.ts:109:export interface EligibilityRulesInput {
+packages/core/ports/wizard-engine.ts:116:export interface RoleMappingInput {
+packages/core/ports/wizard-engine.ts:123:export interface ChannelStructureInput {
+packages/core/ports/wizard-engine.ts:131:export interface ReviewStepInput {
+packages/core/ports/wizard-engine.ts:138:export interface DeployStepInput {
+packages/core/ports/wizard-engine.ts:149:export interface WizardFunnelStats {
+packages/core/ports/wizard-engine.ts:169:export interface StepAnalytics {
+packages/core/ports/wizard-engine.ts:199:export interface IWizardEngine {
+packages/core/ports/wizard-engine.ts:372:export interface IWizardStepHandler {
+packages/core/ports/storage-provider.ts:20:export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
+packages/core/ports/storage-provider.ts:25:export interface Community {
+packages/core/ports/storage-provider.ts:41:export interface CommunitySettings {
+packages/core/ports/storage-provider.ts:52:export type NewCommunity = Omit<Community, 'id' | 'createdAt' | 'updatedAt'>;
+packages/core/ports/storage-provider.ts:57:export interface Profile {
+packages/core/ports/storage-provider.ts:78:export interface ProfileMetadata {
+packages/core/ports/storage-provider.ts:93:export interface NotificationPreferences {
+packages/core/ports/storage-provider.ts:104:export type NewProfile = Omit<Profile, 'id' | 'createdAt' | 'updatedAt'>;
+packages/core/ports/storage-provider.ts:109:export interface Badge {
+packages/core/ports/storage-provider.ts:124:export interface BadgeMetadata {
+packages/core/ports/storage-provider.ts:138:export type NewBadge = Omit<Badge, 'id' | 'createdAt'>;
+packages/core/ports/storage-provider.ts:143:export interface QueryOptions {
+packages/core/ports/storage-provider.ts:157:export interface PaginatedResult<T> {
+packages/core/ports/storage-provider.ts:169:export interface BadgeLineageNode {
+packages/core/ports/storage-provider.ts:203:export interface IStorageProvider {
+packages/core/ports/storage-provider.ts:377:export interface StorageProviderOptions {
+packages/core/ports/storage-provider.ts:389:export type StorageProviderFactory = (
+packages/core/ports/storage-provider.ts:400:export interface StorageValidationResult {
+packages/core/ports/chain-provider.d.ts:12:export type Address = `0x${string}`;
+packages/core/ports/chain-provider.d.ts:14:export type ChainId = number | string;
+packages/core/ports/chain-provider.d.ts:16:export type AssetType = 'token' | 'nft' | 'native';
+packages/core/ports/chain-provider.d.ts:18:export interface AssetConfig {
+packages/core/ports/chain-provider.d.ts:33:export type ActionType = 'swap' | 'stake' | 'provide_liquidity' | 'mint' | 'burn' | 'transfer' | 'vote' | 'delegate';
+packages/core/ports/chain-provider.d.ts:35:export interface ActionHistoryConfig {
+packages/core/ports/chain-provider.d.ts:46:export interface RankedHolder {
+packages/core/ports/chain-provider.d.ts:57:export interface CrossChainScore {
+packages/core/ports/chain-provider.d.ts:68:export type EligibilitySource = 'native' | 'dune_sim' | 'score_service' | 'native_degraded' | 'dune_sim_degraded';
+packages/core/ports/chain-provider.d.ts:70:export interface EligibilityResult {
+packages/core/ports/chain-provider.d.ts:100:export interface IChainProvider {
+packages/core/ports/chain-provider.d.ts:267:export interface ChainConfig {
+packages/core/ports/chain-provider.d.ts:286:export interface ChainProviderOptions {
+packages/core/ports/parallel-mode.ts:30:export interface TierRoleConfig {
+packages/core/ports/parallel-mode.ts:44:export interface INamespacedRoleManager {
+packages/core/ports/parallel-mode.ts:192:export interface IChannelStrategyManager {
+packages/core/ports/parallel-mode.ts:323:export interface IParallelMode {
+packages/core/ports/parallel-mode.ts:432:export interface ParallelModeReadiness {
+packages/core/ports/parallel-mode.ts:463:export interface ParallelModeSyncResult {
+packages/core/ports/agent-gateway.ts:16:export type AccessLevel = 'free' | 'pro' | 'enterprise';
+packages/core/ports/agent-gateway.ts:24:export type ModelAlias = (typeof MODEL_ALIAS_VALUES)[number];
+packages/core/ports/agent-gateway.ts:27:export type AgentPlatform = 'discord' | 'telegram';
+packages/core/ports/agent-gateway.ts:34:export interface AgentRequestContext {
+packages/core/ports/agent-gateway.ts:66:export interface AgentMessage {
+packages/core/ports/agent-gateway.ts:76:export type EnsembleStrategy = 'best_of_n' | 'consensus' | 'fallback';
+packages/core/ports/agent-gateway.ts:79:export interface EnsembleParams {
+packages/core/ports/agent-gateway.ts:87:export interface AgentInvokeRequest {
+packages/core/ports/agent-gateway.ts:109:export interface ToolCall {
+packages/core/ports/agent-gateway.ts:116:export interface UsageInfo {
+packages/core/ports/agent-gateway.ts:123:export interface AgentInvokeResponse {
+packages/core/ports/agent-gateway.ts:164:export type AgentStreamEvent =
+packages/core/ports/agent-gateway.ts:177:export interface BudgetStatus {
+packages/core/ports/agent-gateway.ts:187:export interface AgentHealthStatus {
+packages/core/ports/agent-gateway.ts:204:export interface IAgentGateway {
+packages/core/ports/agent-gateway.ts:254:export interface AgentGatewayOptions {
+packages/core/ports/wizard-session-store.ts:30:export interface SessionValidationResult {
+packages/core/ports/wizard-session-store.ts:46:export interface StateTransitionResult {
+packages/core/ports/wizard-session-store.ts:62:export interface SessionStats {
+packages/core/ports/wizard-session-store.ts:89:export interface IWizardSessionStore {
+packages/core/ports/wizard-session-store.ts:245:export type CreateWizardSessionStore = (options: {
+packages/core/ports/shadow-ledger.ts:29:export interface DivergenceQueryOptions {
+packages/core/ports/shadow-ledger.ts:49:export interface PredictionQueryOptions {
+packages/core/ports/shadow-ledger.ts:73:export interface IShadowLedger {
+packages/core/ports/chain-provider.ts:17:export type Address = `0x${string}`;
+packages/core/ports/chain-provider.ts:20:export type ChainId = number | string;
+packages/core/ports/chain-provider.ts:27:export type AssetType = 'token' | 'nft' | 'native';
+packages/core/ports/chain-provider.ts:30:export interface AssetConfig {
+packages/core/ports/chain-provider.ts:50:export type ActionType =
+packages/core/ports/chain-provider.ts:61:export interface ActionHistoryConfig {
+packages/core/ports/chain-provider.ts:77:export interface RankedHolder {
+packages/core/ports/chain-provider.ts:89:export interface CrossChainScore {
+packages/core/ports/chain-provider.ts:101:export type EligibilitySource =
+packages/core/ports/chain-provider.ts:109:export interface EligibilityResult {
+packages/core/ports/chain-provider.ts:144:export interface IChainProvider {
+packages/core/ports/chain-provider.ts:380:export interface ChainConfig {
+packages/core/ports/chain-provider.ts:466:export interface ChainProviderOptions {
+packages/core/domain/migration.ts:21:export type MigrationStrategy =
+packages/core/domain/migration.ts:30:export type MigrationStatus =
+packages/core/domain/migration.ts:42:export type RollbackTrigger =
+packages/core/domain/migration.ts:56:export interface RollbackThresholds {
+packages/core/domain/migration.ts:70:export interface MigrationConfig {
+packages/core/domain/migration.ts:90:export interface MigrationState {
+packages/core/domain/migration.ts:126:export interface ReadinessCheck {
+packages/core/domain/migration.ts:142:export interface MigrationReadiness {
+packages/core/domain/migration.ts:164:export interface RollbackRequest {
+packages/core/domain/migration.ts:178:export interface RollbackResult {
+packages/core/domain/migration.ts:196:export interface PreMigrationSnapshot {
+packages/core/domain/migration.ts:212:export interface MemberRoleSnapshot {
+packages/core/domain/migration.ts:228:export type IncumbentHealthStatus = 'healthy' | 'warning' | 'critical' | 'dead';
+packages/core/domain/migration.ts:233:export interface IncumbentHealthCheck {
+packages/core/domain/migration.ts:251:export interface IncumbentHealthThresholds {
+packages/core/domain/migration.ts:267:export interface BackupActivationRequest {
+packages/core/domain/migration.ts:281:export interface BackupActivationResult {
+packages/core/domain/migration.ts:301:export type MigrationAuditEventType =
+packages/core/domain/migration.ts:321:export interface MigrationAuditEvent {
+packages/core/domain/migration.ts:345:export interface AuditQueryOptions {
+packages/core/domain/coexistence.ts:19:export type IncumbentType = 'collabland' | 'matrica' | 'guild_xyz' | 'other' | 'none';
+packages/core/domain/coexistence.ts:24:export type EvidenceType = 'bot_id' | 'channel_name' | 'role_name' | 'role_membership';
+packages/core/domain/coexistence.ts:29:export interface Evidence {
+packages/core/domain/coexistence.ts:41:export interface IncumbentInfo {
+packages/core/domain/coexistence.ts:57:export interface ShadowMemberState {
+packages/core/domain/coexistence.ts:79:export type DivergenceType = 'false_positive' | 'false_negative';
+packages/core/domain/coexistence.ts:84:export interface ShadowDivergence {
+packages/core/domain/coexistence.ts:106:export type PredictionType = 'role_grant' | 'role_revoke' | 'tier_change';
+packages/core/domain/coexistence.ts:111:export interface ShadowPrediction {
+packages/core/domain/coexistence.ts:139:export interface ShadowSyncResult {
+packages/core/domain/coexistence.ts:159:export interface IncumbentState {
+packages/core/domain/coexistence.ts:169:export interface ArrakisEligibilityResult {
+packages/core/domain/coexistence.ts:187:export type CoexistenceMode = 'shadow' | 'parallel' | 'primary' | 'disabled';
+packages/core/domain/coexistence.ts:192:export interface CoexistenceConfig {
+packages/core/domain/glimpse-mode.ts:19:export type GlimpseVisibility =
+packages/core/domain/glimpse-mode.ts:29:export interface GlimpseModeConfig {
+packages/core/domain/glimpse-mode.ts:68:export interface GlimpseLeaderboardEntry {
+packages/core/domain/glimpse-mode.ts:86:export interface GlimpseLeaderboard {
+packages/core/domain/glimpse-mode.ts:112:export interface GlimpseProfileCard {
+packages/core/domain/glimpse-mode.ts:134:export interface GlimpseProfileDirectory {
+packages/core/domain/glimpse-mode.ts:160:export interface GlimpseBadge {
+packages/core/domain/glimpse-mode.ts:182:export interface GlimpseBadgeShowcase {
+packages/core/domain/glimpse-mode.ts:208:export interface PreviewProfile {
+packages/core/domain/glimpse-mode.ts:265:export type UnlockMessageType =
+packages/core/domain/glimpse-mode.ts:274:export interface UnlockMessage {
+packages/core/domain/glimpse-mode.ts:326:export interface MigrationReadinessCheck {
+packages/core/domain/glimpse-mode.ts:344:export interface MigrationReadinessRequirements {
+packages/core/domain/glimpse-mode.ts:368:export interface MigrationReadinessResult {
+packages/core/domain/glimpse-mode.ts:394:export interface GlimpseModeStatus {
+packages/core/ports/score-service.d.ts:14:export interface RankedHoldersRequest {
+packages/core/ports/score-service.d.ts:31:export interface AddressRankRequest {
+packages/core/ports/score-service.d.ts:46:export interface ActionHistoryRequest {
+packages/core/ports/score-service.d.ts:61:export interface CrossChainScoreRequest {
+packages/core/ports/score-service.d.ts:72:export interface HealthCheckRequest {
+packages/core/ports/score-service.d.ts:79:export interface RankedHolderProto {
+packages/core/ports/score-service.d.ts:92:export interface RankedHoldersResponse {
+packages/core/ports/score-service.d.ts:103:export interface AddressRankResponse {
+packages/core/ports/score-service.d.ts:116:export interface ActionHistoryResponse {
+packages/core/ports/score-service.d.ts:127:export interface ChainScore {
+packages/core/ports/score-service.d.ts:136:export interface CrossChainScoreResponse {
+packages/core/ports/score-service.d.ts:149:export type HealthStatus = 'SERVING' | 'NOT_SERVING' | 'UNKNOWN';
+packages/core/ports/score-service.d.ts:153:export interface HealthCheckResponse {
+packages/core/ports/score-service.d.ts:165:export interface IScoreServiceClient {
+packages/core/ports/score-service.d.ts:225:export interface ScoreServiceClientConfig {
+packages/core/domain/parallel-mode.ts:23:export type RolePositionStrategy = 'below_incumbent' | 'bottom' | 'custom';
+packages/core/domain/parallel-mode.ts:32:export type PermissionMode = 'none' | 'view_only' | 'inherit';
+packages/core/domain/parallel-mode.ts:37:export interface NamespacedRoleConfig {
+packages/core/domain/parallel-mode.ts:61:export interface RoleSyncResult {
+packages/core/domain/parallel-mode.ts:75:export interface RoleSyncError {
+packages/core/domain/parallel-mode.ts:87:export interface MemberEligibility {
+packages/core/domain/parallel-mode.ts:110:export type ChannelStrategy = 'none' | 'additive_only' | 'parallel_mirror' | 'custom';
+packages/core/domain/parallel-mode.ts:116:export interface AdditiveChannelConfig {
+packages/core/domain/parallel-mode.ts:149:export interface MirrorChannelConfig {
+packages/core/domain/parallel-mode.ts:163:export interface CustomChannelConfig {
+packages/core/domain/parallel-mode.ts:182:export interface ChannelStrategyConfig {
+packages/core/domain/parallel-mode.ts:213:export interface ParallelModeConfig {
+packages/core/domain/parallel-mode.ts:235:export interface ParallelModeStatus {
+packages/core/domain/parallel-mode.ts:261:export interface DiscordRole {
+packages/core/domain/parallel-mode.ts:283:export interface DiscordChannel {
+packages/core/domain/parallel-mode.ts:305:export type ParallelModeEventType =
+packages/core/domain/parallel-mode.ts:318:export interface ParallelModeEvent {
+packages/core/domain/verification-tiers.ts:23:export type VerificationTier = 'incumbent_only' | 'arrakis_basic' | 'arrakis_full';
+packages/core/domain/verification-tiers.ts:28:export type Feature =
+packages/core/domain/verification-tiers.ts:51:export interface FeatureSet {
+packages/core/domain/verification-tiers.ts:210:export interface CommunityVerificationStatus {
+packages/core/domain/verification-tiers.ts:230:export interface TierUpgradeRequirements {
+packages/core/domain/wizard.ts:64:export type ChainId = 'ethereum' | 'polygon' | 'arbitrum' | 'base' | 'berachain';
+packages/core/domain/wizard.ts:69:export interface ChainConfig {
+packages/core/domain/wizard.ts:87:export type AssetType = 'erc20' | 'erc721' | 'erc1155' | 'native';
+packages/core/domain/wizard.ts:92:export interface AssetConfig {
+packages/core/domain/wizard.ts:118:export type EligibilityRuleType =
+packages/core/domain/wizard.ts:127:export interface EligibilityRuleConfig {
+packages/core/domain/wizard.ts:147:export interface TierRoleMapping {
+packages/core/domain/wizard.ts:167:export type ChannelTemplate = 'none' | 'additive_only' | 'parallel_mirror' | 'custom';
+packages/core/domain/wizard.ts:172:export type ChannelType = 'text' | 'voice' | 'category';
+packages/core/domain/wizard.ts:177:export interface ChannelPermissionOverride {
+packages/core/domain/wizard.ts:191:export interface ChannelConfig {
+packages/core/domain/wizard.ts:213:export type DeploymentStatus =
+packages/core/domain/wizard.ts:231:export interface CommunityManifest {
+packages/core/domain/wizard.ts:264:export interface WizardSessionData {
+packages/core/domain/wizard.ts:314:export interface WizardSession {
+packages/core/domain/wizard.ts:340:export type NewWizardSession = Omit<WizardSession, 'id' | 'createdAt' | 'updatedAt' | 'expiresAt'>;
+packages/protocol/collection-resolution/dist/freshness.d.ts:21:export type StaleReason = SelectionStaleError["reason"];
+packages/protocol/collection-resolution/dist/freshness.d.ts:22:export interface FreshnessComparison {
+packages/protocol/collection-resolution/dist/selection.d.ts:5:export interface ValidatedSelection {
+packages/protocol/collection-resolution/dist/contracts.d.ts:15:export type AuthorizationScope = Schema.Schema.Type<typeof AuthorizationScope>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:17:export type ResolutionEnvironment = Schema.Schema.Type<typeof ResolutionEnvironment>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:29:export type ResolutionCreateCommand = Schema.Schema.Type<typeof ResolutionCreateCommand>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:46:export type ResolutionRequestMaterial = Schema.Schema.Type<typeof ResolutionRequestMaterial>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:65:export type ResolutionDiagnostics = Schema.Schema.Type<typeof ResolutionDiagnostics>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:83:export type ResolutionConfirmCommand = Schema.Schema.Type<typeof ResolutionConfirmCommand>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:89:export type ResolutionRefreshCommand = Schema.Schema.Type<typeof ResolutionRefreshCommand>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:107:export type OrderResolutionBinding = Schema.Schema.Type<typeof OrderResolutionBinding>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:442:export type CandidateSnapshot = Schema.Schema.Type<typeof CandidateSnapshot>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:844:export type ConfirmedResolutionRecord = Schema.Schema.Type<typeof ConfirmedResolutionRecord>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:1214:export type ResolutionPublicProjection = Schema.Schema.Type<typeof ResolutionPublicProjection>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:1216:export type CapabilityHealthState = Schema.Schema.Type<typeof CapabilityHealthState>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:1218:export type CapabilityOperation = Schema.Schema.Type<typeof CapabilityOperation>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:1248:export type LocalCapabilityDeploymentView = Schema.Schema.Type<typeof LocalCapabilityDeploymentView>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:1283:export type LocalCapabilitySnapshot = Schema.Schema.Type<typeof LocalCapabilitySnapshot>;
+packages/protocol/collection-resolution/dist/contracts.d.ts:1319:export type AdmissionDecision = Schema.Schema.Type<typeof AdmissionDecision>;
+packages/protocol/collection-resolution/src/selection.ts:12:export interface ValidatedSelection {
+packages/protocol/collection-resolution/src/errors.ts:5:export class SelectionStaleError extends Data.TaggedError("SelectionStaleError")<{
+packages/protocol/collection-resolution/src/errors.ts:31:export class IdempotencyConflictError extends Data.TaggedError("IdempotencyConflictError")<{
+packages/protocol/collection-resolution/src/errors.ts:37:export class ConcurrentConfirmationError extends Data.TaggedError(
+packages/protocol/collection-resolution/src/errors.ts:45:export class ResolutionNotFoundError extends Data.TaggedError("ResolutionNotFoundError")<{
+packages/protocol/collection-resolution/src/errors.ts:49:export class ResolutionExpiredError extends Data.TaggedError("ResolutionExpiredError")<{
+packages/protocol/collection-resolution/src/errors.ts:54:export class SelectionRejectedError extends Data.TaggedError("SelectionRejectedError")<{
+packages/protocol/collection-resolution/src/errors.ts:68:export class AuthorizationScopeMismatchError extends Data.TaggedError(
+packages/protocol/collection-resolution/src/errors.ts:80:export class ConfirmationVersionConflictError extends Data.TaggedError(
+packages/protocol/collection-resolution/src/errors.ts:88:export class CapabilityViewStaleError extends Data.TaggedError("CapabilityViewStaleError")<{
+packages/protocol/collection-resolution/src/errors.ts:95:export class OrderBindingRejectedError extends Data.TaggedError("OrderBindingRejectedError")<{
+packages/protocol/collection-resolution/src/errors.ts:105:export class ContractIntegrityError extends Data.TaggedError("ContractIntegrityError")<{
+packages/protocol/collection-resolution/src/errors.ts:110:export class ImmutableRequestMismatchError extends Data.TaggedError(
+packages/protocol/collection-resolution/src/contracts.ts:69:export type AuthorizationScope = Schema.Schema.Type<typeof AuthorizationScope>;
+packages/protocol/collection-resolution/src/contracts.ts:74:export type ResolutionEnvironment = Schema.Schema.Type<typeof ResolutionEnvironment>;
+packages/protocol/collection-resolution/src/contracts.ts:85:export type ResolutionCreateCommand = Schema.Schema.Type<typeof ResolutionCreateCommand>;
+packages/protocol/collection-resolution/src/contracts.ts:101:export type ResolutionRequestMaterial = Schema.Schema.Type<typeof ResolutionRequestMaterial>;
+packages/protocol/collection-resolution/src/contracts.ts:115:export type ResolutionDiagnostics = Schema.Schema.Type<typeof ResolutionDiagnostics>;
+packages/protocol/collection-resolution/src/contracts.ts:133:export type ResolutionConfirmCommand = Schema.Schema.Type<typeof ResolutionConfirmCommand>;
+packages/protocol/collection-resolution/src/contracts.ts:140:export type ResolutionRefreshCommand = Schema.Schema.Type<typeof ResolutionRefreshCommand>;
+packages/protocol/collection-resolution/src/contracts.ts:152:export type OrderResolutionBinding = Schema.Schema.Type<typeof OrderResolutionBinding>;
+packages/protocol/collection-resolution/src/contracts.ts:159:export type CandidateSnapshot = Schema.Schema.Type<typeof CandidateSnapshot>;
+packages/protocol/collection-resolution/src/contracts.ts:184:export type ConfirmedResolutionRecord = Schema.Schema.Type<typeof ConfirmedResolutionRecord>;
+packages/protocol/collection-resolution/src/contracts.ts:200:export type ResolutionPublicProjection = Schema.Schema.Type<
+packages/protocol/collection-resolution/src/contracts.ts:209:export type CapabilityHealthState = Schema.Schema.Type<typeof CapabilityHealthState>;
+packages/protocol/collection-resolution/src/contracts.ts:216:export type CapabilityOperation = Schema.Schema.Type<typeof CapabilityOperation>;
+packages/protocol/collection-resolution/src/contracts.ts:237:export type LocalCapabilityDeploymentView = Schema.Schema.Type<
+packages/protocol/collection-resolution/src/contracts.ts:256:export type LocalCapabilitySnapshot = Schema.Schema.Type<typeof LocalCapabilitySnapshot>;
+packages/protocol/collection-resolution/src/contracts.ts:268:export type AdmissionDecision = Schema.Schema.Type<typeof AdmissionDecision>;
+packages/protocol/collection-resolution/src/freshness.ts:71:export type StaleReason = SelectionStaleError["reason"];
+packages/protocol/collection-resolution/src/freshness.ts:73:export interface FreshnessComparison {
+packages/protocol/collection/dist/canonical.d.ts:3:export type DigestDomain = Schema.Schema.Type<typeof DigestDomain>;
+packages/protocol/collection/dist/canonical.d.ts:10:export interface VersionedDigest extends Schema.Schema.Type<typeof VersionedDigest> {
+packages/protocol/collection/dist/canonical.d.ts:37:export interface CanonicalSetMember<Value> {
+packages/protocol/collection/dist/registry-version.d.ts:7:export interface CapabilityRegistryVersion extends Schema.Schema.Type<typeof CapabilityRegistryVersion> {
+packages/protocol/collection/dist/registry-version.d.ts:37:export type CapabilityRegistryBaseline = Schema.Schema.Type<typeof CapabilityRegistryBaseline>;
+packages/protocol/collection/dist/registry-version.d.ts:39:export type RegistryVersionRelation = Schema.Schema.Type<typeof RegistryVersionRelation>;
+packages/protocol/collection/dist/registry-version.d.ts:41:export type RegistryVersionAdvance = Schema.Schema.Type<typeof RegistryVersionAdvance>;
+packages/protocol/collection/dist/scalars.d.ts:5:export type EvmAddress = Schema.Schema.Type<typeof EvmAddress>;
+packages/protocol/collection/dist/scalars.d.ts:7:export type EvmNormalizedAddress = Schema.Schema.Type<typeof EvmNormalizedAddress>;
+packages/protocol/collection/dist/scalars.d.ts:9:export type SolanaPublicKey = Schema.Schema.Type<typeof SolanaPublicKey>;
+packages/protocol/collection/dist/scalars.d.ts:11:export type Eip155NetworkReference = Schema.Schema.Type<typeof Eip155NetworkReference>;
+packages/protocol/collection/dist/scalars.d.ts:13:export type SolanaNetworkReference = Schema.Schema.Type<typeof SolanaNetworkReference>;
+packages/protocol/collection/dist/scalars.d.ts:15:export type VersionIdentifier = Schema.Schema.Type<typeof VersionIdentifier>;
+packages/protocol/collection/dist/scalars.d.ts:17:export type TokenStandardValue = Schema.Schema.Type<typeof TokenStandardValue>;
+packages/protocol/collection/dist/scalars.d.ts:19:export type Sha256Hex = Schema.Schema.Type<typeof Sha256Hex>;
+packages/protocol/collection/dist/scalars.d.ts:21:export type RegistryEpoch = Schema.Schema.Type<typeof RegistryEpoch>;
+packages/protocol/collection/dist/scalars.d.ts:23:export type RegistrySequence = Schema.Schema.Type<typeof RegistrySequence>;
+packages/protocol/collection/dist/contracts.d.ts:19:export interface Eip155NetworkRef extends Schema.Schema.Type<typeof Eip155NetworkRef> {
+packages/protocol/collection/dist/contracts.d.ts:26:export interface SolanaNetworkRef extends Schema.Schema.Type<typeof SolanaNetworkRef> {
+packages/protocol/collection/dist/contracts.d.ts:37:export type NetworkRef = Schema.Schema.Type<typeof NetworkRef>;
+packages/protocol/collection/dist/contracts.d.ts:47:export type CollectionIdentifier = Schema.Schema.Type<typeof CollectionIdentifier>;
+packages/protocol/collection/dist/contracts.d.ts:65:export type CollectionDeploymentInput = Schema.Schema.Type<typeof CollectionDeploymentInput>;
+packages/protocol/collection/dist/contracts.d.ts:97:export type CollectionDeploymentRef = Schema.Schema.Type<typeof CollectionDeploymentRef>;
+packages/protocol/collection/dist/contracts.d.ts:102:export interface TokenStandard extends Schema.Schema.Type<typeof TokenStandard> {
+packages/protocol/collection/dist/contracts.d.ts:138:export type EquivalenceBasis = Schema.Schema.Type<typeof EquivalenceBasis>;
+packages/protocol/collection/dist/contracts.d.ts:288:export type CollectionIdentityInput = Schema.Schema.Type<typeof CollectionIdentityInput>;
+packages/protocol/collection/dist/contracts.d.ts:450:export type CollectionIdentity = Schema.Schema.Type<typeof CollectionIdentity>;
+packages/protocol/collection/dist/contracts.d.ts:452:export type RecognitionState = Schema.Schema.Type<typeof RecognitionState>;
+packages/protocol/collection/dist/contracts.d.ts:454:export type IndexState = Schema.Schema.Type<typeof IndexState>;
+packages/protocol/collection/dist/contracts.d.ts:456:export type ReportReadinessState = Schema.Schema.Type<typeof ReportReadinessState>;
+packages/protocol/collection/dist/contracts.d.ts:458:export type MetadataQualityState = Schema.Schema.Type<typeof MetadataQualityState>;
+packages/protocol/collection/dist/contracts.d.ts:472:export interface FinalityPolicyBinding extends Schema.Schema.Type<typeof FinalityPolicyBinding> {
+packages/protocol/collection/dist/contracts.d.ts:488:export type Provenance = Schema.Schema.Type<typeof Provenance>;
+packages/protocol/collection/dist/contracts.d.ts:802:export type CollectionCandidate = Schema.Schema.Type<typeof CollectionCandidate>;
+packages/protocol/collection/dist/contracts.d.ts:833:export type CollectionWorkKeyMaterial = Schema.Schema.Type<typeof CollectionWorkKeyMaterial>;
+packages/protocol/collection/dist/contracts.d.ts:862:export type CollectionEvidenceReference = Schema.Schema.Type<typeof CollectionEvidenceReference>;
+packages/protocol/collection/dist/contracts.d.ts:886:export type CollectionCacheKeyMaterial = Schema.Schema.Type<typeof CollectionCacheKeyMaterial>;
+packages/protocol/collection/dist/contracts.d.ts:923:export type CollectionReportInput = Schema.Schema.Type<typeof CollectionReportInput>;
+packages/protocol/collection/src/scalars.ts:45:export type EvmAddress = Schema.Schema.Type<typeof EvmAddress>;
+packages/protocol/collection/src/scalars.ts:50:export type EvmNormalizedAddress = Schema.Schema.Type<typeof EvmNormalizedAddress>;
+packages/protocol/collection/src/scalars.ts:55:export type SolanaPublicKey = Schema.Schema.Type<typeof SolanaPublicKey>;
+packages/protocol/collection/src/scalars.ts:61:export type Eip155NetworkReference = Schema.Schema.Type<typeof Eip155NetworkReference>;
+packages/protocol/collection/src/scalars.ts:66:export type SolanaNetworkReference = Schema.Schema.Type<typeof SolanaNetworkReference>;
+packages/protocol/collection/src/scalars.ts:71:export type VersionIdentifier = Schema.Schema.Type<typeof VersionIdentifier>;
+packages/protocol/collection/src/scalars.ts:76:export type TokenStandardValue = Schema.Schema.Type<typeof TokenStandardValue>;
+packages/protocol/collection/src/scalars.ts:81:export type Sha256Hex = Schema.Schema.Type<typeof Sha256Hex>;
+packages/protocol/collection/src/scalars.ts:86:export type RegistryEpoch = Schema.Schema.Type<typeof RegistryEpoch>;
+packages/protocol/collection/src/scalars.ts:96:export type RegistrySequence = Schema.Schema.Type<typeof RegistrySequence>;
+packages/protocol/collection/src/canonical.ts:8:export type DigestDomain = Schema.Schema.Type<typeof DigestDomain>;
+packages/protocol/collection/src/canonical.ts:21:export interface VersionedDigest extends Schema.Schema.Type<typeof VersionedDigest> {}
+packages/protocol/collection/src/canonical.ts:23:export class CanonicalEncodingError extends Data.TaggedError("CanonicalEncodingError")<{
+packages/protocol/collection/src/canonical.ts:28:export class DuplicateCanonicalSetMemberError extends Data.TaggedError(
+packages/protocol/collection/src/canonical.ts:34:export class DigestComputationError extends Data.TaggedError("DigestComputationError")<{
+packages/protocol/collection/src/canonical.ts:188:export interface CanonicalSetMember<Value> {
+packages/protocol/collection/src/registry-version.ts:14:export interface CapabilityRegistryVersion
+packages/protocol/collection/src/registry-version.ts:43:export type CapabilityRegistryBaseline = Schema.Schema.Type<typeof CapabilityRegistryBaseline>;
+packages/protocol/collection/src/registry-version.ts:48:export type RegistryVersionRelation = Schema.Schema.Type<typeof RegistryVersionRelation>;
+packages/protocol/collection/src/registry-version.ts:53:export type RegistryVersionAdvance = Schema.Schema.Type<typeof RegistryVersionAdvance>;
+packages/protocol/collection/src/registry-version.ts:55:export class RegistryEpochMismatchError extends Data.TaggedError(
+packages/protocol/collection/src/registry-version.ts:63:export class RegistryBaselineRequiredError extends Data.TaggedError(
+packages/protocol/collection/src/registry-version.ts:70:export class InvalidRegistryBaselineError extends Data.TaggedError(
+packages/protocol/collection/src/registry-version.ts:76:export class RegistryBaselineIntegrityError extends Data.TaggedError(
+packages/protocol/collection/src/registry-version.ts:82:export class RegistrySequenceRegressionError extends Data.TaggedError(
+packages/protocol/collection/src/contracts.ts:75:export interface Eip155NetworkRef extends Schema.Schema.Type<typeof Eip155NetworkRef> {}
+packages/protocol/collection/src/contracts.ts:82:export interface SolanaNetworkRef extends Schema.Schema.Type<typeof SolanaNetworkRef> {}
+packages/protocol/collection/src/contracts.ts:87:export type NetworkRef = Schema.Schema.Type<typeof NetworkRef>;
+packages/protocol/collection/src/contracts.ts:104:export type CollectionIdentifier = Schema.Schema.Type<typeof CollectionIdentifier>;
+packages/protocol/collection/src/contracts.ts:124:export type CollectionDeploymentInput = Schema.Schema.Type<typeof CollectionDeploymentInput>;
+packages/protocol/collection/src/contracts.ts:166:export type CollectionDeploymentRef = Schema.Schema.Type<typeof CollectionDeploymentRef>;
+packages/protocol/collection/src/contracts.ts:172:export interface TokenStandard extends Schema.Schema.Type<typeof TokenStandard> {}
+packages/protocol/collection/src/contracts.ts:218:export type EquivalenceBasis = Schema.Schema.Type<typeof EquivalenceBasis>;
+packages/protocol/collection/src/contracts.ts:271:export type CollectionIdentityInput = Schema.Schema.Type<typeof CollectionIdentityInput>;
+packages/protocol/collection/src/contracts.ts:277:export type CollectionIdentity = Schema.Schema.Type<typeof CollectionIdentity>;
+packages/protocol/collection/src/contracts.ts:284:export type RecognitionState = Schema.Schema.Type<typeof RecognitionState>;
+packages/protocol/collection/src/contracts.ts:294:export type IndexState = Schema.Schema.Type<typeof IndexState>;
+packages/protocol/collection/src/contracts.ts:303:export type ReportReadinessState = Schema.Schema.Type<typeof ReportReadinessState>;
+packages/protocol/collection/src/contracts.ts:312:export type MetadataQualityState = Schema.Schema.Type<typeof MetadataQualityState>;
+packages/protocol/collection/src/contracts.ts:319:export interface FinalityPolicyBinding extends Schema.Schema.Type<typeof FinalityPolicyBinding> {}
+packages/protocol/collection/src/contracts.ts:353:export type Provenance = Schema.Schema.Type<typeof Provenance>;
+packages/protocol/collection/src/contracts.ts:392:export type CollectionCandidate = Schema.Schema.Type<typeof CollectionCandidate>;
+packages/protocol/collection/src/contracts.ts:441:export type CollectionWorkKeyMaterial = Schema.Schema.Type<typeof CollectionWorkKeyMaterial>;
+packages/protocol/collection/src/contracts.ts:449:export type CollectionEvidenceReference = Schema.Schema.Type<typeof CollectionEvidenceReference>;
+packages/protocol/collection/src/contracts.ts:457:export type CollectionCacheKeyMaterial = Schema.Schema.Type<typeof CollectionCacheKeyMaterial>;
+packages/protocol/collection/src/contracts.ts:468:export type CollectionReportInput = Schema.Schema.Type<typeof CollectionReportInput>;
+packages/protocol/collection/src/contracts.ts:470:export class ContractIntegrityError extends Data.TaggedError("ContractIntegrityError")<{
+packages/protocol/shadow-audit/dist/inputs-hash.d.ts:45:export type AuditInputs = z.infer<typeof AuditInputsSchema>;
+packages/protocol/shadow-audit/dist/access-decision-port.d.ts:22:export interface AccessDecisionPort<E> {
+packages/protocol/shadow-audit/dist/discrepancy.d.ts:23:export type Change = z.infer<typeof ChangeSchema>;
+packages/protocol/shadow-audit/dist/discrepancy.d.ts:52:export type MemberDiscrepancy = z.infer<typeof MemberDiscrepancySchema>;
+packages/protocol/shadow-audit/dist/discrepancy.d.ts:160:export type DiscrepancyReport = z.infer<typeof DiscrepancyReportSchema>;
+packages/protocol/shadow-audit/dist/schemas/refusal.d.ts:8:export type RefusalCode = z.infer<typeof RefusalCodeSchema>;
+packages/protocol/shadow-audit/dist/schemas/refusal.d.ts:22:export type Refusal = z.infer<typeof RefusalSchema>;
+packages/protocol/shadow-audit/dist/schemas/common.d.ts:15:export type EthAddress = z.infer<typeof EthAddressSchema>;
+packages/protocol/shadow-audit/dist/schemas/common.d.ts:18:export type Chain = z.infer<typeof ChainSchema>;
+packages/protocol/shadow-audit/dist/schemas/common.d.ts:29:export type Band = z.infer<typeof BandSchema>;
+packages/protocol/shadow-audit/dist/schemas/common.d.ts:32:export type RiskBand = z.infer<typeof RiskBandSchema>;
+packages/protocol/shadow-audit/dist/schemas/common.d.ts:38:export type AuditMode = z.infer<typeof AuditModeSchema>;
+packages/protocol/shadow-audit/dist/schemas/common.d.ts:41:export type Source = z.infer<typeof SourceSchema>;
+packages/protocol/shadow-audit/dist/schemas/audit-output.d.ts:37:export type CohortCount = z.infer<typeof CohortCountSchema>;
+packages/protocol/shadow-audit/dist/schemas/audit-output.d.ts:153:export type AuditAggregate = z.infer<typeof AuditAggregateSchema>;
+packages/protocol/shadow-audit/dist/schemas/audit-output.d.ts:166:export type Cta = z.infer<typeof CtaSchema>;
+packages/protocol/shadow-audit/dist/schemas/audit-output.d.ts:474:export type AuditOutput = z.infer<typeof AuditOutputSchema>;
+packages/protocol/shadow-audit/dist/schemas/access-decision-record.d.ts:27:export type Evidence = z.infer<typeof EvidenceSchema>;
+packages/protocol/shadow-audit/dist/schemas/access-decision-record.d.ts:45:export type Provenance = z.infer<typeof ProvenanceSchema>;
+packages/protocol/shadow-audit/dist/schemas/access-decision-record.d.ts:121:export type AccessDecisionRecord = z.infer<typeof AccessDecisionRecordSchema>;
+packages/protocol/shadow-audit/dist/schemas/order.d.ts:25:export type GatingRule = z.infer<typeof GatingRuleSchema>;
+packages/protocol/shadow-audit/dist/schemas/order.d.ts:92:export type Order = z.infer<typeof OrderSchema>;
+packages/protocol/shadow-audit/src/discrepancy.ts:24:export type Change = z.infer<typeof ChangeSchema>;
+packages/protocol/shadow-audit/src/discrepancy.ts:44:export type MemberDiscrepancy = z.infer<typeof MemberDiscrepancySchema>;
+packages/protocol/shadow-audit/src/discrepancy.ts:68:export type DiscrepancyReport = z.infer<typeof DiscrepancyReportSchema>;
+packages/protocol/shadow-audit/src/inputs-hash.ts:27:export type AuditInputs = z.infer<typeof AuditInputsSchema>;
+packages/protocol/shadow-audit/src/access-decision-port.ts:23:export interface AccessDecisionPort<E> {
+packages/protocol/shadow-audit/src/access-decision-port.ts:41:export interface BadgeEvidence {
+packages/protocol/shadow-audit/src/access-decision-port.ts:49:export interface BadgeThresholds {
+packages/protocol/shadow-audit/src/access-decision-port.ts:55:export type BadgeRole = 'engaged' | 'veteran' | 'trusted'
+packages/protocol/shadow-audit/src/schemas/common.ts:19:export type EthAddress = z.infer<typeof EthAddressSchema>;
+packages/protocol/shadow-audit/src/schemas/common.ts:26:export type Chain = z.infer<typeof ChainSchema>;
+packages/protocol/shadow-audit/src/schemas/common.ts:39:export type Band = z.infer<typeof BandSchema>;
+packages/protocol/shadow-audit/src/schemas/common.ts:43:export type RiskBand = z.infer<typeof RiskBandSchema>;
+packages/protocol/shadow-audit/src/schemas/common.ts:50:export type AuditMode = z.infer<typeof AuditModeSchema>;
+packages/protocol/shadow-audit/src/schemas/common.ts:54:export type Source = z.infer<typeof SourceSchema>;
+packages/protocol/shadow-audit/src/schemas/access-decision-record.ts:29:export type Evidence = z.infer<typeof EvidenceSchema>;
+packages/protocol/shadow-audit/src/schemas/access-decision-record.ts:40:export type Provenance = z.infer<typeof ProvenanceSchema>;
+packages/protocol/shadow-audit/src/schemas/access-decision-record.ts:54:export type AccessDecisionRecord = z.infer<typeof AccessDecisionRecordSchema>;
+packages/protocol/shadow-audit/src/schemas/order.ts:25:export type GatingRule = z.infer<typeof GatingRuleSchema>;
+packages/protocol/shadow-audit/src/schemas/order.ts:47:export type Order = z.infer<typeof OrderSchema>;
+packages/protocol/shadow-audit/src/schemas/audit-output.ts:27:export type CohortCount = z.infer<typeof CohortCountSchema>;
+packages/protocol/shadow-audit/src/schemas/audit-output.ts:42:export type AuditAggregate = z.infer<typeof AuditAggregateSchema>;
+packages/protocol/shadow-audit/src/schemas/audit-output.ts:52:export type Cta = z.infer<typeof CtaSchema>;
+packages/protocol/shadow-audit/src/schemas/audit-output.ts:74:export type Methodology = z.infer<typeof MethodologySchema>;
+packages/protocol/shadow-audit/src/schemas/audit-output.ts:97:export type AuditOutput = z.infer<typeof AuditOutputSchema>;
+packages/protocol/shadow-audit/src/schemas/refusal.ts:18:export type RefusalCode = z.infer<typeof RefusalCodeSchema>;
+packages/protocol/shadow-audit/src/schemas/refusal.ts:27:export type Refusal = z.infer<typeof RefusalSchema>;
+packages/protocol/shadow-mode/src/topics.ts:18:export interface TopicSegments {
+packages/protocol/shadow-mode/src/jcs.ts:14:export class JcsError extends Error {}
+packages/protocol/shadow-mode/src/schemas/envelope.ts:25:export type EventName = z.infer<typeof EventNameSchema>;
+packages/protocol/shadow-mode/src/schemas/envelope.ts:43:export interface EventEnvelope<TName extends EventName, TPayload> {
+packages/protocol/shadow-mode/src/schemas/report.ts:11:export interface ShadowReport {
+packages/protocol/shadow-mode/src/schemas/common.ts:21:export type SourceKind = z.infer<typeof SourceKindSchema>;
+packages/protocol/shadow-mode/src/schemas/common.ts:40:export type TruthStatus = z.infer<typeof TruthStatusSchema>;
+packages/protocol/shadow-mode/src/schemas/common.ts:49:export type WalletRef = z.infer<typeof WalletRefSchema>;
+packages/protocol/shadow-mode/src/schemas/divergence.ts:13:export type DivergenceKind = 'match' | 'freeside_higher' | 'incumbent_higher' | 'mismatch';
+packages/protocol/shadow-mode/src/schemas/divergence.ts:15:export interface ShadowDivergence {
+packages/protocol/shadow-mode/src/schemas/divergence.ts:26:export interface MemberGraphProjection {
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:26:export type TokenStandard = 'erc721' | 'erc1155' | 'unknown';
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:27:export type CollectionLabelName = 'token_standard' | 'collection_key' | 'world' | 'role';
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:41:export type LabelSourceType = 'ai-derived' | 'operator-validated';
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:43:export interface CollectionLabels {
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:51:export interface LabelProvenance {
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:72:export interface CollectionEntity {
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:82:export interface CollectionLabelObservedPayload {
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:91:export interface CollectionLabelRatifiedPayload {
+packages/protocol/shadow-mode/src/schemas/collection-entity.ts:186:export interface ObservationAtSeq {
+packages/protocol/shadow-mode/src/schemas/subject.ts:15:export type SubjectKind =
+packages/protocol/shadow-mode/src/schemas/subject.ts:22:export type AttributionQuality = 'verified' | 'observed_only' | 'unresolved';
+packages/protocol/shadow-mode/src/schemas/subject.ts:25:export interface MergeProvenance {
+packages/protocol/shadow-mode/src/schemas/subject.ts:33:export interface ShadowSubject {
+packages/protocol/shadow-mode/src/schemas/events.ts:118:export type ShadowEvent = z.infer<typeof ShadowEventSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:121:export type DiscordMemberSnapshotPayload = z.infer<typeof DiscordMemberSnapshotPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:122:export type IdentityWalletLinkedPayload = z.infer<typeof IdentityWalletLinkedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:123:export type IdentityAccountLinkedPayload = z.infer<typeof IdentityAccountLinkedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:124:export type IdentityLinkRevokedPayload = z.infer<typeof IdentityLinkRevokedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:125:export type SonarWalletAttributedPayload = z.infer<typeof SonarWalletAttributedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:126:export type IncumbentRoleObservedPayload = z.infer<typeof IncumbentRoleObservedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:127:export type FreesideRoleComputedPayload = z.infer<typeof FreesideRoleComputedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/events.ts:128:export type CommunityConfigUpdatedPayload = z.infer<typeof CommunityConfigUpdatedPayloadSchema>;
+packages/protocol/shadow-mode/src/schemas/edge.ts:12:export interface ShadowObservation {
+packages/protocol/shadow-mode/src/schemas/edge.ts:25:export interface ShadowEdge {
+packages/protocol/eligibility/src/eligibility-verdict.ts:18:export type EligibilitySource = z.infer<typeof EligibilitySource>;
+packages/protocol/eligibility/src/eligibility-verdict.ts:21:export type EligibilityStatus = z.infer<typeof EligibilityStatus>;
+packages/protocol/eligibility/src/eligibility-verdict.ts:61:export type EligibilityVerdict = z.infer<typeof EligibilityVerdictSchema>;
+packages/protocol/eligibility/src/eligibility-rule.ts:26:export type ChainId = z.infer<typeof ChainIdSchema>;
+packages/protocol/eligibility/src/eligibility-rule.ts:35:export type EligibilityRuleType = z.infer<typeof EligibilityRuleType>;
+packages/protocol/eligibility/src/eligibility-rule.ts:48:export type EligibilityThreshold = z.infer<typeof EligibilityThreshold>;
+packages/protocol/eligibility/src/eligibility-rule.ts:68:export type EligibilityRule = z.infer<typeof EligibilityRuleSchema>;
+packages/protocol/signing-key-custody/dist/signer.d.ts:2:export interface RemoteSigningBackend {
+packages/protocol/signing-key-custody/dist/signer.d.ts:15:export interface LocalFixtureSigningBackend {
+packages/protocol/signing-key-custody/dist/signer.d.ts:22:export type SigningBackend = RemoteSigningBackend | LocalFixtureSigningBackend;
+packages/protocol/signing-key-custody/dist/signer.d.ts:25:export interface KmsHsmKeyReference {
+packages/protocol/signing-key-custody/dist/registry.d.ts:3:export interface RegistryFreshnessInput {
+packages/protocol/signing-key-custody/dist/registry.d.ts:7:export interface ResolveKeyForIntakeInput {
+packages/protocol/signing-key-custody/dist/intake-gate.d.ts:4:export interface GateSignedIntakeInput {
+packages/protocol/signing-key-custody/dist/intake-gate.d.ts:11:export interface SignedIntakeGateVerdict {
+packages/protocol/signing-key-custody/dist/fixture-registry.d.ts:9:export interface BuildRegistryDocumentInput {
+packages/protocol/signing-key-custody/dist/rotation.d.ts:3:export interface RotationCoordinator {
+packages/protocol/signing-key-custody/dist/rotation.d.ts:13:export interface EmergencyRevocationPlan {
+packages/protocol/signing-key-custody/dist/contracts.d.ts:5:export type KeyCustodyClass = Schema.Schema.Type<typeof KeyCustodyClass>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:7:export type CustodyBackendKind = Schema.Schema.Type<typeof CustodyBackendKind>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:32:export type CustodySigningKey = Schema.Schema.Type<typeof CustodySigningKey>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:66:export type SigningKeyRegistryDocument = Schema.Schema.Type<typeof SigningKeyRegistryDocument>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:77:export type RotationEvent = Schema.Schema.Type<typeof RotationEvent>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:87:export type RevocationEvent = Schema.Schema.Type<typeof RevocationEvent>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:96:export type CompromiseEvent = Schema.Schema.Type<typeof CompromiseEvent>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:106:export type TimeSourceReading = Schema.Schema.Type<typeof TimeSourceReading>;
+packages/protocol/signing-key-custody/dist/contracts.d.ts:137:export type TimeHealthSnapshot = Schema.Schema.Type<typeof TimeHealthSnapshot>;
+packages/protocol/signing-key-custody/dist/time-health.d.ts:2:export interface EvaluateDatabaseClockSkewInput {
+packages/protocol/signing-key-custody/dist/time-health.d.ts:11:export interface DatabaseClockSkewVerdict {
+packages/protocol/signing-key-custody/src/signer.ts:5:export interface RemoteSigningBackend {
+packages/protocol/signing-key-custody/src/signer.ts:17:export interface LocalFixtureSigningBackend {
+packages/protocol/signing-key-custody/src/signer.ts:25:export type SigningBackend = RemoteSigningBackend | LocalFixtureSigningBackend;
+packages/protocol/signing-key-custody/src/signer.ts:83:export interface KmsHsmKeyReference {
+packages/protocol/signing-key-custody/src/errors.ts:3:export class ContractIntegrityError extends Data.TaggedError("ContractIntegrityError")<{
+packages/protocol/signing-key-custody/src/errors.ts:7:export class KeyCustodyRejectedError extends Data.TaggedError("KeyCustodyRejectedError")<{
+packages/protocol/signing-key-custody/src/errors.ts:33:export class SigningBackendError extends Data.TaggedError("SigningBackendError")<{
+packages/protocol/signing-key-custody/src/rotation.ts:10:export interface RotationCoordinator {
+packages/protocol/signing-key-custody/src/rotation.ts:74:export interface EmergencyRevocationPlan {
+packages/protocol/signing-key-custody/src/fixture-registry.ts:48:export interface BuildRegistryDocumentInput {
+packages/protocol/signing-key-custody/src/intake-gate.ts:6:export interface GateSignedIntakeInput {
+packages/protocol/signing-key-custody/src/intake-gate.ts:14:export interface SignedIntakeGateVerdict {
+packages/protocol/signing-key-custody/src/time-health.ts:9:export interface EvaluateDatabaseClockSkewInput {
+packages/protocol/signing-key-custody/src/time-health.ts:19:export interface DatabaseClockSkewVerdict {
+packages/protocol/signing-key-custody/src/contracts.ts:35:export type KeyCustodyClass = Schema.Schema.Type<typeof KeyCustodyClass>;
+packages/protocol/signing-key-custody/src/contracts.ts:45:export type CustodyBackendKind = Schema.Schema.Type<typeof CustodyBackendKind>;
+packages/protocol/signing-key-custody/src/contracts.ts:65:export type CustodySigningKey = Schema.Schema.Type<typeof CustodySigningKey>;
+packages/protocol/signing-key-custody/src/contracts.ts:77:export type SigningKeyRegistryDocument = Schema.Schema.Type<typeof SigningKeyRegistryDocument>;
+packages/protocol/signing-key-custody/src/contracts.ts:89:export type RotationEvent = Schema.Schema.Type<typeof RotationEvent>;
+packages/protocol/signing-key-custody/src/contracts.ts:100:export type RevocationEvent = Schema.Schema.Type<typeof RevocationEvent>;
+packages/protocol/signing-key-custody/src/contracts.ts:110:export type CompromiseEvent = Schema.Schema.Type<typeof CompromiseEvent>;
+packages/protocol/signing-key-custody/src/contracts.ts:119:export type TimeSourceReading = Schema.Schema.Type<typeof TimeSourceReading>;
+packages/protocol/signing-key-custody/src/contracts.ts:145:export type TimeHealthSnapshot = Schema.Schema.Type<typeof TimeHealthSnapshot>;
+packages/protocol/signing-key-custody/src/registry.ts:11:export interface RegistryFreshnessInput {
+packages/protocol/signing-key-custody/src/registry.ts:16:export interface ResolveKeyForIntakeInput {
+packages/protocol/signing-key-custody/src/registry.ts:22:export class PinnedKeyRegistry {
+packages/protocol/public-authorization/dist/authorize.d.ts:3:export interface MembershipProjectionView {
+packages/protocol/public-authorization/dist/authorize.d.ts:7:export interface GrantProjectionView {
+packages/protocol/public-authorization/dist/authorize.d.ts:11:export interface AuthorizePublicOperationInput {
+packages/protocol/public-authorization/dist/authorize.d.ts:20:export interface AcquireLeaseInput extends AuthorizePublicOperationInput {
+packages/protocol/public-authorization/dist/contracts.d.ts:5:export type PublicPermission = Schema.Schema.Type<typeof PublicPermission>;
+packages/protocol/public-authorization/dist/contracts.d.ts:7:export type ProtectedResource = Schema.Schema.Type<typeof ProtectedResource>;
+packages/protocol/public-authorization/dist/contracts.d.ts:9:export type ProtectedAction = Schema.Schema.Type<typeof ProtectedAction>;
+packages/protocol/public-authorization/dist/contracts.d.ts:23:export type PublicAuthorizationScope = Schema.Schema.Type<typeof PublicAuthorizationScope>;
+packages/protocol/public-authorization/dist/contracts.d.ts:33:export type AuthorityWatermarks = Schema.Schema.Type<typeof AuthorityWatermarks>;
+packages/protocol/public-authorization/dist/contracts.d.ts:54:export type AuthorizationLease = Schema.Schema.Type<typeof AuthorizationLease>;
+packages/protocol/public-authorization/dist/contracts.d.ts:61:export type AuthorizationDenial = Schema.Schema.Type<typeof AuthorizationDenial>;
+packages/protocol/public-authorization/dist/contracts.d.ts:66:export type ProtectedOperation = Schema.Schema.Type<typeof ProtectedOperation>;
+packages/protocol/public-authorization/dist/fixture-types.d.ts:8:export type FixtureGrantRecord = Schema.Schema.Type<typeof FixtureGrantRecord>;
+packages/protocol/public-authorization/dist/fixture-types.d.ts:14:export type FixtureMembershipRecord = Schema.Schema.Type<typeof FixtureMembershipRecord>;
+packages/protocol/public-authorization/dist/fixture-types.d.ts:38:export type FixtureProjectionBundle = Schema.Schema.Type<typeof FixtureProjectionBundle>;
+packages/protocol/public-authorization/src/errors.ts:3:export class AuthorizationDeniedError extends Data.TaggedError("AuthorizationDeniedError")<{
+packages/protocol/public-authorization/src/errors.ts:23:export class ContractIntegrityError extends Data.TaggedError("ContractIntegrityError")<{
+packages/protocol/public-authorization/src/authorize.ts:17:export interface MembershipProjectionView {
+packages/protocol/public-authorization/src/authorize.ts:22:export interface GrantProjectionView {
+packages/protocol/public-authorization/src/authorize.ts:31:export interface AuthorizePublicOperationInput {
+packages/protocol/public-authorization/src/authorize.ts:41:export interface AcquireLeaseInput extends AuthorizePublicOperationInput {
+packages/protocol/public-authorization/src/fixture-types.ts:12:export type FixtureGrantRecord = Schema.Schema.Type<typeof FixtureGrantRecord>;
+packages/protocol/public-authorization/src/fixture-types.ts:19:export type FixtureMembershipRecord = Schema.Schema.Type<typeof FixtureMembershipRecord>;
+packages/protocol/public-authorization/src/fixture-types.ts:28:export type FixtureProjectionBundle = Schema.Schema.Type<typeof FixtureProjectionBundle>;
+packages/protocol/public-authorization/src/contracts.ts:33:export type PublicPermission = Schema.Schema.Type<typeof PublicPermission>;
+packages/protocol/public-authorization/src/contracts.ts:40:export type ProtectedResource = Schema.Schema.Type<typeof ProtectedResource>;
+packages/protocol/public-authorization/src/contracts.ts:50:export type ProtectedAction = Schema.Schema.Type<typeof ProtectedAction>;
+packages/protocol/public-authorization/src/contracts.ts:63:export type PublicAuthorizationScope = Schema.Schema.Type<typeof PublicAuthorizationScope>;
+packages/protocol/public-authorization/src/contracts.ts:74:export type AuthorityWatermarks = Schema.Schema.Type<typeof AuthorityWatermarks>;
+packages/protocol/public-authorization/src/contracts.ts:89:export type AuthorizationLease = Schema.Schema.Type<typeof AuthorizationLease>;
+packages/protocol/public-authorization/src/contracts.ts:115:export type AuthorizationDenial = Schema.Schema.Type<typeof AuthorizationDenial>;
+packages/protocol/public-authorization/src/contracts.ts:121:export type ProtectedOperation = Schema.Schema.Type<typeof ProtectedOperation>;
+packages/protocol/ordering/dist/events.d.ts:20:export type OrderLifecyclePhase = keyof typeof ORDER_LIFECYCLE_SUBJECTS;
+packages/protocol/ordering/dist/events.d.ts:23:export type ResolutionSource = z.infer<typeof ResolutionSourceSchema>;
+packages/protocol/ordering/dist/events.d.ts:41:export type ResolvedBuilding = z.infer<typeof ResolvedBuildingSchema>;
+packages/protocol/ordering/dist/events.d.ts:56:export type OrderPlaced = z.infer<typeof OrderPlacedSchema>;
+packages/protocol/ordering/dist/events.d.ts:95:export type OrderRouting = z.infer<typeof OrderRoutingSchema>;
+packages/protocol/ordering/dist/events.d.ts:110:export type OrderProducing = z.infer<typeof OrderProducingSchema>;
+packages/protocol/ordering/dist/events.d.ts:125:export type OrderFulfilled = z.infer<typeof OrderFulfilledSchema>;
+packages/protocol/ordering/dist/events.d.ts:138:export type OrderRefusal = z.infer<typeof OrderRefusalSchema>;
+packages/protocol/ordering/dist/events.d.ts:165:export type OrderFailed = z.infer<typeof OrderFailedSchema>;
+packages/protocol/ordering/dist/kitchen.d.ts:12:export type EnqueueIngredientKey = z.infer<typeof EnqueueIngredientKey>;
+packages/protocol/ordering/dist/kitchen.d.ts:38:export type IngredientJob = z.infer<typeof IngredientJob>;
+packages/protocol/ordering/dist/kitchen.d.ts:41:export type ProbeSource = z.infer<typeof ProbeSource>;
+packages/protocol/ordering/dist/kitchen.d.ts:62:export type IngredientProbeMeta = z.infer<typeof IngredientProbeMeta>;
+packages/protocol/ordering/dist/kitchen.d.ts:83:export type OrderProbeMeta = z.infer<typeof OrderProbeMeta>;
+packages/protocol/ordering/dist/kitchen.d.ts:149:export type OperatorAuditEntry = z.infer<typeof OperatorAuditEntry>;
+packages/protocol/ordering/dist/kitchen.d.ts:460:export type PublicOrder = z.infer<typeof PublicOrderSchema>;
+packages/protocol/ordering/dist/preset.d.ts:12:export type CapabilityNeed = z.infer<typeof CapabilityNeed>;
+packages/protocol/ordering/dist/preset.d.ts:15:export type TriageCapabilityNeed = z.infer<typeof TriageCapabilityNeed>;
+packages/protocol/ordering/dist/preset.d.ts:26:export type RecipeStep = z.infer<typeof RecipeStepSchema>;
+packages/protocol/ordering/dist/preset.d.ts:27:export interface Preset {
+packages/protocol/ordering/dist/preset.d.ts:53:export type AccessRiskAuditInputs = z.infer<typeof AccessRiskAuditInputs>;
+packages/protocol/ordering/dist/preset.d.ts:77:export type CommunityOnboardingInputs = z.infer<typeof CommunityOnboardingInputs>;
+packages/protocol/ordering/dist/preset.d.ts:80:export type IngredientStatus = z.infer<typeof IngredientStatus>;
+packages/protocol/ordering/dist/preset.d.ts:103:export type CommunityOnboardingIngredients = z.infer<typeof CommunityOnboardingIngredients>;
+packages/protocol/ordering/dist/preset.d.ts:123:export type CommunityOnboardingOutput = z.infer<typeof CommunityOnboardingOutput>;
+packages/protocol/ordering/dist/order.d.ts:13:export type ProductId = z.infer<typeof ProductId>;
+packages/protocol/ordering/dist/order.d.ts:38:export type OrderEnvelope = z.infer<typeof OrderEnvelopeSchema>;
+packages/protocol/ordering/src/order.ts:19:export type ProductId = z.infer<typeof ProductId>;
+packages/protocol/ordering/src/order.ts:36:export type OrderEnvelope = z.infer<typeof OrderEnvelopeSchema>;
+packages/protocol/ordering/src/events.ts:24:export type OrderLifecyclePhase = keyof typeof ORDER_LIFECYCLE_SUBJECTS;
+packages/protocol/ordering/src/events.ts:28:export type ResolutionSource = z.infer<typeof ResolutionSourceSchema>;
+packages/protocol/ordering/src/events.ts:39:export type ResolvedBuilding = z.infer<typeof ResolvedBuildingSchema>;
+packages/protocol/ordering/src/events.ts:49:export type OrderPlaced = z.infer<typeof OrderPlacedSchema>;
+packages/protocol/ordering/src/events.ts:58:export type OrderRouting = z.infer<typeof OrderRoutingSchema>;
+packages/protocol/ordering/src/events.ts:68:export type OrderProducing = z.infer<typeof OrderProducingSchema>;
+packages/protocol/ordering/src/events.ts:78:export type OrderFulfilled = z.infer<typeof OrderFulfilledSchema>;
+packages/protocol/ordering/src/events.ts:88:export type OrderRefusal = z.infer<typeof OrderRefusalSchema>;
+packages/protocol/ordering/src/events.ts:96:export type OrderFailed = z.infer<typeof OrderFailedSchema>;
+packages/protocol/ordering/src/preset.ts:25:export type CapabilityNeed = z.infer<typeof CapabilityNeed>;
+packages/protocol/ordering/src/preset.ts:35:export type TriageCapabilityNeed = z.infer<typeof TriageCapabilityNeed>;
+packages/protocol/ordering/src/preset.ts:43:export type RecipeStep = z.infer<typeof RecipeStepSchema>;
+packages/protocol/ordering/src/preset.ts:45:export interface Preset {
+packages/protocol/ordering/src/preset.ts:64:export type AccessRiskAuditInputs = z.infer<typeof AccessRiskAuditInputs>;
+packages/protocol/ordering/src/preset.ts:77:export type CommunityOnboardingInputs = z.infer<typeof CommunityOnboardingInputs>;
+packages/protocol/ordering/src/preset.ts:81:export type IngredientStatus = z.infer<typeof IngredientStatus>;
+packages/protocol/ordering/src/preset.ts:92:export type CommunityOnboardingIngredients = z.infer<typeof CommunityOnboardingIngredients>;
+packages/protocol/ordering/src/preset.ts:103:export type CommunityOnboardingOutput = z.infer<typeof CommunityOnboardingOutput>;
+packages/protocol/ordering/src/kitchen.ts:21:export type EnqueueIngredientKey = z.infer<typeof EnqueueIngredientKey>;
+packages/protocol/ordering/src/kitchen.ts:32:export type IngredientJob = z.infer<typeof IngredientJob>;
+packages/protocol/ordering/src/kitchen.ts:36:export type ProbeSource = z.infer<typeof ProbeSource>;
+packages/protocol/ordering/src/kitchen.ts:50:export type IngredientProbeMeta = z.infer<typeof IngredientProbeMeta>;
+packages/protocol/ordering/src/kitchen.ts:54:export type OrderProbeMeta = z.infer<typeof OrderProbeMeta>;
+packages/protocol/ordering/src/kitchen.ts:75:export type OperatorAuditEntry = z.infer<typeof OperatorAuditEntry>;
+packages/protocol/ordering/src/kitchen.ts:101:export type PublicOrder = z.infer<typeof PublicOrderSchema>;
+packages/protocol/ordering/src/collection-report.ts:21:export type CollectionReportInputs = z.infer<typeof CollectionReportInputs>;
+packages/protocol/trust-envelope/dist/signing.d.ts:2:export type SigningKeyId = string;
+packages/protocol/trust-envelope/dist/signing.d.ts:3:export interface TrustEnvelopeSigner {
+packages/protocol/trust-envelope/dist/producer.d.ts:3:export interface BuildTrustEnvelopeHeaderInput {
+packages/protocol/trust-envelope/dist/producer.d.ts:19:export interface EmitTrustEnvelopeInput extends BuildTrustEnvelopeHeaderInput {
+packages/protocol/trust-envelope/dist/producer.d.ts:23:export interface TrustStreamProducerState {
+packages/protocol/trust-envelope/dist/verify.d.ts:3:export interface VerifyTrustEnvelopeInput {
+packages/protocol/trust-envelope/dist/verify.d.ts:10:export interface VerifyStreamEpochBaselineInput {
+packages/protocol/trust-envelope/dist/consumer.d.ts:4:export interface StreamConsumerState {
+packages/protocol/trust-envelope/dist/consumer.d.ts:13:export interface IngestTrustEnvelopeInput {
+packages/protocol/trust-envelope/dist/consumer.d.ts:20:export type IngestTrustEnvelopeResult = {
+packages/protocol/trust-envelope/dist/consumer.d.ts:31:export interface InstallEpochBaselineInput {
+packages/protocol/trust-envelope/dist/fixture-scenarios.d.ts:76:export type FixtureScenarioBundle = Schema.Schema.Type<typeof FixtureScenarioBundle>;
+packages/protocol/trust-envelope/dist/contracts.d.ts:9:export type TrustContractRef = Schema.Schema.Type<typeof TrustContractRef>;
+packages/protocol/trust-envelope/dist/contracts.d.ts:32:export type TrustEnvelopeHeader = Schema.Schema.Type<typeof TrustEnvelopeHeader>;
+packages/protocol/trust-envelope/dist/contracts.d.ts:59:export type TrustEnvelope = Schema.Schema.Type<typeof TrustEnvelope>;
+packages/protocol/trust-envelope/dist/contracts.d.ts:74:export type StreamEpochBaseline = Schema.Schema.Type<typeof StreamEpochBaseline>;
+packages/protocol/trust-envelope/dist/contracts.d.ts:91:export type ServiceSigningKey = Schema.Schema.Type<typeof ServiceSigningKey>;
+packages/protocol/trust-envelope/dist/contracts.d.ts:111:export type FixtureKeyRegistry = Schema.Schema.Type<typeof FixtureKeyRegistry>;
+packages/protocol/trust-envelope/src/errors.ts:3:export class ContractIntegrityError extends Data.TaggedError("ContractIntegrityError")<{
+packages/protocol/trust-envelope/src/errors.ts:7:export class TrustEnvelopeRejectedError extends Data.TaggedError("TrustEnvelopeRejectedError")<{
+packages/protocol/trust-envelope/src/errors.ts:34:export class StreamEpochBaselineRejectedError extends Data.TaggedError(
+packages/protocol/trust-envelope/src/contracts.ts:57:export type TrustContractRef = Schema.Schema.Type<typeof TrustContractRef>;
+packages/protocol/trust-envelope/src/contracts.ts:77:export type TrustEnvelopeHeader = Schema.Schema.Type<typeof TrustEnvelopeHeader>;
+packages/protocol/trust-envelope/src/contracts.ts:84:export type TrustEnvelope = Schema.Schema.Type<typeof TrustEnvelope>;
+packages/protocol/trust-envelope/src/contracts.ts:100:export type StreamEpochBaseline = Schema.Schema.Type<typeof StreamEpochBaseline>;
+packages/protocol/trust-envelope/src/contracts.ts:114:export type ServiceSigningKey = Schema.Schema.Type<typeof ServiceSigningKey>;
+packages/protocol/trust-envelope/src/contracts.ts:120:export type FixtureKeyRegistry = Schema.Schema.Type<typeof FixtureKeyRegistry>;
+packages/protocol/trust-envelope/src/verify.ts:13:export interface VerifyTrustEnvelopeInput {
+packages/protocol/trust-envelope/src/verify.ts:74:export interface VerifyStreamEpochBaselineInput {
+packages/protocol/trust-envelope/src/producer.ts:9:export interface BuildTrustEnvelopeHeaderInput {
+packages/protocol/trust-envelope/src/producer.ts:52:export interface EmitTrustEnvelopeInput extends BuildTrustEnvelopeHeaderInput {
+packages/protocol/trust-envelope/src/producer.ts:62:export interface TrustStreamProducerState {
+packages/protocol/trust-envelope/src/registry.ts:5:export class ServiceKeyRegistry {
+packages/protocol/trust-envelope/src/fixture-scenarios.ts:32:export type FixtureScenarioBundle = Schema.Schema.Type<typeof FixtureScenarioBundle>;
+packages/protocol/trust-envelope/src/consumer.ts:7:export interface StreamConsumerState {
+packages/protocol/trust-envelope/src/consumer.ts:17:export interface IngestTrustEnvelopeInput {
+packages/protocol/trust-envelope/src/consumer.ts:25:export type IngestTrustEnvelopeResult =
+packages/protocol/trust-envelope/src/consumer.ts:176:export interface InstallEpochBaselineInput {
+packages/protocol/trust-envelope/src/signing.ts:15:export type SigningKeyId = string;
+packages/protocol/trust-envelope/src/signing.ts:17:export interface TrustEnvelopeSigner {
+packages/protocol/trust-envelope/src/signing.ts:23:export class LocalEd25519TrustSigner implements TrustEnvelopeSigner {
+packages/protocol/dependency-ledger/dist/reconciliation.d.ts:2:export interface ReconciliationExpectation {
+packages/protocol/dependency-ledger/dist/reconciliation.d.ts:7:export interface ReconciliationFinding {
+packages/protocol/dependency-ledger/dist/reconciliation.d.ts:13:export interface ReconciliationReport {
+packages/protocol/dependency-ledger/dist/inbox.d.ts:6:export interface IngestDependencyEdgeInput {
+packages/protocol/dependency-ledger/dist/inbox.d.ts:14:export type IngestDependencyEdgeResult = {
+packages/protocol/dependency-ledger/dist/fixture-scenarios.d.ts:32:export type FixtureLedgerScenarioBundle = Schema.Schema.Type<typeof FixtureLedgerScenarioBundle> & {
+packages/protocol/dependency-ledger/dist/contracts.d.ts:9:export type ProducerWatermark = Schema.Schema.Type<typeof ProducerWatermark>;
+packages/protocol/dependency-ledger/dist/contracts.d.ts:17:export type DerivativeRef = Schema.Schema.Type<typeof DerivativeRef>;
+packages/protocol/dependency-ledger/dist/contracts.d.ts:27:export type InvalidationPayload = Schema.Schema.Type<typeof InvalidationPayload>;
+packages/protocol/dependency-ledger/dist/contracts.d.ts:58:export type DependencyEdgeBody = Schema.Schema.Type<typeof DependencyEdgeBody>;
+packages/protocol/dependency-ledger/dist/contracts.d.ts:82:export type DerivativeFulfillmentState = "quarantined" | "closed" | "denied";
+packages/protocol/dependency-ledger/dist/contracts.d.ts:83:export interface LedgerEdgeRecord {
+packages/protocol/dependency-ledger/dist/contracts.d.ts:97:export interface DerivativeClosureRecord {
+packages/protocol/dependency-ledger/dist/contracts.d.ts:109:export interface QuarantineMetrics {
+packages/protocol/dependency-ledger/dist/contracts.d.ts:117:export interface DependencyLedgerInboxState {
+packages/protocol/dependency-ledger/src/errors.ts:1:export class DependencyLedgerRejectedError extends Error {
+packages/protocol/dependency-ledger/src/errors.ts:15:export class DependencyEdgeDecodeError extends Error {
+packages/protocol/dependency-ledger/src/contracts.ts:32:export type ProducerWatermark = Schema.Schema.Type<typeof ProducerWatermark>;
+packages/protocol/dependency-ledger/src/contracts.ts:39:export type DerivativeRef = Schema.Schema.Type<typeof DerivativeRef>;
+packages/protocol/dependency-ledger/src/contracts.ts:49:export type InvalidationPayload = Schema.Schema.Type<typeof InvalidationPayload>;
+packages/protocol/dependency-ledger/src/contracts.ts:61:export type DependencyEdgeBody = Schema.Schema.Type<typeof DependencyEdgeBody>;
+packages/protocol/dependency-ledger/src/contracts.ts:71:export type DerivativeFulfillmentState = "quarantined" | "closed" | "denied";
+packages/protocol/dependency-ledger/src/contracts.ts:73:export interface LedgerEdgeRecord {
+packages/protocol/dependency-ledger/src/contracts.ts:88:export interface DerivativeClosureRecord {
+packages/protocol/dependency-ledger/src/contracts.ts:101:export interface QuarantineMetrics {
+packages/protocol/dependency-ledger/src/contracts.ts:110:export interface DependencyLedgerInboxState {
+packages/protocol/dependency-ledger/src/inbox.ts:34:export interface IngestDependencyEdgeInput {
+packages/protocol/dependency-ledger/src/inbox.ts:43:export type IngestDependencyEdgeResult =
+packages/protocol/dependency-ledger/src/fixture-scenarios.ts:29:export type FixtureLedgerScenarioBundle = Schema.Schema.Type<
+packages/protocol/dependency-ledger/src/reconciliation.ts:7:export interface ReconciliationExpectation {
+packages/protocol/dependency-ledger/src/reconciliation.ts:13:export interface ReconciliationFinding {
+packages/protocol/dependency-ledger/src/reconciliation.ts:25:export interface ReconciliationReport {
+packages/events/src/mutex.ts:30:export class TimeoutError extends Error {
+packages/events/src/mutex.ts:50:export class Mutex {
+packages/events/src/signer.ts:4:export type SigningKeyId = string;
+packages/events/src/signer.ts:7:export interface Signer {
+packages/events/src/signer.ts:13:export interface Verifier {
+packages/events/src/signer.ts:40:export class LocalEd25519Signer implements Signer {
+packages/events/src/signer.ts:85:export class StaticPubkeyVerifier implements Verifier {
+packages/events/src/signer.ts:136:export interface JwksVerifierOptions {
+packages/events/src/signer.ts:152:export class JwksVerifier implements Verifier {
+packages/events/src/emit.ts:32:export class SchemaEmitError extends Error {
+packages/events/src/emit.ts:44:export class UnknownSchemaIdError extends Error {
+packages/events/src/emit.ts:55:export class TransportEmitError extends Error {
+packages/events/src/emit.ts:68:export class SubjectFamilyError extends Error {
+packages/events/src/emit.ts:82:export class MissingSignerError extends Error {
+packages/events/src/emit.ts:97:export class SubjectBuildError extends Error {
+packages/events/src/emit.ts:109:export type EmitError =
+packages/events/src/emit.ts:118:export interface EmitReceipt {
+packages/events/src/emit.ts:125:export interface EmitterDeps {
+packages/events/src/emit.ts:148:export interface DeadLetterInfo {
+packages/events/src/emit.ts:154:export interface RecoveryConfig {
+packages/events/src/emit.ts:177:export interface Emitter {
+packages/events/src/envelope.ts:95:export type EventEnvelope = S.Schema.Type<typeof EventEnvelopeSchema>;
+packages/events/src/envelope.ts:96:export type EventEnvelopePayload = unknown;
+packages/events/src/topics.ts:12:export interface TopicSegments {
+packages/events/src/subscriber.ts:12:export type VerificationFailureReason =
+packages/events/src/subscriber.ts:34:export interface EnvelopeHandlerContext<T> {
+packages/events/src/subscriber.ts:40:export type EnvelopeHandler<T> = (ctx: EnvelopeHandlerContext<T>) => void | Promise<void>;
+packages/events/src/subscriber.ts:63:export type InitialPrevHashPolicy = "any" | "genesis" | string;
+packages/events/src/subscriber.ts:83:export interface SubscribeOptions<T> {
+packages/events/src/subscriber.ts:132:export interface SubscribeHandle {
+packages/events/src/registry.ts:40:export type SchemaId<P = unknown> = string & {
+packages/events/src/registry.ts:53:export type PayloadOf<K> = K extends SchemaId<infer P> ? P : never;
+packages/events/src/registry.ts:55:export interface RegistryEntry<P> {
+packages/events/src/publisher.ts:32:export interface PrevHashStore {
+packages/events/src/publisher.ts:37:export class InMemoryPrevHashStore implements PrevHashStore {
+packages/events/src/publisher.ts:57:export interface PublishOptions<P> {
+packages/events/src/publisher.ts:77:export interface PublishResult {
+packages/events/src/transport.ts:23:export interface RawNats {
+packages/events/src/transport.ts:34:export interface NatsTransport {
+packages/events/src/schemas/nft-activity.ts:109:export type NftActivity = S.Schema.Type<typeof NftActivitySchema>;
+packages/events/src/schemas/nft-activity.ts:110:export type EvmActivityMetadata = S.Schema.Type<typeof EvmActivityMetadataSchema>;
+packages/events/src/schemas/nft-activity.ts:111:export type SvmActivityMetadata = S.Schema.Type<typeof SvmActivityMetadataSchema>;
+packages/events/src/schemas/nft-mint-detected.ts:71:export type NftMintDetected = S.Schema.Type<typeof NftMintDetectedSchema>;
+packages/events/src/schemas/parallel-mode-enabled.ts:31:export type ParallelModeEnabled = S.Schema.Type<typeof ParallelModeEnabledSchema>;
+packages/beacon-schema/dist/src/auth.d.ts:11:export type AuthKind = Schema.Schema.Type<typeof AuthKind>;
+packages/beacon-schema/dist/src/auth.d.ts:25:export type CredentialsRefType = Schema.Schema.Type<typeof CredentialsRefType>;
+packages/beacon-schema/dist/src/auth.d.ts:30:export type CredentialsRef = Schema.Schema.Type<typeof CredentialsRef>;
+packages/beacon-schema/dist/src/auth.d.ts:46:export type Auth = Schema.Schema.Type<typeof Auth>;
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:23:export type AcvpBindingType = "proof" | "runtime";
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:24:export type AcvpSeverity = "ok" | "warn" | "error";
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:25:export interface AcvpProofReceipt {
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:35:export interface AcvpAllowlistEntry {
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:41:export interface AcvpBindingFinding {
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:51:export interface AcvpBindingReport {
+packages/beacon-schema/dist/src/acvp-bindings.d.ts:62:export interface ValidateAcvpBindingsInput {
+packages/beacon-schema/dist/src/beacon-v2.d.ts:158:export type BeaconV2 = Schema.Schema.Type<typeof BeaconV2Schema>;
+packages/beacon-schema/dist/src/beacon-v3.d.ts:156:export type BeaconV3 = Schema.Schema.Type<typeof BeaconV3Schema>;
+packages/beacon-schema/src/beacon-v2.ts:176:export type BeaconV2 = Schema.Schema.Type<typeof BeaconV2Schema>;
+packages/beacon-schema/src/auth.ts:12:export type AuthKind = Schema.Schema.Type<typeof AuthKind>;
+packages/beacon-schema/src/auth.ts:32:export type CredentialsRefType = Schema.Schema.Type<typeof CredentialsRefType>;
+packages/beacon-schema/src/auth.ts:53:export type CredentialsRef = Schema.Schema.Type<typeof CredentialsRef>;
+packages/beacon-schema/src/auth.ts:98:export type Auth = Schema.Schema.Type<typeof Auth>;
+themes/sietch/src/db/migrations/063_agent_threads.ts:20:CREATE TABLE IF NOT EXISTS agent_threads (
+themes/sietch/src/db/migrations/037_agent_identity.ts:22:CREATE TABLE IF NOT EXISTS agent_identity_anchors (
+themes/sietch/src/db/migrations/046_wallet_links.ts:21:CREATE TABLE IF NOT EXISTS wallet_link_nonces (
+themes/sietch/src/db/migrations/046_wallet_links.ts:41:CREATE TABLE IF NOT EXISTS wallet_links (
+themes/sietch/src/db/migrations/046_wallet_links.ts:62:CREATE TABLE IF NOT EXISTS score_snapshots (
+themes/sietch/src/db/migrations/046_wallet_links.ts:80:CREATE TABLE IF NOT EXISTS score_distributions (
+themes/sietch/src/db/migrations/061_s2s_jwks_public_keys.ts:22:CREATE TABLE IF NOT EXISTS s2s_jwks_public_keys (
+themes/sietch/src/db/migrations/002_social_layer.ts:19:CREATE TABLE IF NOT EXISTS member_profiles (
+themes/sietch/src/db/migrations/002_social_layer.ts:66:CREATE TABLE IF NOT EXISTS badges (
+themes/sietch/src/db/migrations/002_social_layer.ts:107:CREATE TABLE IF NOT EXISTS member_badges (
+themes/sietch/src/db/migrations/002_social_layer.ts:142:CREATE TABLE IF NOT EXISTS member_activity (
+themes/sietch/src/db/migrations/002_social_layer.ts:178:CREATE TABLE IF NOT EXISTS member_perks (
+themes/sietch/src/db/migrations/049_billing_events.ts:20:  CREATE TABLE IF NOT EXISTS billing_events (
+themes/sietch/src/db/migrations/031_crypto_payments_v2.ts:36:CREATE TABLE IF NOT EXISTS crypto_payments_v2 (
+themes/sietch/src/db/migrations/031_crypto_payments_v2.ts:175:CREATE TABLE IF NOT EXISTS crypto_payments_original (
+themes/sietch/src/db/migrations/055_reconciliation_runs.ts:11:CREATE TABLE IF NOT EXISTS reconciliation_runs (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:33:CREATE TABLE IF NOT EXISTS subscriptions_new (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:94:CREATE TABLE IF NOT EXISTS webhook_events_new (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:141:CREATE TABLE IF NOT EXISTS badge_purchases_new (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:174:CREATE TABLE IF NOT EXISTS boost_purchases_new (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:228:CREATE TABLE IF NOT EXISTS subscriptions_old (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:267:CREATE TABLE IF NOT EXISTS webhook_events_old (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:300:CREATE TABLE IF NOT EXISTS badge_purchases_old (
+themes/sietch/src/db/migrations/013_paddle_migration.ts:323:CREATE TABLE IF NOT EXISTS boost_purchases_old (
+packages/beacon-schema/src/orientation-packet.ts:14:export type BeaconClassification =
+packages/beacon-schema/src/orientation-packet.ts:22:export type VerdictDetail =
+packages/beacon-schema/src/orientation-packet.ts:38:export interface OrientationVerdict {
+packages/beacon-schema/src/orientation-packet.ts:46:export interface OrientationPacket {
+packages/beacon-schema/src/orientation-packet.ts:64:export interface OrientationRegistryInput {
+packages/beacon-schema/src/orientation-packet.ts:72:export interface OrientationBeaconInput {
+packages/beacon-schema/src/orientation-packet.ts:84:export interface OrientationProbeInput {
+themes/sietch/src/db/migrations/021_crypto_payments.ts:42:CREATE TABLE IF NOT EXISTS subscriptions_new (
+themes/sietch/src/db/migrations/021_crypto_payments.ts:88:CREATE TABLE IF NOT EXISTS crypto_payments (
+themes/sietch/src/db/migrations/021_crypto_payments.ts:186:CREATE TABLE IF NOT EXISTS subscriptions_original (
+packages/beacon-schema/src/beacon-v3.ts:340:export type BeaconV3 = Schema.Schema.Type<typeof BeaconV3Schema>;
+themes/sietch/src/db/migrations/051_agent_clawback_receivables.ts:23:CREATE TABLE IF NOT EXISTS agent_clawback_receivables (
+themes/sietch/src/db/schema.ts:22:CREATE TABLE IF NOT EXISTS eligibility_snapshots (
+themes/sietch/src/db/schema.ts:32:CREATE TABLE IF NOT EXISTS current_eligibility (
+themes/sietch/src/db/schema.ts:47:CREATE TABLE IF NOT EXISTS admin_overrides (
+themes/sietch/src/db/schema.ts:65:CREATE TABLE IF NOT EXISTS audit_log (
+themes/sietch/src/db/schema.ts:79:CREATE TABLE IF NOT EXISTS health_status (
+themes/sietch/src/db/schema.ts:94:CREATE TABLE IF NOT EXISTS wallet_mappings (
+themes/sietch/src/db/schema.ts:104:CREATE TABLE IF NOT EXISTS cached_claim_events (
+themes/sietch/src/db/schema.ts:123:CREATE TABLE IF NOT EXISTS cached_burn_events (
+packages/beacon-schema/src/acvp-bindings.ts:27:export type AcvpBindingType = "proof" | "runtime";
+packages/beacon-schema/src/acvp-bindings.ts:28:export type AcvpSeverity = "ok" | "warn" | "error";
+packages/beacon-schema/src/acvp-bindings.ts:30:export interface AcvpProofReceipt {
+packages/beacon-schema/src/acvp-bindings.ts:41:export interface AcvpAllowlistEntry {
+packages/beacon-schema/src/acvp-bindings.ts:48:export interface AcvpBindingFinding {
+packages/beacon-schema/src/acvp-bindings.ts:59:export interface AcvpBindingReport {
+packages/beacon-schema/src/acvp-bindings.ts:67:export interface ValidateAcvpBindingsInput {
+themes/sietch/src/db/migrations/058_agent_governance.ts:28:CREATE TABLE IF NOT EXISTS agent_governance_proposals (
+themes/sietch/src/db/migrations/058_agent_governance.ts:63:CREATE TABLE IF NOT EXISTS agent_governance_votes (
+themes/sietch/src/db/migrations/058_agent_governance.ts:81:CREATE TABLE IF NOT EXISTS agent_governance_delegations (
+themes/sietch/src/db/pg-schema.ts:35:export const eligibilityCurrent = pgTable('eligibility_current', {
+themes/sietch/src/db/pg-schema.ts:58:export const eligibilitySnapshots = pgTable('eligibility_snapshots', {
+themes/sietch/src/db/pg-schema.ts:73:export const eligibilityAdminOverrides = pgTable('eligibility_admin_overrides', {
+themes/sietch/src/db/pg-schema.ts:98:export const eligibilityHealthStatus = pgTable('eligibility_health_status', {
+themes/sietch/src/db/pg-schema.ts:121:export const walletVerifications = pgTable('wallet_verifications', {
+themes/sietch/src/db/pg-schema.ts:140:export const eligibilityClaimEvents = pgTable('eligibility_claim_events', {
+themes/sietch/src/db/pg-schema.ts:165:export const eligibilityBurnEvents = pgTable('eligibility_burn_events', {
+themes/sietch/src/db/pg-schema.ts:193:export const userIdentities = pgTable('user_identities', {
+themes/sietch/src/db/pg-schema.ts:231:export const identityEvents = pgTable('identity_events', {
+themes/sietch/src/db/pg-schema.ts:270:export const identityWallets = pgTable('identity_wallets', {
+themes/sietch/src/db/migrations/052_agent_budget.ts:20:CREATE TABLE IF NOT EXISTS agent_spending_limits (
+themes/sietch/src/db/migrations/052_agent_budget.ts:38:CREATE TABLE IF NOT EXISTS agent_budget_finalizations (
+themes/sietch/src/db/migrations/060_credit_lots_tba_source.ts:32:CREATE TABLE _credit_lots_new (
+themes/sietch/src/db/migrations/007_water_sharer.ts:48:CREATE TABLE IF NOT EXISTS water_sharer_grants (
+themes/sietch/src/db/migrations/039_billing_notifications.ts:21:CREATE TABLE IF NOT EXISTS billing_notifications (
+themes/sietch/src/db/migrations/036_daily_agent_spending.ts:22:CREATE TABLE IF NOT EXISTS daily_agent_spending (
+themes/sietch/src/db/migrations/066_agent_messages.ts:32:CREATE TABLE IF NOT EXISTS agent_messages (
+themes/sietch/src/db/migrations/042_referral_system.ts:22:CREATE TABLE IF NOT EXISTS referral_codes (
+themes/sietch/src/db/migrations/042_referral_system.ts:42:CREATE TABLE IF NOT EXISTS referral_registrations (
+themes/sietch/src/db/migrations/042_referral_system.ts:58:CREATE TABLE IF NOT EXISTS referral_attribution_log (
+themes/sietch/src/db/migrations/042_referral_system.ts:73:CREATE TABLE IF NOT EXISTS referral_bonuses (
+themes/sietch/src/db/migrations/042_referral_system.ts:95:CREATE TABLE IF NOT EXISTS referral_events (
+themes/sietch/src/db/queries/contract-binding-queries.ts:58:export interface CreateContractBindingInput {
+themes/sietch/src/db/queries/contract-binding-queries.ts:249:export interface UpdateContractBindingInput {
+themes/sietch/src/db/migrations/033_campaigns.ts:19:CREATE TABLE IF NOT EXISTS credit_campaigns (
+themes/sietch/src/db/migrations/033_campaigns.ts:52:CREATE TABLE IF NOT EXISTS credit_grants (
+themes/sietch/src/db/migrations/062_api_keys.ts:20:CREATE TABLE IF NOT EXISTS api_keys (
+themes/sietch/src/db/migrations/053_agent_identity.ts:21:CREATE TABLE IF NOT EXISTS agent_identity (
+themes/sietch/src/db/migrations/044_referrer_earnings.ts:19:CREATE TABLE IF NOT EXISTS referrer_earnings (
+themes/sietch/src/db/migrations/067_usage_events.ts:36:CREATE TABLE IF NOT EXISTS usage_events (
+themes/sietch/src/db/schema/billing.ts:24:export const creditAccounts = sqliteTable('credit_accounts', {
+themes/sietch/src/db/schema/billing.ts:40:export const creditLots = sqliteTable('credit_lots', {
+themes/sietch/src/db/schema/billing.ts:67:export const creditBalances = sqliteTable('credit_balances', {
+themes/sietch/src/db/schema/billing.ts:82:export const creditAccountSeq = sqliteTable('credit_account_seq', {
+themes/sietch/src/db/schema/billing.ts:95:export const creditLedger = sqliteTable('credit_ledger', {
+themes/sietch/src/db/schema/billing.ts:121:export const creditReservations = sqliteTable('credit_reservations', {
+themes/sietch/src/db/schema/billing.ts:145:export const reservationLots = sqliteTable('reservation_lots', {
+themes/sietch/src/db/schema/billing.ts:160:export const creditDebts = sqliteTable('credit_debts', {
+themes/sietch/src/db/schema/billing.ts:178:export const billingIdempotencyKeys = sqliteTable('billing_idempotency_keys', {
+themes/sietch/src/db/migrations/047_fraud_rules.ts:26:CREATE TABLE IF NOT EXISTS fraud_rules (
+themes/sietch/src/db/migrations/047_fraud_rules.ts:81:CREATE TABLE IF NOT EXISTS fraud_rule_audit_log (
+themes/sietch/src/db/migrations/068_micro_usd_parse_failures.ts:23:    CREATE TABLE IF NOT EXISTS micro_usd_parse_failures (
+themes/sietch/src/db/migrations/006_tier_system.ts:46:CREATE TABLE IF NOT EXISTS tier_history (
+themes/sietch/src/db/migrations/006_tier_system.ts:94:CREATE TABLE IF NOT EXISTS sponsor_invites (
+themes/sietch/src/db/migrations/006_tier_system.ts:160:CREATE TABLE IF NOT EXISTS story_fragments (
+themes/sietch/src/db/migrations/006_tier_system.ts:193:CREATE TABLE IF NOT EXISTS weekly_digests (
+themes/sietch/src/db/migrations/006_tier_system.ts:268:-- 1. CREATE TABLE member_profiles_backup AS SELECT (all columns except tier) FROM member_profiles
+themes/sietch/src/db/migrations/011_boosts.ts:17:CREATE TABLE IF NOT EXISTS boost_purchases (
+themes/sietch/src/db/migrations/011_boosts.ts:51:CREATE TABLE IF NOT EXISTS community_boost_stats (
+themes/sietch/src/db/migrations/054_economic_events.ts:22:CREATE TABLE IF NOT EXISTS economic_events (
+themes/sietch/src/db/migrations/009_billing.ts:20:CREATE TABLE IF NOT EXISTS subscriptions (
+themes/sietch/src/db/migrations/009_billing.ts:90:CREATE TABLE IF NOT EXISTS fee_waivers (
+themes/sietch/src/db/migrations/009_billing.ts:134:CREATE TABLE IF NOT EXISTS webhook_events (
+themes/sietch/src/db/migrations/009_billing.ts:179:CREATE TABLE IF NOT EXISTS billing_audit_log (
+themes/sietch/src/db/migrations/020_gom_jabbar_users.ts:21:CREATE TABLE IF NOT EXISTS users (
+themes/sietch/src/db/migrations/020_gom_jabbar_users.ts:72:CREATE TABLE IF NOT EXISTS user_sessions (
+themes/sietch/src/db/migrations/020_gom_jabbar_users.ts:112:CREATE TABLE IF NOT EXISTS user_audit_log (
+themes/sietch/src/db/migrations/020_gom_jabbar_users.ts:181:CREATE TABLE IF NOT EXISTS login_rate_limits (
+themes/sietch/src/db/migrations/014_api_key_audit.ts:25:CREATE TABLE IF NOT EXISTS api_key_usage (
+themes/sietch/src/db/migrations/040_credit_lot_purchases.ts:23:CREATE TABLE IF NOT EXISTS credit_lot_purchases (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:23:CREATE TABLE IF NOT EXISTS current_configurations (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:54:CREATE TABLE IF NOT EXISTS config_records (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:102:CREATE TABLE IF NOT EXISTS threshold_changes (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:120:CREATE TABLE IF NOT EXISTS feature_gate_changes (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:144:CREATE TABLE IF NOT EXISTS role_map_changes (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:163:CREATE TABLE IF NOT EXISTS theme_changes (
+themes/sietch/src/db/migrations/019_dashboard_config.ts:181:CREATE TABLE IF NOT EXISTS checkpoint_snapshots (
+themes/sietch/src/db/migrations/010_badges.ts:18:CREATE TABLE IF NOT EXISTS badge_purchases (
+themes/sietch/src/db/migrations/010_badges.ts:51:CREATE TABLE IF NOT EXISTS badge_settings (
+themes/sietch/src/db/migrations/057_tba_deposits.ts:25:CREATE TABLE IF NOT EXISTS tba_deposits (
+themes/sietch/src/db/migrations/012_telegram_identity.ts:31:CREATE TABLE IF NOT EXISTS telegram_verification_sessions (
+themes/sietch/src/db/migrations/012_telegram_identity.ts:69:CREATE TABLE IF NOT EXISTS telegram_verification_sessions (
+themes/sietch/src/db/migrations/012_telegram_identity.ts:106:export type VerificationSessionStatus = 'pending' | 'completed' | 'expired' | 'failed';
+themes/sietch/src/db/migrations/018_migration_prompts.ts:19:    CREATE TABLE IF NOT EXISTS migration_prompts (
+themes/sietch/src/db/migrations/005_naib_threshold.ts:25:CREATE TABLE IF NOT EXISTS naib_seats (
+themes/sietch/src/db/migrations/005_naib_threshold.ts:92:CREATE TABLE IF NOT EXISTS waitlist_registrations (
+themes/sietch/src/db/migrations/005_naib_threshold.ts:138:CREATE TABLE IF NOT EXISTS threshold_snapshots (
+themes/sietch/src/db/migrations/005_naib_threshold.ts:173:CREATE TABLE IF NOT EXISTS notification_preferences (
+themes/sietch/src/db/migrations/005_naib_threshold.ts:208:CREATE TABLE IF NOT EXISTS alert_history (
+themes/sietch/src/db/migrations/017_user_engagement.ts:19:    CREATE TABLE IF NOT EXISTS user_engagement (
+themes/sietch/src/db/migrations/032_billing_ops.ts:23:CREATE TABLE IF NOT EXISTS billing_dlq (
+themes/sietch/src/db/migrations/032_billing_ops.ts:50:CREATE TABLE IF NOT EXISTS admin_audit_log (
+themes/sietch/src/db/migrations/032_billing_ops.ts:73:CREATE TABLE IF NOT EXISTS billing_config (
+themes/sietch/src/db/migrations/064_budget_reservations.ts:23:CREATE TABLE IF NOT EXISTS budget_reservations (
+themes/sietch/src/db/migrations/064_budget_reservations.ts:61:CREATE TABLE IF NOT EXISTS spend_events (
+themes/sietch/src/db/migrations/056_peer_transfers.ts:38:CREATE TABLE IF NOT EXISTS transfers (
+themes/sietch/src/db/migrations/056_peer_transfers.ts:71:CREATE TABLE credit_ledger (
+themes/sietch/src/db/migrations/016_custom_providers.ts:19:    CREATE TABLE IF NOT EXISTS custom_providers (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:25:CREATE TABLE IF NOT EXISTS credit_accounts (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:43:CREATE TABLE IF NOT EXISTS credit_lots (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:80:CREATE TABLE IF NOT EXISTS credit_balances (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:95:CREATE TABLE IF NOT EXISTS credit_ledger (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:132:CREATE TABLE IF NOT EXISTS credit_account_seq (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:145:CREATE TABLE IF NOT EXISTS credit_reservations (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:174:CREATE TABLE IF NOT EXISTS reservation_lots (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:188:CREATE TABLE IF NOT EXISTS credit_debts (
+themes/sietch/src/db/migrations/030_credit_ledger.ts:210:CREATE TABLE IF NOT EXISTS billing_idempotency_keys (
+themes/sietch/src/db/migrations/035_revenue_rules.ts:25:CREATE TABLE IF NOT EXISTS revenue_rules (
+themes/sietch/src/db/migrations/035_revenue_rules.ts:70:CREATE TABLE IF NOT EXISTS revenue_rule_audit_log (
+themes/sietch/src/db/migrations/021_theme_builder.ts:23:CREATE TABLE IF NOT EXISTS themes (
+themes/sietch/src/db/migrations/021_theme_builder.ts:66:CREATE TABLE IF NOT EXISTS theme_versions (
+themes/sietch/src/db/migrations/021_theme_builder.ts:99:CREATE TABLE IF NOT EXISTS contract_bindings (
+themes/sietch/src/db/migrations/021_theme_builder.ts:139:CREATE TABLE IF NOT EXISTS theme_assets (
+themes/sietch/src/db/migrations/021_theme_builder.ts:173:CREATE TABLE IF NOT EXISTS theme_audit_log (
+themes/sietch/src/db/migrations/050_system_config.ts:26:CREATE TABLE IF NOT EXISTS system_config (
+themes/sietch/src/db/migrations/050_system_config.ts:65:CREATE TABLE IF NOT EXISTS system_config_audit (
+themes/sietch/src/db/migrations/050_system_config.ts:88:CREATE TABLE IF NOT EXISTS system_config_version_seq (
+themes/sietch/src/db/types/user.types.ts:23:export type UserRole = 'admin' | 'qa_admin' | 'qa_tester';
+themes/sietch/src/db/types/user.types.ts:30:export type SessionType = 'cli' | 'dashboard';
+themes/sietch/src/db/types/user.types.ts:35:export type AuditAction =
+themes/sietch/src/db/types/user.types.ts:68:export interface User {
+themes/sietch/src/db/types/user.types.ts:87:export interface UserPublic {
+themes/sietch/src/db/types/user.types.ts:102:export interface UserSession {
+themes/sietch/src/db/types/user.types.ts:118:export interface SessionWithUser extends UserSession {
+themes/sietch/src/db/types/user.types.ts:125:export interface UserAuditEntry {
+themes/sietch/src/db/types/user.types.ts:141:export interface AuditMetadata {
+themes/sietch/src/db/types/user.types.ts:157:export interface LoginRateLimit {
+themes/sietch/src/db/types/user.types.ts:171:export interface CreateUserInput {
+themes/sietch/src/db/types/user.types.ts:183:export interface UpdateUserInput {
+themes/sietch/src/db/types/user.types.ts:194:export interface ChangePasswordInput {
+themes/sietch/src/db/types/user.types.ts:202:export interface ResetPasswordInput {
+themes/sietch/src/db/types/user.types.ts:210:export interface LoginInput {
+themes/sietch/src/db/types/user.types.ts:221:export interface LoginResult {
+themes/sietch/src/db/types/user.types.ts:234:export interface ListUsersQuery {
+themes/sietch/src/db/types/user.types.ts:245:export interface AuditLogQuery {
+themes/sietch/src/db/types/user.types.ts:258:export interface PaginatedResult<T> {
+themes/sietch/src/db/types/user.types.ts:271:export interface UserRow {
+themes/sietch/src/db/types/user.types.ts:290:export interface UserSessionRow {
+themes/sietch/src/db/types/user.types.ts:306:export interface UserAuditLogRow {
+themes/sietch/src/db/types/user.types.ts:321:export interface LoginRateLimitRow {
+themes/sietch/src/db/types/config.types.ts:17:export type ConfigAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE';
+themes/sietch/src/db/types/config.types.ts:19:export type RecordableType =
+themes/sietch/src/db/types/config.types.ts:26:export type ThresholdField = 'bgt' | 'engagement' | 'tenure' | 'activity';
+themes/sietch/src/db/types/config.types.ts:28:export type ThemeChangeType = 'activate' | 'deactivate' | 'modify' | 'create' | 'delete';
+themes/sietch/src/db/types/config.types.ts:30:export type RoleMappingStatus = 'active' | 'deleted' | 'unknown';
+themes/sietch/src/db/types/config.types.ts:36:export interface ConfigRecord {
+themes/sietch/src/db/types/config.types.ts:48:export interface ConfigRecordMetadata {
+themes/sietch/src/db/types/config.types.ts:59:export interface ConfigRecordWithPayload extends ConfigRecord {
+themes/sietch/src/db/types/config.types.ts:67:export interface ThresholdChange {
+themes/sietch/src/db/types/config.types.ts:76:export interface FeatureGateChange {
+themes/sietch/src/db/types/config.types.ts:86:export interface RoleMapChange {
+themes/sietch/src/db/types/config.types.ts:96:export interface ThemeChange {
+themes/sietch/src/db/types/config.types.ts:104:export interface CheckpointSnapshot {
+themes/sietch/src/db/types/config.types.ts:118:export interface CurrentConfiguration {
+themes/sietch/src/db/types/config.types.ts:131:export interface TierThresholds {
+themes/sietch/src/db/types/config.types.ts:138:export interface FeatureGate {
+themes/sietch/src/db/types/config.types.ts:143:export interface RoleMapping {
+themes/sietch/src/db/types/config.types.ts:155:export interface ThresholdChangeInput {
+themes/sietch/src/db/types/config.types.ts:161:export interface FeatureGateChangeInput {
+themes/sietch/src/db/types/config.types.ts:168:export interface RoleMapChangeInput {
+themes/sietch/src/db/types/config.types.ts:179:export interface ConfigHistoryQuery {
+themes/sietch/src/db/types/config.types.ts:189:export interface ConfigHistoryResult {
+themes/sietch/src/db/types/config.types.ts:199:export interface CurrentConfigurationRow {
+themes/sietch/src/db/types/config.types.ts:212:export interface ConfigRecordRow {
+themes/sietch/src/db/types/config.types.ts:224:export interface ThresholdChangeRow {
+themes/sietch/src/db/types/config.types.ts:233:export interface FeatureGateChangeRow {
+themes/sietch/src/db/types/config.types.ts:243:export interface RoleMapChangeRow {
+themes/sietch/src/db/types/config.types.ts:253:export interface ThemeChangeRow {
+themes/sietch/src/db/types/config.types.ts:261:export interface CheckpointSnapshotRow {
+themes/sietch/src/db/migrations/045_payout_system.ts:21:CREATE TABLE IF NOT EXISTS payout_requests (
+themes/sietch/src/db/migrations/045_payout_system.ts:54:CREATE TABLE IF NOT EXISTS treasury_state (
+themes/sietch/src/db/migrations/045_payout_system.ts:70:CREATE TABLE IF NOT EXISTS webhook_events (
+themes/sietch/src/db/queries/maintenance-queries.ts:31:export interface CachedClaimEvent {
+themes/sietch/src/db/queries/maintenance-queries.ts:43:export interface CachedBurnEvent {

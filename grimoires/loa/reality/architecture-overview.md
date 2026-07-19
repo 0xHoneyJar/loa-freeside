@@ -2,13 +2,14 @@
 source_type: ai-autogen
 use_label: usable
 read_state: read
-as_of: 2026-07-06
-generated_by: /ride reality+ground-truth refresh (supersedes 2026-05-18 CORPSE)
+as_of: 2026-07-19
+generated_by: /ride reality refresh (delta 9b0f4a12 → b5df718a)
+git_sha: b5df718a
 ---
 
 # Architecture Overview — loa-freeside (current)
 
-> Generated 2026-07-06 by /ride. Evolution since the 2026-05-18 corpse: the platform split into a
+> Generated 2026-07-19 by /ride (refreshing 2026-07-06 capture). Evolution since the 2026-05-18 corpse: the platform split into a
 > **hexagonal federation** — most product logic extracted into external `*-api` cells governed by an
 > in-repo L1 registry; `themes/sietch` remains as the incumbent monolith.
 
@@ -62,8 +63,11 @@ NO single cluster token. **3 real mechanisms + 1 ghost**:
 - **sonar-api** ← none.
 - **ghost**: identity `/v1/auth/service-jwt` ES256 svc-JWT — `/.well-known/jwks.json` 404s; unused.
 
-## Deployment posture (live-probe 2026-06-19)
-7 deployed (sonar+belt-gateway, score, storage, identity, inventory[401 auth-gated], activities), 2 scaffolded (mint 404 routeless, ledger not deployed), 2 not-built runtime (mediums npm-lib, events in-repo lib). **All `*.0xhoneyjar.xyz` beacon subdomains still 404** (DNS not pointed + routes unshipped) — the federation-discovery gap.
+## Protocol-contract layer (grown 4 → 10 packages, 2026-07-19)
+`packages/protocol/` now holds ALL versioned wire contracts: shadow-mode, ordering, eligibility, shadow-audit (v0.1.0) + six NEW v1.0.0 packages from the collection-report cycle — **collection** (cross-VM identity + canonical digest + finality bound), **collection-resolution** (durable confirmation sessions), **dependency-ledger** (CR-012A reverse-dependency inbox/closure/quarantine), **public-authorization** (CR-007A subject-resource-action grants + leases), **signing-key-custody** (CR-013 KMS/HSM custody, fixture/production class separation), **trust-envelope** (CR-009 Ed25519-signed envelopes + stream sequencing). `@freeside/collection-report-gates` makes release-gate evaluation executable (`check-gate-manifest`).
+
+## Deployment posture (registry declaration, read 2026-07-19; live-probe 2026-06-19)
+Registry declares 7 deployed (sonar, score, storage, identity, inventory, activities, **ordering** — in-repo cell, newly registered), 2 scaffolded (mint, ledger), 2 not-built (mediums, events). Last live probe 2026-06-19: inventory 401 auth-gated, mint 404 routeless, ledger not deployed. **All `*.0xhoneyjar.xyz` beacon subdomains still 404 at that probe** (DNS not pointed + routes unshipped) — the federation-discovery gap. Re-probe via `freeside-cli doctor --remote` for live truth.
 
 ## Tech stack
 TypeScript 5.3–5.7 (strict, ESM) + Rust 2021 · Node ≥22 · Express 5 (sietch) / Hono (services+mcp) / Twilight (gateway) · Drizzle ORM + PostgreSQL + RLS · SQLite (sietch v1) · Redis 7 (Lua atomic) · NATS JetStream (primary) + RabbitMQ (ingestor) + Trigger.dev (cron) · discord.js + Grammy · viem · Effect Schema + Zod + Ajv · Terraform/AWS ECS · Vitest + fast-check.

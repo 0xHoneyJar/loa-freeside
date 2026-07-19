@@ -1,16 +1,17 @@
 {
   "schema_version": 1,
-  "git_sha": "9b0f4a12",
-  "git_sha_full": "9b0f4a129c1c04d97298015d1e07c69435c971bf",
-  "branch": "feat/spiral-spiral-20260706-359e28-cycle-1",
-  "generated_at": "2026-07-06T23:15:55Z",
-  "generator": "/ride reality+ground-truth refresh v1.180.0",
-  "scope": "reality + ground-truth refresh (PRD/SDD preserved)",
-  "integrity_gate": "override (benign stale checksums 2026-01-17 vs framework 1.180.0; user-authorized)",
+  "git_sha": "b5df718a",
+  "git_sha_full": "b5df718a3687f54ec014f68a63518455ee70bbcb",
+  "branch": "coord/collection-report-coordinator-f09.30",
+  "generated_at": "2026-07-19T08:05:00Z",
+  "generator": "/ride reality refresh v1.196.0 (non-interactive subagent)",
+  "scope": "reality refresh, delta-grounded (287 commits since 2026-07-06); PRD/SDD preserved (active cadence-ledger cycle docs); ground-truth regenerated + re-checksummed 2026-07-19 by /ride --ground-truth (same HEAD b5df718a)",
+  "staleness_days": 7,
   "supersedes": {
-    "previous_generated_at": "2026-05-18T00:00:00Z",
-    "previous_status": "CORPSE (monolith capture, quarantined by governance-doctor.sh)",
-    "preserved": true
+    "previous_generated_at": "2026-07-06T23:15:55Z",
+    "previous_status": "valid but stale (13 days, 287 commits behind)",
+    "preserved": true,
+    "interim_scoped_ride": "2026-07-17 b589f728 hub-thinning (drift/consistency/governance/claims/inventory) — findings carried, verdicts preserved in hub-thinning-verdicts.md"
   },
   "files": {
     "index.md": { "status": "required", "regenerated": true },
@@ -18,37 +19,48 @@
     "architecture-overview.md": { "status": "required", "regenerated": true },
     "api-surface.md": { "status": "required", "regenerated": true },
     "entry-points.md": { "status": "required", "regenerated": true },
-    "hygiene-report.md": { "status": "required", "regenerated": true },
     "types.md": { "status": "required", "regenerated": true },
+    "hygiene-report.md": { "status": "required", "regenerated": true },
+    "api-routes.txt": { "status": "extraction", "regenerated": true },
+    "data-models.txt": { "status": "extraction", "regenerated": true },
+    "env-vars.txt": { "status": "extraction", "regenerated": true },
+    "tech-debt.txt": { "status": "extraction", "regenerated": true },
+    "test-files.txt": { "status": "extraction", "regenerated": true },
+    "hub-thinning-verdicts.md": { "status": "preserved", "regenerated": false, "note": "2026-07-17 scoped-ride verdicts; still valid" },
+    "interfaces.md": { "status": "preserved", "regenerated": false, "note": "interface extraction out of scope this refresh (same exception as 07-06); contracts covered in types.md" },
     "api.md": { "status": "preserved", "regenerated": false },
     "services.md": { "status": "preserved", "regenerated": false },
     "database.md": { "status": "preserved", "regenerated": false },
     "commands.md": { "status": "preserved", "regenerated": false },
     "environment.md": { "status": "preserved", "regenerated": false },
-    "triggers.md": { "status": "preserved", "regenerated": false },
-    "interfaces.md": {
-      "status": "preserved",
-      "regenerated": false,
-      "note": "Interface extraction intentionally OUT of scope for this reality+ground-truth refresh; current contracts are covered in types.md. Run a dedicated interfaces pass if interface drift is suspected."
-    }
+    "triggers.md": { "status": "preserved", "regenerated": false }
   },
   "validation": {
     "required_surfaces": ["index.md", "structure.md", "architecture-overview.md", "api-surface.md", "types.md", "entry-points.md", "hygiene-report.md"],
-    "preserved_surfaces": ["api.md", "services.md", "database.md", "commands.md", "environment.md", "triggers.md", "interfaces.md"],
-    "preserved_rationale": "Legacy Feb-May spokes not regenerated this refresh. interfaces.md is preserved by EXPLICIT exception (see files.interfaces.md.note) rather than silent downgrade. The superseded 2026-05-18 corpse is retired per the supersedes block. Checksums (ground-truth/checksums.json) cover the required_surfaces + ground-truth spokes only.",
-    "checksums_manifest": "grimoires/loa/ground-truth/checksums.json"
+    "preserved_surfaces": ["hub-thinning-verdicts.md", "api.md", "services.md", "database.md", "commands.md", "environment.md", "triggers.md", "interfaces.md"],
+    "preserved_rationale": "Legacy Feb-May spokes not regenerated (trust required_surfaces over these). Ground-truth (5 GT files) regenerated 2026-07-19 from the fresh reality spokes; checksums.json re-generated mechanically (ground-truth-gen.sh --mode checksums, 30 files) at b5df718a.",
+    "checksums_manifest": "grimoires/loa/ground-truth/checksums.json (current: 2026-07-19, b5df718a, 30 files)",
+    "ground_truth": {
+      "refreshed_at": "2026-07-19",
+      "files": ["index.md", "api-surface.md", "architecture.md", "contracts.md", "behaviors.md"],
+      "token_validation": "all PASS (index 450/500; spokes 370-536/2000)",
+      "supersedes": "2026-07-06 GT (SHA 9b0f4a12)"
+    }
   },
   "outputs": {
     "reality": "grimoires/loa/reality/",
-    "ground_truth": "grimoires/loa/ground-truth/",
-    "drift_report": "grimoires/loa/drift-report.md (local/gitignored; summary in NOTES.md)",
-    "claims_to_verify": "grimoires/loa/context/claims-to-verify.md (local/gitignored)"
+    "drift_report": "grimoires/loa/drift-report.md",
+    "consistency_report": "grimoires/loa/consistency-report.md",
+    "governance_report": "grimoires/loa/governance-report.md",
+    "claims_to_verify": "grimoires/loa/context/claims-to-verify.md (addendum R-1..R-6)",
+    "trajectory": "grimoires/loa/a2a/trajectory/riding-20260719.jsonl"
   },
   "key_findings": [
-    "Namespace migrated @arrakis/* -> @freeside/* (0 @arrakis refs remain); AGENTS.md example imports fixed this refresh",
-    "Monolith -> hexagonal federation (registry cells; 8 canonical external *-api + ledger-api + events-api)",
-    "9 PostgreSQL tables (Drizzle RLS) + 8 legacy SQLite; 68 TS + 19 SQL migrations",
-    "New surfaces: freeside-cli, mcp-gateway, operator-dash, BeaconV3, @0xhoneyjar/events",
-    "No CI canary yet for cluster secret-parity (plan: specs/cluster-secret-parity-canary/)"
+    "Protocol layer 4 -> 10 packages: 6 new v1.0.0 wire contracts from the collection-report cycle (CR-007A/009/012A/013 + collection pair)",
+    "ordering registered as first in-repo registry cell (runtime_state: deployed) — absent from CLAUDE.md building list (drift N-1)",
+    "NEW @freeside/collection-report-gates (CR-019): executable release-gate manifest validator",
+    "sietch frozen this delta (2 files / 287 commits) — all 07-06 monolith numbers stand",
+    "Governance upgrades verified: .github/CODEOWNERS present; 369 semver tags (v7.77.0); 40 CI workflows",
+    "Hub-thinning critical drifts (billing no-repo, mediums not-built, ledger dual-home, dual money rails) all still open"
   ]
 }
