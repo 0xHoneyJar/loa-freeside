@@ -69,6 +69,7 @@ actually tried, not just what someone *said* was tried.
 | [KF-013](#kf-013-headless-cli-env-mode-selector-vars-defeat-subscription-oauth) | **RESOLVED 2026-05-20** (sprint-bug-173 / #894: `_HEADLESS_STRIPPED_AUTH_VARS` tuple extended with `GOOGLE_GENAI_USE_VERTEXAI` + `GOOGLE_GENAI_USE_GCA`; canonical scrub list mirrors `construct-k-hole/scripts/dig-search.ts`). | cheval headless CLI adapters (gemini / codex / claude) | 1 (single observation, sprint-bug-173 closure) |
 | [KF-014](#kf-014-pre-commit-beads-hook-fails-in-linked-git-worktrees) | **RESOLVED 2026-06-10** (sprint-bug-190 / #991: hook flushes from MAIN_REPO_ROOT subshell in worktrees; PCB-T7/T8/T9 pin it; live worktree-commit verification) | pre-commit beads flush in linked worktrees | 1 |
 | [KF-015](#kf-015-red-team-code-vs-designsh-silent-clean-gate-pass-on-degraded-runs) | **RESOLVED 2026-06-11** (sprint-bug-194 / #984+#985: trap script-scoped, empty/shape validation, degraded-record contract on model failure; RTC-T1..T7 pin all three defects) | red-team code-vs-design gate (silent-clean degraded run) | 4 (4/4 sprints, one downstream cycle) + 1 local repro |
+| [KF-019](#kf-019-beads-issuesjsonl-double-append-duplicate-id-corruption-after-orphaned-write-lock-preflight-exit-7-blocks-all-br-verbs-incl---force-flush) | RESOLVED 2026-07-19 (session repair) |  | 1 |
 
 ---
 
@@ -1090,3 +1091,23 @@ If cross-model voices all return `api_failure` / the gates degrade: do NOT assum
 ### Reading guide
 
 If the Gemini voice vanishes from Flatline/BB (`google/headless` circuit OPEN, `IneligibleTierError`): the gemini CLI tier is dead, not a transient outage — do NOT wait for recovery. Apply `LOA_HEADLESS_MODE=api-only` (uses the valid `GOOGLE_API_KEY` HTTP path) or drop/re-point the tertiary voice. `flatline-readiness.sh` reports providers by API-KEY presence and a `gemini --version` probe passes, so neither currently flags this — treat a silent voice-drop in consensus as the signal. The `gemini-api` alias (key-based HTTP terminal → `google:gemini-2.5-pro` via `GOOGLE_API_KEY`) now exists as the explicit swap target — set `flatline_protocol.models.tertiary: gemini-api`, or alias `gemini-headless → gemini-api`, where the CLI is unavailable. The remaining structural fix (Antigravity CLI migration of the *headless* path) is upstream-blocked.
+
+## KF-019: beads issues.jsonl double-append duplicate-id corruption after orphaned write lock (preflight exit 7 blocks ALL br verbs incl. --force flush)
+
+**Status**: RESOLVED 2026-07-19 (session repair)
+**Feature**: unspecified
+**Symptom**: Every br verb fails preflight: 'json_valid: Found N invalid issue record(s): line X: Duplicate issue id ...'. Orphaned .beads/.write.lock (age >> 300s threshold) from a crashed write session; JSONL contains a re-appended block of ~N records with duplicate ids (same updated_at, differing serialization). br sync --flush-only and --force CANNOT repair — preflight gates every verb before force applies.
+**First observed**: unspecified
+**Recurrence count**: 1
+**Current workaround**: none yet
+**Upstream issue**: not filed
+**Related visions / lore**: none
+
+### Attempts
+
+| Date | What we tried | Outcome | Evidence |
+|------|---------------|---------|----------|
+
+### Reading guide
+
+TODO: what a future agent should do on this symptom.
