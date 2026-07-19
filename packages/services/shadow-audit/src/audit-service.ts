@@ -229,6 +229,43 @@ export async function runAudit(
   const { roleWallets, unmatched } = resolveRoles(snapshot);
 
   const threshold = BigInt(req.order.gating_rule.threshold);
+  const policy = tokenGatingPolicy(threshold);
+
+  // A coverage refusal needs the counts-only drift board, not historical cohorts. Read CURRENT holder
+  // counts directly and skip block-at-date resolution plus historical transfer replay entirely. This is
+  // the common thj path; making a polling 422 reconstruct history was an avoidable cost multiplier.
+  if (coverageRefusal) {
+    let currentBySource: { source: (typeof sources)[number]; balances: Balances }[];
+    try {
+      currentBySource = await Promise.all(
+        sources.map(async (source) => ({
+          source,
+          balances: await deps.ownership.currentBalances(source),
+        })),
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'reconstruction-failed',
+          reason: `ownership reconstruction failed: ${redactEndpoints((error as Error).message)}`,
+          retryable: true,
+        },
+      };
+    }
+    return {
+      ok: false,
+      refusal: mode.refusal,
+      drift: computeDrift({
+        roleMembers: roleMemberCount(snapshot),
+        perSource: currentBySource.map(({ source, balances }) => ({
+          chain: source.chain,
+          holders: countQualifying(policy, balances),
+        })),
+        k,
+      }),
+    };
+  }
 
   // 3. THE UNION (S5-T3) — `sources` was resolved above. Reconstruct EVERY declared deployment:
   //    Honeycomb lives on ethereum AND berachain, and auditing one of them brands the other chain's
@@ -259,7 +296,6 @@ export async function runAudit(
   // The should-be access is decided by a pluggable AccessDecisionPort — the engine no longer hard-codes the
   // policy. tokenGatingPolicy is the deployed default (balance >= threshold), byte-identical to before; a
   // badge or score policy is a drop-in swap (the unification: arrakis-access-control-plane-v1).
-  const policy = tokenGatingPolicy(threshold);
   // `any-source` (UNION_SEMANTICS): qualified iff the threshold is met on AT LEAST ONE deployment. The
   // threshold is applied PER-SOURCE — never to a cross-chain sum, which would double-count a bridging token.
   const qualifies = (maps: readonly Balances[], w: string): boolean => qualifiesAnySource(policy, maps, w);

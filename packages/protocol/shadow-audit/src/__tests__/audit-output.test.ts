@@ -91,6 +91,14 @@ describe('AuditAggregateSchema — the coverage/k-anon invariant has teeth', () 
       ...over,
     };
   }
+
+  it('admits unknown whale concentration without coercing it to no whale risk', () => {
+    const parsed = AuditOutputSchema.parse({
+      ...output(),
+      aggregate: agg({ whale_concentration: null }),
+    });
+    expect(parsed.aggregate.whale_concentration).toBeNull();
+  });
   const parse = (a: Record<string, unknown>) =>
     AuditOutputSchema.safeParse({ ...output(), aggregate: a }).success;
 

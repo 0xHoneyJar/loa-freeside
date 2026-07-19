@@ -36,7 +36,8 @@ export const AuditAggregateSchema = z
     stale_access: CohortCountSchema,
     /**
      * Top-holder share in [0,1]. NULL when the source fails or a multi-source
-     * collection has no ratified economic-supply reconciliation rule.
+     * collection has no ratified economic-supply reconciliation rule. The strict
+     * nullable dashboard consumer landed first in freeside-dashboard#213.
      */
     whale_concentration: z.number().min(0).max(1).nullable(),
     stale_access_risk_band: RiskBandSchema,
