@@ -577,3 +577,23 @@ Key drift findings:
 - **Ghosts/gaps**: beacon subdomains 404 cluster-wide; no CI canary for cluster secret-parity; mint/ledger/mediums not fully deployed.
 
 Follow-ups (see `drift-report.md`, not auto-applied): refresh AGENTS.md namespace; secret-parity CI canary; workspace dep dedupe (viem/zod/jose); `@ts-nocheck` (27) burn-down.
+
+## Estate freshness pass + /loa-aleph arrival (2026-07-19)
+
+Framework updated 1.180.0 → 1.196.0 (217 commits, safeguarded merge on
+`coord/collection-report-coordinator-f09.30`). Identity files kept ours; 5
+upstream-new workflows removed (Phase 5.5); cursor-Composer port docs taken in
+`runbooks/headless-mode.md`; compact Known-Failures INDEX pointer added to
+CLAUDE.md (kf tooling `grimoire-index.sh` + `kf-write-lib.sh` verified present).
+BUTTERFREEZONE regenerated Tier 1 AFTER `/ride --ground-truth` (17/17 checks);
+`grimoires/loa/gt/` 0-byte corpse removed.
+
+**`/loa-aleph` is now installed in-repo** (vendored verified bundle at
+`.claude/aleph/`, adapter `bin/loa-aleph.mjs`, skill + command). Adapter status
+probes PASS. Live attested runs BLOCKED on this host: bubblewrap (Linux-only),
+`AWS_BEARER_TOKEN_BEDROCK` unset, pinned-binary attestation. Runnable today:
+manual-mode S0–S13 (fixture-labeled) + `validate` checker. First consumers per
+research-loop brief T1: research-loop corpus → précis-shaped file → WEBB
+nomination; also `grimoires/loa/research/material-contact/` as a bounded corpus
+candidate. Sync-constructs surfaced pre-existing hypha pack drift (5 declared
+skills without directories).
