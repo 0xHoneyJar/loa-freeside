@@ -897,7 +897,8 @@ function renderAuditHtml(
   drift?: DriftReport,
 ): string {
   const a = output.aggregate;
-  const turnoverPct = (a.holder_turnover * 100).toFixed(0);
+  const turnoverDisplay =
+    a.holder_turnover === null ? 'Unknown (cohort suppressed)' : `${(a.holder_turnover * 100).toFixed(0)}%`;
   // Name the uncertainty rather than lumping it under one banner: a fresh-but-unseeable snapshot is
   // NOT "stale", and telling the reader it is would be its own small lie (486383).
   const stale = uncertainReasons.includes('stale-snapshot');
@@ -926,7 +927,7 @@ function renderAuditHtml(
     <li>Stale access (role, no longer qualifies): <strong>${escapeHtml(cohortText(a.stale_access))}</strong></li>
     <li>Sold / lapsed: <strong>${escapeHtml(cohortText(a.sold_lapsed))}</strong></li>
     <li>Newly eligible: <strong>${escapeHtml(cohortText(a.newly_eligible))}</strong></li>
-    <li>Holder turnover: <strong>${turnoverPct}%</strong></li>
+    <li>Holder turnover: <strong>${turnoverDisplay}</strong></li>
     <li>Stale-access risk: <strong>${escapeHtml(a.stale_access_risk_band)}</strong></li>
     <li>Role-holders we could not resolve: <strong>${escapeHtml(cohortText(a.unmatched_role_holders))}</strong></li>
   </ul>
@@ -945,7 +946,7 @@ function renderAuditHtml(
 }
 
 interface AuditAggregateLike {
-  holder_turnover: number;
+  holder_turnover: number | null;
   stale_access: CohortCount;
   sold_lapsed: CohortCount;
   newly_eligible: CohortCount;

@@ -30,8 +30,11 @@ export type CohortCount = z.infer<typeof CohortCountSchema>;
 /** Composable object form for consumers that need `.shape`, `.pick()`, or `.extend()`. */
 export const AuditAggregateShapeSchema = z
   .object({
-    /** sold_lapsed / snapshot_holders, in [0,1]. Deterministic (SDD §11). */
-    holder_turnover: z.number().min(0).max(1),
+    /**
+     * sold_lapsed / snapshot_holders, in [0,1]. NULL when `sold_lapsed` is
+     * k-anon-suppressed: rounding a true ratio does not suppress its numerator.
+     */
+    holder_turnover: z.number().min(0).max(1).nullable(),
     sold_lapsed: CohortCountSchema,
     newly_eligible: CohortCountSchema,
     /** The "confront number": role-holders who no longer qualify. */
@@ -86,6 +89,24 @@ export const AuditAggregateShapeSchema = z
 
 /** Validated wire schema. Refinement intentionally wraps the composable object export above. */
 export const AuditAggregateSchema = AuditAggregateShapeSchema.superRefine((agg, ctx) => {
+    if (agg.sold_lapsed.kind === 'bucketed' && agg.holder_turnover !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['holder_turnover'],
+        message:
+          'holder_turnover must be null when sold_lapsed is k-anon-suppressed (a true ratio beside ' +
+          'a suppressed cohort back-computes it).',
+      });
+    }
+
+    if (agg.sold_lapsed.kind === 'exact' && agg.holder_turnover === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['holder_turnover'],
+        message: 'holder_turnover must be present when sold_lapsed is exact.',
+      });
+    }
+
     const unmatched = agg.unmatched_role_holders;
     const coverage = agg.role_coverage;
 

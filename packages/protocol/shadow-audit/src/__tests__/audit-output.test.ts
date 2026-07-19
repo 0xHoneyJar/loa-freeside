@@ -147,4 +147,16 @@ describe('AuditAggregateSchema — the coverage/k-anon invariant has teeth', () 
       parse(agg({ unmatched_role_holders: { kind: 'exact', value: 6 }, role_coverage: 0.7 })),
     ).toBe(true);
   });
+
+  it('REJECTS a suppressed sold-lapsed cohort published beside any turnover ratio', () => {
+    expect(
+      parse(agg({ sold_lapsed: { kind: 'bucketed', bucket: '<5' }, holder_turnover: 0.1 })),
+    ).toBe(false);
+  });
+
+  it('ACCEPTS a suppressed sold-lapsed cohort only with NULL turnover', () => {
+    expect(
+      parse(agg({ sold_lapsed: { kind: 'bucketed', bucket: '<5' }, holder_turnover: null })),
+    ).toBe(true);
+  });
 });

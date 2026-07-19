@@ -141,7 +141,7 @@ describe('runAudit — aggregate + k-anonymity', () => {
     const r = await runAudit(req(), deps());
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.output.aggregate.holder_turnover).toBe(0.5); // soldLapsed 2 / qualified@snap 4
+    expect(r.output.aggregate.holder_turnover).toBeNull(); // soldLapsed 2 is k-anon-suppressed
     expect(r.output.aggregate.stale_access).toEqual({ kind: 'bucketed', bucket: '<5' });
     expect(r.output.aggregate.newly_eligible).toEqual({ kind: 'bucketed', bucket: '<5' });
     expect(r.output.aggregate.stale_access_risk_band).toBe('high'); // 1/3 role-holders stale
@@ -216,7 +216,7 @@ describe('runAudit — hardening fixes', () => {
     expect(rec?.evidence.balance_at_snapshot).toBe(Number.MAX_SAFE_INTEGER);
   });
 
-  it('coarsens holder_turnover when sold_lapsed is suppressed (BB-4)', async () => {
+  it('withholds holder_turnover when sold_lapsed is suppressed (BB-4)', async () => {
     const w = (h: string) => '0x' + h.repeat(40);
     const snap: Map<string, bigint> = new Map([[w('1'), 1n], [w('2'), 1n], [w('3'), 1n]]);
     const cur: Map<string, bigint> = new Map([[w('1'), 1n], [w('2'), 1n]]); // 1 of 3 sold
@@ -229,7 +229,7 @@ describe('runAudit — hardening fixes', () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.output.aggregate.sold_lapsed.kind).toBe('bucketed');
-      expect(r.output.aggregate.holder_turnover).toBe(0.3); // 1/3 coarsened to the 0.1 grid
+      expect(r.output.aggregate.holder_turnover).toBeNull();
     }
   });
 });

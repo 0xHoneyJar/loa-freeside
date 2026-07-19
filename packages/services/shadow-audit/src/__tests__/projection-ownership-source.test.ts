@@ -121,7 +121,7 @@ describe('the audit READS THE SPINE — BEARS-LOAD (rung arrakis-audit-reads-mem
     const r = await runAudit(req, { ownership: makeProjectionOwnershipSource(fed()), whale, roles, sources });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.output.aggregate.holder_turnover).toBe(0.5);
+    expect(r.output.aggregate.holder_turnover).toBeNull();
     expect(r.output.aggregate.stale_access_risk_band).toBe('high');
     expect(r.output.aggregate.whale_concentration).toBe(0.3);
   });

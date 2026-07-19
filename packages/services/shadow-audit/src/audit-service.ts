@@ -325,12 +325,12 @@ export async function runAudit(
 
   // 5. Aggregate (k-anonymized cohorts + deterministic metrics).
   const soldLapsedCohort = kAnonCohort(soldLapsed.length, k);
-  let holder_turnover = holderTurnover(soldLapsed.length, qualifiedSnapshot.length);
-  // BB-4: when the cohort is k-anon-suppressed, coarsen the ratio so it can't
-  // back-compute the suppressed numerator from a known denominator.
-  if (soldLapsedCohort.kind === 'bucketed') {
-    holder_turnover = Math.round(holder_turnover * 10) / 10;
-  }
+  // BB-4: rounding is not suppression. If the numerator is hidden, withhold every
+  // true-value-derived ratio rather than leaving a second endpoint that can reveal it.
+  const holder_turnover =
+    soldLapsedCohort.kind === 'bucketed'
+      ? null
+      : holderTurnover(soldLapsed.length, qualifiedSnapshot.length);
   // Role coverage — the blind spot, stated (486383). The unmatched cohort is k-anon'd like every other
   // cohort; the RATIO is published only when it cannot back-compute a suppressed numerator: either the
   // cohort is exact (>= k), or it is empty (zero identifies nobody). "Rounding is not suppression."
