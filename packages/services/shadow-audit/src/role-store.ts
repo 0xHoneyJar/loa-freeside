@@ -25,8 +25,8 @@
  *   (community, collection). Tracked deviation-with-rationale in the sprint report.
  */
 
-import { createHash } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { RoleSnapshotSchema, type RoleSnapshot } from './role-snapshot.js';
 import { canonicalCollectionKey, type SourceResolver } from './collection-union.js';
@@ -53,6 +53,18 @@ export class RoleSnapshotConflictError extends Error {
   constructor() {
     super('role-store: conflicting valid snapshots share captured_at');
     this.name = 'RoleSnapshotConflictError';
+  }
+}
+
+/** A snapshot names a deployment the audited collection index cannot resolve. Retrying cannot fix it. */
+export class UndeclaredCollectionSourceError extends Error {
+  readonly code = 'UNDECLARED_COLLECTION_SOURCE';
+
+  constructor(chain: string, contract: string) {
+    super(
+      `role-store: ${chain}/${contract} is not a declared collection source — refusing to file a snapshot under a key no audit can read`,
+    );
+    this.name = 'UndeclaredCollectionSourceError';
   }
 }
 
@@ -86,8 +98,9 @@ export function canonicalRoleCollectionKey(snap: RoleSnapshot, sources: SourceRe
   // Unresolvable ⇒ the ingestion route already rejected it (422, registry-gated). Falling back to the
   // deployment key here would silently recreate the very bug this function exists to prevent, so refuse.
   if (!set || set.length === 0) {
-    throw new Error(
-      `role-store: ${snap.collection.chain}/${snap.collection.contract} is not a declared collection source — refusing to file a snapshot under a key no audit can read`,
+    throw new UndeclaredCollectionSourceError(
+      snap.collection.chain,
+      snap.collection.contract,
     );
   }
   return canonicalCollectionKey(set);
@@ -123,6 +136,7 @@ export function makeDurableRoleStore(opts: {
   const { dir, community, sources } = opts;
   mkdirSync(dir, { recursive: true });
   const latest = new Map<string, RoleSnapshot>();
+  const pending = new Map<string, Promise<boolean>>();
 
   // Seed from disk — a restart must recover the last-ingested snapshots, not start empty.
   for (const name of safeReaddir(dir)) {
@@ -153,16 +167,31 @@ export function makeDurableRoleStore(opts: {
       // Defensive re-validate (the route validates too) — a durable store must never persist a wrong shape.
       const valid = RoleSnapshotSchema.parse(snap);
       const key = keyOf(valid, sources);
-      // MONOTONICITY, WITHIN THE KEY: never roll THIS collection's held snapshot backwards on a replayed or
-      // out-of-order POST — and never let a sibling collection's newer snapshot block this one.
-      if (!isNewer(valid, latest.get(key))) return false;
-      const target = fileFor(dir, key);
-      const tmp = target + '.tmp';
-      // Atomic write: full file to tmp, then rename — a concurrent load() never sees a torn snapshot.
-      writeFileSync(tmp, JSON.stringify(valid), 'utf8');
-      renameSync(tmp, target);
-      latest.set(key, valid);
-      return true;
+      const previous = pending.get(key) ?? Promise.resolve(false);
+      const operation = previous
+        .catch(() => false)
+        .then(() => {
+          // MONOTONICITY, WITHIN THE KEY: serialize the compare + publish operation so overlapping
+          // at-least-once deliveries cannot both pass the same stale `latest` read.
+          if (!isNewer(valid, latest.get(key))) return false;
+          const target = fileFor(dir, key);
+          const tmp = `${target}.${randomUUID()}.tmp`;
+          try {
+            // Atomic publish: the private temp file belongs to this writer; rename exposes it whole.
+            writeFileSync(tmp, JSON.stringify(valid), 'utf8');
+            renameSync(tmp, target);
+          } finally {
+            rmSync(tmp, { force: true });
+          }
+          latest.set(key, valid);
+          return true;
+        });
+      pending.set(key, operation);
+      try {
+        return await operation;
+      } finally {
+        if (pending.get(key) === operation) pending.delete(key);
+      }
     },
   };
 }

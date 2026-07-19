@@ -20,6 +20,7 @@ import {
   makeInMemoryRoleStore,
   makeDurableRoleStore,
   RoleSnapshotConflictError,
+  UndeclaredCollectionSourceError,
   type RoleSink,
 } from '../role-store.js';
 import { canonicalCollectionKey, type SourceResolver } from '../collection-union.js';
@@ -359,6 +360,24 @@ describe('POST /v1/role-snapshot ingestion (S1-T4)', () => {
     }
   });
 
+  it('returns a non-retryable 422 when the store cannot resolve the collection source', async () => {
+    const sink: RoleSink = {
+      store: async () => {
+        throw new UndeclaredCollectionSourceError(CHAIN, CONTRACT);
+      },
+    };
+    const app = createAuditRouter(makeDeps({ ingest: { token: TOKEN, sink } }));
+    const raw = JSON.stringify(snapshot());
+    const res = await postSnapshot(app, raw, {
+      'x-ingest-token': TOKEN,
+      'x-snapshot-sha256': sha256hex(raw),
+    });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({
+      error: { code: 'collection-source-undeclared', retryable: false },
+    });
+  });
+
   it('does NOT mount the route when ingestion is unconfigured (fail-closed → 404)', async () => {
     const app = createAuditRouter(makeDeps()); // no `ingest`
     const raw = JSON.stringify(snapshot());
@@ -491,6 +510,18 @@ describe('durable role store (S1-T4 — survives restart)', () => {
     await store.store(snapshot({ captured_at: '2026-06-22T11:30:00.000Z' }));
     const loaded = await store.load(KEY_A);
     expect(loaded?.captured_at).toBe('2026-06-22T11:30:00.000Z');
+  });
+
+  it('serializes overlapping writes for one key and retains the newest capture', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'role-store-'));
+    const store = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
+    const newer = snapshot({ captured_at: '2026-06-22T11:30:00.000Z' });
+    const older = snapshot({ captured_at: '2026-06-22T11:00:00.000Z' });
+    const results = await Promise.all([store.store(newer), store.store(older)]);
+    expect(results).toEqual([true, false]);
+
+    const rebooted = makeDurableRoleStore({ dir, community: 'thj', sources: testSources });
+    expect((await rebooted.load(KEY_A))?.captured_at).toBe(newer.captured_at);
   });
 
   it('S5-T1: sibling collections get their OWN files and both survive a restart', async () => {

@@ -41,6 +41,20 @@ one validated snapshot per `(community, canonical collection)` and replaces it o
 capture. Snapshot rows contain member identifiers, wallets, and role IDs; keep the database private, do not
 expose `DATABASE_URL`, and treat database exports/backups as sensitive operator data.
 
+### Contract deploy order
+
+This release adds `drift` to coverage-refusal responses and permits an explicit
+`whale_concentration: null`. The strict dashboard consumer must land first.
+
+1. Merge and deploy `0xHoneyJar/freeside-dashboard#213` (merged as
+   `e679fe1723b036ba81478885d7621b7dd9048a5a`).
+2. Verify its strict decoder accepts refusal-with-drift and nullable concentration.
+3. Deploy this shadow-audit service revision.
+
+Do not reverse the order: an older dashboard rejects additive fields because it
+uses excess-property errors. Rolling back the service is safe after the dashboard
+consumer lands; rolling back the dashboard first is not.
+
 ### Live-grounded auditable set (belt-gateway `CollectionStat`, queried 2026-06-29)
 
 The belt-gateway reconstructs ownership keyed on `(collection id, chainId)` — it stores **no contract

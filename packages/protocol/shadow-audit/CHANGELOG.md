@@ -4,6 +4,10 @@
 
 - Breaking: `AuditInputs` now seals `{ sources, rule }` rather than the
   single-deployment `{ chain, contract, snapshot_block, rule }` shape.
+- Breaking: source-set membership is now part of `inputs_hash`; every pre-0.2
+  hash changes, including single-source audits. `run_id` is derived from that
+  new hash plus execution time, so it is unique per run rather than a stable
+  alias for the input set.
 - Breaking: `AccessDecisionRecord.provenance.evidence_source` is now required
   so each balance can be re-derived against the exact deployment that supplied
   it. Pre-0.2 records must be migrated with their source `{ chain, contract }`

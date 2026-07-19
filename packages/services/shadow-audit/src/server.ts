@@ -134,6 +134,11 @@ export function buildAuditApp(
   let roles: RoleSource;
   let ingest: AuditRouterDeps['ingest'];
   if (config.ingestToken) {
+    if (!collections) {
+      throw new Error(
+        'ROLE_SNAPSHOT_INGEST_TOKEN is set but COLLECTION_REGISTRY is unavailable — ingestion requires the audited collection index.',
+      );
+    }
     // Fail loud on a half-wired ingest: a token with no operated community has nothing to serve on load().
     const community = config.operatedCommunities[0];
     if (!community) {
@@ -162,7 +167,7 @@ export function buildAuditApp(
         // The SAME resolver the audit reads by — so a snapshot is FILED under the canonical collection key,
         // not under the deployment the exporter happened to name. Without this the ingest returns
         // {stored:true} and no audit can ever find the snapshot.
-        sources: collections?.sources ?? (() => undefined),
+        sources: collections.sources,
       });
     roles = store;
     ingest = { token: config.ingestToken, sink: store };

@@ -64,7 +64,11 @@ import {
   ROLE_SNAPSHOT_MAX_FUTURE_SKEW_MS,
   RoleSnapshotSchema,
 } from '../role-snapshot.js';
-import { RoleSnapshotConflictError, type RoleSink } from '../role-store.js';
+import {
+  RoleSnapshotConflictError,
+  UndeclaredCollectionSourceError,
+  type RoleSink,
+} from '../role-store.js';
 import { timingSafeEqualStr } from '../crypto-util.js';
 import {
   computeAccessRisk,
@@ -452,17 +456,7 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       }
     }
     if (!result.ok) {
-      // A COVERAGE refusal carries the DRIFT BOARD. The wallet-derived aggregate is refused, but the
-      // counts-only board needs no wallet map — and it is the only honest answer for a community at ~0%
-      // identity coverage (thj). Omitting it here would mean every JSON consumer (the dashboard) shows an
-      // empty state for exactly the community this was built for. The HTML view already renders it; the
-      // JSON must too, or the drift is visible only to whoever curls the server.
-      return c.json(
-        'drift' in result && result.drift
-          ? { error: result.refusal, drift: result.drift }
-          : { error: result.refusal },
-        refusalStatus(result.refusal),
-      );
+      return c.json({ error: result.refusal }, refusalStatus(result.refusal));
     }
 
     if (teaserCache.size >= TEASER_CACHE_MAX) {
@@ -736,6 +730,12 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       try {
         stored = await ingest.sink.store(parsed.data);
       } catch (error) {
+        if (error instanceof UndeclaredCollectionSourceError) {
+          return c.json(
+            { error: { code: 'collection-source-undeclared', retryable: false } },
+            422,
+          );
+        }
         if (error instanceof RoleSnapshotConflictError) {
           console.error(
             JSON.stringify({

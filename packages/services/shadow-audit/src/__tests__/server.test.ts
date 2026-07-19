@@ -276,6 +276,15 @@ describe('configFromEnv — fail loud on missing required config', () => {
 describe('buildAuditApp — postgres role-store composition', () => {
   const ownership = fakeOwnership(new Map([[R1, 1n]]), new Map([[R1, 1n]]));
 
+  it('fails startup when ingestion is enabled without a collection index', () => {
+    expect(() =>
+      buildAuditApp(
+        ownership,
+        baseConfig({ ingestToken: 'ingest-secret' }),
+      ),
+    ).toThrow(/COLLECTION_REGISTRY is unavailable/);
+  });
+
   it('fails startup when postgres is selected but no initialized store is injected', () => {
     expect(() =>
       buildAuditApp(
