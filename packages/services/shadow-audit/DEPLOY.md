@@ -51,8 +51,10 @@ the budget for unrelated collections; the bounded cache is LRU and sweeps expire
 This release adds `drift` to coverage-refusal responses and permits an explicit
 `whale_concentration: null`. The strict dashboard consumer must land first.
 
-1. Merge and deploy `0xHoneyJar/freeside-dashboard#213` (merged as
-   `e679fe1723b036ba81478885d7621b7dd9048a5a`).
+1. Merge and deploy `0xHoneyJar/freeside-dashboard#213` (nullable concentration and
+   refusal drift, merged as `e679fe1723b036ba81478885d7621b7dd9048a5a`) and
+   `0xHoneyJar/freeside-dashboard#214` (protocol-version lock, merged as
+   `f8cd69ff90b6e1f7aa92c348fdfc53efa20cf8fe`).
 2. Verify protocol CI passes the machine-readable strict-consumer pin in
    `fixtures/dashboard-consumer-lock.json` (commit, source hash, version, success and refusal shapes).
 3. Deploy this shadow-audit service revision.

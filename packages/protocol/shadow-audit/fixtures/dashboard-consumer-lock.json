@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "consumer_repository": "0xHoneyJar/freeside-dashboard",
-  "consumer_commit": "d02c71da56a600207ccfe21b3d9ddb12b4a3c85c",
+  "consumer_commit": "f8cd69ff90b6e1f7aa92c348fdfc53efa20cf8fe",
   "consumer_source": "src/lib/freeside-worlds/access-audit/types.ts",
-  "consumer_source_sha256": "a8712a496ce057008d48094129b0112d1f03a7b8b30acbe7438dbabe04ba91be",
+  "consumer_source_sha256": "974346511ac62ffbe8a3ca07a429b55c9a6e235c2c1a0ec1aaeeb1b34645f87c",
   "shadow_audit_protocol_version": "2",
   "anonymous_audit_output_fields": [
     "aggregate",
