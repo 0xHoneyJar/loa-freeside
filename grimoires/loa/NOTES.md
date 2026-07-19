@@ -597,3 +597,16 @@ research-loop brief T1: research-loop corpus → précis-shaped file → WEBB
 nomination; also `grimoires/loa/research/material-contact/` as a bounded corpus
 candidate. Sync-constructs surfaced pre-existing hypha pack drift (5 declared
 skills without directories).
+
+## First full précis lifecycle closed: CR contract corpus (2026-07-19)
+
+S0 (operator-ruled scope/freeze @ origin/main af064179) → corpus sealed (21 PRs
++ 21 commits + briefs + 212 blob anchors, checksummed) → S2 (5 extractors, 338
+claims, verbatim-verified) → S3 (fresh judge: 250 canonical = 216 carried + 34
+unresolved; K-checks exact) → Précis v0.1.0-fixture → S13 ACCEPTED (operator;
+trust=operator-validated, use_label capped background-only by fixture taint) →
+P1 consumer-contract-guide → P3 ACCEPTED. Distribution: sonar-api#222,
+freeside-dashboard#220, freeside-characters#193 (pointer issues); ordering
+CRITICALs (E2-039/040 Postgres admission capacity) → bead arrakis-30qlf (P1,
+domain:platform). Canonical: grimoires/loa/precis/cr-contract-corpus/. All
+artifacts regenerable: tools/{validate-claims,render-precis}.sh.
