@@ -121,12 +121,13 @@ export interface AuditRouterDeps {
    *  BEST-EFFORT ONLY — do NOT rely on this as the abuse bound. It is keyed on the client identifier
    *  derived from X-Forwarded-For, which is CALLER-SUPPLIED. A live probe (2026-07-12) sent 9 requests with
    *  rotating XFF against the 6/min teaser and NONE were limited. Treat per-IP as a speed bump; the real
-   *  deployment-wide bound is `teaserBudget` + the cache below. */
+   *  collection-scoped bound is `teaserBudget` + the cache below. */
   teaserRateLimiter?: RateLimiter;
   /**
-   * S2-T3 DEPLOYMENT HARD BOUND: an identity-independent, shared budget on the expensive path, keyed on a
-   * constant — not on the client. Production supplies a Postgres-backed implementation so every replica
-   * consumes from one atomic counter. Tests may inject the synchronous in-memory limiter.
+   * S2-T3 COLLECTION HARD BOUND: an identity-independent, shared budget on the expensive path, keyed on
+   * the finite registry's canonical collection — not on the client. Production supplies a Postgres-backed
+   * implementation so every replica consumes from the same per-collection counter. One collection's flood
+   * cannot starve every other collection. Tests may inject the synchronous in-memory limiter.
    */
   teaserBudget?: ReconstructionBudget;
   /** S2-T3: TTL for memoizing the (deterministic) teaser result, so repeat queries cost ZERO chain work. */
@@ -410,22 +411,30 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     const now = deps.now();
     const hit = teaserCache.get(cacheKey);
     if (hit && now - hit.at < teaserTtlMs) {
+      // Map preserves insertion order: promote on hit so a cold-key scan cannot evict the hot working set.
+      teaserCache.delete(cacheKey);
+      teaserCache.set(cacheKey, hit);
       return c.json(presentTeaserForAddress(hit.body, canonicalChain));
     }
+    if (hit) teaserCache.delete(cacheKey); // expired entries do not consume capacity
 
     let result: AccessRiskResult;
     const existing = teaserInFlight.get(cacheKey);
     if (existing) {
       result = await existing;
     } else {
-      // Anti-abuse #5 — the deployment-wide HARD BOUND on cache MISSES (the only expensive path), keyed
-      // on a constant, NOT on the caller. Production's atomic Postgres decision is shared by every
-      // replica. Install the promise BEFORE awaiting that remote decision, so identical local misses
-      // cannot race through the budget and consume multiple deployment units.
+      // Anti-abuse #5 — the collection-scoped HARD BOUND on cache MISSES (the only expensive path), keyed
+      // on the finite registry identity, NOT on the caller. Production's atomic Postgres decision is shared
+      // by every replica, while one flooded collection cannot starve unrelated collections. Install the
+      // promise BEFORE awaiting that remote decision, so identical local misses cannot race through the
+      // budget and consume multiple units.
       const computation: Promise<AccessRiskResult> = (async () => {
         if (deps.teaserBudget) {
           try {
-            if (!(await deps.teaserBudget.check('deployment')).allowed) {
+            const collectionBudgetKey = createHash('sha256')
+              .update(canonicalCollectionKey(collectionSources))
+              .digest('hex');
+            if (!(await deps.teaserBudget.check(collectionBudgetKey)).allowed) {
               return { ok: false, refusal: rateLimitRefusal };
             }
           } catch {
@@ -467,8 +476,12 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       return c.json({ error: result.refusal }, refusalStatus(result.refusal));
     }
 
+    // Sweep expired entries first; only live entries compete for the bounded LRU.
+    for (const [key, entry] of teaserCache) {
+      if (now - entry.at >= teaserTtlMs) teaserCache.delete(key);
+    }
     if (teaserCache.size >= TEASER_CACHE_MAX) {
-      // Evict the oldest insertion (Map preserves insertion order) — bounded memory, no LRU needed.
+      // Hits are promoted above, so the first entry is least recently used.
       const oldest = teaserCache.keys().next().value;
       if (oldest !== undefined) teaserCache.delete(oldest);
     }

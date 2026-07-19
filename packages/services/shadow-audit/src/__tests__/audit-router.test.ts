@@ -6,6 +6,7 @@ import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
 import type { SourceResolver } from '../collection-union.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
+import { AuditRefusalEnvelopeSchema } from '@freeside/shadow-audit-protocol';
 
 const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40);
@@ -305,7 +306,7 @@ describe('role coverage on the wire (bug 20260712-486383)', () => {
     const app = createAuditRouter(makeDeps({ roles: coverageRoles(1, 515) }));
     const res = await app.request(GET_URL);
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { code: string; reason: string; retryable: boolean } };
+    const body = AuditRefusalEnvelopeSchema.parse(await res.json());
     expect(body.error.code).toBe('role-coverage-too-low');
     expect(body.error.reason).toContain('515'); // names what we cannot see
     expect(body.error.retryable).toBe(false); // re-running changes nothing; the missing links do

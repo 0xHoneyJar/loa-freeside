@@ -20,3 +20,7 @@
   before routing traffic.
 - `AuditAggregateShapeSchema` exposes the composable Zod object API while
   `AuditAggregateSchema` remains the fully refined wire validator.
+- `dashboard-consumer-lock.json` pins the merged strict consumer commit,
+  source hash, protocol version, success fields, aggregate fields, and
+  refusal-envelope fields. Protocol CI now fails when producer shape drifts
+  beyond that pinned consumer.

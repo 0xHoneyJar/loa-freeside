@@ -48,7 +48,7 @@ export interface AuditServerConfig {
   /** S2-T3: per-IP limit for the PUBLIC /v1/access-risk teaser (default 6 req / 60s). BEST-EFFORT — keyed
    *  on caller-supplied X-Forwarded-For; a live probe evaded it by rotating the header. */
   teaserRateLimit?: { limit: number; windowMs: number };
-  /** S2-T3 deployment-wide bound for teaser chain reconstructions. Default 30 / 60s. */
+  /** S2-T3 per-canonical-collection bound for teaser chain reconstructions. Default 30 / 60s. */
   teaserBudget?: { limit: number; windowMs: number };
   /** S1-T4: service token the exporter presents to POST /v1/role-snapshot. When set, ingestion is enabled
    *  and the durable role store becomes the audit's role source; when absent, ingestion is NOT mounted and
@@ -67,7 +67,7 @@ export interface AuditServerConfig {
 export interface AuditAppRuntime {
   /** Pre-initialized shared store. Required when roleSnapshotStore=postgres. */
   roleStore?: DurableRoleStore;
-  /** Deployment-shared public reconstruction budget. Required for production Postgres. */
+  /** Deployment-shared, per-collection public reconstruction budget. Required for production Postgres. */
   teaserBudget?: ReconstructionBudget;
 }
 
@@ -186,7 +186,7 @@ export function buildAuditApp(
     roles,
     ingest,
     // F4: the event store + authenticated-route limiter are IN-MEMORY (per-replica, non-durable). The
-    // public reconstruction budget is separate and Postgres-backed in production.
+    // public per-collection reconstruction budget is separate and Postgres-backed in production.
     // loa:shortcut: in-memory event/rate state; if this scales past one replica, back both with Redis (the
     //   rate window + the nonce/event store), else limits + replay-dedup are per-replica.
     eventStore: new InMemoryEventStore(),

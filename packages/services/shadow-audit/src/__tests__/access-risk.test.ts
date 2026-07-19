@@ -202,10 +202,10 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect(seen.size).toBe(1);
   });
 
-  it('IDENTITY-INDEPENDENT HARD BOUND: rotating the client key does NOT bypass the reconstruction budget', async () => {
+  it('IDENTITY-INDEPENDENT HARD BOUND: rotating the client key does NOT bypass the collection budget', async () => {
     // The live probe (2026-07-12) sent 9 requests with rotating X-Forwarded-For against the 6/min per-IP
     // teaser limit and NONE were limited — the caller supplies the key, so per-IP is not a bound at all.
-    // The injected budget is keyed on a CONSTANT, so identity-rotation buys nothing.
+    // The injected budget is keyed on the canonical collection, so identity-rotation buys nothing.
     // Per-IP is left wide open here precisely to prove that identity-independent bound is what bites.
     const app = createAuditRouter(
       makeDeps({
@@ -223,6 +223,33 @@ describe('GET /v1/access-risk — public teaser (S2-T3)', () => {
     expect((await hit(1)).status).toBe(200);
     expect((await hit(2)).status).toBe(200);
     expect((await hit(3)).status).toBe(429); // budget spent — rotation did not help
+  });
+
+  it('partitions the shared reconstruction budget by canonical collection', async () => {
+    const siblingContract = '0x' + 'c'.repeat(40);
+    const app = createAuditRouter(
+      makeDeps({
+        collectionRegistry: ({ contract }) =>
+          [CONTRACT, siblingContract].includes(contract)
+            ? { collection: contract === CONTRACT ? 'Honeycomb' : 'HoneyJar1', standard: 'erc721' }
+            : undefined,
+        sources: ({ contract }) =>
+          [CONTRACT, siblingContract].includes(contract)
+            ? [{ chain: '80094', contract }]
+            : undefined,
+        teaserBudget: new FixedWindowRateLimiter({ limit: 1, windowMs: 60_000, now: () => NOW_MS }),
+      }),
+    );
+
+    expect((await app.request(url(CONTRACT))).status).toBe(200);
+    expect(
+      (
+        await app.request(
+          `/v1/access-risk?chain=80094&contract=${CONTRACT}&snapshot_date=2026-06-02`,
+        )
+      ).status,
+    ).toBe(429);
+    expect((await app.request(url(siblingContract))).status).toBe(200);
   });
 
   it('fails closed with a typed 503 when the shared budget is unavailable', async () => {

@@ -393,8 +393,10 @@ export async function runAudit(
   //    so the rule a buyer audits the delta against is the SAME rule the records were decided under.
   const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
   /**
-   * The deployment a wallet's evidence was actually READ FROM — the one it holds the MOST on, which is
-   * the one that decided its qualification under `any-source` (review BLOCKING-2).
+   * The deployment a wallet's SNAPSHOT evidence was actually READ FROM — the one it held the MOST on at
+   * the snapshot. This is deliberately not described as the source that decided CURRENT qualification:
+   * a wallet may bridge between the snapshot and now, while this record's checkable evidence remains the
+   * historical balance named by `evidence_source` + `snapshot_block`.
    *
    * This used to be the block of the CALLER-ADDRESSED deployment, which made the evidence
    * UNVERIFIABLE: the balance came from wherever the wallet held most, but the block cited a different
@@ -425,9 +427,9 @@ export async function runAudit(
         holds_role,
         qualifies: qualifies(curBals, wallet),
         band: classifyBand(holds_role, qualifies(curBals, wallet)),
-        // The balance on the deployment where the wallet holds the MOST — the one that decided its
-        // qualification under `any-source`. NOT a cross-chain sum: evidence must be checkable against one
-        // chain at one block, and a summed number is a holding the wallet has nowhere.
+        // The SNAPSHOT balance on the deployment where the wallet held the MOST. NOT a cross-chain sum:
+        // evidence must be checkable against one chain at one block, and a summed number is a holding the
+        // wallet has nowhere. Current qualification is evaluated separately across `curBals`.
         evidence: { balance_at_snapshot: clampToSafe(maxBalanceAcross(snapBals, wallet)) },
         provenance: {
           rule_id,

@@ -99,3 +99,9 @@ export {
   SHADOW_AUDIT_PROTOCOL_VERSION,
   computeInputsHash,
 } from './inputs-hash.js';
+export {
+  AnonymousAuditOutputSchema,
+  type AnonymousAuditOutput,
+  AuditRefusalEnvelopeSchema,
+  type AuditRefusalEnvelope,
+} from './consumer-contract.js';

@@ -42,6 +42,9 @@ capture. Snapshot rows contain member identifiers, wallets, and role IDs; keep t
 expose `DATABASE_URL`, and treat database exports/backups as sensitive operator data.
 The ingest route admits at most two concurrent bodies per process (about 40 MiB worst-case aggregate
 buffering); exporters must retry `429 ingest-busy` responses using `Retry-After`.
+The public teaser reconstruction budget is shared across replicas but partitioned by canonical collection,
+whose key space is bounded by the boot-validated registry. A flood against one collection cannot exhaust
+the budget for unrelated collections; the bounded cache is LRU and sweeps expired entries before eviction.
 
 ### Contract deploy order
 
@@ -50,7 +53,8 @@ This release adds `drift` to coverage-refusal responses and permits an explicit
 
 1. Merge and deploy `0xHoneyJar/freeside-dashboard#213` (merged as
    `e679fe1723b036ba81478885d7621b7dd9048a5a`).
-2. Verify its strict decoder accepts refusal-with-drift and nullable concentration.
+2. Verify protocol CI passes the machine-readable strict-consumer pin in
+   `fixtures/dashboard-consumer-lock.json` (commit, source hash, version, success and refusal shapes).
 3. Deploy this shadow-audit service revision.
 4. Before routing traffic, require `/healthz` to return
    `{"ok":true,"shadow_audit_protocol_version":"2"}`. A missing or different
