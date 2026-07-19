@@ -2,11 +2,21 @@
 artifact: research-precis
 name: cr-contract-corpus
 version: 0.1.0-fixture
-status: awaiting-S13-acceptance
+status: S13-ACCEPTED
+s13_acceptance:
+  authority: operator zksoju
+  date: 2026-07-19
+  content_hash: 4fc9104c4e76a869 (sha256/16 of precis.md at acceptance commit 3abccbf2)
+  note: >-
+    Operator accepted via AskUserQuestion (S13 = cockpit promotion gesture per
+    adopted convention). Trust rises on content; use_label stays capped by the
+    fixture-run taint until a real attested run replaces this précis.
 taint: fixture-simulated
 run_mode: manual (Aleph method, no attested host — see S0-scope-proposal.md)
-trust_tier: ai-derived
-read_state: unread
+trust_tier: operator-validated
+read_state: validated
+operator_signed: load_bearing
+last_confirmed: 2026-07-19
 use_label: use_as_background_only
 date: 2026-07-19
 freeze: origin/main @ af06417992d15f982a1192236279f436b963c4e8
