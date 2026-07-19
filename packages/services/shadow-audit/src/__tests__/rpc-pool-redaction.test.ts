@@ -124,6 +124,6 @@ describe('rpc-pool — endpoint URLs never reach a caller (arrakis-qf5kc)', () =
     // The refusal is returned verbatim to an anonymous caller. It must disclose nothing.
     expect(r.refusal.reason).not.toContain('SuperSecretApiKey123');
     expect(r.refusal.reason).not.toContain('https://');
-    expect(r.refusal.reason).toContain('<endpoint>');
+    expect(r.refusal.reason).toBe('ownership reconstruction failed');
   });
 });

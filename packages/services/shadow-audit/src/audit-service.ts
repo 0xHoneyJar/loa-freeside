@@ -30,7 +30,6 @@ import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode, type UncertaintyReason } from './mode-resolver.js';
 import { resolveRoles, type RoleSnapshot } from './role-snapshot.js';
 import { DEFAULT_K, holderTurnover, kAnonCohort, staleRiskBand } from './metrics.js';
-import { redactEndpoints } from './rpc-pool.js';
 import { computeDrift, countQualifying, roleMemberCount } from './drift-floors.js';
 import {
   canonicalCollectionKey,
@@ -245,12 +244,12 @@ export async function runAudit(
           balances: await deps.ownership.currentBalances(source),
         })),
       );
-    } catch (error) {
+    } catch {
       return {
         ok: false,
         refusal: {
           code: 'reconstruction-failed',
-          reason: `ownership reconstruction failed: ${redactEndpoints((error as Error).message)}`,
+          reason: 'ownership reconstruction failed',
           retryable: true,
         },
       };
@@ -279,7 +278,7 @@ export async function runAudit(
   let perSource: Awaited<ReturnType<typeof reconstructUnion>>;
   try {
     perSource = await reconstructUnion(deps.ownership, sources, req.snapshotDate);
-  } catch (e) {
+  } catch {
     return {
       ok: false,
       refusal: {
@@ -287,7 +286,8 @@ export async function runAudit(
         // The message is SCRUBBED of any URL before it reaches the caller: this refusal is returned
         // verbatim (and access-risk is the ANONYMOUS teaser), and RPC endpoint URLs carry provider API
         // keys in the path (arrakis-qf5kc).
-        reason: `ownership reconstruction failed: ${redactEndpoints((e as Error).message)}`,
+        // Refusal payloads are caller-visible; never echo arbitrary upstream diagnostics.
+        reason: 'ownership reconstruction failed',
         retryable: true,
       },
     };
