@@ -682,6 +682,17 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     // remain serialized by the durable repository's version constraint.
     let ingestsInFlight = 0;
     app.post('/v1/role-snapshot', async (c) => {
+      // Authenticate before framing validation so unauthenticated callers get one uniform response and
+      // cannot probe the configured byte cap through status codes.
+      const presentedToken = c.req.header('x-ingest-token') ?? '';
+      let ingestAuthorized = false;
+      // Compare every configured token so the match position does not become an observable rotation hint.
+      for (const token of ingestTokens) {
+        ingestAuthorized = timingSafeEqualStr(presentedToken, token) || ingestAuthorized;
+      }
+      if (!ingestAuthorized) {
+        return new Response(null, { status: 401 });
+      }
       // Reject malformed or honestly-declared oversized framing before secret-dependent work. The streamed
       // cap below remains authoritative because Content-Length is optional and caller-controlled.
       const declaredLength = c.req.header('content-length');
@@ -692,16 +703,6 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
         if (BigInt(declaredLength) > BigInt(MAX_SNAPSHOT_BYTES)) {
           return c.json({ error: 'snapshot too large' }, 413);
         }
-      }
-      // Service-token, fixed-size digest comparison. Missing/wrong X-Ingest-Token → 401, no body detail.
-      const presentedToken = c.req.header('x-ingest-token') ?? '';
-      let ingestAuthorized = false;
-      // Compare every configured token so the match position does not become an observable rotation hint.
-      for (const token of ingestTokens) {
-        ingestAuthorized = timingSafeEqualStr(presentedToken, token) || ingestAuthorized;
-      }
-      if (!ingestAuthorized) {
-        return new Response(null, { status: 401 });
       }
       if (ingestsInFlight >= MAX_CONCURRENT_INGESTS) {
         c.header('Retry-After', '1');

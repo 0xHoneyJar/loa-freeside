@@ -26,7 +26,8 @@ export const CohortCountSchema = z.discriminatedUnion('kind', [
 ]);
 export type CohortCount = z.infer<typeof CohortCountSchema>;
 
-export const AuditAggregateSchema = z
+/** Composable object form for consumers that need `.shape`, `.pick()`, or `.extend()`. */
+export const AuditAggregateShapeSchema = z
   .object({
     /** sold_lapsed / snapshot_holders, in [0,1]. Deterministic (SDD §11). */
     holder_turnover: z.number().min(0).max(1),
@@ -80,8 +81,10 @@ export const AuditAggregateSchema = z
      */
     coverage_uncertain: z.boolean(),
   })
-  .strict()
-  .superRefine((agg, ctx) => {
+  .strict();
+
+/** Validated wire schema. Refinement intentionally wraps the composable object export above. */
+export const AuditAggregateSchema = AuditAggregateShapeSchema.superRefine((agg, ctx) => {
     const unmatched = agg.unmatched_role_holders;
     const coverage = agg.role_coverage;
 

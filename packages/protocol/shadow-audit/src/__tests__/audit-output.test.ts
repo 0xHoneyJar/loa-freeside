@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AuditOutputSchema, CohortCountSchema } from '../index.js';
+import {
+  AuditAggregateShapeSchema,
+  AuditOutputSchema,
+  CohortCountSchema,
+} from '../index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(__dirname, '../../fixtures');
@@ -18,6 +22,12 @@ function recordFixture(): unknown {
 }
 
 describe('AuditOutputSchema', () => {
+  it('exports a composable aggregate object alongside the refined wire schema', () => {
+    expect(AuditAggregateShapeSchema.pick({ stale_access: true }).safeParse({
+      stale_access: { kind: 'exact', value: 5 },
+    }).success).toBe(true);
+  });
+
   it('accepts a valid aggregate-only output (anonymous caller)', () => {
     expect(AuditOutputSchema.safeParse(output()).success).toBe(true);
   });

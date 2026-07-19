@@ -26,7 +26,17 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import {
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { RoleSnapshotSchema, type RoleSnapshot } from './role-snapshot.js';
 import { canonicalCollectionKey, type SourceResolver } from './collection-union.js';
@@ -121,6 +131,24 @@ function fileFor(dir: string, key: string): string {
   return join(dir, createHash('sha256').update(key).digest('hex').slice(0, 32) + '.json');
 }
 
+/** Atomic visibility plus crash durability: sync contents before rename, then sync the directory entry. */
+function publishDurably(dir: string, target: string, tmp: string, body: string): void {
+  const file = openSync(tmp, 'wx', 0o600);
+  try {
+    writeFileSync(file, body, 'utf8');
+    fsyncSync(file);
+  } finally {
+    closeSync(file);
+  }
+  renameSync(tmp, target);
+  const directory = openSync(dir, 'r');
+  try {
+    fsyncSync(directory);
+  } finally {
+    closeSync(directory);
+  }
+}
+
 /**
  * In-memory latest-per-(community, collection) + write-through to `dir`, seeded from disk on construction
  * (durable). `load(collection)` serves the configured `community`'s snapshot FOR THAT COLLECTION (the
@@ -177,9 +205,8 @@ export function makeDurableRoleStore(opts: {
           const target = fileFor(dir, key);
           const tmp = `${target}.${randomUUID()}.tmp`;
           try {
-            // Atomic publish: the private temp file belongs to this writer; rename exposes it whole.
-            writeFileSync(tmp, JSON.stringify(valid), 'utf8');
-            renameSync(tmp, target);
+            // Crash-durable publish: sync the private file before rename, then sync the directory entry.
+            publishDurably(dir, target, tmp, JSON.stringify(valid));
           } finally {
             rmSync(tmp, { force: true });
           }

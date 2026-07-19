@@ -43,6 +43,7 @@ export { type AccessDecisionPort, tokenGatingPolicy, badgePolicy, type BadgeEvid
 export {
   CohortCountSchema,
   type CohortCount,
+  AuditAggregateShapeSchema,
   AuditAggregateSchema,
   type AuditAggregate,
   CtaSchema,

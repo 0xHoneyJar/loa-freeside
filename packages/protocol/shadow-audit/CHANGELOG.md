@@ -18,3 +18,5 @@
 - `SHADOW_AUDIT_PROTOCOL_VERSION` is now exported as `"2"` and the service
   exposes it on `/healthz` so deploy gates can reject an incompatible producer
   before routing traffic.
+- `AuditAggregateShapeSchema` exposes the composable Zod object API while
+  `AuditAggregateSchema` remains the fully refined wire validator.
