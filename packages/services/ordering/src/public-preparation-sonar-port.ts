@@ -10,6 +10,8 @@ export interface SonarPrepDispatchRequest {
   readonly adapter_version: string;
   readonly generation: number;
   readonly lease_epoch: number;
+  /** Owning shared-prep work — required for live kitchen deployment resolution. */
+  readonly work_id: string;
 }
 
 export interface SonarPrepDispatchResult {

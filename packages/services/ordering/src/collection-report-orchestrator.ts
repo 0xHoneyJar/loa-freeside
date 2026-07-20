@@ -114,6 +114,24 @@ export class CollectionReportOrchestrator {
         const linked = await this.deps.preparationStore.getActiveWorkForOrder(orderId);
         if (linked) {
           await this.deps.publicPrepAdapter.processWork(linked.work.work_id);
+          record = await this.reread(orderId, undefined);
+          if (isTerminal(record.state)) return { success: true };
+          const phase = fulfillmentPhase(record);
+          if (phase === "ownership_evidence_ready") {
+            // Prep complete; Gate Leak artifact/render producer not wired yet.
+            // Honest terminal — no fake fulfill / ETA theater (CR-303).
+            return this.settleFailed(orderId, "producing", {
+              code: "gate_leak_artifact_producer_pending",
+              reason:
+                "public preparation ownership evidence is ready; Gate Leak artifact producer is not deployed",
+            });
+          }
+          if (phase === "remediation_required") {
+            return this.settleFailed(orderId, "producing", {
+              code: "preparation_failed",
+              reason: "shared public preparation requires remediation",
+            });
+          }
         }
       }
       return { success: true };
@@ -151,4 +169,12 @@ export class CollectionReportOrchestrator {
     if (!current) throw new Error(`order vanished mid-flight: ${orderId}`);
     return current;
   }
+}
+
+function fulfillmentPhase(record: OrderRecord): string {
+  const fulfillment = record.fulfillment as
+    | { readonly phase?: string; readonly stage?: string }
+    | undefined;
+  const phase = fulfillment?.phase ?? fulfillment?.stage ?? "";
+  return typeof phase === "string" ? phase : "";
 }

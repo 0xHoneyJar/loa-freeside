@@ -179,6 +179,7 @@ describe("CR-204A public preparation adapter", () => {
       adapter_version: item.adapter_version,
       generation: work!.generation,
       lease_epoch: 1,
+      work_id: admitted.work_id,
     });
     const second = await h.sonar.dispatchChildJob({
       command_inbox_key: inboxKey,
@@ -187,6 +188,7 @@ describe("CR-204A public preparation adapter", () => {
       adapter_version: item.adapter_version,
       generation: work!.generation,
       lease_epoch: 2,
+      work_id: admitted.work_id,
     });
     expect(first.external_job_ref).toBe(second.external_job_ref);
   });
