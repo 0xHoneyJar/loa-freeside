@@ -179,7 +179,6 @@ describe("CR-204A public preparation adapter", () => {
       adapter_version: item.adapter_version,
       generation: work!.generation,
       lease_epoch: 1,
-      work_id: admitted.work_id,
     });
     const second = await h.sonar.dispatchChildJob({
       command_inbox_key: inboxKey,
@@ -188,7 +187,6 @@ describe("CR-204A public preparation adapter", () => {
       adapter_version: item.adapter_version,
       generation: work!.generation,
       lease_epoch: 2,
-      work_id: admitted.work_id,
     });
     expect(first.external_job_ref).toBe(second.external_job_ref);
   });
@@ -423,7 +421,7 @@ describe("CR-204A public preparation adapter", () => {
     expect(COLLECTION_PREP_POOL_CAPABILITY).not.toBe(REPORT_GENERATION_POOL_CAPABILITY);
   });
 
-  it("collection-report orchestrator invokes adapter for linked producing orders", async () => {
+  it("collection-report orchestrator holds in producing without driving prep", async () => {
     let now = 1_000;
     const h = makeHarness(() => now);
     const admitted = await admitOrder(h, { client_request_id: "orch", now_ms: now });
@@ -432,13 +430,20 @@ describe("CR-204A public preparation adapter", () => {
     const processSpy = vi.spyOn(h.adapter, "processWork");
     const orch = new CollectionReportOrchestrator({
       store: h.orderStore,
-      resolver: { resolve: async () => ({ capability: "x", building: "b", endpoint: "e", source: "s" }) },
+      resolver: {
+        resolve: async () => ({
+          capability: "collection-index" as const,
+          building: "sonar-api",
+          endpoint: "http://sonar.internal",
+          source: "config" as const,
+        }),
+      },
       now: () => now,
-      preparationStore: h.preparationStore,
-      publicPrepAdapter: h.adapter,
     });
     const record = await h.orderStore.get(admitted.order.order_id);
     await orch.process(admitted.order.order_id, record!);
-    expect(processSpy).toHaveBeenCalledWith(admitted.work_id);
+    expect(processSpy).not.toHaveBeenCalled();
+    const after = await h.orderStore.get(admitted.order.order_id);
+    expect(after?.state).toBe("producing");
   });
 });

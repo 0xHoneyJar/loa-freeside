@@ -138,12 +138,22 @@ export interface SharedPreparationWorkRecord {
   readonly updated_at_unix_ms: number;
 }
 
+/** Kitchen coords baked at admit — HTTP dispatch must not re-join resolution. */
+export interface KitchenDeploymentTarget {
+  readonly network_namespace: string;
+  readonly network_reference: string;
+  readonly address: string;
+  readonly token_standard: "erc721" | "erc1155";
+}
+
 export interface PreparationWorkItemRecord {
   readonly work_item_id: string;
   readonly work_id: string;
   readonly deployment_id: VersionedDigest;
   readonly capability: PublicPrepCapability;
   readonly adapter_version: string;
+  /** Present when join materialised kitchen coords (live Sonar path). */
+  readonly kitchen_target?: KitchenDeploymentTarget;
   readonly external_job_ref?: string;
   readonly state: PublicWorkState;
   readonly attempt: number;

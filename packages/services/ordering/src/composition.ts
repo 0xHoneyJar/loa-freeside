@@ -5,7 +5,7 @@ import {
   ConfigCapabilityResolver,
   type CapabilityConfig,
 } from './resolver.js';
-import { OrderOrchestrator, type OrchestratorDeps } from './orchestrator.js';
+import { OrderOrchestrator } from './orchestrator.js';
 import type { AuditPort } from './audit-acl.js';
 import type { OrderStore } from './store.js';
 import { createGitHubIssuePort } from './github-issue-port.js';
@@ -52,8 +52,6 @@ export interface OrderingComposition {
 
 export interface CreateOrderingCompositionOptions {
   readonly store?: OrderStore;
-  readonly preparationStore?: OrchestratorDeps["preparationStore"];
-  readonly publicPrepAdapter?: OrchestratorDeps["publicPrepAdapter"];
 }
 
 export async function createOrderingComposition(
@@ -77,8 +75,6 @@ export async function createOrderingComposition(
     // The advanceIngredient health gate must have teeth on the INTAKE path too —
     // without this, the service/merge write path bypasses the choke point (BB #443).
     discordHealth: triage instanceof KitchenTriagePorts ? triage.discordHealth : undefined,
-    preparationStore: options.preparationStore,
-    publicPrepAdapter: options.publicPrepAdapter,
   });
 
   return { store, orchestrator, enqueue };

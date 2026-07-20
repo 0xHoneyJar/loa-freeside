@@ -153,6 +153,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
       "001_orders.sql",
       "007_shared_preparation_work.sql",
       "008_admission_capacity.sql",
+      "009_public_prep_dispatch_and_kitchen_target.sql",
     ]) {
       const sql = readFileSync(join(__dirname, "../migrations", file), "utf8");
       await this.pool.query(sql);
@@ -387,6 +388,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
       order_id: orderId,
       order_tenant_scope_digest: input.order_tenant_scope_digest,
       work_key: input.work_key,
+      kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
       now_ms: input.now_ms,
     });
     if (primary.kind !== "joined") return primary;
@@ -396,6 +398,7 @@ export class PostgresAdmissionCapacityStore implements AdmissionCapacityStore {
         order_id: orderId,
         order_tenant_scope_digest: input.order_tenant_scope_digest,
         work_key: extra,
+        kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
         now_ms: input.now_ms,
       });
       if (join.kind !== "joined") return join;

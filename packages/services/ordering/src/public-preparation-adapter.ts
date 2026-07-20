@@ -268,7 +268,7 @@ export class PublicPreparationAdapter {
         adapter_version: item.adapter_version,
         generation: work.generation,
         lease_epoch: work.lease_epoch,
-        work_id: work.work_id,
+        kitchen_deployment: item.kitchen_target,
       });
       if (replay.ok && replay.external_job_ref) {
         await this.deps.dispatchStore.recordAck({
@@ -314,7 +314,7 @@ export class PublicPreparationAdapter {
       adapter_version: item.adapter_version,
       generation: work.generation,
       lease_epoch: work.lease_epoch,
-      work_id: work.work_id,
+      kitchen_deployment: item.kitchen_target,
     });
     if (result.ok && result.external_job_ref) {
       await this.deps.dispatchStore.recordAck({

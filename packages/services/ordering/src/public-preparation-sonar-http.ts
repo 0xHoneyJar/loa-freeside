@@ -1,14 +1,9 @@
 /**
- * CR-204A live Sonar kitchen port — admit + probe via kitchen-api.
+ * CR-204A live Sonar kitchen port — thin HTTP client.
  *
- * Deployment digests on work items are resolved through the linked order's
- * confirmed resolution candidate snapshot (network + address).
+ * Kitchen deployment coords must already be on the dispatch request (baked at admit).
  */
 
-import type { ResolutionStore } from "./resolution-store.js";
-import type { OrderStore } from "./store.js";
-import type { SharedPreparationStore } from "./shared-preparation-store.js";
-import type { VersionedDigest } from "./shared-preparation-types.js";
 import type {
   PublicPreparationSonarPort,
   SonarPrepDispatchRequest,
@@ -19,62 +14,8 @@ import type {
 export interface HttpPublicPreparationSonarPortDeps {
   readonly kitchenBaseUrl: string;
   readonly serviceToken: string;
-  readonly preparationStore: SharedPreparationStore;
-  readonly orderStore: OrderStore;
-  readonly resolutionStore: ResolutionStore;
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
-}
-
-export interface ResolvedKitchenDeployment {
-  readonly network_namespace: string;
-  readonly network_reference: string;
-  readonly address: string;
-  readonly token_standard: "erc721" | "erc1155";
-}
-
-function digestKey(d: VersionedDigest): string {
-  return `${d.algorithm}:${d.domain}:${d.major_version}:${d.digest}`;
-}
-
-export async function resolveKitchenDeploymentForDigest(input: {
-  readonly deploymentId: VersionedDigest;
-  readonly workId: string;
-  readonly preparationStore: SharedPreparationStore;
-  readonly orderStore: OrderStore;
-  readonly resolutionStore: ResolutionStore;
-}): Promise<ResolvedKitchenDeployment | undefined> {
-  const links = await input.preparationStore.listActiveLinks(input.workId);
-  const want = digestKey(input.deploymentId);
-  for (const link of links) {
-    const order = await input.orderStore.get(link.order_id);
-    if (!order || order.product !== "collection-report") continue;
-    const resolutionId = (order.inputs as { resolution_id?: unknown }).resolution_id;
-    if (typeof resolutionId !== "string" || resolutionId.length === 0) continue;
-    const resolution = await input.resolutionStore.get(resolutionId);
-    if (!resolution) continue;
-    for (const candidate of resolution.candidate_snapshot.candidates) {
-      for (const deployment of candidate.identity.deployments) {
-        if (digestKey(deployment.deployment_id) !== want) continue;
-        const rawStandard = (candidate as { token_standard?: { value?: string } | string })
-          .token_standard;
-        const standardValue =
-          typeof rawStandard === "string"
-            ? rawStandard
-            : typeof rawStandard?.value === "string"
-              ? rawStandard.value
-              : "erc721";
-        const tokenStandard = standardValue === "erc1155" ? "erc1155" : "erc721";
-        return {
-          network_namespace: deployment.network.network_namespace,
-          network_reference: deployment.network.network_reference,
-          address: deployment.address,
-          token_standard: tokenStandard,
-        };
-      }
-    }
-  }
-  return undefined;
 }
 
 function mapKitchenStatus(status: string): SonarPrepStatusResult {
@@ -88,7 +29,8 @@ function mapKitchenStatus(status: string): SonarPrepStatusResult {
     case "failed":
       return { status: "failed", retryable: true, error_code: "kitchen_job_failed" };
     default:
-      return { status: "indexing" };
+      // Fail closed — unknown status is not progress.
+      return { status: "failed", retryable: true, error_code: "kitchen_status_unknown" };
   }
 }
 
@@ -106,15 +48,9 @@ export class HttpPublicPreparationSonarPort implements PublicPreparationSonarPor
   }
 
   async dispatchChildJob(request: SonarPrepDispatchRequest): Promise<SonarPrepDispatchResult> {
-    const deployment = await resolveKitchenDeploymentForDigest({
-      deploymentId: request.deployment_id,
-      workId: request.work_id,
-      preparationStore: this.deps.preparationStore,
-      orderStore: this.deps.orderStore,
-      resolutionStore: this.deps.resolutionStore,
-    });
+    const deployment = request.kitchen_deployment;
     if (!deployment) {
-      return { ok: false, retryable: true, error_code: "deployment_unresolved" };
+      return { ok: false, retryable: false, error_code: "deployment_unresolved" };
     }
 
     const controller = new AbortController();
@@ -192,14 +128,9 @@ export class HttpPublicPreparationSonarPort implements PublicPreparationSonarPor
       clearTimeout(timer);
     }
   }
-
 }
 
-export function httpPublicPreparationSonarFromEnv(deps: {
-  readonly preparationStore: SharedPreparationStore;
-  readonly orderStore: OrderStore;
-  readonly resolutionStore: ResolutionStore;
-}): HttpPublicPreparationSonarPort | undefined {
+export function httpPublicPreparationSonarFromEnv(): HttpPublicPreparationSonarPort | undefined {
   const base =
     process.env.SONAR_API_URL?.trim() ||
     process.env.SONAR_KITCHEN_URL?.trim() ||
@@ -212,8 +143,5 @@ export function httpPublicPreparationSonarFromEnv(deps: {
   return new HttpPublicPreparationSonarPort({
     kitchenBaseUrl: base,
     serviceToken: token,
-    preparationStore: deps.preparationStore,
-    orderStore: deps.orderStore,
-    resolutionStore: deps.resolutionStore,
   });
 }

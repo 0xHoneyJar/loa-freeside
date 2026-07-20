@@ -24,29 +24,18 @@ COPY packages/protocol/dependency-ledger ./packages/protocol/dependency-ledger
 COPY packages/services/shadow-audit ./packages/services/shadow-audit
 COPY packages/services/ordering ./packages/services/ordering
 
-WORKDIR /app/packages/core
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/adapters
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/protocol/collection
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/protocol/collection-resolution
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/protocol/public-authorization
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/protocol/trust-envelope
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/protocol/signing-key-custody
-RUN pnpm install --no-frozen-lockfile && pnpm build
-
-WORKDIR /app/packages/protocol/dependency-ledger
-RUN pnpm install --no-frozen-lockfile && pnpm build
+# Protocol packages that must build before the service (file: deps).
+RUN for pkg in \
+      packages/core \
+      packages/adapters \
+      packages/protocol/collection \
+      packages/protocol/collection-resolution \
+      packages/protocol/public-authorization \
+      packages/protocol/trust-envelope \
+      packages/protocol/signing-key-custody \
+      packages/protocol/dependency-ledger; do \
+      cd /app/$pkg && pnpm install --no-frozen-lockfile && pnpm build; \
+    done
 
 WORKDIR /app/packages/services/ordering
 RUN pnpm install --no-frozen-lockfile

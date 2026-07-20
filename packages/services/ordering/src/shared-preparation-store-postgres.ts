@@ -105,6 +105,9 @@ function rowToItem(row: pg.QueryResultRow): PreparationWorkItemRecord {
     deployment_id: row.deployment_id,
     capability: row.capability,
     adapter_version: row.adapter_version,
+    ...(row.kitchen_target != null
+      ? { kitchen_target: row.kitchen_target as PreparationWorkItemRecord["kitchen_target"] }
+      : {}),
     ...(row.external_job_ref != null ? { external_job_ref: row.external_job_ref } : {}),
     state: row.state,
     attempt: Number(row.attempt),
@@ -118,6 +121,15 @@ function rowToItem(row: pg.QueryResultRow): PreparationWorkItemRecord {
     created_at_unix_ms: requirePgTimestampMs(row.created_at, "created_at"),
     updated_at_unix_ms: requirePgTimestampMs(row.updated_at, "updated_at"),
   };
+}
+
+function deploymentDigestKey(d: {
+  algorithm: string;
+  domain: string;
+  major_version: number;
+  digest: string;
+}): string {
+  return `${d.algorithm}:${d.domain}:${d.major_version}:${d.digest}`;
 }
 
 function rowToLink(row: pg.QueryResultRow): ReportWorkLinkRecord {
@@ -165,6 +177,7 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
     for (const file of [
       "001_orders.sql",
       "007_shared_preparation_work.sql",
+      "009_public_prep_dispatch_and_kitchen_target.sql",
     ]) {
       const sql = readFileSync(join(__dirname, "../migrations", file), "utf8");
       await this.pool.query(sql);
@@ -285,16 +298,20 @@ export class PostgresSharedPreparationStore implements SharedPreparationStore {
       ],
     );
     for (const deploymentId of input.work_key.deployment_ids) {
+      const kitchenTarget =
+        input.kitchen_targets_by_deployment_digest?.[deploymentDigestKey(deploymentId)];
       await client.query(
         `INSERT INTO preparation_work_items (
-          work_item_id, work_id, deployment_id, capability, adapter_version, state, attempt, lease_epoch, created_at, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,'queued',0,0,$6,$6)`,
+          work_item_id, work_id, deployment_id, capability, adapter_version, kitchen_target,
+          state, attempt, lease_epoch, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,'queued',0,0,$7,$7)`,
         [
           `pwi_${randomUUID()}`,
           workId,
           JSON.stringify(deploymentId),
           input.work_key.capability,
           input.work_key.adapter_version,
+          kitchenTarget !== undefined ? JSON.stringify(kitchenTarget) : null,
           nowIso,
         ],
       );

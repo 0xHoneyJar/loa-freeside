@@ -5,6 +5,9 @@
  * NOT route through AccessRiskAuditInputs (that caused immediate invalid-inputs
  * failures). V1 advances placed → routing → producing and holds in preparing
  * until a real Gate Leak producer exists — no fake fulfill, no ETA theater.
+ *
+ * Public preparation is owned solely by PublicPreparationWorker / adapter.
+ * This driver does not sniff fulfillment phases or settle prep outcomes.
  */
 
 import {
@@ -25,17 +28,12 @@ import {
 } from "./resolver.js";
 import type { PrivateOpsPublisher } from "./private-ops.js";
 import type { ProcessResult } from "./orchestrator.js";
-import type { PublicPreparationAdapter } from "./public-preparation-adapter.js";
-import type { SharedPreparationStore } from "./shared-preparation-store.js";
 
 export interface CollectionReportOrchestratorDeps {
   store: OrderStore;
   resolver: CapabilityResolver;
   now: () => number;
   opsChannel?: PrivateOpsPublisher;
-  /** CR-204A — drive linked shared preparation work while producing. */
-  preparationStore?: SharedPreparationStore;
-  publicPrepAdapter?: PublicPreparationAdapter;
 }
 
 export class CollectionReportOrchestrator {
@@ -109,34 +107,7 @@ export class CollectionReportOrchestrator {
       if (isTerminal(record.state)) return { success: true };
     }
 
-    if (record.state === "producing") {
-      if (this.deps.preparationStore && this.deps.publicPrepAdapter) {
-        const linked = await this.deps.preparationStore.getActiveWorkForOrder(orderId);
-        if (linked) {
-          await this.deps.publicPrepAdapter.processWork(linked.work.work_id);
-          record = await this.reread(orderId, undefined);
-          if (isTerminal(record.state)) return { success: true };
-          const phase = fulfillmentPhase(record);
-          if (phase === "ownership_evidence_ready") {
-            // Prep complete; Gate Leak artifact/render producer not wired yet.
-            // Honest terminal — no fake fulfill / ETA theater (CR-303).
-            return this.settleFailed(orderId, "producing", {
-              code: "gate_leak_artifact_producer_pending",
-              reason:
-                "public preparation ownership evidence is ready; Gate Leak artifact producer is not deployed",
-            });
-          }
-          if (phase === "remediation_required") {
-            return this.settleFailed(orderId, "producing", {
-              code: "preparation_failed",
-              reason: "shared public preparation requires remediation",
-            });
-          }
-        }
-      }
-      return { success: true };
-    }
-
+    // producing: hold until Gate Leak artifact producer (worker owns prep advance).
     return { success: true };
   }
 
@@ -169,12 +140,4 @@ export class CollectionReportOrchestrator {
     if (!current) throw new Error(`order vanished mid-flight: ${orderId}`);
     return current;
   }
-}
-
-function fulfillmentPhase(record: OrderRecord): string {
-  const fulfillment = record.fulfillment as
-    | { readonly phase?: string; readonly stage?: string }
-    | undefined;
-  const phase = fulfillment?.phase ?? fulfillment?.stage ?? "";
-  return typeof phase === "string" ? phase : "";
 }

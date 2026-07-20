@@ -40,10 +40,7 @@ import {
 } from '../src/public-auth-posture.js';
 import { createAdmissionCapacityComposition } from '../src/admission-capacity-composition.js';
 import { createOrderStore } from '../src/store-factory.js';
-import { InMemoryPublicPrepDispatchStore } from '../src/public-preparation-dispatch-store.js';
-import { PublicPreparationAdapter } from '../src/public-preparation-adapter.js';
-import { PublicPreparationWorker } from '../src/public-preparation-worker.js';
-import { httpPublicPreparationSonarFromEnv } from '../src/public-preparation-sonar-http.js';
+import { createPublicPrepComposition } from '../src/public-preparation-composition.js';
 
 const store = await createOrderStore();
 const {
@@ -56,37 +53,13 @@ const resolutionStore = await createResolutionStore({
   orderStore: store instanceof PostgresOrderStore ? store : undefined,
 });
 
-const publicPrepEnabled = process.env.ENABLE_PUBLIC_PREP?.trim() !== 'false';
-const publicPrepSonar = publicPrepEnabled
-  ? httpPublicPreparationSonarFromEnv({
-      preparationStore,
-      orderStore: store,
-      resolutionStore,
-    })
-  : undefined;
-const publicPrepAdapter = publicPrepSonar
-  ? new PublicPreparationAdapter({
-      preparationStore,
-      dispatchStore: new InMemoryPublicPrepDispatchStore(),
-      sonar: publicPrepSonar,
-      orderStore: store,
-      capacityStore,
-      now: () => Date.now(),
-      workerId: process.env.HOSTNAME?.trim() || 'ordering-public-prep',
-    })
-  : undefined;
-if (publicPrepEnabled && !publicPrepAdapter) {
-  // eslint-disable-next-line no-console
-  console.error(
-    '[ordering-service] ENABLE_PUBLIC_PREP active but SONAR_API_URL/SONAR_SERVICE_TOKEN missing — public prep adapter not wired.',
-  );
-}
-
-const { orchestrator, enqueue } = await createOrderingComposition({
-  store,
-  preparationStore: publicPrepAdapter ? preparationStore : undefined,
-  publicPrepAdapter,
+const publicPrep = createPublicPrepComposition({
+  preparationStore,
+  capacityStore,
+  orderStore: store,
 });
+
+const { orchestrator, enqueue } = await createOrderingComposition({ store });
 
 const serviceToken = serviceTokenFromEnv();
 const writeRoutes = writeRoutePostureFromEnv();
@@ -183,7 +156,7 @@ const app = createIntakeApp({
       reason: publicAuthPosture.reason,
     },
     resolve_probe: resolutionProbeMode,
-    public_prep: publicPrepAdapter ? 'http' : 'off',
+    public_prep: publicPrep?.mode ?? 'off',
   },
 });
 
@@ -240,14 +213,13 @@ if (process.env.ENABLE_REPROBE === 'true') {
   worker.start();
 }
 
-if (publicPrepAdapter) {
-  const prepWorker = new PublicPreparationWorker(publicPrepAdapter);
-  prepWorker.start();
+if (publicPrep) {
+  publicPrep.worker.start();
 }
 
 const port = Number(process.env.PORT ?? 8090);
 serve({ fetch: app.fetch, port });
 // eslint-disable-next-line no-console
 console.log(
-  `ordering-service listening on :${port} (write_routes=${writeRoutes}, resolve_probe=${resolutionProbeMode}, public_auth=${publicAuthPosture.mode}/wired=${mountPublicAuthRoutes}, public_prep=${publicPrepAdapter ? 'http' : 'off'})`,
+  `ordering-service listening on :${port} (write_routes=${writeRoutes}, resolve_probe=${resolutionProbeMode}, public_auth=${publicAuthPosture.mode}/wired=${mountPublicAuthRoutes}, public_prep=${publicPrep?.mode ?? 'off'})`,
 );
