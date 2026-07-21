@@ -92,6 +92,25 @@ const TERMINAL_SUCCESS = ['finished'];
 /** Terminal statuses that mean payment failed */
 const TERMINAL_FAILED = ['failed', 'expired', 'refunded'];
 
+/**
+ * Status rank — mirrors the Postgres crypto_payments_status_monotonicity
+ * trigger (migration 0010). status_rank must strictly increase, so a
+ * partially_paid row (rank 4) whose provider status is still confirming/
+ * confirmed/sending (ranks 1-3) must NOT be written back: the trigger would
+ * reject the backward UPDATE and the sweep would error every pass.
+ */
+const STATUS_RANK: Record<string, number> = {
+  waiting: 0,
+  confirming: 1,
+  confirmed: 2,
+  sending: 3,
+  partially_paid: 4,
+  finished: 5,
+  expired: 6,
+  failed: 7,
+  refunded: 8,
+};
+
 // LOT_EXPIRY_DAYS imported from nowpayments-handler (single source of truth)
 
 // --------------------------------------------------------------------------
@@ -377,7 +396,22 @@ async function reconcilePayment(
     };
   }
 
-  // Step 5: Non-terminal status update (e.g. confirming → confirmed)
+  // Step 5: Non-terminal status update (e.g. confirming → confirmed).
+  // Only persist a FORWARD transition — mirror the DB monotonicity trigger.
+  // A partially_paid row (rank 4) whose provider status is still confirming/
+  // confirmed/sending (ranks 1-3) is a backward rank; skip it (leave pending)
+  // so the trigger never rejects the UPDATE and the sweep never errors on it.
+  // A terminal provider status is already handled by Steps 3-4 above.
+  if ((STATUS_RANK[providerStatus] ?? -1) <= (STATUS_RANK[payment.status] ?? -1)) {
+    return {
+      paymentId: payment.payment_id,
+      communityId: payment.community_id,
+      previousStatus: payment.status,
+      newStatus: null,
+      action: 'pending',
+    };
+  }
+
   await pool.query(
     `UPDATE crypto_payments SET status = $2, updated_at = NOW() WHERE payment_id = $1`,
     [payment.payment_id, providerStatus],
