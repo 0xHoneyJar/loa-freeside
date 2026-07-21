@@ -486,6 +486,38 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     expect(updated!.status).toBe('expired');
   });
 
+  it('does NOT activate a quorum_reached proposal past its expires_at (downtime ordering)', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-expired-cooldown');
+    const proposalId = randomUUID();
+
+    // A quorum_reached proposal whose cooldown has elapsed AND whose
+    // expires_at has passed (scheduler was down). The hourly job runs
+    // activation before expiry, so activation must refuse it (else the
+    // expired proposal's config would be applied) and expiry must claim it.
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         cooldown_ends_at, expires_at, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', ?, 1, 2, 2,
+              'quorum_reached', '2020-01-01T00:00:00Z', '2020-01-02T00:00:00Z',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(proposalId, agentId);
+
+    // Activation refuses the expired proposal — no config created.
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
+    const noConfig = db.prepare(`
+      SELECT 1 FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get();
+    expect(noConfig).toBeUndefined();
+    expect((await governanceService.getProposal(proposalId))!.status).toBe('quorum_reached');
+
+    // The expiry phase then claims it.
+    expect(await governanceService.expireStaleProposals()).toBe(1);
+    expect((await governanceService.getProposal(proposalId))!.status).toBe('expired');
+  });
+
   it('orphaned activation recovered: claimed proposal with no config gets its config on the next sweep', async () => {
     const agentId = createAccount(db, 'agent', 'agent-orphan');
     const proposalId = randomUUID();

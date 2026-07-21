@@ -408,8 +408,8 @@ export class AgentGovernanceService implements IAgentGovernanceService {
 
     const proposals = this.db.prepare(`
       SELECT * FROM agent_governance_proposals
-      WHERE status = 'quorum_reached' AND cooldown_ends_at <= ?
-    `).all(now) as ProposalRow[];
+      WHERE status = 'quorum_reached' AND cooldown_ends_at <= ? AND expires_at > ?
+    `).all(now, now) as ProposalRow[];
 
     for (const row of proposals) {
       // CLAIM the proposal atomically before doing any work: overlapping
@@ -419,12 +419,18 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       // versions. (The proposal-status CHECK constraint has no in-progress
       // state, so the claim writes the terminal status directly; the
       // orphan-recovery arm below closes the crash window that leaves.)
+      // expires_at > now is the authoritative gate: the hourly lifecycle job
+      // runs activation BEFORE expiry, so after scheduler downtime a
+      // quorum_reached proposal past its expires_at would otherwise be
+      // activated here instead of expired. expireStaleProposals covers
+      // 'quorum_reached', so a proposal that missed its window must expire,
+      // not apply its config.
       const claim = this.db.prepare(`
         UPDATE agent_governance_proposals
         SET status = 'activated', updated_at = ?
-        WHERE id = ? AND status = 'quorum_reached'
-      `).run(now, row.id);
-      if (claim.changes === 0) continue; // another sweep claimed it
+        WHERE id = ? AND status = 'quorum_reached' AND expires_at > ?
+      `).run(now, row.id, now);
+      if (claim.changes === 0) continue; // another sweep claimed it, or it expired
 
       try {
         await this.activateProposalConfig(row, now);
