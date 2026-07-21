@@ -289,6 +289,14 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     const configMeta = JSON.parse(activeConfig!.metadata ?? '{}');
     expect(configMeta.agentProposalId).toBe(proposal.id);
 
+    // The proposal must record the config it activated (FK audit link
+    // activated_config_id → system_config.id), exposed as activatedConfigId.
+    const activatedConfigRow = db.prepare(`
+      SELECT id FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { id: string };
+    expect(finalProposal!.activatedConfigId).toBe(activatedConfigRow.id);
+
     // Idempotency: a second sweep finds nothing to claim and creates no
     // duplicate config versions.
     expect(await governanceService.activateExpiredCooldowns()).toBe(0);

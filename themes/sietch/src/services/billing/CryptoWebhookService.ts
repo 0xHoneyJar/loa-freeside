@@ -535,6 +535,7 @@ class CryptoWebhookService {
    * waiting → confirming → confirmed → sending → finished
    * waiting → partially_paid
    * waiting → expired
+   * partially_paid → expired
    * any → failed
    * any → refunded
    */
@@ -564,7 +565,11 @@ class CryptoWebhookService {
       confirming: ['confirmed', 'finished'],
       confirmed: ['sending', 'finished'],
       sending: ['finished'],
-      partially_paid: ['confirming', 'confirmed', 'sending', 'finished'],
+      // 'expired' included: NOWPayments can expire a partially-paid payment
+      // when the window closes before full payment. Without it, a delayed
+      // 'expired' returns 'skipped' → 200 ack → the row is stranded
+      // 'partially_paid' forever (sietch has no reconciliation sweep).
+      partially_paid: ['confirming', 'confirmed', 'sending', 'finished', 'expired'],
       finished: [],
       failed: [],
       refunded: [],

@@ -395,6 +395,21 @@ describe('CryptoWebhookService', () => {
 
         expect(result.status).toBe('processed');
       });
+
+      it('should allow expired status from partially_paid (not strand the payment)', async () => {
+        mockedBillingQueries.getCryptoPaymentByPaymentId.mockReturnValue({
+          id: 'cp_test_123',
+          paymentId: '12345',
+          communityId: 'test-community',
+          tier: 'premium',
+          status: 'partially_paid',
+        } as any);
+
+        const event = createTestEvent({ status: 'expired' });
+        const result = await cryptoWebhookService.processEvent(event);
+
+        expect(result.status).toBe('processed');
+      });
     });
 
     // -------------------------------------------------------------------------

@@ -502,8 +502,9 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     // quorum + cooldown were enforced in this layer, so
     // activateFromAgentGovernance runs the supersede + activate + audit
     // path in one transaction.
+    let activatedConfigId: string | null = null;
     if (this.governance) {
-      await this.governance.activateFromAgentGovernance(
+      const config = await this.governance.activateFromAgentGovernance(
         row.param_key,
         JSON.parse(row.proposed_value),
         {
@@ -513,9 +514,21 @@ export class AgentGovernanceService implements IAgentGovernanceService {
           entityType: row.entity_type,
         },
       );
+      activatedConfigId = config.id;
     }
 
     this.db.transaction(() => {
+      // Record the FK audit link (activated_config_id → system_config.id).
+      // activateFromAgentGovernance is idempotent by proposal id, so a
+      // retry/orphan-recovery returns the same config and this UPDATE is a
+      // stable no-op-in-value.
+      if (activatedConfigId !== null) {
+        this.db.prepare(`
+          UPDATE agent_governance_proposals
+          SET activated_config_id = ?, updated_at = ?
+          WHERE id = ?
+        `).run(activatedConfigId, now, row.id);
+      }
       this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
         proposalId: row.id,
         paramKey: row.param_key,
