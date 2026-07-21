@@ -60,18 +60,17 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
-
-      - name: Install pnpm
-        # No `version:` — pnpm/action-setup reads it from the root package.json
-        # `packageManager` field (pnpm@9.15.4). Pinning both errors with
-        # ERR_PNPM_BAD_PM_VERSION (matches cluster-compliance.yml /
-        # mcp-gateway-ci.yml convention).
-        uses: pnpm/action-setup@v4
+          node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: themes/sietch/package-lock.json
 
       - name: Install dependencies
+        # themes/sietch is an npm project (package-lock.json, no pnpm-lock.yaml).
+        # Mirrors the green ci.yml convention; `pnpm install --frozen-lockfile`
+        # here fails ERR_PNPM_NO_LOCKFILE.
         working-directory: themes/sietch
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Generate ES256 test keypair
         run: |
