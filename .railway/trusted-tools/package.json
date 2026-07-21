@@ -1,0 +1,8 @@
+{
+  "name": "shadow-audit-railway-gate-tools",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "railway": "3.5.5"
+  }
+}

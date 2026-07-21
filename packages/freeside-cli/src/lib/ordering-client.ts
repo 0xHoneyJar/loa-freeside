@@ -10,7 +10,11 @@
  */
 import { EXIT, isErrorEnvelope, type ErrorEnvelope, type ExitCode } from "./ordering-schemas.js";
 
-const REQUEST_TIMEOUT_MS = Number(process.env.ORDERING_REQUEST_TIMEOUT_MS ?? 35_000);
+// T-3: call-time read so tests can override ORDERING_REQUEST_TIMEOUT_MS per-test via env.
+const getRequestTimeoutMs = (): number => {
+  const v = Number(process.env.ORDERING_REQUEST_TIMEOUT_MS ?? 35_000);
+  return Number.isInteger(v) && v > 0 ? v : 35_000;
+};
 
 export interface OrderingConfig {
   baseUrl: string;
@@ -20,8 +24,8 @@ export interface OrderingConfig {
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env):
   | { ok: true; config: OrderingConfig }
   | { ok: false; envelope: ErrorEnvelope; code: ExitCode } {
-  const baseUrl = env.ORDERING_SERVICE_URL?.trim();
-  if (!baseUrl) {
+  const rawUrl = env.ORDERING_SERVICE_URL?.trim();
+  if (!rawUrl) {
     return {
       ok: false,
       code: EXIT.USAGE,
@@ -31,7 +35,41 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env):
       },
     };
   }
-  return { ok: true, config: { baseUrl: baseUrl.replace(/\/+$/, ""), token: env.ORDERING_SERVICE_TOKEN?.trim() || undefined } };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return {
+      ok: false,
+      code: EXIT.USAGE,
+      envelope: {
+        error: "ORDERING_SERVICE_URL is not a valid URL",
+        hint: "export ORDERING_SERVICE_URL=https://ordering-service-production.up.railway.app",
+      },
+    };
+  }
+
+  // T-1: plaintext transport is unconditionally refused for write verbs (SDD D-3.1).
+  // The ONLY exception is http to a LOOPBACK host with ORDERING_SERVICE_URL_UNSAFE_HTTP=1
+  // (local test servers). A remote http URL is refused even with the env set, so the
+  // bypass is unreachable against any production host (FAGAN convergent major).
+  const loopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]" || parsed.hostname === "::1";
+  const unsafeFlag = (env.ORDERING_SERVICE_URL_UNSAFE_HTTP ?? "").trim().toLowerCase();
+  const testBypass = parsed.protocol === "http:" && loopback && unsafeFlag !== "" && unsafeFlag !== "0" && unsafeFlag !== "false";
+  if (parsed.protocol !== "https:" && !testBypass) {
+    return {
+      ok: false,
+      code: EXIT.USAGE,
+      envelope: {
+        error: "ORDERING_SERVICE_URL must use https (http allowed only for loopback test servers with ORDERING_SERVICE_URL_UNSAFE_HTTP=1)",
+        hint: "export ORDERING_SERVICE_URL=https://ordering-service-production.up.railway.app",
+      },
+    };
+  }
+
+  const baseUrl = parsed.origin + parsed.pathname.replace(/\/+$/, "");
+  return { ok: true, config: { baseUrl, token: env.ORDERING_SERVICE_TOKEN?.trim() || undefined } };
 }
 
 export type ApiResult =
@@ -70,7 +108,7 @@ export async function apiRequest(
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(getRequestTimeoutMs()),
     });
   } catch (err) {
     const kind = err instanceof Error && err.name === "TimeoutError" ? "request timed out" : "service unreachable";

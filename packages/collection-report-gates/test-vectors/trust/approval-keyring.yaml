@@ -1,0 +1,14 @@
+schema_version: 1
+authorities:
+  - owner: discord-application-owner
+    key_id: ed25519:968f6b748a51e401812b18cdadc2f02f788fcb54224b27b00fee3561586d8efb
+    public_key: k7fYH06X1IoTZKo2F5gGZiUBZnFzZSjbe0Bo0ZOqnFg
+  - owner: shared-protocol-maintainer
+    key_id: ed25519:b8c9a410e71b96ff4fa5397588ffab5e6bc6d3b87fb3be40f38f3947ec3686f5
+    public_key: znYE99Jlx8A_AJ2TAq6qaCGhWyy1l06qaN7bX1yBUfQ
+  - owner: sonar-api-maintainer
+    key_id: ed25519:4b6386857be6c739b1750bf57f5e60a4447e91e41a7b1985111c13f6b18cfe0d
+    public_key: gfR9CP7KdlFqrX0Daax2WKMib3GqroFqjrZ6EhyB7ZY
+  - owner: ordering-maintainer
+    key_id: ed25519:ae1514e25ea3a50ae79c8c25345973c45a831a136176bcf210430279bb0faddf
+    public_key: 8BjhzTLr5guVmmEygtN7AzRjZa76HrTRKM1re_ZdPAA

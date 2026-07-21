@@ -5,10 +5,13 @@ import { type CapabilityResolver } from './resolver.js';
 import { type AuditPort, type OperatedCommunityRegistry } from './audit-acl.js';
 import type { PrivateOpsPublisher } from './private-ops.js';
 import { AccessRiskAuditOrchestrator } from './access-risk-audit-orchestrator.js';
-import { CommunityOnboardingOrchestrator } from './community-onboarding-orchestrator.js';
+import { CommunityOnboardingOrchestrator, type CommunityOnboardingOrchestratorDeps } from './community-onboarding-orchestrator.js';
+import { CollectionReportOrchestrator } from './collection-report-orchestrator.js';
 import type { TriagePorts } from './triage-ports.js';
 import { StubTriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
+import type { PublicPreparationAdapter } from './public-preparation-adapter.js';
+import type { SharedPreparationStore } from './shared-preparation-store.js';
 
 /**
  * The thin orchestrator (SDD §6) — dispatches by product to preset-specific handlers.
@@ -37,11 +40,19 @@ export interface OrchestratorDeps {
   enqueue?: IngredientEnqueueService;
   /** Optional private ops channel (SDD §13 M-8). */
   opsChannel?: PrivateOpsPublisher;
+  /** Discord channel-health port — the advanceIngredient gate (T-2/FR-1) needs it on
+   *  EVERY CommunityOnboardingOrchestrator instance, intake included, or the choke
+   *  point has teeth only on the worker path. */
+  discordHealth?: CommunityOnboardingOrchestratorDeps['discordHealth'];
+  /** CR-204A public preparation substrate. */
+  preparationStore?: SharedPreparationStore;
+  publicPrepAdapter?: PublicPreparationAdapter;
 }
 
 export class OrderOrchestrator {
   private readonly accessRiskAudit: AccessRiskAuditOrchestrator;
   readonly communityOnboarding: CommunityOnboardingOrchestrator;
+  private readonly collectionReport: CollectionReportOrchestrator;
 
   constructor(private readonly deps: OrchestratorDeps) {
     const shared = {
@@ -60,6 +71,12 @@ export class OrderOrchestrator {
       ...shared,
       triage: deps.triage ?? new StubTriagePorts(),
       enqueue: deps.enqueue,
+      discordHealth: deps.discordHealth,
+    });
+    this.collectionReport = new CollectionReportOrchestrator({
+      ...shared,
+      preparationStore: deps.preparationStore,
+      publicPrepAdapter: deps.publicPrepAdapter,
     });
   }
 
@@ -72,6 +89,9 @@ export class OrderOrchestrator {
 
     if (record.product === 'community-onboarding') {
       return this.communityOnboarding.process(orderId, record);
+    }
+    if (record.product === 'collection-report') {
+      return this.collectionReport.process(orderId, record);
     }
     return this.accessRiskAudit.process(orderId, record);
   }

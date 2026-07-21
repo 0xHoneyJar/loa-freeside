@@ -92,6 +92,7 @@ describe('order-intake POST /v1/orders', () => {
     expect(record?.ingredients).toEqual({
       sonar: 'pending',
       score: 'pending',
+      metadata_snapshot: 'pending',
       worlds_manifest: 'pending',
       discord_observer: 'optional',
       shadow_preview: 'blocked',

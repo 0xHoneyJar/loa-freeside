@@ -1,0 +1,65 @@
+{
+  "$schema": "../../spec/product/system-component.schema.json",
+  "schema_version": "1.0",
+  "component_id": "loa-freeside",
+  "repository": "github:0xHoneyJar/loa-freeside",
+  "layer": "orchestrator",
+  "operator": {
+    "role": "Freeside platform engineer",
+    "job": "Compose stable buildings and BFF contracts without crossing their domain boundaries or forcing a product surface into the same implementation session."
+  },
+  "object": {
+    "kind": "backend-for-frontend",
+    "description": "The platform composition layer that assembles Freeside buildings into consumer-ready contracts and operational services."
+  },
+  "question": "Can a front-facing product consume a coherent Freeside capability through a stable contract without learning every producer's internal model?",
+  "responsibility": "Compose and operate platform capabilities, shared contracts, and BFF seams while keeping building ownership and evidence provenance explicit.",
+  "consumers": [
+    {
+      "name": "freeside-dashboard",
+      "need": "Stable composed reads and honest source states for community-manager product surfaces."
+    },
+    {
+      "name": "freeside-characters",
+      "need": "Stable identity, activity, and world capabilities without reimplementing platform logic inside character code."
+    },
+    {
+      "name": "API and agent consumers",
+      "need": "Reviewable contracts, typed failures, and a clear handoff when a producer capability is missing."
+    }
+  ],
+  "trust": {
+    "contract_status": "partial",
+    "contract_refs": [
+      "file:README.md",
+      "file:packages/README.md",
+      "file:packages/routes"
+    ],
+    "evidence_refs": [
+      "file:spec/product/flow-moment.schema.json",
+      "file:product/flow-moments/audit-community-composition.flow.json"
+    ],
+    "note": "The platform exposes multiple stable contracts, but it is not one monolithic API and each composed route still requires an explicit producer-to-consumer seam."
+  },
+  "actions": ["inspect", "compose", "integrate", "handoff", "operate"],
+  "boundaries": {
+    "owns": [
+      "Platform composition, shared contracts, and operational BFF seams.",
+      "Typed failure and provenance across composed building outputs."
+    ],
+    "does_not_own": [
+      "The internal domain logic of an extracted API building.",
+      "Front-facing information architecture, copy, or component taste.",
+      "A community manager's consequential decision or action."
+    ],
+    "missing_capability_handoff": "Record the missing producer capability as a typed issue or order; do not implement it silently in the BFF or presentation layer."
+  },
+  "flow_moments": [
+    {
+      "flow_moment_id": "FM-AUDIT-COMPOSITION",
+      "canonical_ref": "flow:FM-AUDIT-COMPOSITION",
+      "role": "composer",
+      "contribution": "Compose identity, activity, holdings, and audit evidence into a stable contract that a product surface can render without re-deriving producer semantics."
+    }
+  ]
+}

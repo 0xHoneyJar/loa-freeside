@@ -15,6 +15,8 @@ COPY packages/core ./packages/core
 COPY packages/adapters ./packages/adapters
 COPY packages/protocol/ordering ./packages/protocol/ordering
 COPY packages/protocol/shadow-audit ./packages/protocol/shadow-audit
+COPY packages/protocol/collection ./packages/protocol/collection
+COPY packages/protocol/collection-resolution ./packages/protocol/collection-resolution
 COPY packages/services/shadow-audit ./packages/services/shadow-audit
 COPY packages/services/ordering ./packages/services/ordering
 
@@ -22,6 +24,12 @@ WORKDIR /app/packages/core
 RUN pnpm install --no-frozen-lockfile && pnpm build
 
 WORKDIR /app/packages/adapters
+RUN pnpm install --no-frozen-lockfile && pnpm build
+
+WORKDIR /app/packages/protocol/collection
+RUN pnpm install --no-frozen-lockfile && pnpm build
+
+WORKDIR /app/packages/protocol/collection-resolution
 RUN pnpm install --no-frozen-lockfile && pnpm build
 
 WORKDIR /app/packages/services/ordering

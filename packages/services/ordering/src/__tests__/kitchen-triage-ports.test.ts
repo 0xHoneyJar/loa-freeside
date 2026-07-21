@@ -7,7 +7,7 @@ import {
   resetShadowProducerlessWarning,
   shadowUnavailablePolicyFromEnv,
 } from '../kitchen-triage-ports.js';
-import { StubTriagePorts } from '../triage-ports.js';
+import { StubTriagePorts, type TriagePorts } from '../triage-ports.js';
 
 const CHAIN = '10';
 const CONTRACT = '0xED5AF388653567Af2F388e6224DcC93746104133';
@@ -152,6 +152,28 @@ describe('createKitchenTriagePorts darkness observability', () => {
     createKitchenTriagePorts();
     const producerless = warn.mock.calls.flat().filter((m) => String(m).includes('producer-less'));
     expect(producerless).toHaveLength(1);
+  });
+});
+
+// ── T-4b: fallback metadata wiring (AC-13, AC-14) ────────────────────────────
+
+describe('KitchenTriagePorts — fallback metadata wiring (T-4b, AC-13, AC-14)', () => {
+  it('AC-13: http=null with fallback.metadata port delegates probes to the fallback', async () => {
+    const stubValue = 'complete' as const;
+    const fallbackWithMeta: TriagePorts = {
+      ...new StubTriagePorts(),
+      metadata: { probe: async () => stubValue },
+    };
+    const ports = new KitchenTriagePorts(null, fallbackWithMeta);
+    expect(ports.metadata).toBeDefined();
+    await expect(ports.metadata!.probe(CHAIN, CONTRACT)).resolves.toBe(stubValue);
+  });
+
+  it('AC-14: http=null with fallback lacking metadata port yields triage.metadata === undefined', async () => {
+    // StubTriagePorts has no metadata property (TriagePorts.metadata is optional).
+    const fallbackWithoutMeta = new StubTriagePorts();
+    const ports = new KitchenTriagePorts(null, fallbackWithoutMeta);
+    expect(ports.metadata).toBeUndefined();
   });
 });
 

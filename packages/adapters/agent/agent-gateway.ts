@@ -12,7 +12,6 @@
 
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import type { Queue } from 'bullmq';
 import type {
   IAgentGateway,
   AgentInvokeRequest,
@@ -25,10 +24,15 @@ import type {
 } from '@freeside/core/ports';
 import type { BudgetManager } from './budget-manager.js';
 import type { AgentRateLimiter } from './agent-rate-limiter.js';
-import type { LoaFinnClient } from './loa-finn-client.js';
+import { LoaFinnError, type LoaFinnClient } from './loa-finn-client.js';
 import type { TierAccessMapper } from './tier-access-mapper.js';
 import type { StreamReconciliationJob } from './stream-reconciliation-worker.js';
-import { getCurrentMonth } from './budget-manager.js';
+import {
+  budgetCommittedKey,
+  budgetLimitKey,
+  budgetReservedKey,
+  getCurrentMonth,
+} from './budget-manager.js';
 import { BUDGET_WARNING_THRESHOLD } from './config.js';
 import { resolvePoolId, ALIAS_TO_POOL, POOL_PROVIDER_HINT } from './pool-mapping.js';
 import type { PoolId } from './pool-mapping.js';
@@ -45,6 +49,21 @@ import { TokenEstimator } from './token-estimator.js';
 // Types
 // --------------------------------------------------------------------------
 
+export interface ReconciliationQueue {
+  add(
+    name: 'stream-reconcile',
+    data: StreamReconciliationJob,
+    options: {
+      delay: number;
+      attempts: number;
+      backoff: {
+        type: 'exponential';
+        delay: number;
+      };
+    },
+  ): Promise<unknown>;
+}
+
 export interface AgentGatewayDeps {
   budgetManager: BudgetManager;
   rateLimiter: AgentRateLimiter;
@@ -52,7 +71,7 @@ export interface AgentGatewayDeps {
   tierMapper: TierAccessMapper;
   redis: Redis;
   logger: Logger;
-  reconciliationQueue?: Queue<StreamReconciliationJob>;
+  reconciliationQueue?: ReconciliationQueue;
   /** Whether ensemble orchestration is enabled (ENSEMBLE_ENABLED env var) */
   ensembleEnabled?: boolean;
   /** Whether BYOK is enabled (BYOK_ENABLED env var) */
@@ -76,7 +95,7 @@ export class AgentGateway implements IAgentGateway {
   private readonly tierMapper: TierAccessMapper;
   private readonly redis: Redis;
   private readonly logger: Logger;
-  private readonly reconciliationQueue?: Queue<StreamReconciliationJob>;
+  private readonly reconciliationQueue?: ReconciliationQueue;
   private readonly ensembleMapper = new EnsembleMapper();
   private readonly ensembleEnabled: boolean;
   private readonly byokEnabled: boolean;
@@ -519,6 +538,9 @@ export class AgentGateway implements IAgentGateway {
     // 6. Stream from loa-finn with finalize-once semantics
     //    Pass downstream signal for abort propagation (SDD §4.7)
     let finalized = false;
+    let streamFailed = false;
+    let streamFailure: unknown;
+    let cleanupFailure: unknown;
 
     try {
       for await (const event of this.loaFinn.stream(request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
@@ -546,16 +568,51 @@ export class AgentGateway implements IAgentGateway {
 
         yield event;
       }
+    } catch (error) {
+      streamFailed = true;
+      streamFailure = error;
     } finally {
-      // Lifecycle: → FAILED if not already terminal (abort/error path)
-      if (!lifecycle.isTerminal()) {
-        lifecycle.fail({ reason: finalized ? 'POST_FINALIZE_ERROR' : 'STREAM_NOT_FINALIZED' });
+      try {
+        // Lifecycle: → FAILED if not already terminal (abort/error path)
+        if (!lifecycle.isTerminal()) {
+          lifecycle.fail({ reason: finalized ? 'POST_FINALIZE_ERROR' : 'STREAM_NOT_FINALIZED' });
+        }
+
+        // Reconciliation taxonomy:
+        // - dropped transport / abort / timeout: enqueue because execution may have continued;
+        // - clean EOF or stream-processing failure before usage: enqueue for the same uncertainty;
+        // - explicit loa-finn HTTP refusal: do not enqueue because execution was rejected upstream.
+        if (!finalized && shouldScheduleStreamReconciliation(streamFailed, streamFailure)) {
+          await this.scheduleReconciliation(context, log);
+        }
+      } catch (error) {
+        cleanupFailure = error;
+      }
+    }
+
+    if (streamFailed) {
+      if (cleanupFailure !== undefined) {
+        log.error(
+          { err: cleanupFailure, streamFailure },
+          'Stream cleanup failed; preserving the original stream failure',
+        );
       }
 
-      // Reconciliation in finally block ensures budget accounting even on abort (S10-T2)
-      if (!finalized) {
-        await this.scheduleReconciliation(context, log);
+      if (!finalized && isStreamTransportFailure(streamFailure)) {
+        throw new AgentGatewayError(
+          'STREAM_INTERRUPTED',
+          'Agent stream was interrupted before usage was finalized',
+          502,
+          undefined,
+          { cause: streamFailure },
+        );
       }
+
+      throw streamFailure;
+    }
+
+    if (cleanupFailure !== undefined) {
+      throw cleanupFailure;
     }
   }
 
@@ -578,9 +635,9 @@ export class AgentGateway implements IAgentGateway {
   async getBudgetStatus(communityId: string): Promise<BudgetStatus> {
     const month = getCurrentMonth();
     const [committedStr, reservedStr, limitStr] = await Promise.all([
-      this.redis.get(`agent:budget:committed:${communityId}:${month}`),
-      this.redis.get(`agent:budget:reserved:${communityId}:${month}`),
-      this.redis.get(`agent:budget:limit:${communityId}`),
+      this.redis.get(budgetCommittedKey(communityId, month)),
+      this.redis.get(budgetReservedKey(communityId, month)),
+      this.redis.get(budgetLimitKey(communityId)),
     ]);
 
     const committed = safeInt(committedStr);
@@ -693,27 +750,23 @@ export class AgentGateway implements IAgentGateway {
       return;
     }
 
-    try {
-      await this.reconciliationQueue.add('stream-reconcile', {
-        idempotencyKey: context.idempotencyKey,
-        communityId: context.tenantId,
-        userId: context.userId,
-        traceId: context.traceId,
-        reservedAt: Date.now(),
-      }, {
-        // 30s: Delay before first reconciliation attempt. Gives loa-finn time to
-        // process the stream and record usage before we query. See SDD §4.7.1.
-        delay: 30_000,
-        // 3 attempts with 10s exponential backoff (10s, 20s, 40s). Total window ~100s.
-        // After 3 failures, reservation falls through to reaper cleanup (§8.4).
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 10_000 },
-      });
+    await this.reconciliationQueue.add('stream-reconcile', {
+      idempotencyKey: context.idempotencyKey,
+      communityId: context.tenantId,
+      userId: context.userId,
+      traceId: context.traceId,
+      reservedAt: Date.now(),
+    }, {
+      // 30s: Delay before first reconciliation attempt. Gives loa-finn time to
+      // process the stream and record usage before we query. See SDD §4.7.1.
+      delay: 30_000,
+      // 3 attempts with 10s exponential backoff (10s, 20s, 40s). Total window ~100s.
+      // After 3 failures, reservation falls through to reaper cleanup (§8.4).
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10_000 },
+    });
 
-      log.info('Scheduled stream reconciliation');
-    } catch (err) {
-      log.error({ err }, 'Failed to schedule stream reconciliation');
-    }
+    log.info('Scheduled stream reconciliation');
   }
 
   /**
@@ -815,6 +868,20 @@ function isNonRetryable(err: Error): boolean {
   return typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500;
 }
 
+function isStreamTransportFailure(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  return error instanceof DOMException
+    && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+function shouldScheduleStreamReconciliation(
+  streamFailed: boolean,
+  streamFailure: unknown,
+): boolean {
+  if (!streamFailed) return true;
+  return !(streamFailure instanceof LoaFinnError && streamFailure.statusCode !== undefined);
+}
+
 // --------------------------------------------------------------------------
 // Gateway Error
 // --------------------------------------------------------------------------
@@ -825,8 +892,9 @@ export class AgentGatewayError extends Error {
     message: string,
     public readonly statusCode: number,
     public readonly details?: Record<string, unknown>,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'AgentGatewayError';
   }
 }

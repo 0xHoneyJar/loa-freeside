@@ -1433,9 +1433,21 @@ flatline_protocol:
   # now (they merged the general + code lineages), so no codex-specialized variant
   # needed in the alias chain.
   models:
-    primary: "gpt-5.2"
-    secondary: "codex-headless"
-    tertiary: "grok-headless"
+    # 2026-07-04 operator: best model is gpt-5.5 (5.2 outdated) AND "I use headless
+    # as well" — codex-headless wraps gpt-5.5 via the codex CLI session, so it is
+    # both directives at once. All-headless chain per the 2026-05-25 doctrine above.
+    # Chain is PROVEN-BY-DISPATCH (real OK round-trips, 2026-07-04), not readiness-
+    # asserted. Four voices verified: codex, grok, cursor, claude(fable). Chain
+    # ordered for cross-family dissent (openai → xai → cursor); claude-headless
+    # stays out — same family as the runtime, dedicated to Bridgebuilder/fable.
+    # Dead routes, excluded until repaired:
+    #   gemini-headless — gemini CLI deprecated by Google; returns as Antigravity
+    #                     (`agy` installed locally) once loa#1109 AgyHeadlessAdapter
+    #                     merges upstream and we /update-loa
+    #   openai:gpt-5.5  — API quota exhausted; GOOGLE_API_KEY invalid (400)
+    primary: "codex-headless"
+    secondary: "grok-headless"
+    tertiary: "cursor-headless"
   # Consensus thresholds (0-1000 scale)
   thresholds:
     # Both models >700 = auto-integrate improvement
@@ -1532,10 +1544,10 @@ run_bridge:
 spiral:
   enabled: true
   default_max_cycles: 3 # safety clamp: 50
-  budget_cents: 6000 # $60 total ceiling (safety clamp: $100)
+  budget_cents: 8000 # $80 total ceiling (safety clamp: $100) — raised 2026-07-05: $20/cycle starved REVIEW on the zero-operator-fulfill cycle ($22 > $17 gate floor)
   wall_clock_seconds: 28800 # 8h (safety clamp: 24h)
-  max_budget_per_cycle_usd: 20 # ≥ phase-budget sum + bridgebuilder headroom
-  max_total_budget_usd: 60
+  max_budget_per_cycle_usd: 35 # ≥ phase-budget sum + bridgebuilder headroom (was 20; impl alone hit $8 and fix loops overshot the review reserve)
+  max_total_budget_usd: 80
   flatline: # kaironic convergence — halt when findings-rate plateaus
     min_new_findings_per_cycle: 3
     consecutive_low_cycles: 2
@@ -1546,7 +1558,7 @@ spiral:
     advisor_model: opus # review + audit judgment
     max_phase_retries: 3
     planning_budget_usd: 2
-    implement_budget_usd: 8 # real work needs headroom (default 5 was tight)
+    implement_budget_usd: 12 # real work needs headroom (was 8 — the zero-operator-fulfill impl hit the cap exactly)
     review_budget_usd: 3
     audit_budget_usd: 3 # reserved — never starved by earlier phases
     bb_fix_budget_usd: 3
@@ -1586,6 +1598,10 @@ preferences:
 # BB stays on claude-headless.
 bridgebuilder:
   enabled: true
+  # 2026-07-04 operator: Fable for BB. claude-headless already dispatches fable —
+  # model-config.yaml pins `cli_model: fable` (2026-06-11 decision), so this IS
+  # the fable-tier intent, live via the operator's subscription. Dispatch-proven
+  # 2026-07-04 (the 2026-06-29 "deadlock" observation did not reproduce).
   model: "claude-headless"
 
 # =============================================================================
@@ -1594,3 +1610,14 @@ bridgebuilder:
 # =============================================================================
 simstim:
   enabled: true
+
+# =============================================================================
+# Post-PR validation — Bridgebuilder loop closure (enabled 2026-07-04 for the
+# full-autonomy posture; BB now routes via codex-headless, proven by dispatch).
+# CRITICAL/BLOCKER findings queue to .run/bridge-pending-bugs.jsonl for /bug;
+# HIGH logs to trajectory; PRAISE queues for lore mining.
+# =============================================================================
+post_pr_validation:
+  phases:
+    bridgebuilder_review:
+      enabled: true

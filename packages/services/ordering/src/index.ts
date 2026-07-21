@@ -116,6 +116,13 @@ export {
 export { normalizeContractAddress, normalizeChainId } from './contract-address.js';
 export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';
 export { createOrderingComposition, serviceTokenFromEnv, ctaFromEnv } from './composition.js';
+export {
+  resolvePublicAuthPosture,
+  publicAuthPostureFromEnv,
+  serviceTokenForPublicAuthMounts,
+  isDeployedEnv,
+} from './public-auth-posture.js';
+export type { PublicAuthMode, PublicAuthPosture } from './public-auth-posture.js';
 
 export { createFrontendApp } from './frontend.js';
 
@@ -149,3 +156,203 @@ export {
   type PrivateOpsPublisher,
   RecordingPrivateOps,
 } from './private-ops.js';
+
+export {
+  type ResolutionOperation,
+  type IdempotencyRecord,
+  type ResolutionStore,
+  InMemoryResolutionStore,
+} from './resolution-store.js';
+
+export {
+  type SonarResolveProbePort,
+  type ResolutionServiceClock,
+  type ResolutionIdGenerator,
+  type CollectionResolutionServiceOptions,
+  CollectionResolutionService,
+} from './resolution-service.js';
+
+export { PostgresResolutionStore } from './resolution-store-postgres.js';
+export { createResolutionStore } from './resolution-store-factory.js';
+export { mountCollectionResolutionRoutes } from './resolution-http.js';
+export {
+  PublicAuthorizationService,
+  createFixturePublicAuthorizationService,
+  type PublicAuthorizationProjections,
+  type PublicAuthorizationProjectionPort,
+} from './public-authorization-service.js';
+export {
+  FixturePublicAuthorizationProjectionPort,
+  publicAuthFixtureFromEnv,
+  DEFAULT_BASELINE_FIXTURE,
+} from './public-authorization-projections.js';
+export { mountCapabilityDemandRoutes } from './capability-demand-http.js';
+export {
+  OPEN_DEMAND_LIMIT_PER_SUBJECT,
+  OPEN_DEMAND_LIMIT_PER_COMMUNITY,
+  OPEN_DEMAND_TTL_MS,
+  CAPABILITY_DEMAND_ATTENTION_KIND,
+  CAPABILITY_DEMAND_SOURCE_KIND,
+} from './capability-demand-constants.js';
+export {
+  buildCapabilityDemandSupportedIntent,
+  stableCapabilityDemandIntentId,
+  type CapabilityDemandAttentionIntent,
+} from './capability-demand-intent.js';
+export {
+  buildTriageAggregate,
+  mapSupportRequestUserStatus,
+  toSupportRequestListItem,
+  type CapabilityDemandTriageAggregate,
+  type CapabilityDemandTriageBucket,
+  type SupportRequestListItem,
+  type SupportRequestUserStatus,
+} from './capability-demand-projection.js';
+export {
+  InMemoryCapabilityDemandStore,
+  toPublicCapabilityDemandProjection,
+  type CapabilityDemandStore,
+  type CapabilityDemandRecord,
+  type CapabilityDemandState,
+} from './capability-demand-store.js';
+export {
+  createHttpSonarResolveProbePort,
+  sonarResolveProbeFromEnv,
+} from './sonar-resolve-probe-client.js';
+export { createCatalogResolveProbePort } from './catalog-resolve-probe.js';
+export {
+  InMemoryDependencyLedgerStore,
+  type DependencyLedgerStore,
+} from './dependency-ledger-store.js';
+export {
+  DependencyLedgerService,
+  createFixtureDependencyLedgerService,
+} from './dependency-ledger-service.js';
+export { mountDependencyLedgerRoutes } from './dependency-ledger-http.js';
+export {
+  PUBLIC_PREP_CAPABILITIES,
+  PUBLIC_PREP_LIMITS,
+  LEASABLE_PUBLIC_WORK_STATES,
+  isLeasablePublicWorkState,
+  type PublicPrepCapability,
+  type PublicPreparationWorkKeyMaterial,
+  type SharedPreparationWorkRecord,
+  type PreparationWorkItemRecord,
+  type ReportWorkLinkRecord,
+  type ReadinessEvidenceEnvelope,
+} from './shared-preparation-types.js';
+export {
+  buildPublicWorkKeyMaterial,
+  digestPublicWorkKey,
+  deploymentSetDigest,
+} from './shared-preparation-work-key.js';
+export {
+  InMemorySharedPreparationStore,
+  SharedPreparationFencingError,
+  SharedPreparationStateError,
+  assertReadinessEvidenceQualified,
+  type SharedPreparationStore,
+  type JoinPublicWorkInput,
+  type JoinPublicWorkResult,
+} from './shared-preparation-store.js';
+export {
+  PostgresSharedPreparationStore,
+} from './shared-preparation-store-postgres.js';
+export {
+  createSharedPreparationService,
+  type SharedPreparationService,
+} from './shared-preparation-service.js';
+
+export {
+  COLLECTION_PREP_POOL_CAPABILITY,
+  REPORT_GENERATION_POOL_CAPABILITY,
+  PUBLIC_PREP_WORKER_LEASE_MS,
+  publicPrepWorkerEnabled,
+  publicPrepWorkerIntervalMs,
+} from './public-preparation-constants.js';
+export { sonarCommandInboxKey, sonarPhysicalJobRef } from './public-preparation-dispatch-key.js';
+export {
+  InMemoryPublicPrepDispatchStore,
+  type PublicPrepDispatchStore,
+  type PrepDispatchRecord,
+} from './public-preparation-dispatch-store.js';
+export {
+  FixturePublicPreparationSonarPort,
+  type PublicPreparationSonarPort,
+  type SonarPrepDispatchRequest,
+  type SonarPrepDispatchResult,
+} from './public-preparation-sonar-port.js';
+export {
+  PublicPreparationAdapter,
+  type PublicPreparationAdapterDeps,
+  type PublicPrepProcessResult,
+} from './public-preparation-adapter.js';
+export { PublicPreparationWorker } from './public-preparation-worker.js';
+export {
+  aggregateReadinessEvidence,
+  buildReadinessEvidenceFromDeployments,
+} from './public-preparation-evidence.js';
+
+export {
+  CAPACITY_LEDGER_KINDS,
+  CAPACITY_RESERVATION_STATES,
+  CapacityUnavailableError,
+  AdmissionIdempotencyConflictError,
+  type CapacityLedgerKind,
+  type CapacityPoolRecord,
+  type CapacityReservationRecord,
+  type RecipeExpansionCertificate,
+  type CapacityUnavailableReason,
+} from './admission-capacity-types.js';
+export {
+  V1_MAX_RECIPE_NODES,
+  DEFAULT_ADMISSION_RATE_LIMIT,
+  DEFAULT_QUEUED_WORK_LIMIT,
+  DEFAULT_ACTIVE_EXECUTION_LIMIT,
+  ACTIVE_EXECUTION_LEASE_MS,
+} from './admission-capacity-constants.js';
+export {
+  buildRecipeExpansionCertificate,
+  fixtureGateLeakCertificate,
+  assertCertificateAdmissible,
+} from './recipe-expansion-certificate.js';
+export {
+  InMemoryAdmissionCapacityStore,
+  type AdmissionCapacityStore,
+  type AdmitOrderInput,
+  type AdmitOrderResult,
+} from './admission-capacity-store.js';
+export { PostgresAdmissionCapacityStore } from './admission-capacity-store-postgres.js';
+export {
+  createAdmissionCapacityService,
+  type AdmissionCapacityService,
+} from './admission-capacity-service.js';
+export {
+  createAdmissionCapacityComposition,
+  type AdmissionCapacityComposition,
+} from './admission-capacity-composition.js';
+export {
+  admitCollectionReportOrder,
+  buildPublicRootWorkKeysFromResolution,
+  mapCollectionReportAdmissionError,
+  bindingDigestMatchesRecord,
+  type CollectionReportAdmissionDeps,
+  type AdmitCollectionReportInput,
+  type AdmitCollectionReportResult,
+  type CollectionReportAdmissionDeny,
+  type CollectionReportAdmissionErrorCode,
+} from './collection-report-admission.js';
+export {
+  GATE_LEAK_COMPILER_VERSION,
+  GATE_LEAK_NODE_TYPES,
+  GATE_LEAK_PUBLIC_NODES_PER_DEPLOYMENT,
+  GATE_LEAK_RESTRICTED_COMMUNITY_NODES,
+  GATE_LEAK_COMPUTE_NODES,
+  GATE_LEAK_MAX_IDENTITY_LINK_PAGES,
+  compileGateLeakRecipe,
+  SelectionTooLargeError,
+  WorkflowTooLargeError,
+  type GateLeakNodeType,
+  type CompileGateLeakRecipeInput,
+  type CompiledGateLeakRecipe,
+} from './gate-leak-recipe-compiler.js';

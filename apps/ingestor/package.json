@@ -12,6 +12,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts",
+    "lint:fast": "../../node_modules/.bin/oxlint src",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

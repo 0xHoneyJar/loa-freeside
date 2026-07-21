@@ -209,6 +209,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: |
+            themes/sietch/package-lock.json
+            packages/core/package-lock.json
+            packages/adapters/package-lock.json
 
       - name: Install dependencies
         working-directory: themes/sietch
@@ -253,6 +259,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: |
+            themes/sietch/package-lock.json
+            packages/core/package-lock.json
+            packages/adapters/package-lock.json
 
       - name: Install dependencies
         working-directory: themes/sietch
@@ -268,6 +280,10 @@ jobs:
         run: npm run test:integration
         env:
           REDIS_URL: redis://localhost:6379
+          # RC-2 fix: DATABASE_URL placeholder so config.ts Zod validation passes and
+          # MigrationEngine/billing-agent-sovereignty tests do not silently skip.
+          # No Postgres service is provisioned — sietch integration tests use SQLite in-memory.
+          DATABASE_URL: postgresql://test:test@localhost:5432/freeside_test
           # config.ts validates all env at import (Zod); the integration vitest project has no
           # setupFiles, so unlike the unit project (tests/setup-unit.ts) these required vars are
           # unset → "Configuration validation failed: triggerDev.secretKey". Test placeholders,
@@ -287,3 +303,64 @@ jobs:
           RATE_LIMIT_SALT: test-rate-limit-salt-value
           NODE_ENV: test
           LOG_LEVEL: error
+
+  # =============================================================================
+  # WORKER DB TESTS — EventNatsConsumer integration tests (real Postgres)
+  # =============================================================================
+  worker-db-tests:
+    name: Worker DB Tests (EventNatsConsumer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: freeside_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/freeside_test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: apps/worker/package-lock.json
+
+      - name: Install worker dependencies
+        working-directory: apps/worker
+        run: npm ci
+
+      - name: Apply test schema
+        run: |
+          psql "$DATABASE_URL" -f apps/worker/tests/fixtures/worker-test-schema.sql
+
+      - name: Skip-guard — assert DATABASE_URL is configured
+        # Belt-and-suspenders: the describe.skipIf gate in EventNatsConsumer.test.ts
+        # silently passes with zero assertions when DATABASE_URL is absent.
+        # This step makes that configuration error loud and red instead of green.
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::DATABASE_URL is not set — EventNatsConsumer tests will silently skip"
+            exit 1
+          fi
+          echo "Skip-guard passed: DATABASE_URL is configured"
+
+      - name: Run worker DB tests
+        working-directory: apps/worker
+        run: npm run test:run -- --reporter=verbose src/consumers/EventNatsConsumer.test.ts

@@ -18,6 +18,12 @@ import {
   buildCommunityOnboardingOpsNotice,
   fireCommunityOnboardingOpsWebhook,
 } from './order-ops-webhook.js';
+import type { CollectionResolutionService } from './resolution-service.js';
+import type { ResolutionStore } from './resolution-store.js';
+import type { PublicAuthorizationService } from './public-authorization-service.js';
+import type { AdmissionCapacityService } from './admission-capacity-service.js';
+import { admitCollectionReportOrder } from './collection-report-admission.js';
+import { noStoreHeaders, requireServiceBearer } from './public-authorization-http.js';
 
 /**
  * order-intake (SDD §5) — the internal HTTP edge.
@@ -49,13 +55,23 @@ export interface IntakeDeps {
   serviceTokenLabel?: string;
   /** Deploy-facing healthz payload extras (write-route posture, store kind, …). */
   healthz?: Record<string, unknown>;
+  /** CR-006 resolution admission for collection-report orders. */
+  resolutionService?: CollectionResolutionService;
+  resolutionStore?: ResolutionStore;
+  /** CR-007A public authorization recheck for collection-report placement. */
+  publicAuth?: PublicAuthorizationService;
+  /** CR-202 atomic admission capacity + recipe compiler for collection-report. */
+  admissionCapacity?: AdmissionCapacityService;
 }
 
 const PlaceOrderBodySchema = z
   .object({
     product: ProductId,
     placed_by: z.string().min(1),
+    /** CR-202 idempotency key — required for collection-report placement. */
+    client_request_id: z.string().min(1).optional(),
     inputs: z.record(z.string(), z.unknown()),
+    authorization_scope: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
@@ -113,6 +129,65 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     const inputsParsed = preset.inputSchema.safeParse(body.data.inputs);
     if (!inputsParsed.success) {
       return c.json({ error: 'invalid inputs for product', issues: inputsParsed.error.issues }, 400);
+    }
+
+    if (body.data.product === 'collection-report') {
+      // CR-007A/CR-202 denial envelope — schema_version/code/reason (BB #496).
+      const deny = (
+        status: 400 | 401 | 403 | 409 | 503,
+        code: string,
+        reason?: string,
+      ) =>
+        c.json(
+          {
+            schema_version: 1,
+            code,
+            ...(reason !== undefined ? { reason } : {}),
+          },
+          status,
+          noStoreHeaders(),
+        );
+
+      if (!deps.resolutionService || !deps.resolutionStore || !deps.admissionCapacity) {
+        return deny(503, 'collection_report_admission_unavailable');
+      }
+      if (!deps.publicAuth) {
+        return deny(503, 'public_authorization_unconfigured');
+      }
+      if (body.data.authorization_scope === undefined) {
+        return deny(400, 'authorization_scope_required');
+      }
+      if (body.data.client_request_id === undefined) {
+        return deny(400, 'client_request_id_required');
+      }
+
+      const admitted = await admitCollectionReportOrder(
+        {
+          resolutionService: deps.resolutionService,
+          resolutionStore: deps.resolutionStore,
+          publicAuth: deps.publicAuth,
+          admissionCapacity: deps.admissionCapacity,
+          orderStore: deps.store,
+          now: deps.now,
+        },
+        {
+          placed_by: body.data.placed_by,
+          client_request_id: body.data.client_request_id,
+          binding: inputsParsed.data,
+          authorization_scope: body.data.authorization_scope,
+        },
+      );
+
+      if (admitted.kind === 'deny') {
+        return deny(admitted.deny.status, admitted.deny.code, admitted.deny.reason);
+      }
+
+      deps.onPlaced?.(admitted.order_id);
+      return c.json(
+        { order_id: admitted.order_id, replay: admitted.replay },
+        200,
+        noStoreHeaders(),
+      );
     }
 
     const order_id = randomUUID();

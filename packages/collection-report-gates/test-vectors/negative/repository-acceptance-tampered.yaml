@@ -1,0 +1,13 @@
+schema_version: 1
+receipts:
+  - task_id: ACCEPT-LOA
+    repository: 0xHoneyJar/loa-freeside
+    owner: platform-deployment-owner
+    reviewed_commit: "3333333333333333333333333333333333333333"
+    artifact_uri: https://github.com/0xHoneyJar/loa-freeside/tree/3333333333333333333333333333333333333333
+    artifact_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    state: accepted
+    valid_from: 2026-07-15T00:00:00Z
+    valid_until: 2026-08-15T00:00:00Z
+    key_id: ed25519:e86fa3a9eb8489f93ecd49fc47d7a74ac99ea7324daf9b0d702e17e2afc157fd
+    signature: cJ0URrKSNt77Vzns5u0Y7qhhbhuR1B3uEEnzoH4DJEwlW_oXzJb0t2Bg37LTK9qlNiBgroDSf3kUPwckVCcGAA

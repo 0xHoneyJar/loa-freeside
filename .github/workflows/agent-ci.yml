@@ -111,7 +111,10 @@ jobs:
         run: ./node_modules/.bin/vitest run --config vitest.agent-ci.config.ts
 
       - name: Integration tests
-        run: npx vitest run tests/integration/
+        # RC-3 fix: `npx vitest run tests/integration/` without --config scans the entire
+        # repo matching the path pattern — collects sietch + worktree files (600+, all failing).
+        # vitest.agent-ci-integration.config.ts scopes to tests/integration/**/*.test.ts only.
+        run: npx vitest run --config vitest.agent-ci-integration.config.ts
         env:
           REDIS_URL: redis://127.0.0.1:6379
           BERACHAIN_RPC_URLS: https://rpc.test.example.com

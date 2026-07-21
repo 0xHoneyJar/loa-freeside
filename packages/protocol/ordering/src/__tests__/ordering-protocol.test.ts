@@ -13,6 +13,9 @@ import {
   ACCESS_RISK_AUDIT_PRESET,
   COMMUNITY_ONBOARDING_PRESET,
   INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
+  CapabilityNeed,
+  TriageCapabilityNeed,
+  CommunityOnboardingIngredients,
 } from '../index.js';
 
 const validOrder = {
@@ -123,20 +126,70 @@ describe('community-onboarding preset', () => {
     expect(COMMUNITY_ONBOARDING_PRESET.recipe.map((s) => s.capability)).toEqual([
       'collection-index',
       'community-register',
+      'metadata-snapshot',
       'world-manifest',
       'discord-observer',
       'shadow-preview-gate',
     ]);
   });
 
-  it('seeds initial ingredients with shadow_preview blocked', () => {
+  it('seeds initial ingredients with shadow_preview blocked and metadata_snapshot pending', () => {
     expect(INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS).toEqual({
       sonar: 'pending',
       score: 'pending',
+      metadata_snapshot: 'pending',
       worlds_manifest: 'pending',
       discord_observer: 'optional',
       shadow_preview: 'blocked',
     });
+  });
+});
+
+describe('metadata_snapshot protocol additions (T-1)', () => {
+  it('CapabilityNeed contains metadata-snapshot', () => {
+    expect(CapabilityNeed.options).toContain('metadata-snapshot');
+  });
+
+  it('TriageCapabilityNeed contains metadata-snapshot', () => {
+    expect(TriageCapabilityNeed.options).toContain('metadata-snapshot');
+  });
+
+  it('INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS has metadata_snapshot: pending', () => {
+    expect(INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS.metadata_snapshot).toBe('pending');
+  });
+
+  it('COMMUNITY_ONBOARDING_PRESET.recipe has exactly one metadata-snapshot entry, after community-register', () => {
+    const recipe = COMMUNITY_ONBOARDING_PRESET.recipe;
+    const metaIdx = recipe.findIndex((s) => s.capability === 'metadata-snapshot');
+    const registerIdx = recipe.findIndex((s) => s.capability === 'community-register');
+    expect(metaIdx).toBeGreaterThan(-1);
+    expect(metaIdx).toBe(registerIdx + 1);
+    expect(recipe.filter((s) => s.capability === 'metadata-snapshot')).toHaveLength(1);
+  });
+
+  it('CommunityOnboardingIngredients schema accepts metadata_snapshot and rejects unknown keys', () => {
+    expect(() =>
+      CommunityOnboardingIngredients.parse({
+        sonar: 'pending',
+        score: 'pending',
+        metadata_snapshot: 'pending',
+        worlds_manifest: 'pending',
+        discord_observer: 'optional',
+        shadow_preview: 'blocked',
+      }),
+    ).not.toThrow();
+    // strict() — extra keys rejected
+    expect(() =>
+      CommunityOnboardingIngredients.parse({
+        sonar: 'pending',
+        score: 'pending',
+        metadata_snapshot: 'pending',
+        worlds_manifest: 'pending',
+        discord_observer: 'optional',
+        shadow_preview: 'blocked',
+        extra: 'bad',
+      }),
+    ).toThrow();
   });
 });
 

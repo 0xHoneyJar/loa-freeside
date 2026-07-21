@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "accepted_at_ms": 1784322001000,
+  "registry": {
+    "schema_version": 1,
+    "keys": [
+      {
+        "signing_key_id": "sonar-fixture-primary",
+        "public_key_hex": "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+        "producer": "sonar-api",
+        "capabilities": [
+          "collection-report.capability-evidence.v1"
+        ],
+        "tenant_scope_digests": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "activated_at": "2026-07-01T00:00:00.000Z"
+      },
+      {
+        "signing_key_id": "sonar-fixture-rotated",
+        "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "producer": "sonar-api",
+        "capabilities": [
+          "collection-report.capability-evidence.v1"
+        ],
+        "tenant_scope_digests": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "activated_at": "2026-07-10T00:00:00.000Z"
+      },
+      {
+        "signing_key_id": "sonar-fixture-revoked",
+        "public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+        "producer": "sonar-api",
+        "capabilities": [
+          "collection-report.capability-evidence.v1"
+        ],
+        "tenant_scope_digests": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "activated_at": "2026-07-01T00:00:00.000Z",
+        "revoked_at": "2026-07-16T00:00:00.000Z"
+      }
+    ]
+  },
+  "envelopes": [
+    {
+      "id": "valid-primary",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-primary",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 1,
+          "sequence": 1,
+          "trust_stream": true,
+          "issued_at": "2026-07-17T21:00:00.000Z",
+          "expires_at": "2026-07-17T21:05:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "ready"
+        },
+        "signature": "N19RYOoixxffLK5z1khRrJ-Tq7LeXV4NXoZ5wBHsawSljoeL5x7BmZjJlHjuDQph4vWHUhQ414_DIee3sYz4BA"
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "rotation-overlap-new-key",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-rotated",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "22222222-2222-4222-8222-222222222222",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 1,
+          "sequence": 2,
+          "trust_stream": true,
+          "issued_at": "2026-07-17T21:00:00.000Z",
+          "expires_at": "2026-07-17T21:05:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "ready"
+        },
+        "signature": "do1Kx8Kh7k1cxlUM9nfYrhF8pij9R3x-lJqWczTEW6vaJ45lNK-1bjW4VuOfU96-wUbCVSRbKdD0CCKrEBUFCQ"
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "revoked-key",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-revoked",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "33333333-3333-4333-8333-333333333333",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 1,
+          "sequence": 3,
+          "trust_stream": true,
+          "issued_at": "2026-07-17T21:00:00.000Z",
+          "expires_at": "2026-07-17T21:05:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "ready"
+        },
+        "signature": "_XC3U7D9msfdTX8TQgLhDyCbSkb_Ld7yPJ2bELtM27KhdEXVTWbJZnpO7TwEHpkyH73MDB1uWZbzu75cNNJQBA"
+      },
+      "expect": "reject",
+      "reject_reason": "revoked_signing_key",
+      "reject_stage": "verify"
+    },
+    {
+      "id": "expired",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-primary",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "44444444-4444-4444-8444-444444444444",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 1,
+          "sequence": 4,
+          "trust_stream": true,
+          "issued_at": "2026-07-17T20:50:00.000Z",
+          "expires_at": "2026-07-17T20:51:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "ready"
+        },
+        "signature": "v9k27T98zu6MjMEYn9a4YKXI55QdmcuDfYQYNhkGxzLcdOef-V49ZW4q_WCUgVGRvsiAfbUEc9EDl_6q4bNDAg"
+      },
+      "expect": "reject",
+      "reject_reason": "expired",
+      "reject_stage": "verify"
+    },
+    {
+      "id": "sequence-gap",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-primary",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "55555555-5555-4555-8555-555555555555",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 1,
+          "sequence": 6,
+          "trust_stream": true,
+          "issued_at": "2026-07-17T21:00:00.000Z",
+          "expires_at": "2026-07-17T21:05:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "ready"
+        },
+        "signature": "Lbs5MpoFR7ToubR6_0iS6RH5bon07ISaLqV5CaeFzigshQtsEJsiILMCSEYUzIJGjdPfrYHv44lNg6BI_pqhDQ"
+      },
+      "expect": "reject",
+      "reject_reason": "sequence_gap",
+      "reject_stage": "ingest"
+    },
+    {
+      "id": "epoch-without-baseline",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-primary",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "66666666-6666-4666-8666-666666666666",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 2,
+          "sequence": 1,
+          "trust_stream": true,
+          "issued_at": "2026-07-17T21:00:00.000Z",
+          "expires_at": "2026-07-17T21:05:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "ready"
+        },
+        "signature": "oH7pxJlLCsT85y6p5QHR-_IkIDcUBJPu4fkG_Xh9BflI3lbMNGb_4dC-gic7NPOpUPQyn3vCJqh0ba0rqcD1Aw"
+      },
+      "expect": "reject",
+      "reject_reason": "epoch_baseline_required",
+      "reject_stage": "ingest"
+    },
+    {
+      "id": "tampered-body",
+      "envelope": {
+        "header": {
+          "schema_version": 1,
+          "schema_minor": 0,
+          "algorithm": "Ed25519",
+          "signing_key_id": "sonar-fixture-primary",
+          "producer": "sonar-api",
+          "contract": {
+            "name": "collection-report.trust-envelope",
+            "major_version": 1,
+            "minor_version": 0
+          },
+          "event_id": "77777777-7777-4777-8777-777777777777",
+          "stream_id": "sonar.public-capability.v1",
+          "stream_epoch": 1,
+          "sequence": 5,
+          "trust_stream": false,
+          "issued_at": "2026-07-17T21:00:00.000Z",
+          "expires_at": "2026-07-17T21:05:00.000Z",
+          "tenant_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "capability": "collection-report.capability-evidence.v1",
+          "body_digest": "f9353be76f4f70fc1d95a58d2b86930b8bc3864c11c08c5e07be8e26de317cc9"
+        },
+        "body": {
+          "schema_version": 1,
+          "deployment_id": "deploy-alpha-mainnet",
+          "capability_state": "tampered"
+        },
+        "signature": "ZlrJXId9D5FaK29eQ92DAkY3a92zfB8JMdpGv5uqvFax4pdrmJeX7uMAZF5zZgFXyT6NC7eJyRU0SVkVHFE_BQ"
+      },
+      "expect": "reject",
+      "reject_reason": "body_digest_mismatch",
+      "reject_stage": "verify"
+    }
+  ],
+  "baselines": [
+    {
+      "id": "epoch-2-complete",
+      "baseline": {
+        "schema_version": 1,
+        "schema_minor": 0,
+        "algorithm": "Ed25519",
+        "producer": "sonar-api",
+        "stream_id": "sonar.public-capability.v1",
+        "stream_epoch": 2,
+        "highest_sequence": 2,
+        "envelope_count": 2,
+        "baseline_digest": "d32e712512f816bf0305aae3b29d8e34f3a4fab4bc93be8778da65f7adc8de4c",
+        "issued_at": "2026-07-17T21:00:00.000Z",
+        "signing_key_id": "sonar-fixture-primary",
+        "signature": "3q-jZvDczB3AamRUfsy2E79yWmSE4JvzWzVxO4z8__2cJgyB-96mgN-N27MpnlT1gcTBxVnPxFiyCEdTP5FCAg"
+      }
+    }
+  ]
+}

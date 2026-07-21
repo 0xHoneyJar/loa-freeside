@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "unicorn"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "error"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/out/**",
+    "**/.next/**",
+    "**/*.d.ts",
+    ".worktrees/**",
+    "wt-*/**",
+    ".claude/**",
+    ".beads/**",
+    ".run/**",
+    "**/.venv/**",
+    "**/__pycache__/**",
+    "**/*.pyc"
+  ]
+}

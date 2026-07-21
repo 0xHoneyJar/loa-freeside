@@ -1,0 +1,6 @@
+name: checkpoint-contradicts-dag
+description: CR-209A depends on CR-201B and cannot be scheduled before it.
+checkpoint_id: C5
+earlier_task: CR-209A
+later_task: CR-201B
+expected_code: CHECKPOINT_ORDER_CONTRADICTION

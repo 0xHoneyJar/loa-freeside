@@ -1,40 +1,54 @@
 {
   "schema_version": 1,
-  "git_sha": "ride-20260518",
-  "git_sha_full": null,
-  "branch": "feat/mature-freeside-operator",
-  "generated_at": "2026-05-18T00:00:00Z",
-  "generator": "/ride v1.157.0",
+  "git_sha": "9b0f4a12",
+  "git_sha_full": "9b0f4a129c1c04d97298015d1e07c69435c971bf",
+  "branch": "feat/spiral-spiral-20260706-359e28-cycle-1",
+  "generated_at": "2026-07-06T23:15:55Z",
+  "generator": "/ride reality+ground-truth refresh v1.180.0",
+  "scope": "reality + ground-truth refresh (PRD/SDD preserved)",
+  "integrity_gate": "override (benign stale checksums 2026-01-17 vs framework 1.180.0; user-authorized)",
   "supersedes": {
-    "previous_generated_at": "2026-02-13T13:30:00Z",
-    "previous_git_sha": "39be5b7",
-    "preserved": true,
-    "preserved_files": ["api.md", "services.md", "database.md", "commands.md", "environment.md", "triggers.md"]
+    "previous_generated_at": "2026-05-18T00:00:00Z",
+    "previous_status": "CORPSE (monolith capture, quarantined by governance-doctor.sh)",
+    "preserved": true
   },
   "files": {
     "index.md": { "status": "required", "regenerated": true },
     "structure.md": { "status": "required", "regenerated": true },
-    "api-surface.md": { "status": "required", "regenerated": true },
-    "types.md": { "status": "required", "regenerated": true },
-    "interfaces.md": { "status": "required", "regenerated": true },
-    "entry-points.md": { "status": "required", "regenerated": true },
     "architecture-overview.md": { "status": "required", "regenerated": true },
+    "api-surface.md": { "status": "required", "regenerated": true },
+    "entry-points.md": { "status": "required", "regenerated": true },
     "hygiene-report.md": { "status": "required", "regenerated": true },
-    "api.md": { "status": "preserved", "generated_at": "2026-02-13" },
-    "services.md": { "status": "preserved", "generated_at": "2026-02-13" },
-    "database.md": { "status": "preserved", "generated_at": "2026-02-13" },
-    "commands.md": { "status": "preserved", "generated_at": "2026-02-13" },
-    "environment.md": { "status": "preserved", "generated_at": "2026-02-13" },
-    "triggers.md": { "status": "preserved", "generated_at": "2026-02-13" }
+    "types.md": { "status": "required", "regenerated": true },
+    "api.md": { "status": "preserved", "regenerated": false },
+    "services.md": { "status": "preserved", "regenerated": false },
+    "database.md": { "status": "preserved", "regenerated": false },
+    "commands.md": { "status": "preserved", "regenerated": false },
+    "environment.md": { "status": "preserved", "regenerated": false },
+    "triggers.md": { "status": "preserved", "regenerated": false },
+    "interfaces.md": {
+      "status": "preserved",
+      "regenerated": false,
+      "note": "Interface extraction intentionally OUT of scope for this reality+ground-truth refresh; current contracts are covered in types.md. Run a dedicated interfaces pass if interface drift is suspected."
+    }
   },
   "validation": {
-    "required_surfaces": ["index.md", "structure.md", "api-surface.md", "types.md", "interfaces.md", "entry-points.md", "architecture-overview.md", "hygiene-report.md"],
-    "all_required_present": true,
-    "staleness_threshold_days": 7
+    "required_surfaces": ["index.md", "structure.md", "architecture-overview.md", "api-surface.md", "types.md", "entry-points.md", "hygiene-report.md"],
+    "preserved_surfaces": ["api.md", "services.md", "database.md", "commands.md", "environment.md", "triggers.md", "interfaces.md"],
+    "preserved_rationale": "Legacy Feb-May spokes not regenerated this refresh. interfaces.md is preserved by EXPLICIT exception (see files.interfaces.md.note) rather than silent downgrade. The superseded 2026-05-18 corpse is retired per the supersedes block. Checksums (ground-truth/checksums.json) cover the required_surfaces + ground-truth spokes only.",
+    "checksums_manifest": "grimoires/loa/ground-truth/checksums.json"
   },
-  "notes": [
-    "Old reality files (api.md, services.md, database.md, commands.md, environment.md, triggers.md) preserved for historical reference",
-    "Ride performed in non-interactive mode against existing context",
-    "Drift score 7.3/10, consistency 6.5/10"
+  "outputs": {
+    "reality": "grimoires/loa/reality/",
+    "ground_truth": "grimoires/loa/ground-truth/",
+    "drift_report": "grimoires/loa/drift-report.md (local/gitignored; summary in NOTES.md)",
+    "claims_to_verify": "grimoires/loa/context/claims-to-verify.md (local/gitignored)"
+  },
+  "key_findings": [
+    "Namespace migrated @arrakis/* -> @freeside/* (0 @arrakis refs remain); AGENTS.md example imports fixed this refresh",
+    "Monolith -> hexagonal federation (registry cells; 8 canonical external *-api + ledger-api + events-api)",
+    "9 PostgreSQL tables (Drizzle RLS) + 8 legacy SQLite; 68 TS + 19 SQL migrations",
+    "New surfaces: freeside-cli, mcp-gateway, operator-dash, BeaconV3, @0xhoneyjar/events",
+    "No CI canary yet for cluster secret-parity (plan: specs/cluster-secret-parity-canary/)"
   ]
 }

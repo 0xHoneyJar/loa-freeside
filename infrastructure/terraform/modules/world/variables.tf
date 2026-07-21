@@ -174,3 +174,15 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+variable "alerts_topic_arn" {
+  description = "SNS topic ARN for world health alarms. Empty string disables alarm creation."
+  type        = string
+  default     = ""
+}
+
+variable "alb_arn_suffix" {
+  description = "arn_suffix of the shared ALB (required for HealthyHostCount alarm dimensions when alerts_topic_arn is set)"
+  type        = string
+  default     = ""
+}

@@ -83,7 +83,8 @@ fi
 # Step 2: Check if dist is already up-to-date (v7.9.2 fingerprint)
 # =============================================================================
 
-DIST_VERSION=$(grep -oP "CONTRACT_VERSION\s*=\s*'[^']+'" "$HOUNFOUR_DIR/dist/version.js" 2>/dev/null | grep -oP "'[^']+'" | tr -d "'" || echo "")
+# Portable extraction (BSD/macOS grep lacks -P); sed exits 0 on no-match → DIST_VERSION="" (matches prior `|| echo ""`)
+DIST_VERSION=$(sed -nE "s/.*CONTRACT_VERSION[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" "$HOUNFOUR_DIR/dist/version.js" 2>/dev/null)
 
 # v7.9.2 stale-detection: check CONTRACT_VERSION AND v7.9.0+ fingerprint
 # (EconomicBoundarySchema is the v7.9.0+ fingerprint — re-exported from economy barrel)
@@ -232,7 +233,9 @@ if [[ ! -d "dist" ]]; then
   rebuild_failure "No dist/ produced — cannot rebuild"
 fi
 
-NEW_VERSION=$(grep -oP "CONTRACT_VERSION\s*=\s*'[^']+'" "dist/version.js" 2>/dev/null | grep -oP "'[^']+'" | tr -d "'" || echo "unknown")
+# Portable extraction (BSD/macOS grep lacks -P); empty result falls back to "unknown" (matches prior `|| echo "unknown"`)
+NEW_VERSION=$(sed -nE "s/.*CONTRACT_VERSION[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" "dist/version.js" 2>/dev/null)
+NEW_VERSION=${NEW_VERSION:-unknown}
 echo "$TAG Built dist with CONTRACT_VERSION=$NEW_VERSION"
 
 # =============================================================================

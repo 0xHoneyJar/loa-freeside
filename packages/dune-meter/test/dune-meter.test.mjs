@@ -14,8 +14,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 
 import { creditsForDatapoints, estimateDatapoints, verdictFor, buildEstimate } from '../src/estimate.mjs';
 import {
@@ -60,10 +61,13 @@ function tmpEnv() {
   };
 }
 
-// A mock Dune client: canned probe + execute + poll + metadata. No network.
-function mockClient({ rows = 100, cols = 4, datapoints, credits = null, throwOnExecute = null } = {}) {
+// A mock Dune client: canned probe + probeCount + probeSample + execute + poll + metadata. No network.
+// probe_credits maps to countCredits (sampleCredits=0) for backward compat with raw-SQL tests.
+function mockClient({ rows = 100, cols = 4, datapoints, credits = null, throwOnExecute = null, probe_credits = 0 } = {}) {
   return {
-    async probe() { return { rows, cols, execution_id: 'exec-probe' }; },
+    async probe() { return { rows, cols, execution_id: 'exec-probe', probe_credits }; },
+    async probeCount() { return { rows, countCredits: probe_credits }; },
+    async probeSample() { return { cols, sampleCredits: 0 }; },
     async executeQuery() { if (throwOnExecute) throw throwOnExecute; return { execution_id: 'exec-run' }; },
     async executeSql() { if (throwOnExecute) throw throwOnExecute; return { execution_id: 'exec-run' }; },
     async pollStatus() { if (throwOnExecute) throw throwOnExecute; return { state: 'QUERY_STATE_COMPLETED' }; },
@@ -131,6 +135,20 @@ test('readLedger returns fresh default when absent', () => {
   } finally { e.cleanup(); }
 });
 
+test('persisted lower ceiling survives an env-less read (no silent raise) — BB #448 HIGH', () => {
+  const e = tmpEnv();
+  try {
+    // Operator once set DUNE_BUDGET_CEILING=1000 (persisted); later runs WITHOUT the env
+    // must keep 1000 — a defaulted ceiling param would "override" it back up to 2500.
+    writeLedger(e.ledgerPath, { ceiling_credits: 1000, spent_credits: 0, atoms_count: 0, updated_at: null });
+    const led = readLedger(e.ledgerPath); // no ceiling option = env unset
+    assert.equal(led.ceiling_credits, 1000);
+    // explicit override still works both directions
+    const lowered = readLedger(e.ledgerPath, { ceiling: 500 });
+    assert.equal(lowered.ceiling_credits, 500);
+  } finally { e.cleanup(); }
+});
+
 test('writeLedger then readLedger round-trips + stamps updated_at', () => {
   const e = tmpEnv();
   try {
@@ -146,11 +164,11 @@ test('writeLedger then readLedger round-trips + stamps updated_at', () => {
   } finally { e.cleanup(); }
 });
 
-test('recordSpend accumulates spend + atom count', () => {
+test('recordSpend accumulates spend + atom count', async () => {
   const e = tmpEnv();
   try {
-    recordSpend(e.ledgerPath, 50);
-    recordSpend(e.ledgerPath, 75);
+    await recordSpend(e.ledgerPath, 50);
+    await recordSpend(e.ledgerPath, 75);
     const led = readLedger(e.ledgerPath);
     assert.equal(led.spent_credits, 125);
     assert.equal(led.atoms_count, 2);
@@ -166,11 +184,11 @@ test('readLedger throws on corrupt ledger (refuse-to-spend, not reset)', () => {
   } finally { e.cleanup(); }
 });
 
-test('recordSpend rejects non-integer / negative credits', () => {
+test('recordSpend rejects non-integer / negative credits', async () => {
   const e = tmpEnv();
   try {
-    assert.throws(() => recordSpend(e.ledgerPath, -1), /non-negative integer/);
-    assert.throws(() => recordSpend(e.ledgerPath, 1.5), /non-negative integer/);
+    await assert.rejects(() => recordSpend(e.ledgerPath, -1), /non-negative integer/);
+    await assert.rejects(() => recordSpend(e.ledgerPath, 1.5), /non-negative integer/);
   } finally { e.cleanup(); }
 });
 
@@ -358,7 +376,7 @@ test('run requires --force when the target cannot be estimated (never-run query_
   } finally { e.cleanup(); }
 });
 
-test('run --force proceeds past an un-estimatable target (cost-cap is the backstop)', async () => {
+test('run --force proceeds past a DuneClientError probe failure to execution (exits 0, no pre-spend guarantee)', async () => {
   const e = tmpEnv();
   try {
     const client = mockClient({ rows: 1000, cols: 4, datapoints: 4000, credits: 4 });
@@ -367,8 +385,10 @@ test('run --force proceeds past an un-estimatable target (cost-cap is the backst
     assert.equal(r.exit, 0);
     const j = JSON.parse(r.out);
     assert.equal(j.executed, true);
-    assert.equal(j.pre_run_estimate, null); // un-estimated; proceeded on the cap alone
+    assert.equal(j.pre_run_estimate, null); // un-estimated; proceeded past probe failure
     assert.equal(j.credits_consumed, 4);
+    // The output must not claim any pre-spend Dune API cap enforcement
+    assert.ok(!JSON.stringify(j).includes('structurally impossible'), 'output must not claim Dune API cap is a pre-spend guarantee');
   } finally { e.cleanup(); }
 });
 
@@ -430,7 +450,7 @@ test('budget reports spent/remaining/ceiling + recent atoms + chain status', asy
   const e = tmpEnv();
   try {
     appendAtom(e.atomsPath, makeDuneAtom({ query_id: '7', datapoints_scanned: 5000, credits_consumed: 5, engine: 'small', wall_ms: 100, ts: 1 }));
-    recordSpend(e.ledgerPath, 5);
+    await recordSpend(e.ledgerPath, 5);
     const r = await runHandler(() => cmdBudget());
     assert.equal(r.exit, 0);
     const j = JSON.parse(r.out);
@@ -500,4 +520,268 @@ test('bin/dune-meter.mjs is executable and spawns directly (defect B — DUNE_ME
   const r = spawnSync(bin, ['--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0, `spawned --help exits 0 (status=${r.status}, stderr=${r.stderr})`);
   assert.match(r.stdout, /dune-meter/, '--help prints usage');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-1: veve.json honest docs (AC-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('veve.json summary does not contain "structurally impossible" (AC-1)', () => {
+  const vevePath = fileURLToPath(new URL('../veve.json', import.meta.url));
+  const veve = JSON.parse(readFileSync(vevePath, 'utf8'));
+  assert.ok(!/structurally impossible/i.test(veve.summary),
+    `veve.json summary must not claim blowouts are "structurally impossible"; got: ${veve.summary}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-2: O_EXCL lockfile concurrency (AC-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('two concurrent recordSpend calls sum correctly and leave no orphaned lock (AC-4)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dune-meter-concurrency-'));
+  const ledgerPath = join(dir, 'budget.json');
+  const lockPath = join(dir, '.dune-budget.lock');
+  const workerScript = fileURLToPath(new URL('./record-spend-worker.mjs', import.meta.url));
+  // Prime the ledger so both workers read a known baseline
+  await recordSpend(ledgerPath, 0);
+  const priorLedger = readLedger(ledgerPath);
+  const N1 = 13, N2 = 29;
+  try {
+    await new Promise((resolve, reject) => {
+      let done = 0;
+      const check = (code, signal) => {
+        if (code !== 0) return reject(new Error(`worker exited ${code} / ${signal}`));
+        if (++done === 2) resolve();
+      };
+      fork(workerScript, [], { env: { ...process.env, WORKER_LEDGER_PATH: ledgerPath, WORKER_CREDITS: String(N1) } }).on('exit', check);
+      fork(workerScript, [], { env: { ...process.env, WORKER_LEDGER_PATH: ledgerPath, WORKER_CREDITS: String(N2) } }).on('exit', check);
+    });
+    const final = readLedger(ledgerPath);
+    assert.equal(
+      final.spent_credits,
+      priorLedger.spent_credits + N1 + N2,
+      `spent_credits should be ${priorLedger.spent_credits + N1 + N2}, got ${final.spent_credits}`,
+    );
+    assert.ok(!existsSync(lockPath), 'lock file must not be present after both workers finish');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-3a: cmdEstimate budget guard — probe refused when remaining < 1 (AC-6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdEstimate raw SQL with remaining=0 exits 3 and never calls probe (AC-6)', async () => {
+  const e = tmpEnv();
+  try {
+    // Drain the budget to zero
+    writeLedger(e.ledgerPath, { ceiling_credits: 10, spent_credits: 10, atoms_count: 1, updated_at: null });
+    process.env.DUNE_BUDGET_CEILING = '10';
+    let probeCalled = false;
+    const client = {
+      async probe() { probeCalled = true; return { rows: 1, cols: 1, probe_credits: 0 }; },
+    };
+    const r = await runHandler(() => cmdEstimate(['SELECT 1'], { client }));
+    assert.equal(r.exit, 3, `expected exit 3 on exhausted budget, got ${r.exit}`);
+    assert.match(r.err, /budget exhausted/);
+    assert.equal(probeCalled, false, 'probe must NOT be called when budget is exhausted');
+  } finally {
+    delete process.env.DUNE_BUDGET_CEILING;
+    e.cleanup();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-3b: cmdEstimate records probe spend before returning (AC-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdEstimate raw SQL records probe_credits=42 in ledger before returning (AC-5)', async () => {
+  const e = tmpEnv();
+  try {
+    const client = mockClient({ rows: 10, cols: 2, probe_credits: 42 });
+    const r = await runHandler(() => cmdEstimate(['SELECT 1'], { client }));
+    // Should succeed (budget has plenty of room)
+    assert.ok(r.exit === 0 || r.exit === 3, `expected exit 0 or 3, got ${r.exit}`);
+    const led = readLedger(e.ledgerPath);
+    assert.equal(led.spent_credits, 42, `ledger must reflect probe spend of 42, got ${led.spent_credits}`);
+  } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-3c: cmdRun records probe credits before execution credits (AC-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdRun raw SQL records probe credits in ledger before execution credits (AC-5)', async () => {
+  const e = tmpEnv();
+  try {
+    const ledgerSnapshots = [];
+    const baseClient = mockClient({ rows: 10, cols: 2, datapoints: 100, credits: 5, probe_credits: 7 });
+    // Wrap executeSql to snapshot ledger state immediately before the execution
+    const origExecuteSql = baseClient.executeSql.bind(baseClient);
+    baseClient.executeSql = async function (...args) {
+      // Snapshot ledger just as execution starts — probe spend must already be recorded
+      ledgerSnapshots.push(readLedger(e.ledgerPath));
+      return origExecuteSql(...args);
+    };
+    await runHandler(() => cmdRun(['SELECT 1', '--cap', '100'], { client: baseClient }));
+    // There should be at least one snapshot taken during executeSql
+    assert.ok(ledgerSnapshots.length >= 1, 'executeSql was called (snapshot taken)');
+    // At execution time, probe credits (7) should already be in the ledger
+    assert.ok(
+      ledgerSnapshots[0].spent_credits >= 7,
+      `probe credits (7) must be in ledger before execution; got ${ledgerSnapshots[0].spent_credits}`,
+    );
+    // After everything, total spent should include both probe (7) and execution (5)
+    const finalLed = readLedger(e.ledgerPath);
+    assert.equal(finalLed.spent_credits, 12, `total spent should be probe(7)+exec(5)=12, got ${finalLed.spent_credits}`);
+  } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-5: readLedger env ceiling override (AC-8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('readLedger overrides ceiling from existing ledger when ceiling param differs, warns, preserves spent (AC-8)', () => {
+  const e = tmpEnv();
+  try {
+    writeLedger(e.ledgerPath, { ceiling_credits: 1000, spent_credits: 50, atoms_count: 3, updated_at: null });
+    // Capture stderr
+    const stderrWrites = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s) => { stderrWrites.push(s); return true; };
+    let led;
+    try {
+      led = readLedger(e.ledgerPath, { ceiling: 2000 });
+    } finally {
+      process.stderr.write = origWrite;
+    }
+    assert.equal(led.ceiling_credits, 2000, 'ceiling must be overridden to 2000');
+    assert.equal(led.spent_credits, 50, 'spent_credits must be preserved');
+    assert.equal(led.atoms_count, 3, 'atoms_count must be preserved');
+    const warnLine = stderrWrites.join('');
+    assert.match(warnLine, /DUNE_BUDGET_CEILING override/, 'must emit override warning to stderr');
+    assert.match(warnLine, /1000.*2000|2000.*1000/, 'warning must show old and new values');
+  } finally { e.cleanup(); }
+});
+
+test('readLedger does not warn when ceiling matches stored value (AC-8 no-op)', () => {
+  const e = tmpEnv();
+  try {
+    writeLedger(e.ledgerPath, { ceiling_credits: 1000, spent_credits: 50, atoms_count: 3, updated_at: null });
+    const stderrWrites = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s) => { stderrWrites.push(s); return true; };
+    let led;
+    try {
+      led = readLedger(e.ledgerPath, { ceiling: 1000 });
+    } finally {
+      process.stderr.write = origWrite;
+    }
+    assert.equal(led.ceiling_credits, 1000);
+    const warnLine = stderrWrites.join('');
+    assert.ok(!warnLine.includes('DUNE_BUDGET_CEILING override'), 'must not warn when ceiling matches');
+  } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-4: --force + remaining < 1 → exit 3 regardless (AC-7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdRun --force with remaining < 1 before probe → exit 3 (probe-budget guard not bypassed by --force)', async () => {
+  const e = tmpEnv();
+  try {
+    writeLedger(e.ledgerPath, { ceiling_credits: 10, spent_credits: 10, atoms_count: 1, updated_at: null });
+    process.env.DUNE_BUDGET_CEILING = '10';
+    const client = mockClient({ rows: 100, cols: 4, datapoints: 400, credits: 1, probe_credits: 0 });
+    const r = await runHandler(() => cmdRun(['SELECT 1', '--cap', '10', '--force'], { client }));
+    assert.equal(r.exit, 3, `--force must not bypass probe-budget guard; expected exit 3, got ${r.exit}`);
+    assert.match(r.err, /budget exhausted/);
+  } finally {
+    delete process.env.DUNE_BUDGET_CEILING;
+    e.cleanup();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-2: COUNT probe exhausts budget → LIMIT-1 refused (AC-6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdRun: COUNT probe exhausts remaining budget → probeSample refused, exit 3 (AC-6)', async () => {
+  const e = tmpEnv();
+  try {
+    let probeSampleCalled = false;
+    const client = {
+      async probeCount() { return { rows: 100, countCredits: 2500 }; },
+      async probeSample() { probeSampleCalled = true; return { cols: 4, sampleCredits: 0 }; },
+    };
+    const r = await runHandler(() => cmdRun(['SELECT 1', '--cap', '2500'], { client }));
+    assert.equal(r.exit, 3, `expected exit 3 on COUNT-exhausted budget, got ${r.exit}`);
+    assert.match(r.err, /COUNT exhausted remaining budget/);
+    assert.equal(probeSampleCalled, false, 'probeSample must NOT be called after COUNT exhausts budget');
+  } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-2: Both COUNT and LIMIT-1 probe credits recorded before main execution (AC-7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdRun: COUNT and LIMIT-1 probe credits both recorded before main execution (AC-7)', async () => {
+  const e = tmpEnv();
+  try {
+    const ledgerSnapshots = [];
+    const client = {
+      async probeCount() { return { rows: 10, countCredits: 3 }; },
+      async probeSample() { return { cols: 2, sampleCredits: 4 }; },
+      async executeSql() {
+        ledgerSnapshots.push(readLedger(e.ledgerPath));
+        return { execution_id: 'exec-run' };
+      },
+      async pollStatus() { return { state: 'QUERY_STATE_COMPLETED' }; },
+      async resultMetadata() { return { datapoints: 100, credits: 5, raw: {} }; },
+    };
+    await runHandler(() => cmdRun(['SELECT 1', '--cap', '100'], { client }));
+    assert.ok(ledgerSnapshots.length >= 1, 'executeSql was called (snapshot taken)');
+    assert.ok(
+      ledgerSnapshots[0].spent_credits >= 7,
+      `both probe credits (3+4=7) must be in ledger before execution; got ${ledgerSnapshots[0].spent_credits}`,
+    );
+  } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-3: DUNE_BUDGET_CEILING override persists to ledger file (AC-10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('readLedger persists DUNE_BUDGET_CEILING override to ledger file (AC-10)', () => {
+  const e = tmpEnv();
+  try {
+    writeLedger(e.ledgerPath, { ceiling_credits: 1000, spent_credits: 0, atoms_count: 0, updated_at: null });
+
+    // First read with ceiling override — should persist 2000 to the file.
+    readLedger(e.ledgerPath, { ceiling: 2000 });
+
+    // File must reflect the override (the stored value, not the original 1000).
+    const raw = JSON.parse(readFileSync(e.ledgerPath, 'utf8'));
+    assert.equal(raw.ceiling_credits, 2000, 'ceiling override must be persisted to ledger file');
+
+    // Second read with same ceiling: no re-override needed → returns 2000 from file.
+    const led2 = readLedger(e.ledgerPath, { ceiling: 2000 });
+    assert.equal(led2.ceiling_credits, 2000, 'persisted ceiling must be returned on subsequent read');
+  } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-4: --force with --cap exceeding ceiling exits 2 (AC-8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('cmdRun --force with --cap exceeding ceiling exits 2 with clear message (AC-8)', async () => {
+  const e = tmpEnv();
+  try {
+    // ceiling = DEFAULT_CEILING_CREDITS = 2500; --cap 9999 > 2500 → exit 2
+    const r = await runHandler(() => cmdRun(['SELECT 1', '--cap', '9999', '--force'], { client: mockClient() }));
+    assert.equal(r.exit, 2, `expected exit 2 on --force --cap > ceiling, got ${r.exit}`);
+    assert.match(r.err, /2500/, 'error must include the ceiling value');
+    assert.match(r.err, /9999/, 'error must include the supplied cap value');
+  } finally { e.cleanup(); }
 });

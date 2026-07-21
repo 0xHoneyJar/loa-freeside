@@ -11,6 +11,7 @@
 
 import pino from 'pino';
 import { getConfig } from './config.js';
+import { initDatabase } from './data/database.js';
 import { DiscordRestService } from './services/DiscordRest.js';
 import { StateManager } from './services/StateManager.js';
 import { createNatsClient, type NatsClient } from './services/NatsClient.js';
@@ -102,6 +103,10 @@ async function main(): Promise<void> {
   await natsClient.ensureConsumers();
   logger.info('NATS consumers initialized');
 
+  // Initialize database (singleton — safe to call multiple times)
+  initDatabase(config, logger);
+  logger.info('Database initialized');
+
   // Register command handlers
   const commandHandlers = registerAllCommandHandlers(discordRest);
   logger.info({ handlerCount: commandHandlers.size }, 'Command handlers registered');
@@ -115,7 +120,7 @@ async function main(): Promise<void> {
   const budgetManager = new BudgetManager(budgetRedis, logger);
 
   // Build NATS event handlers — start with defaults, add message routing if agent enabled
-  const natsEventHandlers = createDefaultNatsEventHandlers();
+  const natsEventHandlers = createDefaultNatsEventHandlers(discordRest);
 
   // Sprint 321 (high-5): Track gateway degraded state for health checks
   let gatewayDegraded = false;

@@ -13,7 +13,7 @@
 
 import postgres from 'postgres';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { eq, and, desc, asc, lte, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, lte, gte, sql, getTableColumns } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import type { Config } from '../config.js';
 import * as schema from './schema.js';
@@ -1669,6 +1669,200 @@ export async function getRecentPromotions(
   // In a full implementation, this would query a tier_history table
   // that tracks from_tier, to_tier, changed_at for each tier change
   return [];
+}
+
+// =============================================================================
+// Lifecycle Write Helpers (guild/member event consumers)
+// =============================================================================
+
+/**
+ * Upsert a community by Discord guild ID.
+ * `createdAt` is write-once — never in the conflict SET clause.
+ */
+export async function upsertCommunity(params: {
+  discordGuildId: string;
+  name: string;
+}): Promise<{ community: schema.Community; outcome: 'created' | 'reactivated' | 'noop' }> {
+  const db = getDatabase();
+
+  const existing = await db
+    .select({ id: schema.communities.id, isActive: schema.communities.isActive })
+    .from(schema.communities)
+    .where(eq(schema.communities.discordGuildId, params.discordGuildId))
+    .limit(1);
+
+  const result = await db
+    .insert(schema.communities)
+    .values({
+      discordGuildId: params.discordGuildId,
+      name: params.name,
+      isActive: true,
+    })
+    .onConflictDoUpdate({
+      target: schema.communities.discordGuildId,
+      set: {
+        name: params.name,
+        isActive: true,
+        updatedAt: new Date(),
+        // createdAt intentionally omitted — write-once invariant
+      },
+    })
+    // xmax = 0 detects insert-vs-update ATOMICALLY at the write itself. The pre-SELECT
+    // above has a TOCTOU window: two concurrent guild.join deliveries could both see
+    // "no row" and both classify created — double-sending the welcome (BB MEDIUM).
+    .returning({ ...getTableColumns(schema.communities), inserted: sql<boolean>`(xmax = 0)` });
+
+  const { inserted, ...community } = result[0]!;
+  const wasExisting = existing[0];
+  let outcome: 'created' | 'reactivated' | 'noop';
+  if (inserted) {
+    outcome = 'created';
+  } else if (wasExisting && !wasExisting.isActive) {
+    outcome = 'reactivated';
+  } else {
+    outcome = 'noop';
+  }
+
+  return { community: community as schema.Community, outcome };
+}
+
+/**
+ * Mark a community inactive by Discord guild ID.
+ * Does not touch `updatedAt` when already in target state (idempotent).
+ */
+export async function markCommunityInactive(params: {
+  discordGuildId: string;
+}): Promise<{ outcome: 'deactivated' | 'already_inactive' | 'unknown_guild' }> {
+  const db = getDatabase();
+
+  const result = await db
+    .update(schema.communities)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.communities.discordGuildId, params.discordGuildId),
+        eq(schema.communities.isActive, true)
+      )
+    )
+    .returning({ id: schema.communities.id });
+
+  if (result.length > 0) {
+    return { outcome: 'deactivated' };
+  }
+
+  const check = await db
+    .select({ id: schema.communities.id })
+    .from(schema.communities)
+    .where(eq(schema.communities.discordGuildId, params.discordGuildId))
+    .limit(1);
+
+  if (!check[0]) {
+    return { outcome: 'unknown_guild' };
+  }
+  return { outcome: 'already_inactive' };
+}
+
+/**
+ * Upsert a member profile within a community.
+ * `joinedAt` is write-once — never in the conflict SET clause.
+ * JSONB merge operator keeps existing metadata keys that are not overridden.
+ */
+export async function upsertProfile(params: {
+  communityId: string;
+  discordId: string;
+  tier?: string;
+  metadataPatch?: Partial<schema.ProfileMetadata>;
+  setJoinedAt: boolean;
+}): Promise<{ profile: schema.Profile; outcome: 'created' | 'rejoined' | 'updated' }> {
+  const db = getDatabase();
+
+  const existing = await db
+    .select({ id: schema.profiles.id, metadata: schema.profiles.metadata })
+    .from(schema.profiles)
+    .where(
+      and(
+        eq(schema.profiles.communityId, params.communityId),
+        eq(schema.profiles.discordId, params.discordId)
+      )
+    )
+    .limit(1);
+
+  const insertValues: schema.NewProfile = {
+    communityId: params.communityId,
+    discordId: params.discordId,
+    ...(params.tier !== undefined ? { tier: params.tier } : {}),
+    metadata: params.metadataPatch ?? {},
+    // joinedAt defaults to now() via schema default; setJoinedAt documents intent
+  };
+
+  const result = await db
+    .insert(schema.profiles)
+    .values(insertValues)
+    .onConflictDoUpdate({
+      target: [schema.profiles.communityId, schema.profiles.discordId],
+      set: {
+        lastSeenAt: new Date(),
+        tier: sql`COALESCE(excluded.tier, ${schema.profiles.tier})`,
+        metadata: sql`COALESCE(${schema.profiles.metadata}, '{}') || COALESCE(excluded.metadata, '{}')`,
+        updatedAt: new Date(),
+        // joinedAt intentionally omitted — write-once invariant
+      },
+    })
+    .returning();
+
+  const profile = result[0]!;
+  const wasExisting = existing[0];
+  let outcome: 'created' | 'rejoined' | 'updated';
+  if (!wasExisting) {
+    outcome = 'created';
+  } else if (wasExisting.metadata?.active === false) {
+    outcome = 'rejoined';
+  } else {
+    outcome = 'updated';
+  }
+
+  return { profile, outcome };
+}
+
+/**
+ * Mark a member profile inactive by community + discord ID.
+ * Does not touch `updatedAt` when already in target state (idempotent).
+ */
+export async function markProfileInactive(params: {
+  communityId: string;
+  discordId: string;
+}): Promise<{ outcome: 'deactivated' | 'already_inactive' | 'unknown_profile' }> {
+  const db = getDatabase();
+
+  const existing = await db
+    .select({ id: schema.profiles.id, metadata: schema.profiles.metadata })
+    .from(schema.profiles)
+    .where(
+      and(
+        eq(schema.profiles.communityId, params.communityId),
+        eq(schema.profiles.discordId, params.discordId)
+      )
+    )
+    .limit(1);
+
+  if (!existing[0]) {
+    return { outcome: 'unknown_profile' };
+  }
+
+  if (existing[0].metadata?.active === false) {
+    return { outcome: 'already_inactive' };
+  }
+
+  await db
+    .update(schema.profiles)
+    .set({
+      metadata: { ...existing[0].metadata, active: false },
+      lastSeenAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.profiles.id, existing[0].id));
+
+  return { outcome: 'deactivated' };
 }
 
 // =============================================================================

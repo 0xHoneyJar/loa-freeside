@@ -1,0 +1,47 @@
+{
+  "name": "@freeside/collection-report-gates",
+  "version": "0.1.0",
+  "description": "CR-019 — machine-readable release-gate manifest + deterministic validator for the collection-report cycle. Makes gate evaluation executable rather than dependent on prose-range parsing (sprint.md §6 CR-019).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "bin": {
+    "check-gate-manifest": "./dist/bin/check-gate-manifest.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "bin",
+    "manifest",
+    "test-vectors",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b --force && chmod +x dist/bin/check-gate-manifest.js",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "clean": "rm -rf dist",
+    "test:unit": "tsx --test tests/schema.test.ts tests/validate.test.ts tests/manifest.test.ts",
+    "test:cli": "tsx --test tests/cli.test.ts",
+    "test": "pnpm test:unit && pnpm test:cli",
+    "check": "tsx bin/check-gate-manifest.ts --manifest manifest/collection-report.gates.yaml --source test-vectors/source/task-manifest.yaml"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "effect": "^3.21.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^22.0.0"
+  }
+}

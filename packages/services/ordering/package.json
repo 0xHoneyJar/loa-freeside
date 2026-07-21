@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "start": "tsx bin/http.ts",
     "dev": "tsx watch bin/http.ts",
-    "worker": "tsx bin/worker.ts"
+    "worker": "tsx bin/worker.ts",
+    "orchestrator": "tsx bin/fulfillment-orchestrator.ts"
   },
   "license": "AGPL-3.0",
   "dependencies": {
@@ -25,7 +26,14 @@
     "hono": "^4.7.0",
     "pg": "^8.16.0",
     "tsx": "^4.19.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@freeside/collection-protocol": "file:../../protocol/collection",
+    "@freeside/collection-resolution-protocol": "file:../../protocol/collection-resolution",
+    "@freeside/public-authorization-protocol": "file:../../protocol/public-authorization",
+    "@freeside/trust-envelope-protocol": "file:../../protocol/trust-envelope",
+    "@freeside/signing-key-custody-protocol": "file:../../protocol/signing-key-custody",
+    "@freeside/dependency-ledger-protocol": "file:../../protocol/dependency-ledger",
+    "effect": "^3.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

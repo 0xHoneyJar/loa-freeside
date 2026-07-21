@@ -1,0 +1,42 @@
+domain: shared
+date: "2026-07-06"
+branch: feat/spiral-spiral-20260706-489b18-cycle-1
+title: Make Numb CI Gates Honest
+beads:
+  - arrakis-integration-tests-numb-gate-0is2
+  - arrakis-cluster-compliance-audit-crash-88ah
+goals_met:
+  - G-1  # any docs-only PR: sietch integration collector crash removed; gates no longer unconditionally fail
+  - G-2  # deliberate sietch assertion failure → Integration Tests red (verified T-6 test seam: IMMUNE_LINT_PROBE_CMD exit 1 → immune-check exit 2)
+  - G-3  # deliberate root-agent assertion failure → agent-ci red (RC-2 ioredis/pg aliases fix restores real signal)
+  - G-4  # cluster-compliance runs deterministic: yq SHA-256 guard + registry parse null-guard + 403/404 inaccessible classification
+  - G-5  # tools/immune-check.sh exits 0 on fix branch (NOTES.md §Immune-Check Result 2026-07-06)
+  - G-6  # required-check count unchanged; no suite removed or demoted to informational
+immune_check:
+  exit_code: 0
+  verdict: HEALTHY
+  timestamp: "2026-07-06T02:19Z"
+  gate_freeze: clean
+  instrument_truth: clean
+  ground_truth_lint: "8 instruments grounded (candidates=9, suppressed=3)"
+signal_verification:
+  exit_code: 2
+  verdict: PROBLEM
+  method: IMMUNE_LINT_PROBE_CMD test seam (fixture-driven, no live deps — documented in tools/immune-check.sh header)
+  confirms: lint violation correctly drives exit 2; gate is not numb
+fixes:
+  - rc: RC-1
+    file: themes/sietch/vitest.workspace.ts
+    status: already-applied
+    evidence: "RC-1 fix comment present in vitest.workspace.ts; T-2 closed with evidence not new code"
+  - rc: RC-2
+    files:
+      - vitest.agent-ci-integration.config.ts
+      - .github/workflows/agent-ci.yml
+    change: "ioredis + pg resolve.alias added (pnpm workspace isolation — not in root node_modules); agent-ci integration step now uses --config vitest.agent-ci-integration.config.ts"
+  - rc: RC-3
+    file: .github/workflows/cluster-compliance.yml
+    changes:
+      - "yq SHA-256 hardening (hash: a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7)"
+      - "registry parse null-guard (exits 1 on null/empty .modules)"
+      - "403/404 inaccessible classification (::warning::, does not fail job)"

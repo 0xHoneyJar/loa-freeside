@@ -1,0 +1,49 @@
+# Freeside product-governance territory.
+#
+# This file is owned by this region. loa-constructs indexes and validates it,
+# but does not author the loadout. A declared authority_tier is a ceiling, not
+# a grant; every construct below is observe-only until earned authority exists.
+
+schema_version: "1.0"
+region: loa-freeside
+maintainers:
+  - "@janitooor"
+  - "@zkSoju"
+
+outcomes:
+  - id: user-intent-continuity
+    description: "System components remain joined to explicit user-flow moments, evidence state, and ownership boundaries across context windows and repository seams."
+
+  - id: expertise-boundary-integrity
+    description: "Construct prose is visibly non-authoritative, mechanical claims resolve to producer-owned contracts, and declared expertise never silently becomes permission."
+
+  - id: operator-projection-legibility
+    description: "An operator can inspect user intent, system responsibility, construct mechanics, provenance, and effective authority in one derived receipt."
+
+scopes:
+  # The declaration is part of its own governed blast radius: changes to the
+  # region boundary must travel through the same review surface as its tools.
+  - "grimoires/territory.yaml"
+  - "product/**"
+  - "spec/product/**"
+  - "docs/product/**"
+  - "tools/markdown-text.mjs"
+  - "tools/flow-moment.mjs"
+  - "tools/flow-moment.test.mjs"
+  - "tools/system-component.mjs"
+  - "tools/system-component.test.mjs"
+  - "tools/construct-operator.mjs"
+  - "tools/construct-operator.test.mjs"
+  - "tools/fixtures/construct-operator.snapshot.json"
+  - "tools/hivemind/hivemind-labels.v1.0.json"
+
+# Structural architecture and machine-readable projection are the bounded
+# expertise needed by this region. Both are observations at birth.
+loadout:
+  - construct: the-arcade
+    outcomes: [user-intent-continuity, expertise-boundary-integrity]
+    authority_tier: observe
+
+  - construct: beacon
+    outcomes: [operator-projection-legibility]
+    authority_tier: observe
