@@ -63,9 +63,11 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
+        # No `version:` — pnpm/action-setup reads it from the root package.json
+        # `packageManager` field (pnpm@9.15.4). Pinning both errors with
+        # ERR_PNPM_BAD_PM_VERSION (matches cluster-compliance.yml /
+        # mcp-gateway-ci.yml convention).
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install dependencies
         working-directory: themes/sietch

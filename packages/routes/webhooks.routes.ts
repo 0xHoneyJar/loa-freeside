@@ -283,15 +283,24 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     const receivedAt = Date.now();
 
-    if (payload.updated_at !== undefined) {
-      const providerTs = new Date(payload.updated_at).getTime();
+    // updated_at is MANDATORY. It lives inside the HMAC-signed payload, so a
+    // legitimate NOWPayments IPN always carries it; requiring it removes the
+    // optional branch where a missing timestamp skipped freshness enforcement
+    // entirely (CodeQL js/user-controlled-bypass-of-sensitive-action). A
+    // missing/invalid value is rejected here — before any payment lookup, DB
+    // write, or mint — and the reconciliation sweep still recovers the payment
+    // (its crypto_payments row stays non-terminal and is polled against the
+    // NOWPayments API), so no payment is stranded.
+    {
+      const providerTs =
+        typeof payload.updated_at === 'string' ? new Date(payload.updated_at).getTime() : Number.NaN;
 
       if (typeof payload.updated_at !== 'string' || Number.isNaN(providerTs)) {
-        // Present-but-unparseable timestamp is rejected explicitly (PR #365
-        // review item 3) rather than silently treated as absent.
+        // Missing or present-but-unparseable timestamp is rejected explicitly
+        // (freshness is mandatory) rather than skipping enforcement.
         logger.warn(
-          { paymentId, updatedAt: payload.updated_at, receivedAt, freshness: 'invalid' },
-          'Webhook timestamp invalid — event ignored',
+          { paymentId, updatedAt: payload.updated_at ?? null, receivedAt, freshness: 'invalid' },
+          'Webhook timestamp missing or invalid — event ignored (freshness mandatory)',
         );
         res.status(200).json({ status: 'ignored', reason: 'invalid_timestamp' });
         return;
@@ -362,14 +371,6 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
           freshness: 'fresh',
         },
         'Webhook timestamp age',
-      );
-    } else {
-      // Missing timestamp is accepted: the timestamp lives inside the signed
-      // payload, so it cannot be stripped without invalidating the signature.
-      // Documented policy — see docs/runbook/nowpayments-webhook-reliability.md.
-      logger.info(
-        { paymentId, status: payload.payment_status, receivedAt: new Date(receivedAt).toISOString(), freshness: 'missing_timestamp' },
-        'Webhook has no updated_at timestamp — freshness not enforced',
       );
     }
 

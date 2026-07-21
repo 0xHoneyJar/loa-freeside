@@ -75,13 +75,16 @@ schedule with backoff). The handler uses that deliberately:
   acked 200 `quarantined`. If the durable record itself fails, the event is
   **not** acked: 503 `quarantine_record_failed` (retriable) so the provider
   redelivers.
-- **Missing** `updated_at` is accepted and logged with
-  `freshness: 'missing_timestamp'`. Policy rationale: the timestamp lives
-  inside the signed payload, so an attacker cannot strip it without
-  invalidating the signature; rejecting would drop legitimate provider
-  payloads that omit the field.
-- **Invalid** (present but unparseable) `updated_at` is rejected explicitly:
-  200 `ignored` / `invalid_timestamp` with a warn log.
+- **`updated_at` is mandatory.** Both a **missing** and a **present-but-
+  unparseable** `updated_at` are rejected explicitly: 200 `ignored` /
+  `invalid_timestamp` with a warn log, before any payment lookup, DB write, or
+  mint. Rationale: `updated_at` lives inside the HMAC-signed payload, so a
+  legitimate NOWPayments IPN always carries it; allowing a missing value to
+  *skip* freshness enforcement was a user-controlled bypass of a security
+  check (CodeQL `js/user-controlled-bypass-of-sensitive-action`). Requiring it
+  does not risk stranding a payment: a rejected event leaves the
+  `crypto_payments` row non-terminal, and the reconciliation sweep polls it
+  against the NOWPayments API for the authoritative status.
 
 ## Reconciliation behavior
 

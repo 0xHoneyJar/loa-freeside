@@ -10,7 +10,7 @@
  *   - #326 webhook_events INSERT failure returns retriable 503 (not 200),
  *     and a provider retry after the transient failure mints credits.
  *   - #327 webhook freshness window enforced: stale events quarantined,
- *     missing timestamps accepted (documented), invalid timestamps rejected.
+ *     missing/invalid timestamps rejected (freshness mandatory).
  *
  * @see webhooks.routes.ts
  * @see docs/runbook/nowpayments-webhook-reliability.md
@@ -338,18 +338,22 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
     expect(processPaymentForLedger).not.toHaveBeenCalled();
   });
 
-  it('processes an event with a missing timestamp (documented policy) and logs the verdict', async () => {
+  it('rejects an event with a missing timestamp (freshness mandatory) before any DB access', async () => {
+    // updated_at is mandatory (CodeQL user-controlled-bypass fix): a missing
+    // timestamp can no longer skip freshness enforcement. Rejected with
+    // 200 ignored/invalid_timestamp before payment lookup/DB write/mint; the
+    // reconciliation sweep recovers the payment from its non-terminal row.
     const noTs = { payment_id: 223, payment_status: 'confirming', order_id: 'order-3' };
     const { pool } = makeFakePool();
-    const { app, logger } = makeApp({ pool });
+    const { app } = makeApp({ pool });
     const { raw, sig } = signedBody(noTs);
 
     const res = await post(app, raw, sig);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'processed' });
-    const verdictLog = logger.info.mock.calls.find(([obj]) => (obj as Record<string, unknown>).freshness === 'missing_timestamp');
-    expect(verdictLog).toBeDefined();
+    expect(res.body).toEqual({ status: 'ignored', reason: 'invalid_timestamp' });
+    expect(verifyPaymentExists).not.toHaveBeenCalled();
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
   });
 
   it('processes a fresh valid webhook and logs a fresh verdict', async () => {
@@ -566,7 +570,7 @@ describe('POST /webhooks/nowpayments — per-IP rate limiting', () => {
       order_id: 'order-rl',
       price_amount: 100,
       price_currency: 'usd',
-      updated_at: Date.now(),
+      updated_at: new Date().toISOString(),
     });
 
     let limited = 0;
