@@ -318,7 +318,6 @@ class StatsService {
 
     // Total BGT represented (from eligibility snapshot)
     const totalWei = this.sumMemberBgtWei(db);
-    const totalBgtWei = totalWei.toString();
     const totalBgt = parseFloat(formatUnits(totalWei, 18));
 
     // Weekly active members (active in last 7 days)

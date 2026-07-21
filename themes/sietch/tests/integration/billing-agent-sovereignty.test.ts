@@ -391,6 +391,21 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     }
   });
 
+  it('rejects the reserved "__global__" entity scope', async () => {
+    // '__global__' is the COALESCE sentinel for a NULL (global) scope; a
+    // literal value would supersede the real global config but store a
+    // phantom-scoped row that global resolution (entity_type IS NULL) never
+    // finds. Must be rejected at the proposal boundary.
+    const agentId = createAccount(db, 'agent', 'agent-global-sentinel');
+    await expect(
+      governanceService.proposeAsAgent(agentId, {
+        paramKey: 'reservation.default_ttl_seconds',
+        value: 600,
+        entityType: '__global__',
+      }),
+    ).rejects.toThrow(/reserved/);
+  });
+
   it('duplicate vote rejected', async () => {
     const creatorId = createAccount(db, 'person', 'creator-dup');
     const agentId = createAccount(db, 'agent', 'agent-dup');

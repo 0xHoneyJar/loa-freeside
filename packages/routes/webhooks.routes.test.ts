@@ -290,6 +290,30 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
     expect(staleLog?.[0]).toHaveProperty('receivedAt');
   });
 
+  it('returns retriable 404 (not quarantine) for a stale event whose payment does not exist yet', async () => {
+    // The reconciliation sweep polls crypto_payments and never reads
+    // webhook_events, so quarantining+200 a stale event for a not-yet-created
+    // payment would strand it. Must return retriable 404 like the fresh path.
+    vi.mocked(verifyPaymentExists).mockResolvedValueOnce(null);
+    const stale = {
+      payment_id: 226,
+      payment_status: 'finished',
+      order_id: 'order-2c',
+      updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h old
+    };
+    const { pool, webhookEvents } = makeFakePool();
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(stale);
+
+    const res = await post(app, raw, sig);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ status: 'error', reason: 'unknown_payment' });
+    // NOT recorded in webhook_events — a retry after the row appears must not be deduped.
+    expect(webhookEvents.has('nowpayments:226:finished:stale')).toBe(false);
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
+  });
+
   it('returns retriable 503 when the stale quarantine record cannot be written', async () => {
     const stale = {
       payment_id: 224,

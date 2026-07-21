@@ -46,6 +46,9 @@ import type {
  */
 const BLOCKED_PREFIXES = ['kyc.', 'payout.', 'fraud_rule.', 'settlement.'];
 
+/** Reserved COALESCE sentinel for a NULL (global) entity_type — never a real scope. */
+const GLOBAL_ENTITY_SENTINEL = '__global__';
+
 /** Default proposal expiry: 7 days from creation */
 const DEFAULT_PROPOSAL_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
@@ -85,6 +88,17 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     if (BLOCKED_PREFIXES.some(prefix => paramKey.startsWith(prefix))) {
       throw Object.assign(
         new Error(`Parameter '${paramKey}' is not proposable by agents`),
+        { code: 'VALIDATION_ERROR', statusCode: 400 },
+      );
+    }
+
+    // '__global__' is the reserved COALESCE sentinel for a NULL (global)
+    // entity_type. A literal '__global__' scope would supersede the real
+    // global config yet store a phantom-scoped row that global resolution
+    // (entity_type IS NULL) never finds — reject it at the boundary.
+    if (entityType === GLOBAL_ENTITY_SENTINEL) {
+      throw Object.assign(
+        new Error(`entityType '${GLOBAL_ENTITY_SENTINEL}' is reserved; omit entityType for a global scope`),
         { code: 'VALIDATION_ERROR', statusCode: 400 },
       );
     }

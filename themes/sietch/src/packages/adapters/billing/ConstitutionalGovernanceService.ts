@@ -269,7 +269,17 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
 
     // Entity scope travels with the proposal: an entity-scoped proposal must
     // supersede and create only its own (param_key, entity_type) row, never
-    // the global one.
+    // the global one. '__global__' is the reserved COALESCE sentinel for a
+    // NULL (global) scope; a literal value would supersede the real global
+    // config but store a phantom-scoped row that global resolution
+    // (entity_type IS NULL) never finds. Reject it defensively here too (the
+    // agent proposal boundary rejects it first).
+    if (opts.entityType === '__global__') {
+      throw new SchemaValidationError(
+        paramKey,
+        `entityType '__global__' is reserved; omit entityType for a global scope`,
+      );
+    }
     const entityType = opts.entityType ?? null;
 
     // BEGIN IMMEDIATE: the idempotency check below is check-then-insert, so

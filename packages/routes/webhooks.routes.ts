@@ -300,6 +300,21 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       const ageMs = receivedAt - providerTs;
 
       if (webhookMaxAgeMs > 0 && ageMs > webhookMaxAgeMs) {
+        // A stale event whose crypto_payments row does not exist yet must NOT
+        // be quarantine-acked: the reconciliation sweep polls crypto_payments
+        // and never consumes webhook_events, so quarantining + 200 here would
+        // strand the payment once its row is created. Verify existence first
+        // and return the same retriable 404 the fresh path uses; the provider
+        // redelivers after the row appears, and the freshness gate re-runs.
+        const stalePaymentExists = await verifyPaymentExists(pool, paymentId);
+        if (!stalePaymentExists) {
+          logger.warn(
+            { paymentId, status: payload.payment_status, ageMs },
+            'Stale webhook for unknown payment — retriable 404, not quarantined',
+          );
+          res.status(404).json({ status: 'error', reason: 'unknown_payment' });
+          return;
+        }
         // Stale event: quarantine. Record it durably (distinct dedupe slot so
         // it never blocks fresh processing) for the reconciliation sweep,
         // then ack — provider retries of a stale event stay stale, so a
