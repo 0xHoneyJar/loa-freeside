@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SynthesisWorker, SynthesisError, ResourceNotFoundError, PermissionError, customSynthesisBackoff } from '../../../../src/packages/synthesis/SynthesisWorker.js';
+import { SynthesisWorker, SynthesisError, customSynthesisBackoff } from '../../../../src/packages/synthesis/SynthesisWorker.js';
 import type { SynthesisJobData, SynthesisJobResult } from '../../../../src/packages/synthesis/types.js';
 
 // Mock Discord.js
