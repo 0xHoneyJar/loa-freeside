@@ -324,10 +324,16 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
       `).get(paramKey, entityType) as { id: string } | undefined;
 
       if (prevActive) {
+        // Mark the old row superseded WITHOUT the forward link yet:
+        // superseded_by is an immediate FK to system_config(id), and the new
+        // row is not inserted until below — setting it here raises FOREIGN KEY
+        // constraint failed under PRAGMA foreign_keys=ON (production). Vacating
+        // 'active' first also frees the partial-unique active index
+        // (idx_system_config_active) so the new active row can be inserted.
         this.db.prepare(`
-          UPDATE system_config SET status = 'superseded', superseded_at = ?, superseded_by = ?
+          UPDATE system_config SET status = 'superseded', superseded_at = ?
           WHERE id = ?
-        `).run(now, id, prevActive.id);
+        `).run(now, prevActive.id);
         this.logAudit(prevActive.id, 'superseded', 'system', 'active', 'superseded', nextVersion, null);
       }
 
@@ -339,6 +345,14 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
           (id, param_key, entity_type, value_json, config_version, status, proposed_by, activated_at, metadata)
         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
       `).run(id, paramKey, entityType, JSON.stringify(value), nextVersion, actor, now, metadata);
+
+      if (prevActive) {
+        // Now that the new row exists, establish the forward link. FK target
+        // is present, so this satisfies the immediate superseded_by FK.
+        this.db.prepare(`
+          UPDATE system_config SET superseded_by = ? WHERE id = ?
+        `).run(id, prevActive.id);
+      }
 
       this.logAudit(id, 'activated', actor, null, 'active', nextVersion, metadata);
 

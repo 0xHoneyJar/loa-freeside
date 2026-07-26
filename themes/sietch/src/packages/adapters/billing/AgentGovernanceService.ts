@@ -476,13 +476,18 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     // activateFromAgentGovernance stamps on every config it creates, and
     // re-run the (idempotent) activation.
     if (this.governance) {
+      // activated_config_id is the completion marker: it and the
+      // AgentProposalActivated event are written in the SAME transaction as
+      // the final step of activateProposalConfig, after the config commits.
+      // So `status='activated' AND activated_config_id IS NULL` captures BOTH
+      // crash windows — the config was never created, OR it was created (and
+      // its provenance metadata exists) but the link+event transaction never
+      // ran. activateProposalConfig is idempotent by proposal id, so re-running
+      // either creates the missing config or reuses the existing one, then
+      // completes the link and emits the event exactly once.
       const orphans = this.db.prepare(`
-        SELECT p.* FROM agent_governance_proposals p
-        WHERE p.status = 'activated'
-          AND NOT EXISTS (
-            SELECT 1 FROM system_config c
-            WHERE c.metadata LIKE '%"agentProposalId":"' || p.id || '"%'
-          )
+        SELECT * FROM agent_governance_proposals
+        WHERE status = 'activated' AND activated_config_id IS NULL
       `).all() as ProposalRow[];
 
       for (const row of orphans) {

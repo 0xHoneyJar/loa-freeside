@@ -596,4 +596,77 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     `).get() as { n: number };
     expect(rows.n).toBe(1);
   });
+
+  it('supersedes a pre-existing active config without a foreign-key violation', async () => {
+    // Regression: superseded_by is an immediate FK to system_config(id) and
+    // foreign_keys is ON. The prior code set superseded_by to the new id before
+    // inserting that row, raising FOREIGN KEY constraint failed whenever a
+    // param already had an active config (production seeds do).
+    const svc = new ConstitutionalGovernanceService(db);
+    // Seed the prior active config THROUGH the service so version allocation
+    // stays consistent (a hand-inserted row would collide on the version index).
+    const prior = await svc.activateFromAgentGovernance('reservation.default_ttl_seconds', 300, {
+      proposerAccountId: 'acct-seed',
+      agentProposalId: randomUUID(),
+      totalWeight: 2,
+    });
+
+    // Second activation must supersede the prior active config — the path that
+    // triggered the FK violation before the fix.
+    const activated = await svc.activateFromAgentGovernance('reservation.default_ttl_seconds', 600, {
+      proposerAccountId: 'acct-supersede',
+      agentProposalId: randomUUID(),
+      totalWeight: 2,
+    });
+
+    // New row is active; old row is superseded and points at the new one.
+    expect(activated.id).not.toBe(prior.id);
+    const priorRow = db.prepare(`SELECT status, superseded_by FROM system_config WHERE id = ?`).get(prior.id) as
+      | { status: string; superseded_by: string | null }
+      | undefined;
+    expect(priorRow!.status).toBe('superseded');
+    expect(priorRow!.superseded_by).toBe(activated.id);
+    const activeCount = db.prepare(`
+      SELECT COUNT(*) as n FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { n: number };
+    expect(activeCount.n).toBe(1);
+  });
+
+  it('recovers an activation whose config committed but activated_config_id/event did not', async () => {
+    // Crash window between activateFromAgentGovernance's commit and the
+    // link+event transaction: proposal is 'activated' with a real config
+    // (provenance metadata present) but activated_config_id is NULL. The
+    // metadata-based predicate used to exclude this row; it must now be
+    // recovered and linked.
+    const agentId = createAccount(db, 'agent', 'agent-link-orphan');
+    const proposalId = randomUUID();
+    const configId = randomUUID();
+
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         cooldown_ends_at, expires_at, activated_config_id, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', ?, 1, 2, 2,
+              'activated', '2020-01-01T00:00:00Z', '2099-01-01T00:00:00Z', NULL,
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(proposalId, agentId);
+    // Config already committed with this proposal's provenance.
+    db.prepare(`
+      INSERT INTO system_config
+        (id, param_key, entity_type, value_json, config_version, status, proposed_by, activated_at, metadata, created_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', 1, 'active', 'agent-governance:acct',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(configId, JSON.stringify({ source: 'agent-governance', agentProposalId: proposalId, totalWeight: 2 }));
+
+    expect(await governanceService.activateExpiredCooldowns()).toBe(1);
+
+    // Link is now completed to the already-committed config; no duplicate row.
+    expect((await governanceService.getProposal(proposalId))!.activatedConfigId).toBe(configId);
+    const rows = db.prepare(`
+      SELECT COUNT(*) as n FROM system_config WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { n: number };
+    expect(rows.n).toBe(1);
+  });
 });
