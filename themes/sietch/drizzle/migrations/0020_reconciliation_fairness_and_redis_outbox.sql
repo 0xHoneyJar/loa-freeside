@@ -35,17 +35,24 @@ CREATE TABLE IF NOT EXISTS crypto_payment_checks (
 CREATE INDEX IF NOT EXISTS idx_crypto_payment_checks_rotation
   ON crypto_payment_checks(last_checked_at);
 
--- System-level table (mirrors webhook_events): the reconciliation sweep writes
--- it cross-community from a privileged, RLS-bypassing connection — the same
--- connection that mints credit_lots and updates crypto_payments unscoped. A
--- tenant current_community_id() predicate would have nothing to satisfy on that
--- unscoped batch write, so no such policy is defined; RLS+FORCE default-denies
--- non-privileged roles, and admin/app grants match webhook_events.
+-- RLS mirrors crypto_payments (same tenant policies + app grant). The sweep
+-- writes this table on the same connection it uses to update crypto_payments
+-- unscoped/cross-community, so that connection already bypasses RLS; the tenant
+-- policies are inert under bypass but let a community-scoped connection (e.g.
+-- the withCommunityScope PG-only mint path) write its own row.
 ALTER TABLE crypto_payment_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crypto_payment_checks FORCE ROW LEVEL SECURITY;
 
+CREATE POLICY crypto_payment_checks_tenant_select ON crypto_payment_checks
+    FOR SELECT USING (community_id = app.current_community_id());
+CREATE POLICY crypto_payment_checks_tenant_insert ON crypto_payment_checks
+    FOR INSERT WITH CHECK (community_id = app.current_community_id());
+CREATE POLICY crypto_payment_checks_tenant_update ON crypto_payment_checks
+    FOR UPDATE
+    USING (community_id = app.current_community_id())
+    WITH CHECK (community_id = app.current_community_id());
+
 GRANT SELECT, INSERT, UPDATE ON crypto_payment_checks TO arrakis_app;
-GRANT ALL ON crypto_payment_checks TO arrakis_admin;
 
 -- ---------------------------------------------------------------------------
 -- (B) Durable outbox for Redis budget-limit adjustments.
@@ -72,10 +79,22 @@ CREATE INDEX IF NOT EXISTS idx_pending_redis_adj_pending
   ON pending_redis_credit_adjustments(created_at)
   WHERE applied_at IS NULL;
 
--- System-level table (mirrors webhook_events / crypto_payment_checks above):
--- written cross-community by the privileged webhook-mint and sweep connections.
+-- RLS mirrors credit_lots EXACTLY. This row is inserted in the SAME transaction,
+-- on the SAME connection, with the SAME community_id as the credit_lots mint
+-- (see processPaymentForLedger). Identical tenant policies therefore guarantee
+-- the outbox insert succeeds precisely when the co-transactional credit_lots
+-- insert does — a divergent posture (e.g. no policy) could default-deny the
+-- outbox insert under a scoped app role and roll the whole mint back.
 ALTER TABLE pending_redis_credit_adjustments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pending_redis_credit_adjustments FORCE ROW LEVEL SECURITY;
 
+CREATE POLICY pending_redis_adj_tenant_select ON pending_redis_credit_adjustments
+    FOR SELECT USING (community_id = app.current_community_id());
+CREATE POLICY pending_redis_adj_tenant_insert ON pending_redis_credit_adjustments
+    FOR INSERT WITH CHECK (community_id = app.current_community_id());
+CREATE POLICY pending_redis_adj_tenant_update ON pending_redis_credit_adjustments
+    FOR UPDATE
+    USING (community_id = app.current_community_id())
+    WITH CHECK (community_id = app.current_community_id());
+
 GRANT SELECT, INSERT, UPDATE ON pending_redis_credit_adjustments TO arrakis_app;
-GRANT ALL ON pending_redis_credit_adjustments TO arrakis_admin;

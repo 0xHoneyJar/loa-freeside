@@ -81,7 +81,12 @@ export interface ReconciliationConfig {
   apiUrl: string;
   /** Minimum age before checking (prevents racing with webhooks) */
   minAgeMins: number;
-  /** Maximum payments to process per sweep */
+  /**
+   * Maximum payments to process per sweep, across both the non-terminal and
+   * missed-mint arms. Effective floor is 2: the two arms each need a slot, so a
+   * value of 1 is treated as 2 (one per arm) to keep either arm from starving
+   * the other. Set >= 2 for the cap to apply exactly.
+   */
   batchSize: number;
   /** Request timeout in ms */
   timeoutMs: number;
