@@ -24,6 +24,7 @@ import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
 import { sqliteTimestamp } from './protocol/timestamps.js';
 import { validateConfigValue, CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
+import { ENTITY_TYPES, type EntityType } from '../../core/protocol/billing-types.js';
 import type { IEconomicEventEmitter } from '../../core/ports/IEconomicEventEmitter.js';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import type { IAgentProvenanceVerifier } from '../../core/ports/IAgentProvenanceVerifier.js';
@@ -112,6 +113,23 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     if (entityType === GLOBAL_ENTITY_SENTINEL) {
       throw Object.assign(
         new Error(`entityType '${GLOBAL_ENTITY_SENTINEL}' is reserved; omit entityType for a global scope`),
+        { code: 'VALIDATION_ERROR', statusCode: 400 },
+      );
+    }
+
+    // A provided entity scope must be a canonical entity type. A blank,
+    // miscased ('Agent'), or arbitrary scope would activate an entity_type that
+    // typed resolution (which queries the canonical values) never reads — the
+    // proposal would appear activated yet have no effect. Omit for global.
+    if (
+      entityType !== undefined &&
+      entityType !== null &&
+      !ENTITY_TYPES.includes(entityType as EntityType)
+    ) {
+      throw Object.assign(
+        new Error(
+          `entityType '${entityType}' is not a canonical entity type (${ENTITY_TYPES.join(', ')}); omit entityType for a global scope`,
+        ),
         { code: 'VALIDATION_ERROR', statusCode: 400 },
       );
     }

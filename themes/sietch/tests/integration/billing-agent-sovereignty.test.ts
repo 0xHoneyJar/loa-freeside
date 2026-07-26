@@ -414,6 +414,23 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     ).rejects.toThrow(/reserved/);
   });
 
+  it('rejects a noncanonical entity scope (blank, miscased, arbitrary)', async () => {
+    // A scope that is not a canonical ENTITY_TYPES value would activate an
+    // entity_type that typed resolution never queries — the proposal would look
+    // activated yet have no effect. Blank, wrong-case, and unknown scopes must
+    // all be rejected; omitting entityType (global) stays valid.
+    const agentId = createAccount(db, 'agent', 'agent-noncanonical-scope');
+    for (const bad of ['', 'Agent', 'account', 'not-a-scope']) {
+      await expect(
+        governanceService.proposeAsAgent(agentId, {
+          paramKey: 'reservation.default_ttl_seconds',
+          value: 600,
+          entityType: bad,
+        }),
+      ).rejects.toThrow(/canonical entity type/);
+    }
+  });
+
   it('duplicate vote rejected', async () => {
     const creatorId = createAccount(db, 'person', 'creator-dup');
     const agentId = createAccount(db, 'agent', 'agent-dup');
