@@ -55,9 +55,6 @@ const MICRO_PER_USD = 1_000_000n;
 /** 1 cent = 10,000 micro-USD */
 const MICRO_PER_CENT = 10_000n;
 
-/** Redis idempotency key TTL: 24 hours */
-const REDIS_PROCESSED_TTL = 86_400;
-
 /** Default lot expiry: 90 days from purchase */
 export const LOT_EXPIRY_DAYS = 90;
 
@@ -91,8 +88,16 @@ export interface RedisCreditAdjustment {
  * processed, then mark processed" a single atomic operation, so the adjustment
  * is applied exactly once no matter how many times it is retried.
  *
+ * The marker is PERSISTENT (no TTL): a pending outbox row is retryable for an
+ * unbounded interval (e.g. a prolonged DB outage that blocks the applied_at
+ * write after Redis was already credited). An expiring marker could lapse while
+ * such a row is still pending, and the next drain would INCRBY again and
+ * double-credit. Marker lifetime is therefore coupled to the durable row, not a
+ * fixed clock. Markers are one-per-minted-lot, so the key set stays bounded by
+ * purchase volume.
+ *
  *   KEYS[1] = processed:mint:{lotId}   ARGV[1] = amountCents
- *   KEYS[2] = agent:budget:limit:{cid} ARGV[2] = marker TTL seconds
+ *   KEYS[2] = agent:budget:limit:{cid}
  *   returns 1 if applied now, 0 if already applied earlier (both = credit present)
  */
 const APPLY_CREDIT_LUA = `
@@ -100,7 +105,7 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
   return 0
 end
 redis.call('INCRBY', KEYS[2], ARGV[1])
-redis.call('SET', KEYS[1], '1', 'EX', ARGV[2])
+redis.call('SET', KEYS[1], '1')
 return 1
 `;
 
@@ -145,7 +150,6 @@ export async function applyRedisCreditAdjustment(
       processedKey,
       limitKey,
       adj.amountCents.toString(),
-      String(REDIS_PROCESSED_TTL),
     );
   } catch {
     // Redis still unavailable — record the failed attempt, leave pending.

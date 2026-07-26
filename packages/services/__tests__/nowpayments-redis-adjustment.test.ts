@@ -42,6 +42,10 @@ describe('applyRedisCreditAdjustment', () => {
     // Atomic marker-check + INCRBY: one eval over exactly two keys.
     expect(redis.eval).toHaveBeenCalledTimes(1);
     const evalArgs = redis.eval.mock.calls[0];
+    // Persistent marker: NO TTL argument (script, numKeys, KEYS[1], KEYS[2],
+    // ARGV[1]) = 5 args. An expiring marker could lapse while a pending outbox
+    // row is still retryable and permit a double-credit on the next drain.
+    expect(evalArgs).toHaveLength(5);
     expect(evalArgs[1]).toBe(2); // numKeys
     expect(evalArgs[2]).toBe('processed:mint:lot_1'); // KEYS[1]
     expect(evalArgs[3]).toBe('agent:budget:limit:comm_1'); // KEYS[2]

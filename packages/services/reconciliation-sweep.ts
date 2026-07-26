@@ -151,13 +151,15 @@ export async function runReconciliationSweep(
 ): Promise<ReconciliationSweepResult> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
 
-  // Split batchSize between the two arms so a persistent backlog of stuck
-  // non-terminal payments (this query ORDER BYs created_at, so the same
-  // long-lived rows refill it every sweep) can NEVER starve the missed-mint
-  // recovery arm below. The stuck arm is capped to ceil(batchSize/2); the
-  // missed-mint arm then always has >= floor(batchSize/2) capacity, and total
-  // work stays <= batchSize.
-  const stuckLimit = Math.max(1, Math.ceil(mergedConfig.batchSize / 2));
+  // Split the batch between the two arms so a persistent backlog of stuck
+  // non-terminal payments can NEVER starve the missed-mint recovery arm below.
+  // The stuck arm is capped to ceil(batch/2); the missed-mint arm then always
+  // has >= floor(batch/2) capacity. The effective batch floors at 2 so that
+  // even batchSize:1 gives each arm one slot — a single shared slot would
+  // otherwise be consumed entirely by whichever arm has a standing backlog,
+  // starving the other on every sweep.
+  const effectiveBatch = Math.max(2, mergedConfig.batchSize);
+  const stuckLimit = Math.max(1, Math.ceil(effectiveBatch / 2));
 
   // Query stuck payments from PostgreSQL, least-recently-checked first.
   // The crypto_payment_checks sidecar (migration 0020) records when each row
@@ -246,7 +248,7 @@ export async function runReconciliationSweep(
   // batchSize is the max payments per sweep across BOTH arms — cap this arm to
   // the capacity the non-terminal arm left, so a backlog can't double the
   // configured DB/Redis/mint workload in one run.
-  const missedMintLimit = Math.max(0, mergedConfig.batchSize - stuckResult.rows.length);
+  const missedMintLimit = Math.max(0, effectiveBatch - stuckResult.rows.length);
   const missedMintResult = missedMintLimit === 0
     ? { rows: [] as Array<{ payment_id: string; community_id: string; price_amount: number; order_id: string }> }
     : await pool.query<{
@@ -333,10 +335,14 @@ export async function runReconciliationSweep(
 
   // -------------------------------------------------------------------------
   // Drain the durable Redis-adjustment outbox: mints whose INCRBY failed (or
-  // was deferred because Redis was down) are retried here, least-recently-
-  // attempted first, until the credit lands exactly once. The apply is
-  // idempotent (atomic marker+INCRBY), so a race with the inline webhook apply
-  // is safe. Only runs when Redis is available.
+  // was deferred because Redis was down) are retried here until the credit
+  // lands exactly once. The apply is idempotent (atomic marker+INCRBY), so a
+  // race with the inline webhook apply is safe. Only runs when Redis is up.
+  //
+  // Order oldest-created first (NOT least-recently-attempted): a NULLS-FIRST
+  // last_attempt_at order would let a sustained stream of fresh never-attempted
+  // rows perpetually jump ahead of older failed rows and starve them. FIFO by
+  // created_at guarantees every purchase is eventually credited.
   // -------------------------------------------------------------------------
   if (redis) {
     const pendingAdj = await pool.query<{
@@ -347,7 +353,7 @@ export async function runReconciliationSweep(
       `SELECT lot_id, community_id, amount_cents
        FROM pending_redis_credit_adjustments
        WHERE applied_at IS NULL
-       ORDER BY last_attempt_at ASC NULLS FIRST
+       ORDER BY created_at ASC
        LIMIT $1`,
       [mergedConfig.batchSize],
     );

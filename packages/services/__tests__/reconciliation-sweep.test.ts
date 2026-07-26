@@ -236,9 +236,10 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     });
   });
 
-  it('caps total work at batchSize across both arms', async () => {
-    // batchSize 1, and the non-terminal arm already returns 1 row → the
-    // missed-mint arm must not run its SELECT (no batch capacity remains).
+  it('gives each arm a slot even at batchSize 1 (no starvation)', async () => {
+    // batchSize 1 floors to an effective batch of 2, so the stuck arm is capped
+    // to 1 and the missed-mint arm still gets the leftover slot — a standing
+    // stuck backlog can no longer starve missed-mint recovery.
     const oneBatch = { ...config, batchSize: 1 };
     mockQuery
       .mockResolvedValueOnce({
@@ -253,6 +254,7 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
         ],
       })
       .mockResolvedValueOnce({ rows: [] }) // stamp
+      .mockResolvedValueOnce({ rows: [finishedRow] }) // missed-mint gets its slot
       .mockResolvedValueOnce({ rows: [] }); // outbox drain
     // Provider still progressing → guard leaves it pending, no UPDATE.
     vi.stubGlobal(
@@ -262,15 +264,19 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
         json: async () => ({ payment_id: 1, payment_status: 'confirming', order_id: 'order_pp' }),
       }),
     );
+    mockProcessPaymentForLedger.mockResolvedValue({ lotId: 'lot_1', amountUsdMicro: 25_000_000n });
 
     const result = await runReconciliationSweep(mockPool, mockRedis, oneBatch);
 
-    // The missed-mint query (LEFT JOIN credit_lots) was skipped — no capacity.
+    // The missed-mint query ran despite the stuck backlog occupying its slot.
     const ranMissedMint = mockQuery.mock.calls.some(([sql]) =>
       /LEFT JOIN credit_lots/i.test(String(sql)),
     );
-    expect(ranMissedMint).toBe(false);
-    expect(mockProcessPaymentForLedger).not.toHaveBeenCalled();
+    expect(ranMissedMint).toBe(true);
+    expect(mockProcessPaymentForLedger).toHaveBeenCalledTimes(1);
+    expect(result.recoveredCount).toBe(1);
+    // Stuck arm capped to 1 (ceil(2/2)).
+    expect(mockQuery.mock.calls[0][1]).toEqual([config.minAgeMins, 1]);
     expect(result.pendingCount).toBe(1);
   });
 
@@ -347,11 +353,12 @@ describe('runReconciliationSweep — Redis-adjustment outbox drain (migration 00
     );
     expect(result.redisAdjustmentsApplied).toBe(1);
 
-    // The drain query targets only unapplied rows, least-recently-attempted first.
+    // The drain query targets only unapplied rows, oldest-created first (FIFO)
+    // so fresh rows can never starve older failed ones.
     const drainSql = String(mockQuery.mock.calls[2][0]);
     expect(drainSql).toMatch(/FROM pending_redis_credit_adjustments/i);
     expect(drainSql).toMatch(/applied_at IS NULL/i);
-    expect(drainSql).toMatch(/last_attempt_at ASC NULLS FIRST/i);
+    expect(drainSql).toMatch(/created_at ASC/i);
   });
 
   it('does not run the outbox drain when Redis is unavailable', async () => {

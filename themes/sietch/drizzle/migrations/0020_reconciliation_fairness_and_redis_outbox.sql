@@ -35,19 +35,17 @@ CREATE TABLE IF NOT EXISTS crypto_payment_checks (
 CREATE INDEX IF NOT EXISTS idx_crypto_payment_checks_rotation
   ON crypto_payment_checks(last_checked_at);
 
+-- System-level table (mirrors webhook_events): the reconciliation sweep writes
+-- it cross-community from a privileged, RLS-bypassing connection — the same
+-- connection that mints credit_lots and updates crypto_payments unscoped. A
+-- tenant current_community_id() predicate would have nothing to satisfy on that
+-- unscoped batch write, so no such policy is defined; RLS+FORCE default-denies
+-- non-privileged roles, and admin/app grants match webhook_events.
 ALTER TABLE crypto_payment_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crypto_payment_checks FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY crypto_payment_checks_tenant_select ON crypto_payment_checks
-    FOR SELECT USING (community_id = app.current_community_id());
-CREATE POLICY crypto_payment_checks_tenant_insert ON crypto_payment_checks
-    FOR INSERT WITH CHECK (community_id = app.current_community_id());
-CREATE POLICY crypto_payment_checks_tenant_update ON crypto_payment_checks
-    FOR UPDATE
-    USING (community_id = app.current_community_id())
-    WITH CHECK (community_id = app.current_community_id());
-
 GRANT SELECT, INSERT, UPDATE ON crypto_payment_checks TO arrakis_app;
+GRANT ALL ON crypto_payment_checks TO arrakis_admin;
 
 -- ---------------------------------------------------------------------------
 -- (B) Durable outbox for Redis budget-limit adjustments.
@@ -67,20 +65,17 @@ CREATE TABLE IF NOT EXISTS pending_redis_credit_adjustments (
 );
 
 -- Drain order: least-recently-attempted (never-attempted first) among pending.
+-- Drain order: oldest-created first (created_at ASC), so a sustained stream of
+-- fresh never-attempted rows can never starve older failed rows — see the sweep
+-- drain query. Partial index keeps only unresolved rows hot.
 CREATE INDEX IF NOT EXISTS idx_pending_redis_adj_pending
-  ON pending_redis_credit_adjustments(last_attempt_at NULLS FIRST)
+  ON pending_redis_credit_adjustments(created_at)
   WHERE applied_at IS NULL;
 
+-- System-level table (mirrors webhook_events / crypto_payment_checks above):
+-- written cross-community by the privileged webhook-mint and sweep connections.
 ALTER TABLE pending_redis_credit_adjustments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pending_redis_credit_adjustments FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY pending_redis_adj_tenant_select ON pending_redis_credit_adjustments
-    FOR SELECT USING (community_id = app.current_community_id());
-CREATE POLICY pending_redis_adj_tenant_insert ON pending_redis_credit_adjustments
-    FOR INSERT WITH CHECK (community_id = app.current_community_id());
-CREATE POLICY pending_redis_adj_tenant_update ON pending_redis_credit_adjustments
-    FOR UPDATE
-    USING (community_id = app.current_community_id())
-    WITH CHECK (community_id = app.current_community_id());
-
 GRANT SELECT, INSERT, UPDATE ON pending_redis_credit_adjustments TO arrakis_app;
+GRANT ALL ON pending_redis_credit_adjustments TO arrakis_admin;
