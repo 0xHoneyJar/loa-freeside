@@ -81,8 +81,9 @@ function makeFakePool(opts: { status?: string; failInsertTimes?: number; selectS
       // Emulate the atomic monotonicity guard in the route's UPDATE:
       // terminal rows never change; non-terminal-failure transitions must
       // strictly increase the status ordinal.
+      // Mirror the deployed crypto_payments_status_monotonicity trigger ranks.
       const ORD: Record<string, number> = {
-        waiting: 0, confirming: 1, partially_paid: 1, confirmed: 2, sending: 3,
+        waiting: 0, confirming: 1, confirmed: 2, sending: 3, partially_paid: 4,
       };
       const incoming = params?.[1] as string;
       const isTerminalFailure = params?.[4] as boolean;
@@ -441,6 +442,19 @@ describe('POST /webhooks/nowpayments — status-progression dedupe (#324)', () =
     expect(res2.body).toEqual({ status: 'processed' });
     expect(state.status).toBe('finished');
     expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+  });
+
+  it('partially_paid then confirmed is skipped, not sent as a backward DB update', async () => {
+    // The DB trigger ranks partially_paid (4) above confirmed (2); the in-app
+    // guard must agree and skip rather than issue an UPDATE the trigger rejects.
+    const { pool, state } = makeFakePool({ status: 'partially_paid' });
+    const { app } = makeApp({ pool });
+
+    const c = signedBody(event('confirmed'));
+    const res = await post(app, c.raw, c.sig);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'skipped', reason: 'backward_transition' });
+    expect(state.status).toBe('partially_paid'); // unchanged — no UPDATE applied
   });
 
   it('duplicate finished webhooks stay idempotent (single mint, then duplicate)', async () => {

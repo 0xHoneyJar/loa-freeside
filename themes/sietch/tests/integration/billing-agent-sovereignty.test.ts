@@ -518,6 +518,37 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     expect((await governanceService.getProposal(proposalId))!.status).toBe('expired');
   });
 
+  it('extends expires_at past cooldown at quorum so a long cooldown can still activate', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-long-cooldown');
+
+    // Seed governance so a single proposer auto-reaches quorum, with a cooldown
+    // (30d) longer than the default proposal expiry (7d).
+    const seed = (key: string, value: string) =>
+      db.prepare(`
+        INSERT INTO system_config (id, param_key, entity_type, value_json, status, proposed_by, proposed_at, activated_at, created_at)
+        VALUES (?, ?, NULL, ?, 'active', 'test', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      `).run(randomUUID(), key, value);
+    seed('governance.agent_quorum_weight', '1');
+    seed('governance.agent_cooldown_seconds', String(30 * 24 * 60 * 60));
+    seed('governance.agent_weight_source', '"fixed_allocation"');
+    seed('governance.fixed_weight_per_agent', '1');
+    seed('governance.max_weight_per_agent', '10');
+
+    const proposal = await governanceService.proposeAsAgent(agentId, {
+      paramKey: 'governance.reputation_scale_factor',
+      value: 2,
+    });
+    expect(proposal.status).toBe('quorum_reached');
+
+    // expires_at must now exceed cooldown_ends_at — otherwise the lifecycle
+    // task's expires_at>now gate would expire the approved proposal before its
+    // 30-day cooldown completes.
+    const row = db.prepare(`
+      SELECT cooldown_ends_at, expires_at FROM agent_governance_proposals WHERE id = ?
+    `).get(proposal.id) as { cooldown_ends_at: string; expires_at: string };
+    expect(Date.parse(row.expires_at)).toBeGreaterThan(Date.parse(row.cooldown_ends_at));
+  });
+
   it('fails closed when constructed without a governance service (never activates without applying config)', async () => {
     const agentId = createAccount(db, 'agent', 'agent-no-governance');
     const proposalId = randomUUID();

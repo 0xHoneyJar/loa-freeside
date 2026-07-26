@@ -52,6 +52,19 @@ const GLOBAL_ENTITY_SENTINEL = '__global__';
 /** Default proposal expiry: 7 days from creation */
 const DEFAULT_PROPOSAL_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
+/**
+ * Grace window added past cooldown_ends_at when a proposal reaches quorum.
+ * activateExpiredCooldowns gates on expires_at > now, and expireStaleProposals
+ * expires quorum_reached rows once expires_at passes. Without extending
+ * expires_at at quorum, a cooldown that ends near (or after) the original
+ * voting deadline — a long configured cooldown, or quorum reached late in the
+ * window — would let the proposal expire before it can be activated. Extending
+ * to cooldown_ends_at + this grace guarantees the hourly activation cron has a
+ * window to apply the approved change, while still expiring proposals that sit
+ * un-activated through genuine extended downtime.
+ */
+const ACTIVATION_GRACE_SECONDS = 24 * 60 * 60;
+
 // =============================================================================
 // AgentGovernanceService
 // =============================================================================
@@ -179,14 +192,19 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       let cooldownEndsAt: string | null = null;
 
       if (weightResult.totalWeight >= requiredWeight) {
-        cooldownEndsAt = sqliteTimestamp(new Date(Date.now() + cooldownSeconds * 1000));
+        const cooldownEndsMs = Date.now() + cooldownSeconds * 1000;
+        cooldownEndsAt = sqliteTimestamp(new Date(cooldownEndsMs));
         status = 'quorum_reached';
 
+        // Ensure the voting deadline never pre-empts a legitimate cooldown.
+        const quorumExpiresAt = sqliteTimestamp(
+          new Date(Math.max(Date.parse(expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
+        );
         this.db.prepare(`
           UPDATE agent_governance_proposals
-          SET status = 'quorum_reached', cooldown_ends_at = ?, updated_at = ?
+          SET status = 'quorum_reached', cooldown_ends_at = ?, expires_at = ?, updated_at = ?
           WHERE id = ?
-        `).run(cooldownEndsAt, now, proposalId);
+        `).run(cooldownEndsAt, quorumExpiresAt, now, proposalId);
 
         this.emitEventInTx('AgentProposalQuorumReached', proposerAccountId, {
           proposalId, paramKey, totalWeight: weightResult.totalWeight,
@@ -283,13 +301,18 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       const updated = this.readProposal(proposalId)!;
       if (updated.status === 'open' && updated.totalWeight >= updated.requiredWeight) {
         const cooldownSeconds = this.resolveNumericParam('governance.agent_cooldown_seconds');
-        const cooldownEndsAt = sqliteTimestamp(new Date(Date.now() + cooldownSeconds * 1000));
+        const cooldownEndsMs = Date.now() + cooldownSeconds * 1000;
+        const cooldownEndsAt = sqliteTimestamp(new Date(cooldownEndsMs));
 
+        // Ensure the voting deadline never pre-empts a legitimate cooldown.
+        const quorumExpiresAt = sqliteTimestamp(
+          new Date(Math.max(Date.parse(updated.expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
+        );
         this.db.prepare(`
           UPDATE agent_governance_proposals
-          SET status = 'quorum_reached', cooldown_ends_at = ?, updated_at = ?
+          SET status = 'quorum_reached', cooldown_ends_at = ?, expires_at = ?, updated_at = ?
           WHERE id = ?
-        `).run(cooldownEndsAt, now, proposalId);
+        `).run(cooldownEndsAt, quorumExpiresAt, now, proposalId);
 
         this.emitEventInTx('AgentProposalQuorumReached', updated.proposerAccountId, {
           proposalId, paramKey: updated.paramKey,

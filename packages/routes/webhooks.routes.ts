@@ -77,16 +77,21 @@ interface NowpaymentsWebhookPayload {
 }
 
 /** Status ordinal for monotonicity enforcement */
+// Ranks MUST match the deployed crypto_payments_status_monotonicity trigger
+// (migration 0010 rank_map). A mismatch lets the in-app guard permit a
+// transition the DB trigger then rejects with P0005 (e.g. partially_paid →
+// confirmed): the UPDATE throws instead of cleanly skipping, and the payment
+// is left stale. partially_paid is rank 4 there, NOT confirming's level.
 const STATUS_ORDINAL: Record<string, number> = {
   waiting: 0,
   confirming: 1,
   confirmed: 2,
   sending: 3,
-  partially_paid: 1, // Same level as confirming
-  finished: 4,
-  failed: 5,
-  refunded: 5,
-  expired: 5,
+  partially_paid: 4,
+  finished: 5,
+  expired: 6,
+  failed: 7,
+  refunded: 8,
 };
 
 /** Default webhook freshness window: 15 minutes (issue #327) */
@@ -488,9 +493,9 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
          AND ($5 OR CASE status
                 WHEN 'waiting' THEN 0
                 WHEN 'confirming' THEN 1
-                WHEN 'partially_paid' THEN 1
                 WHEN 'confirmed' THEN 2
                 WHEN 'sending' THEN 3
+                WHEN 'partially_paid' THEN 4
                 ELSE -1 END < $6)`,
       [
         paymentId,

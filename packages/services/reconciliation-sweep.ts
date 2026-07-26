@@ -203,22 +203,28 @@ export async function runReconciliationSweep(
   // never sees it again. Recover: finished payments with no credit_lots row
   // get an idempotent mint (no API poll needed; the status is known).
   // -------------------------------------------------------------------------
-  const missedMintResult = await pool.query<{
-    payment_id: string;
-    community_id: string;
-    price_amount: number;
-    order_id: string;
-  }>(
-    `SELECT p.payment_id, p.community_id, p.price_amount, p.order_id
-     FROM crypto_payments p
-     LEFT JOIN credit_lots l ON l.payment_id = p.payment_id
-     WHERE p.status = 'finished'
-       AND l.id IS NULL
-       AND p.updated_at < NOW() - $1 * INTERVAL '1 minute'
-     ORDER BY p.updated_at ASC
-     LIMIT $2`,
-    [mergedConfig.minAgeMins, mergedConfig.batchSize],
-  );
+  // batchSize is the max payments per sweep across BOTH arms — cap this arm to
+  // the capacity the non-terminal arm left, so a backlog can't double the
+  // configured DB/Redis/mint workload in one run.
+  const missedMintLimit = Math.max(0, mergedConfig.batchSize - stuckResult.rows.length);
+  const missedMintResult = missedMintLimit === 0
+    ? { rows: [] as Array<{ payment_id: string; community_id: string; price_amount: number; order_id: string }> }
+    : await pool.query<{
+        payment_id: string;
+        community_id: string;
+        price_amount: number;
+        order_id: string;
+      }>(
+        `SELECT p.payment_id, p.community_id, p.price_amount, p.order_id
+         FROM crypto_payments p
+         LEFT JOIN credit_lots l ON l.payment_id = p.payment_id
+         WHERE p.status = 'finished'
+           AND l.id IS NULL
+           AND p.updated_at < NOW() - $1 * INTERVAL '1 minute'
+         ORDER BY p.updated_at ASC
+         LIMIT $2`,
+        [mergedConfig.minAgeMins, missedMintLimit],
+      );
 
   for (const payment of missedMintResult.rows) {
     result.paymentsChecked++;
