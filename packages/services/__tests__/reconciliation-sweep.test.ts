@@ -198,6 +198,38 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     expect(result.pendingCount).toBe(1);
   });
 
+  it('does not starve the missed-mint arm when the stuck backlog is full', async () => {
+    // batchSize 4: the stuck arm is capped at ceil(4/2)=2, so even a full
+    // backlog leaves >= floor(4/2)=2 capacity for missed-mint recovery.
+    const cfg = { ...config, batchSize: 4 };
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          { payment_id: 'pp1', community_id: 'c', status: 'partially_paid', price_amount: 10, order_id: 'o1' },
+          { payment_id: 'pp2', community_id: 'c', status: 'partially_paid', price_amount: 10, order_id: 'o2' },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [finishedRow] });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ payment_id: 1, payment_status: 'confirming', order_id: 'o' }),
+      }),
+    );
+    mockProcessPaymentForLedger.mockResolvedValue({ lotId: 'lot_x', amountUsdMicro: 25_000_000n });
+
+    const result = await runReconciliationSweep(mockPool, mockRedis, cfg);
+
+    // Missed-mint arm ran despite the full stuck backlog.
+    expect(mockProcessPaymentForLedger).toHaveBeenCalledTimes(1);
+    expect(result.recoveredCount).toBe(1);
+    // Stuck arm was capped to 2 (ceil(4/2)); missed-mint got the leftover 2.
+    const stuckSql = String(mockQuery.mock.calls[0][0]);
+    expect(stuckSql).toMatch(/status IN/);
+    expect(mockQuery.mock.calls[0][1]).toEqual([config.minAgeMins, 2]);
+  });
+
   it('does not re-mint when the finished payment already has a credit lot', async () => {
     // The missed-mint SELECT (LEFT JOIN ... WHERE l.id IS NULL) returns no rows
     // once a lot exists, so a rerun mints nothing — no duplicate lot.

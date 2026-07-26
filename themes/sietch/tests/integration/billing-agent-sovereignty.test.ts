@@ -579,13 +579,15 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     expect(noConfig).toBeUndefined();
   });
 
-  it('orphaned activation recovered: claimed proposal with no config gets its config on the next sweep', async () => {
+  it('does NOT recover an activated proposal with no provenance-stamped config (legacy-safe)', async () => {
     const agentId = createAccount(db, 'agent', 'agent-orphan');
     const proposalId = randomUUID();
 
-    // Simulate a crash between the claim commit and the config transaction:
-    // proposal already 'activated', but no system_config row carries its
-    // agentProposalId provenance.
+    // An 'activated' proposal with activated_config_id NULL and NO config
+    // carrying its agentProposalId provenance. This conflates a rare
+    // hard-crash-before-config orphan with a pre-recovery-mechanism legacy
+    // activation, so recovery must NOT create a config here (doing so would
+    // clobber a newer active config on upgrade).
     db.prepare(`
       INSERT INTO agent_governance_proposals
         (id, param_key, entity_type, proposed_value, proposer_account_id,
@@ -596,18 +598,18 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     `).run(proposalId, agentId);
 
-    const activated = await governanceService.activateExpiredCooldowns();
-    expect(activated).toBe(1);
-
+    // Not recovered: no config created, proposal left untouched.
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
     const config = db.prepare(`
-      SELECT status, value_json, metadata FROM system_config
+      SELECT 1 FROM system_config
       WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
-    `).get() as { status: string; value_json: string; metadata: string | null } | undefined;
-    expect(config).toBeDefined();
-    expect(JSON.parse(config!.value_json)).toBe(900);
-    expect(JSON.parse(config!.metadata ?? '{}').agentProposalId).toBe(proposalId);
+    `).get();
+    expect(config).toBeUndefined();
+    const p = await governanceService.getProposal(proposalId);
+    expect(p!.status).toBe('activated');
+    expect(p!.activatedConfigId).toBeNull();
 
-    // Second sweep: config now exists, nothing left to recover.
+    // Idempotent — still nothing to recover on a second sweep.
     expect(await governanceService.activateExpiredCooldowns()).toBe(0);
   });
 

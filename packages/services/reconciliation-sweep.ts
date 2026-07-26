@@ -140,6 +140,14 @@ export async function runReconciliationSweep(
 ): Promise<ReconciliationSweepResult> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
 
+  // Split batchSize between the two arms so a persistent backlog of stuck
+  // non-terminal payments (this query ORDER BYs created_at, so the same
+  // long-lived rows refill it every sweep) can NEVER starve the missed-mint
+  // recovery arm below. The stuck arm is capped to ceil(batchSize/2); the
+  // missed-mint arm then always has >= floor(batchSize/2) capacity, and total
+  // work stays <= batchSize.
+  const stuckLimit = Math.max(1, Math.ceil(mergedConfig.batchSize / 2));
+
   // Query stuck payments from PostgreSQL
   const stuckResult = await pool.query<{
     payment_id: string;
@@ -154,7 +162,7 @@ export async function runReconciliationSweep(
        AND created_at < NOW() - $1 * INTERVAL '1 minute'
      ORDER BY created_at ASC
      LIMIT $2`,
-    [mergedConfig.minAgeMins, mergedConfig.batchSize],
+    [mergedConfig.minAgeMins, stuckLimit],
   );
 
   const result: ReconciliationSweepResult = {

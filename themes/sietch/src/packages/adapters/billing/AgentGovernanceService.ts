@@ -492,44 +492,66 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       }
     }
 
-    // Crash recovery: a process killed between the claim commit and the
-    // config transaction leaves the proposal 'activated' with no config
-    // behind it — invisible to the quorum_reached query above forever.
-    // Detect those via the agentProposalId provenance metadata that
-    // activateFromAgentGovernance stamps on every config it creates, and
-    // re-run the (idempotent) activation.
+    // Crash recovery — LINK ONLY. Recover exactly the window where
+    // activateFromAgentGovernance committed the config (stamping this
+    // proposal's agentProposalId provenance) but the follow-up transaction
+    // that writes activated_config_id + emits AgentProposalActivated did not
+    // run. Those rows are matched by the EXISTS provenance subquery; linking
+    // them is safe and idempotent — no config is created or superseded.
+    //
+    // We deliberately do NOT recover 'activated' rows with activated_config_id
+    // NULL and no provenance-stamped config. That set conflates a rare
+    // hard-crash-before-config-create orphan with pre-recovery-mechanism
+    // LEGACY activations (whose configs, if any, were created without the
+    // provenance metadata). The two are indistinguishable, and re-running
+    // activation for a legacy row would CREATE a config that supersedes
+    // whatever is currently active — clobbering newer values on upgrade. A
+    // stranded hard-crash orphan can be re-proposed; silent config corruption
+    // cannot be undone.
     if (this.governance) {
-      // activated_config_id is the completion marker: it and the
-      // AgentProposalActivated event are written in the SAME transaction as
-      // the final step of activateProposalConfig, after the config commits.
-      // So `status='activated' AND activated_config_id IS NULL` captures BOTH
-      // crash windows — the config was never created, OR it was created (and
-      // its provenance metadata exists) but the link+event transaction never
-      // ran. activateProposalConfig is idempotent by proposal id, so re-running
-      // either creates the missing config or reuses the existing one, then
-      // completes the link and emits the event exactly once.
-      const orphans = this.db.prepare(`
-        SELECT * FROM agent_governance_proposals
-        WHERE status = 'activated' AND activated_config_id IS NULL
+      const linkable = this.db.prepare(`
+        SELECT p.* FROM agent_governance_proposals p
+        WHERE p.status = 'activated' AND p.activated_config_id IS NULL
+          AND EXISTS (
+            SELECT 1 FROM system_config c
+            WHERE c.metadata LIKE '%"agentProposalId":"' || p.id || '"%'
+          )
       `).all() as ProposalRow[];
 
-      for (const row of orphans) {
+      for (const row of linkable) {
+        const config = this.db.prepare(`
+          SELECT id FROM system_config
+          WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
+          LIMIT 1
+        `).get(row.id) as { id: string } | undefined;
+        if (!config) continue;
         try {
-          await this.activateProposalConfig(row, now);
+          this.db.transaction(() => {
+            this.db.prepare(`
+              UPDATE agent_governance_proposals
+              SET activated_config_id = ?, updated_at = ?
+              WHERE id = ? AND activated_config_id IS NULL
+            `).run(config.id, now, row.id);
+            this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
+              proposalId: row.id,
+              paramKey: row.param_key,
+              proposedValue: row.proposed_value,
+              totalWeight: row.total_weight,
+              timestamp: now,
+            });
+          })();
           activated++;
           logger.warn({
-            event: 'agent.governance.proposal_activation_recovered',
+            event: 'agent.governance.proposal_link_recovered',
             proposalId: row.id,
             paramKey: row.param_key,
-          }, 'Recovered agent proposal that was claimed but never produced a config');
+          }, 'Linked agent proposal to its already-committed config (link/event transaction had not run)');
         } catch (err: any) {
-          // Proposal stays 'activated' and config stays missing, so the
-          // orphan query re-selects it on the next sweep.
           logger.error({
-            event: 'agent.governance.activation_recovery_error',
+            event: 'agent.governance.link_recovery_error',
             proposalId: row.id,
             err: err.message,
-          }, 'Failed to recover orphaned agent proposal activation');
+          }, 'Failed to link orphaned agent proposal activation');
         }
       }
     }
