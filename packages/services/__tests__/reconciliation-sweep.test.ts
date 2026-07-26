@@ -10,22 +10,41 @@
  * 2. Missed-mint recovery arm: an already-`finished` payment with no
  *    credit_lots row is recovered exactly once (Redis and Postgres-only
  *    fallback paths), and a row that already has a lot is never re-minted.
+ *
+ * 3. Fair rotation (migration 0020): the non-terminal arm orders by
+ *    last_checked_at (least-recently-checked first) and stamps every polled row
+ *    so a persistent oldest backlog can never starve newer payments.
+ *
+ * 4. Redis-adjustment outbox (migration 0020): budget increments that failed or
+ *    were deferred (Postgres-only mint) are durably enqueued and drained by the
+ *    sweep until they land exactly once.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the mint/ledger collaborators so the sweep's recovery arm can be
-// exercised without a real database or Redis.
-const { mockProcessPaymentForLedger, mockMintCreditLot, mockWithCommunityScope } = vi.hoisted(() => ({
+// exercised without a real database or Redis. The whole nowpayments-handler
+// module is replaced, so every export the sweep imports must be listed here.
+const {
+  mockProcessPaymentForLedger,
+  mockMintCreditLot,
+  mockWithCommunityScope,
+  mockEnqueueAdj,
+  mockApplyAdj,
+} = vi.hoisted(() => ({
   mockProcessPaymentForLedger: vi.fn(),
   mockMintCreditLot: vi.fn(),
   mockWithCommunityScope: vi.fn(),
+  mockEnqueueAdj: vi.fn(),
+  mockApplyAdj: vi.fn(),
 }));
 
 vi.mock('../nowpayments-handler.js', () => ({
   processPaymentForLedger: mockProcessPaymentForLedger,
+  enqueueRedisCreditAdjustment: mockEnqueueAdj,
+  applyRedisCreditAdjustment: mockApplyAdj,
   LOT_EXPIRY_DAYS: 90,
-  usdToMicroSafe: (n: number) => BigInt(Math.round(n * 1_000_000)),
+  usdToMicroSafe: (n: number) => BigInt(Math.round(n * 100)) * 10_000n,
 }));
 vi.mock('../credit-lot-service.js', () => ({
   mintCreditLot: mockMintCreditLot,
@@ -60,6 +79,10 @@ beforeEach(() => {
   mockProcessPaymentForLedger.mockReset();
   mockMintCreditLot.mockReset();
   mockWithCommunityScope.mockReset();
+  mockEnqueueAdj.mockReset();
+  mockApplyAdj.mockReset();
+  // Default: nothing pending in the outbox drain.
+  mockApplyAdj.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -68,7 +91,7 @@ afterEach(() => {
 
 describe('runReconciliationSweep — monotonicity guard', () => {
   it('does NOT persist a backward transition for a partially_paid row', async () => {
-    // Stuck-payments SELECT → one partially_paid row; missed-mint SELECT → none.
+    // Stuck SELECT → one partially_paid row; stamp UPDATE; missed-mint SELECT → none.
     mockQuery
       .mockResolvedValueOnce({
         rows: [
@@ -81,7 +104,8 @@ describe('runReconciliationSweep — monotonicity guard', () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] }) // stamp (crypto_payment_checks upsert)
+      .mockResolvedValueOnce({ rows: [] }); // missed-mint SELECT
 
     // Provider still reports a lower-ranked, non-terminal status.
     vi.stubGlobal(
@@ -94,10 +118,9 @@ describe('runReconciliationSweep — monotonicity guard', () => {
 
     const result = await runReconciliationSweep(mockPool, null, config);
 
-    // Only the two SELECTs ran — no UPDATE was attempted.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    // No UPDATE crypto_payments was attempted (only SELECT + sidecar stamp).
     const ranUpdate = mockQuery.mock.calls.some(([sql]) =>
-      /UPDATE\s+crypto_payments/i.test(String(sql)),
+      /UPDATE\s+crypto_payments\b/i.test(String(sql)),
     );
     expect(ranUpdate).toBe(false);
 
@@ -113,14 +136,56 @@ describe('runReconciliationSweep — monotonicity guard', () => {
   });
 });
 
+describe('runReconciliationSweep — fair rotation (migration 0020)', () => {
+  it('orders the non-terminal arm least-recently-checked first and stamps polled rows', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            payment_id: 'pay_1',
+            community_id: 'comm_1',
+            status: 'confirming',
+            price_amount: 10,
+            order_id: 'order_1',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // stamp
+      .mockResolvedValueOnce({ rows: [] }); // missed-mint SELECT
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ payment_id: 1, payment_status: 'confirming', order_id: 'order_1' }),
+      }),
+    );
+
+    await runReconciliationSweep(mockPool, null, config);
+
+    // Stuck SELECT rotates on the cursor.
+    const stuckSql = String(mockQuery.mock.calls[0][0]);
+    expect(stuckSql).toMatch(/last_checked_at ASC NULLS FIRST/i);
+    expect(stuckSql).toMatch(/LEFT JOIN crypto_payment_checks/i);
+
+    // Every fetched row is stamped so it rotates to the back of the queue.
+    const stampSql = String(mockQuery.mock.calls[1][0]);
+    expect(stampSql).toMatch(/INSERT INTO crypto_payment_checks/i);
+    expect(stampSql).toMatch(/ON CONFLICT .* DO UPDATE SET last_checked_at = NOW\(\)/is);
+    expect(mockQuery.mock.calls[1][1]).toEqual([['pay_1'], ['comm_1']]);
+  });
+});
+
 describe('runReconciliationSweep — missed-mint recovery arm', () => {
   const mockRedis = {} as unknown as import('ioredis').Redis;
 
   it('recovers a finished payment with no credit lot via the Redis mint path (once)', async () => {
-    // No non-terminal stuck rows; missed-mint SELECT → one finished row.
+    // No non-terminal stuck rows (→ no stamp); missed-mint SELECT → one finished row;
+    // outbox drain SELECT → none.
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [finishedRow] });
+      .mockResolvedValueOnce({ rows: [finishedRow] })
+      .mockResolvedValueOnce({ rows: [] }); // outbox drain
     mockProcessPaymentForLedger.mockResolvedValue({ lotId: 'lot_1', amountUsdMicro: 25_000_000n });
 
     const result = await runReconciliationSweep(mockPool, mockRedis, config);
@@ -156,6 +221,12 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     expect(mockProcessPaymentForLedger).not.toHaveBeenCalled();
     expect(mockWithCommunityScope).toHaveBeenCalledTimes(1);
     expect(mockMintCreditLot).toHaveBeenCalledTimes(1);
+    // Postgres-only mint durably enqueues the Redis adjustment for later drain.
+    expect(mockEnqueueAdj).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueAdj).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lotId: 'lot_pg', communityId: 'comm_1', amountCents: 2500n }),
+    );
     expect(result.recoveredCount).toBe(1);
     expect(result.errorCount).toBe(0);
     expect(result.details.at(-1)).toMatchObject({
@@ -167,19 +238,22 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
 
   it('caps total work at batchSize across both arms', async () => {
     // batchSize 1, and the non-terminal arm already returns 1 row → the
-    // missed-mint arm must not run a second full batch.
+    // missed-mint arm must not run its SELECT (no batch capacity remains).
     const oneBatch = { ...config, batchSize: 1 };
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          payment_id: 'pay_pp',
-          community_id: 'comm_1',
-          status: 'partially_paid',
-          price_amount: 10,
-          order_id: 'order_pp',
-        },
-      ],
-    });
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            payment_id: 'pay_pp',
+            community_id: 'comm_1',
+            status: 'partially_paid',
+            price_amount: 10,
+            order_id: 'order_pp',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // stamp
+      .mockResolvedValueOnce({ rows: [] }); // outbox drain
     // Provider still progressing → guard leaves it pending, no UPDATE.
     vi.stubGlobal(
       'fetch',
@@ -191,9 +265,11 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
 
     const result = await runReconciliationSweep(mockPool, mockRedis, oneBatch);
 
-    // Only the stuck-payments SELECT ran — the missed-mint query was skipped
-    // because no batch capacity remained.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    // The missed-mint query (LEFT JOIN credit_lots) was skipped — no capacity.
+    const ranMissedMint = mockQuery.mock.calls.some(([sql]) =>
+      /LEFT JOIN credit_lots/i.test(String(sql)),
+    );
+    expect(ranMissedMint).toBe(false);
     expect(mockProcessPaymentForLedger).not.toHaveBeenCalled();
     expect(result.pendingCount).toBe(1);
   });
@@ -209,7 +285,9 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
           { payment_id: 'pp2', community_id: 'c', status: 'partially_paid', price_amount: 10, order_id: 'o2' },
         ],
       })
-      .mockResolvedValueOnce({ rows: [finishedRow] });
+      .mockResolvedValueOnce({ rows: [] }) // stamp
+      .mockResolvedValueOnce({ rows: [finishedRow] }) // missed-mint SELECT
+      .mockResolvedValueOnce({ rows: [] }); // outbox drain
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -235,7 +313,8 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     // once a lot exists, so a rerun mints nothing — no duplicate lot.
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] }); // outbox drain
 
     const result = await runReconciliationSweep(mockPool, mockRedis, config);
 
@@ -243,5 +322,50 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     expect(mockMintCreditLot).not.toHaveBeenCalled();
     expect(result.recoveredCount).toBe(0);
     expect(result.errorCount).toBe(0);
+  });
+});
+
+describe('runReconciliationSweep — Redis-adjustment outbox drain (migration 0020)', () => {
+  const mockRedis = {} as unknown as import('ioredis').Redis;
+
+  it('drains pending Redis adjustments exactly once when Redis is available', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // stuck
+      .mockResolvedValueOnce({ rows: [] }) // missed-mint
+      .mockResolvedValueOnce({
+        rows: [{ lot_id: 'lot_pg', community_id: 'comm_1', amount_cents: '2500' }],
+      }); // outbox drain SELECT
+    mockApplyAdj.mockResolvedValue(true);
+
+    const result = await runReconciliationSweep(mockPool, mockRedis, config);
+
+    expect(mockApplyAdj).toHaveBeenCalledTimes(1);
+    expect(mockApplyAdj).toHaveBeenCalledWith(
+      mockRedis,
+      mockPool,
+      { lotId: 'lot_pg', communityId: 'comm_1', amountCents: 2500n },
+    );
+    expect(result.redisAdjustmentsApplied).toBe(1);
+
+    // The drain query targets only unapplied rows, least-recently-attempted first.
+    const drainSql = String(mockQuery.mock.calls[2][0]);
+    expect(drainSql).toMatch(/FROM pending_redis_credit_adjustments/i);
+    expect(drainSql).toMatch(/applied_at IS NULL/i);
+    expect(drainSql).toMatch(/last_attempt_at ASC NULLS FIRST/i);
+  });
+
+  it('does not run the outbox drain when Redis is unavailable', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // stuck
+      .mockResolvedValueOnce({ rows: [] }); // missed-mint
+
+    const result = await runReconciliationSweep(mockPool, null, config);
+
+    expect(mockApplyAdj).not.toHaveBeenCalled();
+    expect(result.redisAdjustmentsApplied).toBe(0);
+    const ranDrain = mockQuery.mock.calls.some(([sql]) =>
+      /pending_redis_credit_adjustments/i.test(String(sql)),
+    );
+    expect(ranDrain).toBe(false);
   });
 });

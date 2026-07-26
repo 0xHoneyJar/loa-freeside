@@ -14,9 +14,18 @@
 
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
-import { processPaymentForLedger, LOT_EXPIRY_DAYS, usdToMicroSafe } from './nowpayments-handler.js';
+import {
+  processPaymentForLedger,
+  LOT_EXPIRY_DAYS,
+  usdToMicroSafe,
+  enqueueRedisCreditAdjustment,
+  applyRedisCreditAdjustment,
+} from './nowpayments-handler.js';
 import { mintCreditLot } from './credit-lot-service.js';
 import { withCommunityScope } from './community-scope.js';
+
+/** 1 cent = 10,000 micro-USD (mirror of nowpayments-handler). */
+const MICRO_PER_CENT = 10_000n;
 
 // --------------------------------------------------------------------------
 // Types
@@ -34,6 +43,8 @@ export interface ReconciliationSweepResult {
   pendingCount: number;
   /** Number of errors during processing */
   errorCount: number;
+  /** Number of durable Redis budget adjustments drained from the outbox */
+  redisAdjustmentsApplied: number;
   /** Individual payment results */
   details: PaymentReconciliationDetail[];
 }
@@ -148,7 +159,11 @@ export async function runReconciliationSweep(
   // work stays <= batchSize.
   const stuckLimit = Math.max(1, Math.ceil(mergedConfig.batchSize / 2));
 
-  // Query stuck payments from PostgreSQL
+  // Query stuck payments from PostgreSQL, least-recently-checked first.
+  // The crypto_payment_checks sidecar (migration 0020) records when each row
+  // was last polled; ordering by it (NULLS FIRST = never-checked wins) rotates
+  // the capped half-batch through the whole backlog instead of refilling it
+  // with the same oldest rows every sweep, which would starve newer payments.
   const stuckResult = await pool.query<{
     payment_id: string;
     community_id: string;
@@ -156,14 +171,30 @@ export async function runReconciliationSweep(
     price_amount: number;
     order_id: string;
   }>(
-    `SELECT payment_id, community_id, status, price_amount, order_id
-     FROM crypto_payments
-     WHERE status IN ('waiting', 'confirming', 'confirmed', 'sending', 'partially_paid')
-       AND created_at < NOW() - $1 * INTERVAL '1 minute'
-     ORDER BY created_at ASC
+    `SELECT p.payment_id, p.community_id, p.status, p.price_amount, p.order_id
+     FROM crypto_payments p
+     LEFT JOIN crypto_payment_checks c ON c.payment_id = p.payment_id
+     WHERE p.status IN ('waiting', 'confirming', 'confirmed', 'sending', 'partially_paid')
+       AND p.created_at < NOW() - $1 * INTERVAL '1 minute'
+     ORDER BY c.last_checked_at ASC NULLS FIRST, p.created_at ASC
      LIMIT $2`,
     [mergedConfig.minAgeMins, stuckLimit],
   );
+
+  // Stamp every fetched row's check cursor to NOW() so it rotates to the back
+  // of the queue next sweep — even if the poll below errors or leaves it
+  // pending. Trigger-free sidecar write; the monotonicity guard is untouched.
+  if (stuckResult.rows.length > 0) {
+    await pool.query(
+      `INSERT INTO crypto_payment_checks (payment_id, community_id)
+       SELECT unnest($1::text[]), unnest($2::uuid[])
+       ON CONFLICT (payment_id) DO UPDATE SET last_checked_at = NOW()`,
+      [
+        stuckResult.rows.map((r) => r.payment_id),
+        stuckResult.rows.map((r) => r.community_id),
+      ],
+    );
+  }
 
   const result: ReconciliationSweepResult = {
     paymentsChecked: stuckResult.rows.length,
@@ -171,6 +202,7 @@ export async function runReconciliationSweep(
     failedCount: 0,
     pendingCount: 0,
     errorCount: 0,
+    redisAdjustmentsApplied: 0,
     details: [],
   };
 
@@ -254,18 +286,27 @@ export async function runReconciliationSweep(
           lotId: lotResult.lotId,
         });
       } else {
-        // Redis unavailable — Postgres-only mint (same fallback as the
-        // non-terminal arm; conservation guard corrects Redis on recovery).
+        // Redis unavailable — Postgres-only mint, with the Redis adjustment
+        // durably enqueued in the SAME transaction so the outbox drain below
+        // applies it once Redis returns (no lost purchased credit).
         const amountMicro = usdToMicroSafe(payment.price_amount);
         const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
         const lotId = await withCommunityScope(payment.community_id, pool, async (client) => {
-          return mintCreditLot(client, {
+          const id = await mintCreditLot(client, {
             community_id: payment.community_id,
             source: 'purchase',
             amount_micro: amountMicro,
             payment_id: payment.payment_id,
             expires_at: expiresAt,
           });
+          if (id) {
+            await enqueueRedisCreditAdjustment(client, {
+              lotId: id,
+              communityId: payment.community_id,
+              amountCents: amountMicro / MICRO_PER_CENT,
+            });
+          }
+          return id;
         });
         result.recoveredCount++;
         result.details.push({
@@ -287,6 +328,49 @@ export async function runReconciliationSweep(
         action: 'error',
         error: (err as Error).message,
       });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Drain the durable Redis-adjustment outbox: mints whose INCRBY failed (or
+  // was deferred because Redis was down) are retried here, least-recently-
+  // attempted first, until the credit lands exactly once. The apply is
+  // idempotent (atomic marker+INCRBY), so a race with the inline webhook apply
+  // is safe. Only runs when Redis is available.
+  // -------------------------------------------------------------------------
+  if (redis) {
+    const pendingAdj = await pool.query<{
+      lot_id: string;
+      community_id: string;
+      amount_cents: string;
+    }>(
+      `SELECT lot_id, community_id, amount_cents
+       FROM pending_redis_credit_adjustments
+       WHERE applied_at IS NULL
+       ORDER BY last_attempt_at ASC NULLS FIRST
+       LIMIT $1`,
+      [mergedConfig.batchSize],
+    );
+
+    for (const adj of pendingAdj.rows) {
+      try {
+        const applied = await applyRedisCreditAdjustment(redis, pool, {
+          lotId: adj.lot_id,
+          communityId: adj.community_id,
+          amountCents: BigInt(adj.amount_cents),
+        });
+        if (applied) result.redisAdjustmentsApplied++;
+      } catch (err) {
+        result.errorCount++;
+        result.details.push({
+          paymentId: adj.lot_id,
+          communityId: adj.community_id,
+          previousStatus: 'finished',
+          newStatus: null,
+          action: 'error',
+          error: (err as Error).message,
+        });
+      }
     }
   }
 
@@ -359,19 +443,28 @@ async function reconcilePayment(
         });
         lotId = lotResult.lotId;
       } else {
-        // Redis unavailable — Postgres-only mint, budget adjustment deferred
-        // Conservation guard reconciliation will correct Redis on recovery
+        // Redis unavailable — Postgres-only mint with the budget adjustment
+        // durably enqueued in the same transaction; the outbox drain applies it
+        // once Redis returns (no lost purchased credit).
         const amountMicro = usdToMicroSafe(apiStatus.price_amount);
         const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
         // Use withCommunityScope for standardized BEGIN/SET LOCAL/COMMIT (Sprint 1, Task 1.1)
         lotId = await withCommunityScope(payment.community_id, pool, async (client) => {
-          return mintCreditLot(client, {
+          const id = await mintCreditLot(client, {
             community_id: payment.community_id,
             source: 'purchase',
             amount_micro: amountMicro,
             payment_id: payment.payment_id,
             expires_at: expiresAt,
           });
+          if (id) {
+            await enqueueRedisCreditAdjustment(client, {
+              lotId: id,
+              communityId: payment.community_id,
+              amountCents: amountMicro / MICRO_PER_CENT,
+            });
+          }
+          return id;
         });
       }
     }
