@@ -237,20 +237,18 @@ export class GlobalRateLimitedSynthesisWorker {
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      // Handle rate limit errors
+      // Rate-limit token-acquisition timeout: RETHROW so BullMQ re-queues the
+      // UNEXECUTED job per its attempts/backoff. Returning a resolved
+      // { success: false } here makes BullMQ mark the job COMPLETED — it does
+      // not inspect the return value's `retryable` flag — silently dropping
+      // jobs once tokens are exhausted (notably under refillRate: 0, which is
+      // now a valid no-automatic-refill configuration). This matches the
+      // documented invariant in the integration suite ('must not complete').
       if (
         error instanceof SynthesisError &&
         error.code === 'RATE_LIMIT_TIMEOUT'
       ) {
-        return {
-          success: false,
-          error: {
-            code: error.code,
-            message: error.message,
-            retryable: true,
-          },
-          duration,
-        };
+        throw error;
       }
 
       // Handle Discord API 429 errors (shouldn't happen with bucket, but just in case)
