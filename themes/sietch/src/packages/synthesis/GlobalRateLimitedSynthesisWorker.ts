@@ -35,6 +35,7 @@ import {
   SynthesisWorker,
   SynthesisError,
   DiscordAPIError,
+  customSynthesisBackoff,
 } from './SynthesisWorker.js';
 import type { SynthesisWorkerConfig } from './SynthesisWorker.js';
 import {
@@ -134,6 +135,13 @@ export class GlobalRateLimitedSynthesisWorker {
       limiter: config.limiter || {
         max: 10,
         duration: 1000,
+      },
+      // BullMQ 5.x resolves backoff.type:'custom' jobs from the worker's
+      // settings.backoffStrategy — required for the rate-limit-timeout retry
+      // (rethrown in processJobWithRateLimit) to follow 5s/25s/125s instead of
+      // throwing "Unknown backoff strategy custom".
+      settings: {
+        backoffStrategy: customSynthesisBackoff,
       },
     };
 

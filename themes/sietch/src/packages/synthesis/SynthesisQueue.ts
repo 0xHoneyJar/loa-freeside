@@ -97,15 +97,9 @@ export class SynthesisQueue {
         removeOnComplete: this.config.defaultJobOptions.removeOnComplete,
         removeOnFail: this.config.defaultJobOptions.removeOnFail,
       },
-      settings: {
-        backoffStrategies: {
-          custom: (attemptsMade: number) => {
-            // Custom backoff: 5s, 25s, 125s (5 * 5^(attemptsMade-1))
-            const baseDelay = 5000;
-            return baseDelay * Math.pow(5, attemptsMade - 1);
-          },
-        },
-      },
+      // NB: the custom backoff strategy is resolved from the WORKER's
+      // settings.backoffStrategy in BullMQ 5.x (see SynthesisWorker and
+      // GlobalRateLimitedSynthesisWorker); a queue-side strategy is inert.
     };
 
     this.queue = new Queue(this.config.queueName, queueOptions);

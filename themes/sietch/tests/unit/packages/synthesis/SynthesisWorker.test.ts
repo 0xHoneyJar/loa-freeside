@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SynthesisWorker, SynthesisError, ResourceNotFoundError, PermissionError } from '../../../../src/packages/synthesis/SynthesisWorker.js';
+import { SynthesisWorker, SynthesisError, ResourceNotFoundError, PermissionError, customSynthesisBackoff } from '../../../../src/packages/synthesis/SynthesisWorker.js';
 import type { SynthesisJobData, SynthesisJobResult } from '../../../../src/packages/synthesis/types.js';
 
 // Mock Discord.js
@@ -80,6 +80,7 @@ vi.mock('bullmq', () => {
   class MockWorker {
     constructor(queueName: string, processor: any, options: any) {
       (this as any).processor = processor;
+      (mockWorker as any).opts = options;
       return mockWorker;
     }
   }
@@ -661,6 +662,21 @@ describe('SynthesisWorker', () => {
     it('should resume worker', async () => {
       await worker.resume();
       expect(worker['worker'].resume).toHaveBeenCalled();
+    });
+  });
+
+  describe('customSynthesisBackoff', () => {
+    it('follows the 5s/25s/125s schedule (5000 * 5^(attemptsMade-1))', () => {
+      expect(customSynthesisBackoff(1)).toBe(5000);
+      expect(customSynthesisBackoff(2)).toBe(25000);
+      expect(customSynthesisBackoff(3)).toBe(125000);
+    });
+
+    it('is registered on the worker so backoff.type:custom resolves', () => {
+      // Worker constructed in the suite's beforeEach exposes its options.
+      const opts = worker['worker'].opts ?? {};
+      // The strategy must live on the worker settings (BullMQ 5.x), not the queue.
+      expect(opts.settings?.backoffStrategy).toBe(customSynthesisBackoff);
     });
   });
 });
