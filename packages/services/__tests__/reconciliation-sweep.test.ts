@@ -434,3 +434,60 @@ describe('runReconciliationSweep — Redis-adjustment outbox drain (migration 00
     expect(ranDrain).toBe(false);
   });
 });
+
+describe('runReconciliationSweep — explicit maintenance authority (forced RLS)', () => {
+  const mockRedis = {} as unknown as import('ioredis').Redis;
+
+  it('enumerates via the injected maintenancePool and never via the tenant pool', async () => {
+    // Cross-community enumeration needs BYPASSRLS-class authority; it must be
+    // injected explicitly rather than inferred from the tenant pool.
+    const maintQuery = vi.fn();
+    const maintenancePool = { query: maintQuery } as unknown as import('pg').Pool;
+    maintQuery
+      .mockResolvedValueOnce({
+        rows: [
+          { payment_id: 'p_a', community_id: 'comm_a', status: 'confirming', price_amount: 10, order_id: 'o_a' },
+        ],
+      }) // stuck enumeration
+      .mockResolvedValueOnce({ rows: [] }) // missed-mint enumeration
+      .mockResolvedValueOnce({
+        rows: [{ lot_id: 'lot_a', community_id: 'comm_a', amount_cents: '2500' }],
+      }); // outbox enumeration
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ payment_id: 1, payment_status: 'confirming', order_id: 'o_a' }),
+      }),
+    );
+    mockApplyAdj.mockResolvedValue(true);
+
+    const result = await runReconciliationSweep(mockPool, mockRedis, config, { maintenancePool });
+
+    // All three enumerations went to the maintenance connection...
+    expect(maintQuery).toHaveBeenCalledTimes(3);
+    expect(String(maintQuery.mock.calls[0][0])).toMatch(/FROM crypto_payments/i);
+    expect(String(maintQuery.mock.calls[2][0])).toMatch(/FROM pending_redis_credit_adjustments/i);
+    // ...and no enumeration leaked onto the tenant pool.
+    const tenantEnumerated = mockQuery.mock.calls.some(([sql]) =>
+      /FROM pending_redis_credit_adjustments|LEFT JOIN crypto_payment_checks/i.test(String(sql)),
+    );
+    expect(tenantEnumerated).toBe(false);
+
+    // Writes still run scoped, under the tenant path.
+    expect(scopedCommunities).toContain('comm_a');
+    expect(result.redisAdjustmentsApplied).toBe(1);
+  });
+
+  it('defaults maintenancePool to the main pool when not injected', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // stuck
+      .mockResolvedValueOnce({ rows: [] }) // missed-mint
+      .mockResolvedValueOnce({ rows: [] }); // outbox drain
+
+    await runReconciliationSweep(mockPool, mockRedis, config);
+
+    expect(mockQuery).toHaveBeenCalled();
+  });
+});

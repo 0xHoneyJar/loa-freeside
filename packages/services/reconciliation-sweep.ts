@@ -73,6 +73,22 @@ interface NowpaymentsStatusResponse {
   updated_at?: string;
 }
 
+/** Optional wiring for the reconciliation sweep. */
+export interface ReconciliationSweepOptions {
+  /**
+   * Connection used ONLY for cross-community candidate enumeration (the stuck,
+   * missed-mint, and pending-outbox SELECTs). Must have cross-tenant read
+   * authority — BYPASSRLS or table ownership — because those tables carry
+   * forced tenant RLS and a maintenance sweep has no single community scope.
+   *
+   * Defaults to the main pool, which is correct only where that pool already
+   * holds such authority. Deployments running the sweep under the ordinary
+   * tenant role MUST inject a maintenance pool here. All mutations are scoped
+   * per community regardless of what is passed.
+   */
+  maintenancePool?: Pool;
+}
+
 /** Configuration for the reconciliation sweep */
 export interface ReconciliationConfig {
   /** NOWPayments API key */
@@ -153,8 +169,20 @@ export async function runReconciliationSweep(
   pool: Pool,
   redis: Redis | null,
   config: ReconciliationConfig,
+  options: ReconciliationSweepOptions = {},
 ): Promise<ReconciliationSweepResult> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+
+  // Candidate ENUMERATION is inherently cross-community and therefore requires
+  // a connection with cross-tenant read authority (BYPASSRLS or table owner).
+  // That authority is an explicit, injectable input — NOT something inferred
+  // from `pool`: a deployment running the sweep under the ordinary tenant role
+  // must pass a maintenance pool here, and wiring it wrong fails loudly at the
+  // enumeration query instead of silently returning zero rows.
+  //
+  // Every WRITE the enumeration leads to is separately re-scoped per community
+  // via withCommunityScope, so this authority is read-only in effect.
+  const maintenancePool = options.maintenancePool ?? pool;
 
   // Split the batch between the two arms so a persistent backlog of stuck
   // non-terminal payments can NEVER starve the missed-mint recovery arm below.
@@ -171,7 +199,7 @@ export async function runReconciliationSweep(
   // was last polled; ordering by it (NULLS FIRST = never-checked wins) rotates
   // the capped half-batch through the whole backlog instead of refilling it
   // with the same oldest rows every sweep, which would starve newer payments.
-  const stuckResult = await pool.query<{
+  const stuckResult = await maintenancePool.query<{
     payment_id: string;
     community_id: string;
     status: string;
@@ -267,7 +295,7 @@ export async function runReconciliationSweep(
   const missedMintLimit = Math.max(0, effectiveBatch - stuckResult.rows.length);
   const missedMintResult = missedMintLimit === 0
     ? { rows: [] as Array<{ payment_id: string; community_id: string; price_amount: number; order_id: string }> }
-    : await pool.query<{
+    : await maintenancePool.query<{
         payment_id: string;
         community_id: string;
         price_amount: number;
@@ -361,7 +389,7 @@ export async function runReconciliationSweep(
   // created_at guarantees every purchase is eventually credited.
   // -------------------------------------------------------------------------
   if (redis) {
-    const pendingAdj = await pool.query<{
+    const pendingAdj = await maintenancePool.query<{
       lot_id: string;
       community_id: string;
       amount_cents: string;
