@@ -49,7 +49,7 @@ describe('withCommunityScope', () => {
     expect(result).toBe('result');
     expect(mockClient.query).toHaveBeenCalledTimes(3);
     expect(mockClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
-    expect(mockClient.query).toHaveBeenNthCalledWith(2, 'SET LOCAL app.community_id = $1', ['community-123']);
+    expect(mockClient.query).toHaveBeenNthCalledWith(2, `SELECT set_config('app.community_id', $1, true)`, ['community-123']);
     expect(mockClient.query).toHaveBeenNthCalledWith(3, 'COMMIT');
     expect(mockClient.release).toHaveBeenCalled();
   });
@@ -106,7 +106,7 @@ describe('withCommunityBoundary', () => {
 
     expect(result).toBe('result');
     expect(mockClient.query).toHaveBeenCalledTimes(1);
-    expect(mockClient.query).toHaveBeenCalledWith('SET LOCAL app.community_id = $1', ['community-123']);
+    expect(mockClient.query).toHaveBeenCalledWith(`SELECT set_config('app.community_id', $1, true)`, ['community-123']);
   });
 });
 

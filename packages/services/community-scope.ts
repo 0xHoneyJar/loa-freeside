@@ -78,7 +78,9 @@ export async function withCommunityScope<T>(
 
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.community_id = $1', [communityId]);
+    // set_config(..., is_local => true) == SET LOCAL, but parameterizable:
+    // the SET command itself rejects bind parameters ($1 is a syntax error).
+    await client.query(`SELECT set_config('app.community_id', $1, true)`, [communityId]);
 
     const result = await fn(client);
 
@@ -108,7 +110,8 @@ export async function withCommunityBoundary<T>(
   client: PoolClient,
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  await client.query('SET LOCAL app.community_id = $1', [communityId]);
+  // set_config(..., is_local => true) == SET LOCAL, but parameterizable.
+  await client.query(`SELECT set_config('app.community_id', $1, true)`, [communityId]);
   return fn(client);
 }
 

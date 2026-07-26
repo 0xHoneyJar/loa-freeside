@@ -270,7 +270,11 @@ export async function processPaymentForLedger(
     // Establish tenant scope for the transaction: credit_lots and
     // pending_redis_credit_adjustments both carry forced RLS keyed on
     // app.current_community_id(). Harmless on a privileged connection.
-    await client.query('SET LOCAL app.community_id = $1', [event.communityId]);
+    // set_config(..., is_local => true) is the parameterizable equivalent of
+    // SET LOCAL — the SET command itself does not accept bind parameters.
+    await client.query(`SELECT set_config('app.community_id', $1, true)`, [
+      event.communityId,
+    ]);
 
     lotId = await mintCreditLot(client, {
       community_id: event.communityId,
