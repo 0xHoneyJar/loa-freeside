@@ -49,6 +49,24 @@ export function parseSqliteTimestamp(raw: string): SqliteTimestamp {
 }
 
 /**
+ * Converts a SQLite-format timestamp to epoch milliseconds, interpreting it as UTC.
+ *
+ * SQLite timestamps are UTC wall-clock with NO timezone suffix
+ * (`YYYY-MM-DD HH:MM:SS`). `Date.parse()` on that shape falls back to a lenient
+ * parser that reads it as LOCAL time, so under a non-UTC `TZ` every derived
+ * instant is skewed by the local UTC offset. Always convert through this helper
+ * before comparing a stored timestamp against `Date.now()` or other epoch ms.
+ */
+export function sqliteTimestampToMs(timestamp: string): number {
+  const normalized = timestamp.replace(' ', 'T');
+  // A value that already carries zone information (legacy/mixed-format rows
+  // written as ISO 8601) is parsed as-is; appending 'Z' to it would produce
+  // NaN and silently disable any comparison built on the result.
+  const hasZone = /([Zz]|[+-]\d{2}:?\d{2})$/.test(normalized);
+  return Date.parse(hasZone ? normalized : `${normalized}Z`);
+}
+
+/**
  * Returns the current time in ISO 8601 format: `YYYY-MM-DDTHH:MM:SS.sssZ`
  * Use ONLY for external API responses and webhook payloads. Never for SQLite columns.
  */

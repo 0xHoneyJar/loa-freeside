@@ -15,6 +15,7 @@ import {
   isSqliteFormat,
   isIsoFormat,
   parseSqliteTimestamp,
+  sqliteTimestampToMs,
   type SqliteTimestamp,
 } from '../../../src/packages/adapters/billing/protocol/timestamps';
 
@@ -169,4 +170,36 @@ describe('protocol/timestamps', () => {
       // This is the BB-67-001 bug — never mix formats in the same column
     });
   });
+
+describe('sqliteTimestampToMs — UTC parsing', () => {
+  it('round-trips sqliteTimestamp() to the same instant (second precision)', () => {
+    // Holds under ANY TZ: sqliteTimestamp() emits UTC wall-clock with no zone
+    // suffix, so the parse must also treat it as UTC.
+    const d = new Date('2026-07-26T21:34:56.000Z');
+    expect(sqliteTimestampToMs(sqliteTimestamp(d))).toBe(d.getTime());
+  });
+
+  it('interprets the timestamp as UTC, not local time', () => {
+    expect(sqliteTimestampToMs('2026-07-26 21:34:56')).toBe(
+      Date.parse('2026-07-26T21:34:56Z'),
+    );
+  });
+
+  it('parses zone-carrying (legacy ISO) values as-is instead of returning NaN', () => {
+    // Mixed-format rows exist in the wild; appending 'Z' to an ISO value would
+    // yield NaN and silently disable deadline comparisons built on it.
+    expect(sqliteTimestampToMs('2020-01-01T00:00:00Z')).toBe(Date.parse('2020-01-01T00:00:00Z'));
+    expect(sqliteTimestampToMs('2020-01-01T05:00:00+05:00')).toBe(
+      Date.parse('2020-01-01T05:00:00+05:00'),
+    );
+    expect(Number.isNaN(sqliteTimestampToMs('2020-01-01T00:00:00Z'))).toBe(false);
+  });
+
+  it('keeps a future-deadline comparison against epoch ms correct', () => {
+    // The governance cooldown/expiry math compares a stored deadline against
+    // Date.now()-derived ms; a local-time parse would skew it by the UTC offset.
+    const deadlineMs = Date.now() + 60_000;
+    expect(sqliteTimestampToMs(sqliteTimestamp(new Date(deadlineMs)))).toBeGreaterThan(Date.now());
+  });
+});
 });

@@ -22,7 +22,7 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
-import { sqliteTimestamp } from './protocol/timestamps.js';
+import { sqliteTimestamp, sqliteTimestampToMs } from './protocol/timestamps.js';
 import { validateConfigValue, CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
 import { ENTITY_TYPES, type EntityType } from '../../core/protocol/billing-types.js';
 import type { IEconomicEventEmitter } from '../../core/ports/IEconomicEventEmitter.js';
@@ -216,7 +216,7 @@ export class AgentGovernanceService implements IAgentGovernanceService {
 
         // Ensure the voting deadline never pre-empts a legitimate cooldown.
         const quorumExpiresAt = sqliteTimestamp(
-          new Date(Math.max(Date.parse(expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
+          new Date(Math.max(sqliteTimestampToMs(expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
         );
         this.db.prepare(`
           UPDATE agent_governance_proposals
@@ -289,7 +289,7 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       // yet flipped the status to 'expired'. Otherwise a late vote could reach
       // quorum and the quorum path would extend expires_at to
       // cooldown_ends_at + grace, resurrecting an already-expired proposal.
-      if (Date.parse(proposal.expiresAt) <= Date.parse(now)) {
+      if (sqliteTimestampToMs(proposal.expiresAt) <= sqliteTimestampToMs(now)) {
         throw Object.assign(
           new Error(`Proposal ${proposalId} has passed its voting deadline`),
           { code: 'CONFLICT', statusCode: 409 },
@@ -334,7 +334,7 @@ export class AgentGovernanceService implements IAgentGovernanceService {
 
         // Ensure the voting deadline never pre-empts a legitimate cooldown.
         const quorumExpiresAt = sqliteTimestamp(
-          new Date(Math.max(Date.parse(updated.expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
+          new Date(Math.max(sqliteTimestampToMs(updated.expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
         );
         this.db.prepare(`
           UPDATE agent_governance_proposals
