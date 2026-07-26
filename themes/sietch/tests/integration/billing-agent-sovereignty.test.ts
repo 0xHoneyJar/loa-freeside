@@ -518,6 +518,33 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     expect((await governanceService.getProposal(proposalId))!.status).toBe('expired');
   });
 
+  it('rejects a vote on an open proposal whose deadline has passed (no resurrection)', async () => {
+    const proposerId = createAccount(db, 'agent', 'agent-vote-deadline-proposer');
+    const voterId = createAccount(db, 'agent', 'agent-vote-deadline-voter');
+    const proposalId = randomUUID();
+
+    // An 'open' proposal whose expires_at is already in the past (the hourly
+    // expiry phase has not run yet).
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         expires_at, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', ?, 1, 1, 2,
+              'open', '2020-01-01T00:00:00Z',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(proposalId, proposerId);
+
+    await expect(
+      governanceService.voteAsAgent(voterId, proposalId, { vote: 'support' }),
+    ).rejects.toThrow(/voting deadline/);
+
+    // Not resurrected: still open, deadline unchanged, never quorum_reached.
+    const p = await governanceService.getProposal(proposalId);
+    expect(p!.status).toBe('open');
+    expect(p!.expiresAt).toBe('2020-01-01T00:00:00Z');
+  });
+
   it('extends expires_at past cooldown at quorum so a long cooldown can still activate', async () => {
     const agentId = createAccount(db, 'agent', 'agent-long-cooldown');
 

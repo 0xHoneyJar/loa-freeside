@@ -267,6 +267,16 @@ export class AgentGovernanceService implements IAgentGovernanceService {
           { code: 'CONFLICT', statusCode: 409 },
         );
       }
+      // Reject votes past the deadline even if the hourly expiry phase has not
+      // yet flipped the status to 'expired'. Otherwise a late vote could reach
+      // quorum and the quorum path would extend expires_at to
+      // cooldown_ends_at + grace, resurrecting an already-expired proposal.
+      if (Date.parse(proposal.expiresAt) <= Date.parse(now)) {
+        throw Object.assign(
+          new Error(`Proposal ${proposalId} has passed its voting deadline`),
+          { code: 'CONFLICT', statusCode: 409 },
+        );
+      }
 
       // Step 4: Check duplicate vote (PK constraint also enforces this)
       const existingVote = this.db.prepare(`
