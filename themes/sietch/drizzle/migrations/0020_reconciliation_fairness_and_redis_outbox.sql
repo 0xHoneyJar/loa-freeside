@@ -68,6 +68,19 @@ CREATE POLICY crypto_payment_checks_tenant_update ON crypto_payment_checks
 GRANT SELECT, INSERT, UPDATE ON crypto_payment_checks TO arrakis_app;
 
 -- ---------------------------------------------------------------------------
+-- (A2) Index for the missed-mint recovery arm.
+-- ---------------------------------------------------------------------------
+-- That arm runs every sweep and scans `status = 'finished'` ordered by
+-- updated_at to find rows lacking a credit lot. The 0019 reconciliation index
+-- is partial over NON-terminal statuses and cannot serve it, and the remaining
+-- crypto_payments indexes are keyed by community or payment_id — so as
+-- completed-payment history grows this becomes an increasingly expensive full
+-- scan + sort on a five-minute cadence.
+CREATE INDEX IF NOT EXISTS idx_crypto_payments_finished_recovery
+  ON crypto_payments(updated_at)
+  WHERE status = 'finished';
+
+-- ---------------------------------------------------------------------------
 -- (B) Durable outbox for Redis budget-limit adjustments.
 -- ---------------------------------------------------------------------------
 -- One row per minted purchase lot. applied_at IS NULL means the Redis

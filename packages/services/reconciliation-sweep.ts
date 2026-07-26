@@ -466,6 +466,17 @@ async function reconcilePayment(
 
   const providerStatus = apiStatus.payment_status;
 
+  // credit_lots and crypto_payments both carry forced tenant RLS (migrations
+  // 0009/0010). This payment belongs to exactly one community, so every read
+  // and write below runs inside that community's scope — required whenever the
+  // sweep's main pool is the ordinary tenant role (the case maintenancePool
+  // exists to support), and harmless when it is privileged.
+  const scoped = <T extends import('pg').QueryResultRow>(
+    sql: string,
+    params: unknown[],
+  ): Promise<import('pg').QueryResult<T>> =>
+    withCommunityScope(payment.community_id, pool, (client) => client.query<T>(sql, params));
+
   // Step 2: Check if status has changed
   if (providerStatus === payment.status) {
     return {
@@ -480,7 +491,7 @@ async function reconcilePayment(
   // Step 3: Handle terminal success (finished) — check for missed lot
   if (TERMINAL_SUCCESS.includes(providerStatus)) {
     // Check if credit lot already exists for this payment
-    const existingLot = await pool.query<{ id: string }>(
+    const existingLot = await scoped<{ id: string }>(
       `SELECT id FROM credit_lots WHERE payment_id = $1`,
       [payment.payment_id],
     );
@@ -525,7 +536,7 @@ async function reconcilePayment(
     }
 
     // Update payment status
-    await pool.query(
+    await scoped(
       `UPDATE crypto_payments
        SET status = $2, actually_paid = $3, finished_at = NOW(), updated_at = NOW()
        WHERE payment_id = $1`,
@@ -544,7 +555,7 @@ async function reconcilePayment(
 
   // Step 4: Handle terminal failure
   if (TERMINAL_FAILED.includes(providerStatus)) {
-    await pool.query(
+    await scoped(
       `UPDATE crypto_payments SET status = $2, updated_at = NOW() WHERE payment_id = $1`,
       [payment.payment_id, providerStatus],
     );
@@ -574,7 +585,7 @@ async function reconcilePayment(
     };
   }
 
-  await pool.query(
+  await scoped(
     `UPDATE crypto_payments SET status = $2, updated_at = NOW() WHERE payment_id = $1`,
     [payment.payment_id, providerStatus],
   );

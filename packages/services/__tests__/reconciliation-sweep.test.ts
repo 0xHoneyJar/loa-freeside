@@ -491,3 +491,41 @@ describe('runReconciliationSweep — explicit maintenance authority (forced RLS)
     expect(mockQuery).toHaveBeenCalled();
   });
 });
+
+describe('runReconciliationSweep — payment status writes are tenant-scoped', () => {
+  it('applies a terminal-failure transition through the community scope, not the raw pool', async () => {
+    // crypto_payments carries forced tenant RLS; when the main pool is the
+    // ordinary tenant role (the case maintenancePool exists to support), an
+    // unscoped UPDATE would raise TENANT_CONTEXT_MISSING or match no row.
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          { payment_id: 'pay_x', community_id: 'comm_x', status: 'waiting', price_amount: 10, order_id: 'o_x' },
+        ],
+      }) // stuck enumeration
+      .mockResolvedValueOnce({ rows: [] }); // missed-mint enumeration
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ payment_id: 1, payment_status: 'expired', order_id: 'o_x' }),
+      }),
+    );
+
+    const result = await runReconciliationSweep(mockPool, null, config);
+
+    expect(result.failedCount).toBe(1);
+    // The UPDATE ran on a scoped client for this payment's community...
+    expect(scopedCommunities).toContain('comm_x');
+    const scopedUpdate = scopedQuery.mock.calls.find(([sql]) =>
+      /UPDATE crypto_payments/i.test(String(sql)),
+    );
+    expect(scopedUpdate).toBeTruthy();
+    // ...and never as an unscoped pool query.
+    const unscopedUpdate = mockQuery.mock.calls.some(([sql]) =>
+      /UPDATE crypto_payments/i.test(String(sql)),
+    );
+    expect(unscopedUpdate).toBe(false);
+  });
+});
