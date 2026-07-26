@@ -165,6 +165,39 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     });
   });
 
+  it('caps total work at batchSize across both arms', async () => {
+    // batchSize 1, and the non-terminal arm already returns 1 row → the
+    // missed-mint arm must not run a second full batch.
+    const oneBatch = { ...config, batchSize: 1 };
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          payment_id: 'pay_pp',
+          community_id: 'comm_1',
+          status: 'partially_paid',
+          price_amount: 10,
+          order_id: 'order_pp',
+        },
+      ],
+    });
+    // Provider still progressing → guard leaves it pending, no UPDATE.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ payment_id: 1, payment_status: 'confirming', order_id: 'order_pp' }),
+      }),
+    );
+
+    const result = await runReconciliationSweep(mockPool, mockRedis, oneBatch);
+
+    // Only the stuck-payments SELECT ran — the missed-mint query was skipped
+    // because no batch capacity remained.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockProcessPaymentForLedger).not.toHaveBeenCalled();
+    expect(result.pendingCount).toBe(1);
+  });
+
   it('does not re-mint when the finished payment already has a credit lot', async () => {
     // The missed-mint SELECT (LEFT JOIN ... WHERE l.id IS NULL) returns no rows
     // once a lot exists, so a rerun mints nothing — no duplicate lot.
