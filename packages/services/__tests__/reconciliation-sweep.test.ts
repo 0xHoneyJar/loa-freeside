@@ -74,6 +74,11 @@ const finishedRow = {
   order_id: 'order_finished',
 };
 
+/** Scoped-client queries recorded by the withCommunityScope mock. */
+const scopedQuery = vi.fn().mockResolvedValue({ rows: [] });
+/** communityIds withCommunityScope was invoked with, in order. */
+const scopedCommunities: string[] = [];
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockProcessPaymentForLedger.mockReset();
@@ -81,8 +86,18 @@ beforeEach(() => {
   mockWithCommunityScope.mockReset();
   mockEnqueueAdj.mockReset();
   mockApplyAdj.mockReset();
+  scopedQuery.mockClear();
+  scopedCommunities.length = 0;
   // Default: nothing pending in the outbox drain.
   mockApplyAdj.mockResolvedValue(true);
+  // Default withCommunityScope: record the community and run the callback with
+  // a query-capable scoped client (mirrors the real BEGIN/SET LOCAL/COMMIT).
+  mockWithCommunityScope.mockImplementation(
+    async (communityId: string, _pool: unknown, fn: (c: unknown) => unknown) => {
+      scopedCommunities.push(communityId);
+      return fn({ query: scopedQuery });
+    },
+  );
 });
 
 afterEach(() => {
@@ -104,8 +119,7 @@ describe('runReconciliationSweep — monotonicity guard', () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] }) // stamp (crypto_payment_checks upsert)
-      .mockResolvedValueOnce({ rows: [] }); // missed-mint SELECT
+      .mockResolvedValueOnce({ rows: [] }); // missed-mint SELECT (stamp is scoped, not on pool)
 
     // Provider still reports a lower-ranked, non-terminal status.
     vi.stubGlobal(
@@ -150,7 +164,6 @@ describe('runReconciliationSweep — fair rotation (migration 0020)', () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] }) // stamp
       .mockResolvedValueOnce({ rows: [] }); // missed-mint SELECT
 
     vi.stubGlobal(
@@ -168,11 +181,55 @@ describe('runReconciliationSweep — fair rotation (migration 0020)', () => {
     expect(stuckSql).toMatch(/last_checked_at ASC NULLS FIRST/i);
     expect(stuckSql).toMatch(/LEFT JOIN crypto_payment_checks/i);
 
-    // Every fetched row is stamped so it rotates to the back of the queue.
-    const stampSql = String(mockQuery.mock.calls[1][0]);
-    expect(stampSql).toMatch(/INSERT INTO crypto_payment_checks/i);
-    expect(stampSql).toMatch(/ON CONFLICT .* DO UPDATE SET last_checked_at = NOW\(\)/is);
-    expect(mockQuery.mock.calls[1][1]).toEqual([['pay_1'], ['comm_1']]);
+    // The stamp runs on a community-scoped client (forced tenant RLS), never
+    // as an unscoped pool query.
+    expect(scopedCommunities).toContain('comm_1');
+    const stampCall = scopedQuery.mock.calls.find(([sql]) =>
+      /INSERT INTO crypto_payment_checks/i.test(String(sql)),
+    );
+    expect(stampCall).toBeTruthy();
+    expect(String(stampCall![0])).toMatch(
+      /ON CONFLICT .* DO UPDATE SET last_checked_at = NOW\(\)/is,
+    );
+    expect(stampCall![1]).toEqual([['pay_1'], 'comm_1']);
+    const unscopedStamp = mockQuery.mock.calls.some(([sql]) =>
+      /INSERT INTO crypto_payment_checks/i.test(String(sql)),
+    );
+    expect(unscopedStamp).toBe(false);
+  });
+
+  it('stamps each community under its own scope and never crosses tenants', async () => {
+    // Two communities in one batch: each cursor write must run inside its own
+    // withCommunityScope, carrying only its own payment ids.
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          { payment_id: 'p_a', community_id: 'comm_a', status: 'confirming', price_amount: 10, order_id: 'o_a' },
+          { payment_id: 'p_b', community_id: 'comm_b', status: 'confirming', price_amount: 10, order_id: 'o_b' },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }); // missed-mint SELECT
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ payment_id: 1, payment_status: 'confirming', order_id: 'o' }),
+      }),
+    );
+
+    await runReconciliationSweep(mockPool, null, config);
+
+    const stampCalls = scopedQuery.mock.calls.filter(([sql]) =>
+      /INSERT INTO crypto_payment_checks/i.test(String(sql)),
+    );
+    expect(stampCalls).toHaveLength(2);
+    expect(scopedCommunities).toEqual(expect.arrayContaining(['comm_a', 'comm_b']));
+    // No stamp carries another community's payment ids.
+    for (const [, params] of stampCalls) {
+      const [ids, communityId] = params as [string[], string];
+      expect(ids).toEqual(communityId === 'comm_a' ? ['p_a'] : ['p_b']);
+    }
   });
 });
 
@@ -212,9 +269,8 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [finishedRow] });
-    // withCommunityScope runs its callback with a dummy client; mint returns a lot id.
+    // The default withCommunityScope mock runs the callback with a scoped client.
     mockMintCreditLot.mockResolvedValue('lot_pg');
-    mockWithCommunityScope.mockImplementation(async (_community, _pool, fn) => fn({} as never));
 
     const result = await runReconciliationSweep(mockPool, null, config);
 
@@ -253,7 +309,6 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] }) // stamp
       .mockResolvedValueOnce({ rows: [finishedRow] }) // missed-mint gets its slot
       .mockResolvedValueOnce({ rows: [] }); // outbox drain
     // Provider still progressing → guard leaves it pending, no UPDATE.
@@ -291,7 +346,6 @@ describe('runReconciliationSweep — missed-mint recovery arm', () => {
           { payment_id: 'pp2', community_id: 'c', status: 'partially_paid', price_amount: 10, order_id: 'o2' },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] }) // stamp
       .mockResolvedValueOnce({ rows: [finishedRow] }) // missed-mint SELECT
       .mockResolvedValueOnce({ rows: [] }); // outbox drain
     vi.stubGlobal(
@@ -346,11 +400,15 @@ describe('runReconciliationSweep — Redis-adjustment outbox drain (migration 00
     const result = await runReconciliationSweep(mockPool, mockRedis, config);
 
     expect(mockApplyAdj).toHaveBeenCalledTimes(1);
+    // Apply + acknowledge run under the adjustment's own tenant scope (forced
+    // RLS), with a scoped client — never the unscoped pool.
+    expect(scopedCommunities).toContain('comm_1');
     expect(mockApplyAdj).toHaveBeenCalledWith(
       mockRedis,
-      mockPool,
+      expect.objectContaining({ query: expect.any(Function) }),
       { lotId: 'lot_pg', communityId: 'comm_1', amountCents: 2500n },
     );
+    expect(mockApplyAdj.mock.calls[0][1]).not.toBe(mockPool);
     expect(result.redisAdjustmentsApplied).toBe(1);
 
     // The drain query targets only unapplied rows, oldest-created first (FIFO)

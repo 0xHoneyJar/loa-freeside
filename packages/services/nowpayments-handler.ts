@@ -20,6 +20,7 @@
 import type { Pool, PoolClient } from 'pg';
 import type { Redis } from 'ioredis';
 import { mintCreditLot } from './credit-lot-service.js';
+import { withCommunityScope } from './community-scope.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -80,6 +81,16 @@ export interface RedisCreditAdjustment {
 }
 
 /**
+ * Anything that can run a query — a Pool, or (preferred for the outbox) a
+ * community-scoped PoolClient from withCommunityScope. The outbox tables carry
+ * forced tenant RLS, so writes MUST come from a scoped client unless the
+ * connection is deliberately privileged.
+ */
+export interface Queryable {
+  query(text: string, params?: unknown[]): Promise<unknown>;
+}
+
+/**
  * Atomic marker-check + INCRBY in one Redis round-trip.
  *
  * Without atomicity there is a crash window between INCRBY and setting the
@@ -131,11 +142,14 @@ export async function enqueueRedisCreditAdjustment(
  * resolved. On Redis failure the row is left pending (attempts bumped) for the
  * reconciliation sweep to retry.
  *
+ * @param db - a community-scoped client (withCommunityScope) for the
+ *   adjustment's community. pending_redis_credit_adjustments carries forced
+ *   tenant RLS, so the acknowledging UPDATE must run under that scope.
  * @returns true if the credit is now present in Redis, false if still pending.
  */
 export async function applyRedisCreditAdjustment(
   redis: Redis,
-  pool: Pool,
+  db: Queryable,
   adj: RedisCreditAdjustment,
 ): Promise<boolean> {
   const processedKey = `processed:mint:${adj.lotId}`;
@@ -153,18 +167,18 @@ export async function applyRedisCreditAdjustment(
     );
   } catch {
     // Redis still unavailable — record the failed attempt, leave pending.
-    await pool
-      .query(
+    await Promise.resolve(
+      db.query(
         `UPDATE pending_redis_credit_adjustments
          SET attempts = attempts + 1, last_attempt_at = NOW()
          WHERE lot_id = $1`,
         [adj.lotId],
-      )
-      .catch(() => {});
+      ),
+    ).catch(() => {});
     return false;
   }
 
-  await pool.query(
+  await db.query(
     `UPDATE pending_redis_credit_adjustments
      SET applied_at = NOW(), attempts = attempts + 1, last_attempt_at = NOW()
      WHERE lot_id = $1`,
@@ -253,6 +267,10 @@ export async function processPaymentForLedger(
 
   try {
     await client.query('BEGIN');
+    // Establish tenant scope for the transaction: credit_lots and
+    // pending_redis_credit_adjustments both carry forced RLS keyed on
+    // app.current_community_id(). Harmless on a privileged connection.
+    await client.query('SET LOCAL app.community_id = $1', [event.communityId]);
 
     lotId = await mintCreditLot(client, {
       community_id: event.communityId,
@@ -288,13 +306,16 @@ export async function processPaymentForLedger(
     };
   }
 
-  // Step 2: Apply the Redis budget increment exactly once. On failure the
+  // Step 2: Apply the Redis budget increment exactly once, acknowledging the
+  // outbox row under the payment's tenant scope (forced RLS). On failure the
   // durable outbox row stays pending for the sweep to retry.
-  const redisAdjusted = await applyRedisCreditAdjustment(redis, pool, {
-    lotId,
-    communityId: event.communityId,
-    amountCents,
-  });
+  const redisAdjusted = await withCommunityScope(event.communityId, pool, (scoped) =>
+    applyRedisCreditAdjustment(redis, scoped, {
+      lotId,
+      communityId: event.communityId,
+      amountCents,
+    }),
+  );
 
   return {
     lotId,

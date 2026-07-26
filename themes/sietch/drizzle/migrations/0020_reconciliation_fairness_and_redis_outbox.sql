@@ -21,6 +21,19 @@
 -- Both are trigger-free sidecar tables: the crypto_payments status-monotonicity
 -- guard (migration 0010) rejects same-status writes, so a check timestamp or
 -- adjustment marker cannot live on crypto_payments without tripping it.
+--
+-- THREAT BOUNDARY (tenant isolation). Both tables keep forced RLS with tenant
+-- policies keyed on app.current_community_id() — nothing here weakens RLS.
+--   * WRITES are always tenant-scoped. The cursor stamp is grouped by community
+--     and each group runs inside withCommunityScope; each outbox apply/ack runs
+--     inside the adjustment's own community scope; the outbox INSERT runs in the
+--     mint transaction, which now SET LOCALs the payment's community. A
+--     cross-tenant write is therefore impossible by construction.
+--   * READS for candidate enumeration are cross-community by nature (the sweep
+--     is a maintenance job) and run on the same connection as the sweep's
+--     pre-existing cross-community reads of crypto_payments and credit_lots —
+--     i.e. a deliberately privileged maintenance connection. Enumeration is
+--     read-only; every mutation it leads to is re-scoped per community above.
 
 -- ---------------------------------------------------------------------------
 -- (A) Fair-rotation cursor for the non-terminal arm.

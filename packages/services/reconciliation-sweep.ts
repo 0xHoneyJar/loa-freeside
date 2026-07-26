@@ -191,15 +191,26 @@ export async function runReconciliationSweep(
   // Stamp every fetched row's check cursor to NOW() so it rotates to the back
   // of the queue next sweep — even if the poll below errors or leaves it
   // pending. Trigger-free sidecar write; the monotonicity guard is untouched.
-  if (stuckResult.rows.length > 0) {
-    await pool.query(
-      `INSERT INTO crypto_payment_checks (payment_id, community_id)
-       SELECT unnest($1::text[]), unnest($2::uuid[])
-       ON CONFLICT (payment_id) DO UPDATE SET last_checked_at = NOW()`,
-      [
-        stuckResult.rows.map((r) => r.payment_id),
-        stuckResult.rows.map((r) => r.community_id),
-      ],
+  //
+  // crypto_payment_checks carries forced tenant RLS, so the write is grouped by
+  // community and each group runs inside withCommunityScope. A single
+  // cross-community upsert would either trip the strict
+  // app.current_community_id() guard or silently write nothing.
+  const stuckByCommunity = new Map<string, string[]>();
+  for (const row of stuckResult.rows) {
+    const ids = stuckByCommunity.get(row.community_id) ?? [];
+    ids.push(row.payment_id);
+    stuckByCommunity.set(row.community_id, ids);
+  }
+
+  for (const [communityId, paymentIds] of stuckByCommunity) {
+    await withCommunityScope(communityId, pool, (client) =>
+      client.query(
+        `INSERT INTO crypto_payment_checks (payment_id, community_id)
+         SELECT unnest($1::text[]), $2::uuid
+         ON CONFLICT (payment_id) DO UPDATE SET last_checked_at = NOW()`,
+        [paymentIds, communityId],
+      ),
     );
   }
 
@@ -365,11 +376,16 @@ export async function runReconciliationSweep(
 
     for (const adj of pendingAdj.rows) {
       try {
-        const applied = await applyRedisCreditAdjustment(redis, pool, {
-          lotId: adj.lot_id,
-          communityId: adj.community_id,
-          amountCents: BigInt(adj.amount_cents),
-        });
+        // Apply + acknowledge inside the adjustment's own tenant scope: the
+        // outbox table has forced RLS, and scoping per row also makes a
+        // cross-tenant acknowledgement impossible.
+        const applied = await withCommunityScope(adj.community_id, pool, (client) =>
+          applyRedisCreditAdjustment(redis, client, {
+            lotId: adj.lot_id,
+            communityId: adj.community_id,
+            amountCents: BigInt(adj.amount_cents),
+          }),
+        );
         if (applied) result.redisAdjustmentsApplied++;
       } catch (err) {
         result.errorCount++;

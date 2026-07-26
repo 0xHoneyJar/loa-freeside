@@ -70,6 +70,33 @@ describe('applyRedisCreditAdjustment', () => {
     expect(applyUpdate).toBeTruthy();
   });
 
+  it('stays retryable and cannot double-credit when the Postgres ack fails after a Redis apply', async () => {
+    // Redis increment lands, then the applied_at acknowledgement fails (e.g. a
+    // DB outage). The row stays pending and the caller sees the failure.
+    const redis = { eval: vi.fn().mockResolvedValue(1) };
+    const db = { query: vi.fn().mockRejectedValue(new Error('db down')) };
+
+    await expect(
+      applyRedisCreditAdjustment(redis as never, db as never, adj),
+    ).rejects.toThrow(/db down/);
+
+    // A later retry (after any interval) re-runs the same script. The marker is
+    // persistent with no TTL, so the script's EXISTS check short-circuits and
+    // no second INCRBY occurs — the retry resolves the row instead.
+    const redisRetry = { eval: vi.fn().mockResolvedValue(0) }; // 0 = already applied
+    const dbRetry = { query: vi.fn().mockResolvedValue({ rows: [] }) };
+
+    const ok = await applyRedisCreditAdjustment(redisRetry as never, dbRetry as never, adj);
+
+    expect(ok).toBe(true);
+    const retryScript = String(redisRetry.eval.mock.calls[0][0]);
+    expect(retryScript).toMatch(/EXISTS/); // guard precedes the INCRBY
+    expect(retryScript).not.toMatch(/'EX'/); // no TTL on the marker
+    expect(
+      dbRetry.query.mock.calls.some(([sql]) => /SET applied_at = NOW\(\)/i.test(String(sql))),
+    ).toBe(true);
+  });
+
   it('leaves the row pending and bumps attempts when Redis is unavailable', async () => {
     const redis = { eval: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')) };
     const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) };
