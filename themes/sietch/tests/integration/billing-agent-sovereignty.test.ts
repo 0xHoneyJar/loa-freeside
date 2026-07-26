@@ -518,6 +518,36 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     expect((await governanceService.getProposal(proposalId))!.status).toBe('expired');
   });
 
+  it('fails closed when constructed without a governance service (never activates without applying config)', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-no-governance');
+    const proposalId = randomUUID();
+
+    // A claimable proposal: quorum_reached, cooldown elapsed, not expired.
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         cooldown_ends_at, expires_at, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', ?, 1, 2, 2,
+              'quorum_reached', '2020-01-01T00:00:00Z', '2099-01-01T00:00:00Z',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    `).run(proposalId, agentId);
+
+    // Service built WITHOUT the constitutional governance dependency (the
+    // production-scheduler misconfiguration this guards against).
+    const governanceless = new AgentGovernanceService(db);
+
+    // Activates nothing — the proposal must stay quorum_reached (retryable),
+    // never marked activated with no config behind it.
+    expect(await governanceless.activateExpiredCooldowns()).toBe(0);
+    expect((await governanceless.getProposal(proposalId))!.status).toBe('quorum_reached');
+    const noConfig = db.prepare(`
+      SELECT 1 FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get();
+    expect(noConfig).toBeUndefined();
+  });
+
   it('orphaned activation recovered: claimed proposal with no config gets its config on the next sweep', async () => {
     const agentId = createAccount(db, 'agent', 'agent-orphan');
     const proposalId = randomUUID();

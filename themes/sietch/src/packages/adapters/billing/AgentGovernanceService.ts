@@ -406,6 +406,19 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     const now = sqliteTimestamp();
     let activated = 0;
 
+    // Fail closed: activation REQUIRES the constitutional governance service to
+    // create the active config a proposal applies. Without it, claiming a
+    // proposal 'activated' would silently drop the approved change — no config,
+    // and the terminal status hides the row from both expireStaleProposals and
+    // the orphan-recovery arm below. Activate nothing so proposals stay
+    // quorum_reached and are applied once governance is wired in.
+    if (!this.governance) {
+      logger.error({
+        event: 'agent.governance.activation_skipped_no_service',
+      }, 'activateExpiredCooldowns has no constitutional governance service — activating nothing (proposals remain quorum_reached)');
+      return 0;
+    }
+
     const proposals = this.db.prepare(`
       SELECT * FROM agent_governance_proposals
       WHERE status = 'quorum_reached' AND cooldown_ends_at <= ? AND expires_at > ?

@@ -1,6 +1,7 @@
 import { schedules, logger as triggerLogger } from '@trigger.dev/sdk/v3';
 import { initDatabase, logAuditEvent, updateHealthStatusSuccess } from '../db/index.js';
 import { AgentGovernanceService } from '../packages/adapters/billing/AgentGovernanceService.js';
+import { ConstitutionalGovernanceService } from '../packages/adapters/billing/ConstitutionalGovernanceService.js';
 import Database from 'better-sqlite3';
 
 /**
@@ -23,7 +24,12 @@ export const agentGovernanceLifecycleTask = schedules.task({
     const db = initDatabase() as unknown as Database.Database;
 
     try {
-      const service = new AgentGovernanceService(db);
+      // The constitutional governance service is REQUIRED for activation: it
+      // creates the active system_config a quorum-reached proposal applies.
+      // Without it, activateExpiredCooldowns fails closed (activates nothing),
+      // so the approved change would never take effect.
+      const constitutionalGovernance = new ConstitutionalGovernanceService(db);
+      const service = new AgentGovernanceService(db, undefined, constitutionalGovernance);
 
       // Phase 1: Activate proposals past cooldown
       const activated = await service.activateExpiredCooldowns();
