@@ -278,7 +278,9 @@ export async function settle(
       await redis.set(processedKey, '1', 'EX', REDIS_PROCESSED_TTL);
     }
   } catch {
-    // Redis failure is non-fatal — reconciliation sweep will catch up
+    // Redis failure is non-fatal for Postgres state, but the reconciliation
+    // sweep that would reconcile it is NOT currently scheduled (no production
+    // caller; see packages/services/reconciliation-sweep.ts header).
   }
 
   return {

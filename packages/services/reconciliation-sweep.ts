@@ -1,8 +1,19 @@
 /**
  * NOWPayments Reconciliation Sweep — Missed Webhook Recovery
  *
- * Scheduled task (every 5 minutes) that recovers purchases the webhook path
- * could not complete. Three arms share one batch:
+ * !! NOT CURRENTLY SCHEDULED !!
+ * This module has no production caller: `runReconciliationSweep` is referenced
+ * only by its own tests. There is no EventBridge task, cron, or worker entry
+ * point invoking it, even though `infrastructure/terraform/monitoring.tf`
+ * already charts a `reconciliation_sweep_count` metric for it. Until an
+ * activation path is wired, any code that defers recovery to "the
+ * reconciliation sweep" is deferring to something that never runs — do not
+ * treat this module as a live safety net when reasoning about whether a
+ * payment path is safe to acknowledge. Everything below describes what this
+ * module does WHEN scheduled (the design target is a 5-minute cadence).
+ *
+ * Recovers purchases the webhook path could not complete. Three arms share one
+ * batch:
  *
  *   1. stuck            — non-terminal payments whose provider status moved on
  *   2. missed_mint      — payments that owe a credit lot (status `finished`,
@@ -89,9 +100,13 @@ interface NowpaymentsStatusResponse {
 export interface ReconciliationSweepOptions {
   /**
    * Connection used ONLY for cross-community candidate enumeration (the stuck,
-   * missed-mint, and pending-outbox SELECTs). Must have cross-tenant read
-   * authority — BYPASSRLS or table ownership — because those tables carry
-   * forced tenant RLS and a maintenance sweep has no single community scope.
+   * missed-mint, and pending-outbox SELECTs). Its role MUST hold **BYPASSRLS**
+   * (or be a superuser). Table ownership is NOT sufficient: crypto_payments and
+   * both 0020 sidecars declare FORCE ROW LEVEL SECURITY, which subjects the
+   * table owner to the tenant policies as well — so an owner connection either
+   * trips the strict app.current_community_id() guard (no community GUC set) or,
+   * with one set, sees only that single tenant. Neither can enumerate across
+   * communities, which is what a maintenance sweep requires.
    *
    * Note the missed-mint enumeration additionally probes `webhook_events`,
    * which has forced RLS with NO policy at all (migration 0010: system-level,
@@ -99,9 +114,9 @@ export interface ReconciliationSweepOptions {
    * connection must be able to read that table too.
    *
    * Defaults to the main pool, which is correct only where that pool already
-   * holds such authority. Deployments running the sweep under the ordinary
-   * tenant role MUST inject a maintenance pool here. All mutations are scoped
-   * per community regardless of what is passed.
+   * holds BYPASSRLS. Deployments running the sweep under the ordinary tenant
+   * role MUST inject a maintenance pool here. All mutations are scoped per
+   * community regardless of what is passed.
    */
   maintenancePool?: Pool;
 }

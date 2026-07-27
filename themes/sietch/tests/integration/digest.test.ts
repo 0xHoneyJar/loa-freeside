@@ -186,6 +186,31 @@ describe('Weekly Digest Integration', () => {
       expect(stats.weekIdentifier).toMatch(/^\d{4}-W\d{2}$/);
     });
 
+    it('ranks top new member correctly when bgt_held has leading zeros', () => {
+      // bgt_held is a wei string. LENGTH-then-lexicographic ordering is exact
+      // only for CANONICAL integer strings: a non-canonical '000…' value (as
+      // legacy/imported rows can carry) is longer than a genuinely larger
+      // canonical value, so without normalization it wins the ranking.
+      seedMember({ id: 'small', nym: 'LeadingZeros', tier: 'hajra', createdDaysAgo: 1 });
+      seedMember({ id: 'big', nym: 'GenuineTop', tier: 'ichwan', createdDaysAgo: 1 });
+
+      // '00000000000000000001' (20 chars) vs '999999999999999999' (18 chars).
+      // Length-first without LTRIM ranks the leading-zero row first; the real
+      // maximum is GenuineTop.
+      db.prepare('UPDATE eligibility_snapshot SET bgt_held = ? WHERE wallet_address = ?').run(
+        '00000000000000000001',
+        '0xwallet-small'
+      );
+      db.prepare('UPDATE eligibility_snapshot SET bgt_held = ? WHERE wallet_address = ?').run(
+        '999999999999999999',
+        '0xwallet-big'
+      );
+
+      const stats = digestService.collectWeeklyStats();
+
+      expect(stats.topNewMember).toEqual({ nym: 'GenuineTop', tier: 'ichwan' });
+    });
+
     it('should handle zero new members gracefully', () => {
       seedMember({ id: 'm1', tier: 'hajra', bgt: 100 });
 

@@ -108,8 +108,10 @@ interface WebhookDeps {
   pool: Pool;
   /**
    * Connection for the two operations that CANNOT carry a tenant scope, and
-   * therefore need cross-tenant authority (BYPASSRLS or table ownership —
-   * `arrakis_admin` in the deployed schema):
+   * therefore need cross-tenant authority. Its role MUST hold **BYPASSRLS**
+   * (or be a superuser) — table ownership is NOT sufficient, because
+   * `crypto_payments` declares FORCE ROW LEVEL SECURITY, which subjects the
+   * owner to the tenant policies too. `arrakis_admin` in the deployed schema.
    *
    *   1. The `crypto_payments` lookup that resolves the payment's community.
    *      An IPN arrives with no tenant context; this read is what establishes
@@ -624,7 +626,10 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         }, 'NOWPayments webhook: credit lot processing complete');
       } catch (err) {
         // Lot minting failure should not fail the webhook response.
-        // Reconciliation sweep will catch missed mints.
+        // Intended recovery is the reconciliation sweep — which is NOT
+        // currently scheduled (no production caller; see
+        // packages/services/reconciliation-sweep.ts header). Until it is
+        // activated, a mint failure here is not automatically recovered.
         logger.error({ paymentId, err }, 'Credit lot minting failed — will retry via reconciliation');
       }
     }

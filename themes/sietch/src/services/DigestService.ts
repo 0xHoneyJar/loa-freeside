@@ -283,9 +283,12 @@ class DigestService {
         JOIN eligibility_snapshot es ON wm.wallet_address = es.wallet_address
         WHERE mp.onboarding_complete = 1
         AND datetime(mp.created_at) > datetime('now', '-7 days')
-        -- LENGTH-then-lexicographic is exact for non-negative integer
-        -- strings; CAST AS INTEGER saturates at int64 for wei magnitudes.
-        ORDER BY LENGTH(es.bgt_held) DESC, es.bgt_held DESC
+        -- LENGTH-then-lexicographic avoids CAST AS INTEGER, which saturates at
+        -- int64 for wei magnitudes. It is exact only for CANONICAL non-negative
+        -- integer strings, so leading zeros are stripped first: without LTRIM,
+        -- '0001' (length 4) would outrank '999' (length 3). A value of all
+        -- zeros trims to '' (length 0) and correctly sorts last.
+        ORDER BY LENGTH(LTRIM(es.bgt_held, '0')) DESC, LTRIM(es.bgt_held, '0') DESC
         LIMIT 1
       `
       )
