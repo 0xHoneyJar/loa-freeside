@@ -219,6 +219,13 @@ USER root
 RUN apk add --no-cache jq
 COPY tests/e2e/e2e-entrypoint.sh /app/e2e-entrypoint.sh
 RUN chmod +x /app/e2e-entrypoint.sh
+# docker-compose.e2e.yml mounts named volumes at /data (SQLite billing DB) and
+# /shared (JWKS handoff to loa-finn). Docker seeds a fresh named volume from the
+# image's directory at that path, ownership included — and when the path does
+# not exist in the image it creates the mountpoint root-owned. This container
+# runs as `nodejs`, so the first write failed with SQLITE_CANTOPEN on
+# /data/billing.db. Create both owned by nodejs instead of running as root.
+RUN mkdir -p /data /shared && chown nodejs:nodejs /data /shared
 USER nodejs
 
 CMD ["/app/e2e-entrypoint.sh"]
