@@ -35,6 +35,25 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.e2e.yml"
 
+# The loa-finn-e2e service builds from a sibling-repo checkout that THIS script
+# does not create — scripts/run-e2e.sh clones it, at "$REPO_ROOT/.loa-finn-checkout".
+# Export the same absolute path: docker compose resolves the
+# `${LOA_FINN_DIR:-.loa-finn-checkout}` default relative to the COMPOSE FILE's
+# directory, so leaving it unset silently looks in tests/e2e/ and fails with an
+# opaque "unable to prepare context: path ... not found".
+export LOA_FINN_DIR="${LOA_FINN_DIR:-$REPO_ROOT/.loa-finn-checkout}"
+
+# Fail with a diagnosis instead of a docker build-context error.
+if [ ! -d "$LOA_FINN_DIR" ]; then
+  echo "[run-e2e] ERROR: loa-finn checkout missing at $LOA_FINN_DIR" >&2
+  echo "[run-e2e] The loa-finn-e2e service builds from that directory. This script" >&2
+  echo "[run-e2e] only starts the stack; it does not provision it. Either:" >&2
+  echo "[run-e2e]   • run scripts/run-e2e.sh instead (clones loa-finn; needs" >&2
+  echo "[run-e2e]     LOA_FINN_SHA and read access to \$LOA_FINN_REPO), or" >&2
+  echo "[run-e2e]   • point LOA_FINN_DIR at an existing checkout." >&2
+  exit 2
+fi
+
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-120000}"
 E2E_LOG_DIR="${E2E_LOG_DIR:-$REPO_ROOT/.run/e2e-logs}"
