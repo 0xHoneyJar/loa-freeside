@@ -34,6 +34,11 @@ jobs:
           node-version: "20"
       - name: events-lint (fail-block)
         run: node packages/events/bin/events-lint.mjs --root . --enforce
+      # Prove the name-based emit-Either rule still fires (it is scoped to files
+      # holding a real @freeside/events emitter — a narrowed rule must be shown
+      # alive, not just quiet).
+      - name: events-lint smoke test (prove rule fires + no lookalike false positive)
+        run: bash packages/events/bin/events-lint.test.sh
       - name: raw-NATS allowlist shrink-gate (fail-block)
         env:
           BASE: ${{ github.event.pull_request.base.ref || 'main' }}

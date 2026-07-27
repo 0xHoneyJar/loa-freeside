@@ -118,6 +118,28 @@ const INTERNAL_PUBLISH = /\binternalPublish\b/;
 // A bare emit()/emitRaw() statement whose result is not bound/returned/voided.
 const EMIT_CALL = /(^|[^.\w])(emit|emitRaw)\s*\(/;
 const CONSUMED = /(=|return|void|await\s+\w[\w.]*\s*=|Either|const\s|let\s|\.then\(|\?\s)/;
+// FILE-LEVEL PRECONDITION for the Either rule — the same kind of discrimination
+// NATS_PUBLISH gets from receiver names, which EMIT_CALL otherwise lacks.
+//
+// EMIT_CALL matches on the bare NAME `emit`/`emitRaw`, so without this it fires
+// on any unrelated local function that happens to share it. That is not
+// hypothetical: `packages/freeside-cli/src/lib/ordering-schemas.ts:98` defines
+//   export function emit(value: unknown): void { console.log(JSON.stringify(value)); }
+// — returns void, no Either, nothing that can be silently dropped. Its seven
+// call sites were the ONLY unhandled-emit-either findings in the repo, and
+// because this kind is hardcoded `allowlisted: false` (unlike raw-nats-publish)
+// they were unsuppressable and fail-blocked CI on a name collision.
+//
+// A file can only hold a real emitter by reaching @freeside/events for one:
+// constructing it (`makeEmitter`), importing from the package, or receiving one
+// typed as `Emitter`. Deliberately generous — over-matching costs a warning,
+// under-matching loses the invariant. `\bEmitter\b` does not match
+// `EventEmitter` (no word boundary mid-identifier).
+//
+// Tripwire blind spot, stated plainly as with NATS_PUBLISH above: an emitter
+// passed in as an untyped/structurally-typed parameter, in a file that never
+// names the package or the type, would be missed.
+const EMITTER_BEARING = /\bmakeEmitter\b|@freeside\/events|\bEmitter\b/;
 
 const findings = [];
 for (const file of walk(ROOT)) {
@@ -129,6 +151,7 @@ for (const file of walk(ROOT)) {
   } catch {
     continue;
   }
+  const emitterBearing = EMITTER_BEARING.test(text);
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -150,8 +173,9 @@ for (const file of walk(ROOT)) {
         text: trimmed,
       });
     }
-    // unhandled Either: a statement-position emit()/emitRaw() not obviously consumed.
-    if (EMIT_CALL.test(line) && !CONSUMED.test(line) && !/function|interface|type\s|=>/.test(line)) {
+    // unhandled Either: a statement-position emit()/emitRaw() not obviously
+    // consumed, in a file that actually holds an @freeside/events emitter.
+    if (emitterBearing && EMIT_CALL.test(line) && !CONSUMED.test(line) && !/function|interface|type\s|=>/.test(line)) {
       findings.push({ file: rel, line: i + 1, kind: "unhandled-emit-either", allowlisted: false, text: trimmed });
     }
   }
