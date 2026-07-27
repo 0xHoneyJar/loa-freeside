@@ -89,7 +89,7 @@
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "overrides": {
     "fast-xml-parser": ">=5.3.8",
@@ -98,7 +98,9 @@
       "qs": ">=6.14.1"
     },
     "undici": "^6.27.0",
-    "ws": "$ws"
+    "ws": "$ws",
+    "@opentelemetry/propagator-jaeger": ">=2.9.0",
+    "@opentelemetry/sdk-trace-node": ">=2.8.0"
   },
   "devDependencies": {
     "@types/argon2": "^0.14.1",
