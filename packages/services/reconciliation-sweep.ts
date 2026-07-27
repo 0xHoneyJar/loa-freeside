@@ -86,14 +86,18 @@ interface NowpaymentsStatusResponse {
 export interface ReconciliationSweepOptions {
   /**
    * Connection used ONLY for cross-community candidate enumeration (the stuck,
-   * missed-mint, and pending-outbox SELECTs). Must have cross-tenant read
-   * authority — BYPASSRLS or table ownership — because those tables carry
-   * forced tenant RLS and a maintenance sweep has no single community scope.
+   * missed-mint, and pending-outbox SELECTs). Its role MUST hold **BYPASSRLS**
+   * (or be a superuser). Table ownership is NOT sufficient: crypto_payments and
+   * both 0020 sidecars declare FORCE ROW LEVEL SECURITY, which subjects the
+   * table owner to the tenant policies as well — so an owner connection either
+   * trips the strict app.current_community_id() guard (no community GUC set) or,
+   * with one set, sees only that single tenant. Neither can enumerate across
+   * communities, which is what a maintenance sweep requires.
    *
    * Defaults to the main pool, which is correct only where that pool already
-   * holds such authority. Deployments running the sweep under the ordinary
-   * tenant role MUST inject a maintenance pool here. All mutations are scoped
-   * per community regardless of what is passed.
+   * holds BYPASSRLS. Deployments running the sweep under the ordinary tenant
+   * role MUST inject a maintenance pool here. All mutations are scoped per
+   * community regardless of what is passed.
    */
   maintenancePool?: Pool;
 }
