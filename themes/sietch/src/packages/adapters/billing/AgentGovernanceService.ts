@@ -555,8 +555,32 @@ export class AgentGovernanceService implements IAgentGovernanceService {
           paramKey: row.param_key,
         }, 'Agent governance proposal activated');
       } catch (err: any) {
-        // Release the claim so the next sweep retries; without this the
-        // proposal would be closed with no active config behind it.
+        // activateProposalConfig has two commit points: the config itself, then
+        // the transaction writing activated_config_id + emitting the event. If
+        // the throw came from the SECOND, the config is already LIVE — releasing
+        // the claim would then be actively harmful. It clears the only crash
+        // marker, and the retry re-enters the claim, which gates on
+        // `expires_at > now`; after scheduler downtime near the end of the
+        // activation grace window that gate fails, expireStaleProposals closes
+        // the row 'expired', and an applied config is left with no
+        // activated_config_id behind a falsely terminal proposal.
+        //
+        // So release only when nothing was applied. With a config committed the
+        // row stays 'activated' + claimed, which is precisely the LINK orphan
+        // shape the recovery arm below completes idempotently.
+        const committedConfigId = this.findProvenanceConfigId(row.id);
+        if (committedConfigId) {
+          logger.error({
+            event: 'agent.governance.activation_link_error',
+            proposalId: row.id,
+            configId: committedConfigId,
+            err: err.message,
+          }, 'Config committed but linking failed — claim retained for link recovery');
+          continue;
+        }
+
+        // Nothing applied: release the claim so the next sweep retries;
+        // without this the proposal would be closed with no config behind it.
         this.db.prepare(`
           UPDATE agent_governance_proposals
           SET status = 'quorum_reached', activation_claimed_at = NULL, updated_at = ?
@@ -600,20 +624,16 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       `).all() as ProposalRow[];
 
       for (const row of orphans) {
-        const config = this.db.prepare(`
-          SELECT id FROM system_config
-          WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
-          LIMIT 1
-        `).get(row.id) as { id: string } | undefined;
+        const configId = this.findProvenanceConfigId(row.id);
 
-        if (config) {
+        if (configId) {
           try {
             this.db.transaction(() => {
               this.db.prepare(`
                 UPDATE agent_governance_proposals
                 SET activated_config_id = ?, updated_at = ?
                 WHERE id = ? AND activated_config_id IS NULL
-              `).run(config.id, now, row.id);
+              `).run(configId, now, row.id);
               this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
                 proposalId: row.id,
                 paramKey: row.param_key,
@@ -692,6 +712,26 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     }
 
     return activated;
+  }
+
+  /**
+   * The id of the config this proposal already created, if any.
+   *
+   * `activateFromAgentGovernance` stamps `agentProposalId` into the config's
+   * metadata, so the config's own existence is the durable record that the
+   * change went live — the proposal row cannot carry that fact, because
+   * `activated_config_id` is written in a LATER transaction. This is therefore
+   * the authoritative "was anything applied?" probe for both the crash window
+   * (orphan recovery) and the thrown-error window (the claim-release decision
+   * in activateExpiredCooldowns); the two must agree, hence one helper.
+   */
+  private findProvenanceConfigId(proposalId: string): string | undefined {
+    const row = this.db.prepare(`
+      SELECT id FROM system_config
+      WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
+      LIMIT 1
+    `).get(proposalId) as { id: string } | undefined;
+    return row?.id;
   }
 
   /**

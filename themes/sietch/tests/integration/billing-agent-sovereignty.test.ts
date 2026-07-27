@@ -982,4 +982,55 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     `).get() as { n: number };
     expect(rows.n).toBe(1);
   });
+
+  it('keeps the claim when the config committed but linking threw (does not expire a live config)', async () => {
+    // The other half of the crash window, and the dangerous one:
+    // activateFromAgentGovernance COMMITS, then the link+event transaction
+    // throws. Releasing the claim here clears the only marker that the change
+    // went live; the retry re-enters the claim, which gates on
+    // `expires_at > now`, so after downtime past the deadline the proposal is
+    // closed 'expired' while its config is active and unlinked forever.
+    const agentId = createAccount(db, 'agent', 'agent-link-throw');
+    const proposalId = randomUUID();
+    seedClaimable(proposalId, agentId, '900', '2026-01-01T00:00:00Z');
+
+    const gov = new ConstitutionalGovernanceService(db);
+    const svc = new AgentGovernanceService(db, undefined, gov);
+    // Fail strictly AFTER the config commits — the link transaction only.
+    const emitSpy = vi
+      .spyOn(svc as unknown as { emitEventInTx: (...a: unknown[]) => void }, 'emitEventInTx')
+      .mockImplementation(() => { throw new Error('link tx exploded'); });
+
+    await svc.activateExpiredCooldowns();
+
+    // The config IS live, so the claim must be retained, not released.
+    expect(activeValue()).toBe('900');
+    const afterThrow = db.prepare(
+      `SELECT status, activation_claimed_at, activated_config_id
+         FROM agent_governance_proposals WHERE id = ?`,
+    ).get(proposalId) as { status: string; activation_claimed_at: string | null; activated_config_id: string | null };
+    expect(afterThrow.status).toBe('activated');
+    expect(afterThrow.activation_claimed_at).not.toBeNull();
+    expect(afterThrow.activated_config_id).toBeNull();
+
+    // Now simulate the downtime that made this lossy: the retry happens after
+    // the proposal's deadline. Expiry must not claim an already-applied row...
+    db.prepare(
+      `UPDATE agent_governance_proposals SET expires_at = '2020-01-01T00:00:00Z' WHERE id = ?`,
+    ).run(proposalId);
+    expect(await governanceService.expireStaleProposals()).toBe(0);
+
+    // ...and the next healthy sweep completes the link instead.
+    emitSpy.mockRestore();
+    expect(await governanceService.activateExpiredCooldowns()).toBe(1);
+
+    const healed = await governanceService.getProposal(proposalId);
+    expect(healed!.status).toBe('activated');
+    expect(healed!.activatedConfigId).not.toBeNull();
+    const activeRows = db.prepare(`
+      SELECT COUNT(*) as n FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { n: number };
+    expect(activeRows.n).toBe(1);
+  });
 });
