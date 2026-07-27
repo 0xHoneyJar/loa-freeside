@@ -335,9 +335,39 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       if (typeof payload.updated_at !== 'string' || Number.isNaN(providerTs)) {
         // Missing or present-but-unparseable timestamp is rejected explicitly
         // (freshness is mandatory) rather than skipping enforcement.
+        //
+        // A receipt-time fallback is NOT an option: it makes ageMs ≈ 0 for
+        // every event that omits the field, which is exactly the
+        // user-controlled freshness bypass CodeQL flagged
+        // (js/user-controlled-bypass-of-sensitive-action) — an attacker
+        // replaying an old signed event with `updated_at` stripped would be
+        // processed as fresh.
+        //
+        // But dropping it with no trace is also wrong: the event IS
+        // signature-valid, so something real happened. Record a durable
+        // marker under its own dedupe slot — never processed, never
+        // auto-minted (the missed-mint recovery arm keys on the exact
+        // `<id>:finished` event id, not this one), but visible to operators
+        // and to any provider-poll recovery. Failing to record it is treated
+        // like any other lost durable capture: retriable 503, not a silent ack.
+        try {
+          await systemPool.query(
+            `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
+             VALUES ('nowpayments', $1, $2, NOW())
+             ON CONFLICT (provider, event_id) DO NOTHING`,
+            [`${paymentId}:${payload.payment_status}:no_timestamp`, JSON.stringify(payload)],
+          );
+        } catch (err) {
+          logger.error(
+            { paymentId, err },
+            'Failed to record timestamp-less webhook — returning retriable 503',
+          );
+          res.status(503).json({ status: 'error', reason: 'capture_failed' });
+          return;
+        }
         logger.warn(
           { paymentId, updatedAt: payload.updated_at ?? null, receivedAt, freshness: 'invalid' },
-          'Webhook timestamp missing or invalid — event ignored (freshness mandatory)',
+          'Webhook timestamp missing or invalid — recorded, not processed (freshness mandatory)',
         );
         res.status(200).json({ status: 'ignored', reason: 'invalid_timestamp' });
         return;

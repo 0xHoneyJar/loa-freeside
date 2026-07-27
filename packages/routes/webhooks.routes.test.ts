@@ -431,7 +431,62 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ignored', reason: 'invalid_timestamp' });
-    expect(pool.query).not.toHaveBeenCalled();
+    // Not processed — but durably recorded under its own dedupe slot, so a
+    // signature-valid event is never dropped without a trace. The marker must
+    // NOT collide with the real `<id>:<status>` slot that gates processing.
+    const sql = pool.query.mock.calls.map(([s]) => String(s));
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toMatch(/INSERT INTO webhook_events/);
+    expect(pool.query.mock.calls[0][1]?.[0]).toBe('225:waiting:no_timestamp');
+    // No payment lookup, no status read, no mint.
+    expect(verifyPaymentExists).not.toHaveBeenCalled();
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
+    expect(sql.some((s) => /crypto_payments/.test(s))).toBe(false);
+  });
+
+  it('returns a retriable 503 when the timestamp-less marker cannot be recorded', async () => {
+    // Same rule as every other durable capture: a 200 for an event we failed
+    // to record would drop it silently.
+    const bad = {
+      payment_id: 226, payment_status: 'finished', order_id: 'order-5b',
+      updated_at: undefined,
+    };
+    const { pool } = makeFakePool({ failInsertTimes: 1 });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(bad);
+
+    const res = await post(app, raw, sig);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: 'error', reason: 'capture_failed' });
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
+  });
+
+  it('never lets the timestamp-less marker consume the real dedupe slot', async () => {
+    // The marker uses a `:no_timestamp` suffix. If it collided with
+    // `<id>:finished`, a malformed delivery would permanently block the real
+    // finished event from ever minting.
+    const { pool } = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool });
+
+    const noTs = signedBody({
+      payment_id: 227, payment_status: 'finished', order_id: 'order-5c',
+      price_amount: 100, price_currency: 'usd',
+    });
+    expect((await post(app, noTs.raw, noTs.sig)).body).toEqual({
+      status: 'ignored', reason: 'invalid_timestamp',
+    });
+
+    // The real event, same payment and status, still mints.
+    const good = signedBody({
+      payment_id: 227, payment_status: 'finished', order_id: 'order-5c',
+      price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+    });
+    const res = await post(app, good.raw, good.sig);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'processed' });
+    expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
   });
 
   it('respects a configurable freshness window', async () => {

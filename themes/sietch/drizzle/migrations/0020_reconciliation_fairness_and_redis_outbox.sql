@@ -56,10 +56,13 @@ CREATE INDEX IF NOT EXISTS idx_crypto_payment_checks_rotation
 ALTER TABLE crypto_payment_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crypto_payment_checks FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS crypto_payment_checks_tenant_select ON crypto_payment_checks;
 CREATE POLICY crypto_payment_checks_tenant_select ON crypto_payment_checks
     FOR SELECT USING (community_id = app.current_community_id());
+DROP POLICY IF EXISTS crypto_payment_checks_tenant_insert ON crypto_payment_checks;
 CREATE POLICY crypto_payment_checks_tenant_insert ON crypto_payment_checks
     FOR INSERT WITH CHECK (community_id = app.current_community_id());
+DROP POLICY IF EXISTS crypto_payment_checks_tenant_update ON crypto_payment_checks;
 CREATE POLICY crypto_payment_checks_tenant_update ON crypto_payment_checks
     FOR UPDATE
     USING (community_id = app.current_community_id())
@@ -113,10 +116,13 @@ CREATE INDEX IF NOT EXISTS idx_pending_redis_adj_pending
 ALTER TABLE pending_redis_credit_adjustments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pending_redis_credit_adjustments FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS pending_redis_adj_tenant_select ON pending_redis_credit_adjustments;
 CREATE POLICY pending_redis_adj_tenant_select ON pending_redis_credit_adjustments
     FOR SELECT USING (community_id = app.current_community_id());
+DROP POLICY IF EXISTS pending_redis_adj_tenant_insert ON pending_redis_credit_adjustments;
 CREATE POLICY pending_redis_adj_tenant_insert ON pending_redis_credit_adjustments
     FOR INSERT WITH CHECK (community_id = app.current_community_id());
+DROP POLICY IF EXISTS pending_redis_adj_tenant_update ON pending_redis_credit_adjustments;
 CREATE POLICY pending_redis_adj_tenant_update ON pending_redis_credit_adjustments
     FOR UPDATE
     USING (community_id = app.current_community_id())
