@@ -48,7 +48,7 @@ schedule with backoff). The handler uses that deliberately:
 | 200 `duplicate` | this exact `(payment_id, payment_status)` was already recorded | — | no |
 | 200 `skipped` / `backward_transition` or `terminal_state` | monotonicity gate; event recorded, no state change | — | no |
 | 200 `skipped` / `refunded` | `finished` arrived for a refunded payment; deliberately not credited | — | no |
-| 200 `quarantined` / `stale_timestamp` | event older than the freshness window; durably recorded, not processed | — | no (a retry would still be stale) |
+| 200 `quarantined` / `stale_timestamp` | **non-terminal** event older than the freshness window; durably recorded, not processed | — | no (a retry would still be stale) |
 | 200 `ignored` / `invalid_payload` or `invalid_timestamp` | signed but malformed event; dropped explicitly with audit log | — | no |
 | 401 `rejected` | missing/invalid/duplicated signature header | — | n/a (hostile or misconfigured) |
 | 404 `error` / `unknown_payment` | signature valid but no `crypto_payments` row yet (webhook raced payment creation) | **yes** — retriable, event is NOT recorded/deduped | yes |
@@ -91,7 +91,10 @@ schedule with backoff). The handler uses that deliberately:
 
 - `webhookMaxAgeMs` (router dep, default 15 minutes, `0` disables) bounds the
   accepted age of the signed `updated_at` timestamp.
-- **Stale** events (age > window) are quarantined: recorded durably in
+- **Terminal** statuses (`finished`, `failed`, `refunded`, `expired`) are
+  **never** quarantined, however late they arrive — see "Stale terminal events"
+  below.
+- **Stale non-terminal** events (age > window) are quarantined: recorded durably in
   `webhook_events` under `event_id='<payment_id>:<status>:stale'` (a distinct
   dedupe slot that never blocks fresh processing), logged with
   `providerTimestamp`, `receivedAt`, `ageMs`, and `freshness: 'stale'`, then
@@ -153,6 +156,31 @@ The webhook path is best-effort real-time; the reconciliation sweep
    — nothing in sietch consumes that row, and nothing needs to: only
    non-terminal transitions can be dropped, so no credit or settlement outcome
    is at stake, and the payment's own terminal event still arrives.
+
+## Stale terminal events are processed, not quarantined
+
+Quarantine acknowledges an event with 200 and defers recovery to the
+reconciliation sweep. That sweep has **no production caller**, so for a
+credit-bearing event the deferral is a silent loss. Safety must not depend on
+machinery that does not run.
+
+Terminal statuses are therefore processed however late they arrive. Freshness
+is not what protects a terminal event from replay — these layers are, and all
+of them still apply:
+
+1. `webhook_events` dedupe on `(payment_id, payment_status)` — a replayed
+   `finished` collides and returns 200 `duplicate`;
+2. the atomic monotonicity guard on the status UPDATE;
+3. `credit_lots` unique on `payment_id`;
+4. the exactly-once Redis marker.
+
+A replayed stale `finished` is absorbed. A *first* delivery of a stale
+`finished` is a purchase we owe. This mirrors the decision already shipped on
+the live sietch path (`CryptoWebhookService.staleProcessableStatuses`), keeping
+the two implementations behaviourally identical.
+
+Non-terminal stale events stay quarantined: no money rides on them, so dropping
+one costs at most a little status lag until the next event arrives.
 
 ## A `finished` event never loses its credit
 

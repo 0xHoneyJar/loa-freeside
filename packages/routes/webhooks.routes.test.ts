@@ -304,10 +304,10 @@ describe('POST /webhooks/nowpayments — raw body HMAC (#325)', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
-  it('quarantines a stale (old but validly signed) event without processing it', async () => {
+  it('quarantines a stale NON-TERMINAL event without processing it', async () => {
     const stale = {
       payment_id: 222,
-      payment_status: 'finished',
+      payment_status: 'confirming',
       order_id: 'order-2',
       updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h old
     };
@@ -320,7 +320,7 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'quarantined', reason: 'stale_timestamp' });
     // Durable quarantine record in a distinct dedupe slot.
-    expect(webhookEvents.has('nowpayments:222:finished:stale')).toBe(true);
+    expect(webhookEvents.has('nowpayments:222:confirming:stale')).toBe(true);
     // No status update, no mint.
     expect(processPaymentForLedger).not.toHaveBeenCalled();
     const updateCalls = pool.query.mock.calls.filter(([sql]) => /UPDATE crypto_payments/.test(sql as string));
@@ -358,7 +358,7 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
   it('returns retriable 503 when the stale quarantine record cannot be written', async () => {
     const stale = {
       payment_id: 224,
-      payment_status: 'finished',
+      payment_status: 'confirming',
       order_id: 'order-2b',
       updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     };
@@ -369,13 +369,13 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
     const res1 = await post(app, raw, sig);
     expect(res1.status).toBe(503);
     expect(res1.body).toEqual({ status: 'error', reason: 'quarantine_record_failed' });
-    expect(webhookEvents.has('nowpayments:224:finished:stale')).toBe(false);
+    expect(webhookEvents.has('nowpayments:224:confirming:stale')).toBe(false);
 
     // Provider retry after the transient failure records the quarantine.
     const res2 = await post(app, raw, sig);
     expect(res2.status).toBe(200);
     expect(res2.body).toEqual({ status: 'quarantined', reason: 'stale_timestamp' });
-    expect(webhookEvents.has('nowpayments:224:finished:stale')).toBe(true);
+    expect(webhookEvents.has('nowpayments:224:confirming:stale')).toBe(true);
     expect(processPaymentForLedger).not.toHaveBeenCalled();
   });
 
@@ -487,6 +487,93 @@ describe('POST /webhooks/nowpayments — timestamp freshness (#327)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'processed' });
     expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Stale TERMINAL events must not be deferred to machinery that never runs.
+  //
+  // Quarantine acks with 200 and hands recovery to the reconciliation sweep,
+  // which has no production caller. For a credit-bearing event that is a silent
+  // loss, so safety must not depend on it.
+  // ---------------------------------------------------------------------------
+
+  it('PROCESSES a stale finished event instead of quarantining it', async () => {
+    const stale = {
+      payment_id: 250, payment_status: 'finished', order_id: 'order-stale-fin',
+      price_amount: 100, price_currency: 'usd',
+      updated_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), // 6h old
+    };
+    const { pool, webhookEvents, state } = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(stale);
+
+    const res = await post(app, raw, sig);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'processed' });
+    expect(state.status).toBe('finished');
+    expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+    // Recorded under the REAL dedupe slot, not the quarantine slot.
+    expect(webhookEvents.has('nowpayments:250:finished')).toBe(true);
+    expect(webhookEvents.has('nowpayments:250:finished:stale')).toBe(false);
+  });
+
+  it.each(['failed', 'refunded', 'expired'])(
+    'processes a stale terminal %s event rather than stranding the row as pending',
+    async (status) => {
+      const { pool, state } = makeFakePool({ status: 'waiting' });
+      const { app } = makeApp({ pool });
+      const { raw, sig } = signedBody({
+        payment_id: 251, payment_status: status, order_id: 'order-stale-term',
+        updated_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      });
+
+      const res = await post(app, raw, sig);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ status: 'processed' });
+      expect(state.status).toBe(status);
+    },
+  );
+
+  it('still absorbs a REPLAYED stale finished event — freshness is not what stops replay', async () => {
+    // The layers that actually protect a terminal event: the
+    // (payment_id, status) dedupe slot, then credit_lots unique on payment_id.
+    const stale = {
+      payment_id: 252, payment_status: 'finished', order_id: 'order-replay',
+      price_amount: 100, price_currency: 'usd',
+      updated_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30d old
+    };
+    const { pool } = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(stale);
+
+    const first = await post(app, raw, sig);
+    expect(first.body).toEqual({ status: 'processed' });
+
+    // Replay the exact same signed bytes, any number of times.
+    for (let i = 0; i < 5; i++) {
+      const replay = await post(app, raw, sig);
+      expect(replay.status).toBe(200);
+      expect(replay.body).toEqual({ status: 'duplicate' });
+    }
+
+    expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps quarantining stale NON-terminal events — no money rides on them', async () => {
+    const { pool, webhookEvents } = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody({
+      payment_id: 253, payment_status: 'partially_paid', order_id: 'order-stale-nt',
+      updated_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    });
+
+    const res = await post(app, raw, sig);
+
+    expect(res.body).toEqual({ status: 'quarantined', reason: 'stale_timestamp' });
+    expect(webhookEvents.has('nowpayments:253:partially_paid:stale')).toBe(true);
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
   });
 
   it('respects a configurable freshness window', async () => {
@@ -882,6 +969,7 @@ describe('POST /webhooks/nowpayments — tenant isolation', () => {
     });
     const { raw, sig } = signedBody({
       ...finishedPayload(),
+      payment_status: 'confirming', // only non-terminal events are quarantined
       updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     });
 

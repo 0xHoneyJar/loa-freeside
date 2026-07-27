@@ -375,7 +375,43 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
 
       const ageMs = receivedAt - providerTs;
 
-      if (webhookMaxAgeMs > 0 && ageMs > webhookMaxAgeMs) {
+      // TERMINAL statuses are never quarantined, however late they arrive.
+      //
+      // Quarantine acknowledges the event with 200 and defers recovery to the
+      // reconciliation sweep — which has NO production caller. Deferring a
+      // credit-bearing event to machinery that never runs is a silent loss, so
+      // safety must not depend on it: a delayed terminal truth is processed
+      // here instead. Freshness is not what protects a terminal event from
+      // replay; the layers below it are, and they still all apply —
+      // `(payment_id, payment_status)` dedupe in webhook_events, the atomic
+      // monotonicity guard on the UPDATE, `credit_lots` unique on payment_id,
+      // and the exactly-once Redis marker. A replayed stale `finished` is
+      // absorbed by the dedupe slot; a FIRST delivery of a stale `finished` is
+      // a purchase we owe.
+      //
+      // This mirrors the decision already shipped on the live sietch path
+      // (CryptoWebhookService staleProcessableStatuses), keeping the two
+      // implementations behaviourally identical as the runbook requires.
+      //
+      // Non-terminal stale events stay quarantined: no money rides on them, so
+      // dropping one costs at most a little status lag until the next event.
+      const isTerminalStatus = ['finished', 'failed', 'refunded', 'expired']
+        .includes(payload.payment_status);
+
+      if (webhookMaxAgeMs > 0 && ageMs > webhookMaxAgeMs && isTerminalStatus) {
+        logger.warn(
+          {
+            paymentId,
+            status: payload.payment_status,
+            providerTimestamp: payload.updated_at,
+            ageMs,
+            maxAgeMs: webhookMaxAgeMs,
+            freshness: 'stale_terminal_processed',
+          },
+          'Stale TERMINAL webhook processed, not quarantined — recovery machinery is not scheduled; idempotency layers protect against replay',
+        );
+        // fall through to normal processing
+      } else if (webhookMaxAgeMs > 0 && ageMs > webhookMaxAgeMs) {
         // A stale event whose crypto_payments row does not exist yet must NOT
         // be quarantine-acked: the reconciliation sweep polls crypto_payments
         // and never consumes webhook_events, so quarantining + 200 here would
@@ -435,7 +471,9 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
           providerTimestamp: payload.updated_at,
           receivedAt: new Date(receivedAt).toISOString(),
           ageMs,
-          freshness: 'fresh',
+          // A stale terminal event reaches here too — do not mislabel it fresh.
+          freshness:
+            webhookMaxAgeMs > 0 && ageMs > webhookMaxAgeMs ? 'stale_terminal' : 'fresh',
         },
         'Webhook timestamp age',
       );
