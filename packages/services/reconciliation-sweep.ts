@@ -93,6 +93,11 @@ export interface ReconciliationSweepOptions {
    * authority — BYPASSRLS or table ownership — because those tables carry
    * forced tenant RLS and a maintenance sweep has no single community scope.
    *
+   * Note the missed-mint enumeration additionally probes `webhook_events`,
+   * which has forced RLS with NO policy at all (migration 0010: system-level,
+   * `arrakis_admin` only). A merely-cross-tenant role is not enough there — the
+   * connection must be able to read that table too.
+   *
    * Defaults to the main pool, which is correct only where that pool already
    * holds such authority. Deployments running the sweep under the ordinary
    * tenant role MUST inject a maintenance pool here. All mutations are scoped
@@ -369,19 +374,19 @@ export async function runReconciliationSweep(
   // community and each group runs inside withCommunityScope. A single
   // cross-community write would either trip the strict
   // app.current_community_id() guard or silently write nothing.
-  await stampRotationCursors(pool, batch);
+  const { stamped, errors: stampErrors } = await stampRotationCursors(pool, batch);
 
   const result: ReconciliationSweepResult = {
     paymentsChecked: 0,
     recoveredCount: 0,
     failedCount: 0,
     pendingCount: 0,
-    errorCount: 0,
+    errorCount: stampErrors.length,
     redisAdjustmentsApplied: 0,
-    details: [],
+    details: [...stampErrors],
   };
 
-  for (const candidate of batch) {
+  for (const candidate of stamped) {
     if (candidate.kind === 'stuck') {
       const payment = candidate.row;
       result.paymentsChecked++;
@@ -471,8 +476,22 @@ export async function runReconciliationSweep(
  * Stamp the rotation cursor of every selected item, grouped by community and
  * written inside that community's RLS scope. Runs before any processing so a
  * failing item still rotates.
+ *
+ * A community whose stamp fails is DROPPED from the batch rather than
+ * processed. Two reasons, both about blast radius: a failure here means that
+ * tenant's scope is unusable (RLS misconfiguration, connection loss), so its
+ * work would fail anyway; and processing without a stamp would let those items
+ * re-win the head slot next sweep — exactly the starvation the pre-stamp
+ * exists to prevent. One broken tenant must never stop every other tenant's
+ * recovery, so the failure is isolated per community, not thrown.
+ *
+ * @returns the batch minus any items whose cursor could not be stamped, plus
+ *   one error detail per failed community.
  */
-async function stampRotationCursors(pool: Pool, batch: SweepCandidate[]): Promise<void> {
+async function stampRotationCursors(
+  pool: Pool,
+  batch: SweepCandidate[],
+): Promise<{ stamped: SweepCandidate[]; errors: PaymentReconciliationDetail[] }> {
   const paymentsByCommunity = new Map<string, string[]>();
   const lotsByCommunity = new Map<string, string[]>();
 
@@ -484,29 +503,62 @@ async function stampRotationCursors(pool: Pool, batch: SweepCandidate[]): Promis
     target.set(key, ids);
   }
 
+  const errors: PaymentReconciliationDetail[] = [];
+  /** `${kind === 'redis_adjustment' ? 'adj' : 'pay'}:${communityId}` */
+  const failedGroups = new Set<string>();
+
+  const stamp = async (
+    group: 'pay' | 'adj',
+    communityId: string,
+    sql: string,
+    params: unknown[],
+  ): Promise<void> => {
+    try {
+      await withCommunityScope(communityId, pool, (client) => client.query(sql, params));
+    } catch (err) {
+      failedGroups.add(`${group}:${communityId}`);
+      errors.push({
+        paymentId: '',
+        communityId,
+        previousStatus: '',
+        newStatus: null,
+        action: 'error',
+        error: `rotation cursor stamp failed, work skipped this sweep: ${(err as Error).message}`,
+      });
+    }
+  };
+
   for (const [communityId, paymentIds] of paymentsByCommunity) {
-    await withCommunityScope(communityId, pool, (client) =>
-      client.query(
-        `INSERT INTO crypto_payment_checks (payment_id, community_id)
-         SELECT unnest($1::text[]), $2::uuid
-         ON CONFLICT (payment_id) DO UPDATE SET last_checked_at = NOW()`,
-        [paymentIds, communityId],
-      ),
+    await stamp(
+      'pay',
+      communityId,
+      `INSERT INTO crypto_payment_checks (payment_id, community_id)
+       SELECT unnest($1::text[]), $2::uuid
+       ON CONFLICT (payment_id) DO UPDATE SET last_checked_at = NOW()`,
+      [paymentIds, communityId],
     );
   }
 
   for (const [communityId, lotIds] of lotsByCommunity) {
     // attempts is bumped by applyRedisCreditAdjustment (which also runs on the
     // inline webhook path); this write only advances the rotation cursor.
-    await withCommunityScope(communityId, pool, (client) =>
-      client.query(
-        `UPDATE pending_redis_credit_adjustments
-         SET last_attempt_at = NOW()
-         WHERE lot_id = ANY($1::uuid[]) AND applied_at IS NULL`,
-        [lotIds],
-      ),
+    await stamp(
+      'adj',
+      communityId,
+      `UPDATE pending_redis_credit_adjustments
+       SET last_attempt_at = NOW()
+       WHERE lot_id = ANY($1::uuid[]) AND applied_at IS NULL`,
+      [lotIds],
     );
   }
+
+  const stamped = failedGroups.size === 0
+    ? batch
+    : batch.filter((c) => !failedGroups.has(
+        `${c.kind === 'redis_adjustment' ? 'adj' : 'pay'}:${c.row.community_id}`,
+      ));
+
+  return { stamped, errors };
 }
 
 /**

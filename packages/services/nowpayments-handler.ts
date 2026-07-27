@@ -107,6 +107,18 @@ export interface Queryable {
  * fixed clock. Markers are one-per-minted-lot, so the key set stays bounded by
  * purchase volume.
  *
+ * DEPLOYMENT REQUIREMENT — the marker must not be evictable.
+ * `applied_at IS NULL` is the durable guard: once the outbox row is
+ * acknowledged it is never drained again, so the marker only has to survive the
+ * window between the INCRBY and that acknowledgement. But that window is
+ * unbounded when Postgres is unavailable, and under `maxmemory-policy
+ * allkeys-lru` / `allkeys-random` a no-TTL key IS a candidate for eviction —
+ * so a marker could be dropped while the hot `agent:budget:limit:{cid}` key
+ * survives, and the next drain would credit a second time. This is the one
+ * realistic double-credit sequence left in the design, and it is closed by
+ * configuration, not code: run this Redis with `noeviction` or a `volatile-*`
+ * policy (both leave no-TTL keys alone). See the runbook's Redis requirements.
+ *
  *   KEYS[1] = processed:mint:{lotId}   ARGV[1] = amountCents
  *   KEYS[2] = agent:budget:limit:{cid}
  *   returns 1 if applied now, 0 if already applied earlier (both = credit present)

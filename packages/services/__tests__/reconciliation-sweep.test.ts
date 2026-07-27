@@ -581,6 +581,42 @@ describe('runReconciliationSweep — every mutation is tenant-scoped', () => {
     expect(unscopedUpdate).toBe(false);
   });
 
+  it('isolates a tenant whose cursor stamp fails — other tenants still get swept', async () => {
+    // A broken scope (RLS misconfiguration, lost connection) must not abort
+    // the whole sweep. The broken tenant's work is skipped rather than
+    // processed: without a stamp it would re-win the head slot next sweep,
+    // which is the starvation the pre-stamp exists to prevent.
+    const pool = { query: makeQuery({
+      missed: [
+        missedRow('p_broken', '2020-01-01T00:00:00Z', { community_id: 'comm_broken' }),
+        missedRow('p_ok', '2020-01-02T00:00:00Z', { community_id: 'comm_ok' }),
+      ],
+    }) } as unknown as import('pg').Pool;
+
+    mockWithCommunityScope.mockImplementation(
+      async (communityId: string, _pool: unknown, fn: (c: unknown) => unknown) => {
+        scopedCommunities.push(communityId);
+        if (communityId === 'comm_broken') throw new Error('TENANT_CONTEXT_MISSING');
+        return fn({ query: scopedQuery });
+      },
+    );
+
+    const result = await runReconciliationSweep(pool, mockRedis, config);
+
+    // The healthy tenant's payment was still recovered…
+    expect(mockProcessPaymentForLedger).toHaveBeenCalledTimes(1);
+    expect(mockProcessPaymentForLedger).toHaveBeenCalledWith(
+      pool, mockRedis, expect.objectContaining({ paymentId: 'p_ok' }),
+    );
+    expect(result.recoveredCount).toBe(1);
+    // …and the broken tenant is reported, not silently swallowed.
+    expect(result.errorCount).toBe(1);
+    expect(result.details[0]).toMatchObject({
+      communityId: 'comm_broken', action: 'error',
+    });
+    expect(result.details[0].error).toMatch(/rotation cursor stamp failed/);
+  });
+
   it('stamps each community under its own scope and never crosses tenants', async () => {
     const pool = { query: makeQuery({
       stuck: [

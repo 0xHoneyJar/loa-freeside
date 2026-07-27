@@ -173,6 +173,29 @@ and the `billing_audit_log` payload carries `credited_without_status_write: true
 `refunded` is the one terminal state that still suppresses the mint. Crash
 safety for the same window is sweep arm 4b above.
 
+## Exactly-once Redis credit — and its one configuration dependency
+
+A minted lot's Redis budget increment is applied by a single Lua script:
+`if EXISTS(processed:mint:{lotId}) then return 0; INCRBY agent:budget:limit:{cid}; SET processed:mint:{lotId}`.
+Atomicity closes the crash window between the increment and the marker, so the
+increment lands exactly once no matter how many times it is retried — by a
+provider redelivery, by a second worker, or by the sweep's outbox drain racing
+the inline webhook apply. The durable guard is the outbox row: once
+`applied_at` is set the row is never drained again.
+
+**The marker must not be evictable.** `processed:mint:*` keys are written
+without a TTL on purpose — the acknowledgement they guard can be delayed
+indefinitely by a Postgres outage. Under `maxmemory-policy allkeys-lru` or
+`allkeys-random`, a no-TTL key is still an eviction candidate, so a marker
+could be dropped while the hot `agent:budget:limit:{cid}` key survives, and the
+next drain would credit a second time.
+
+> Run the Redis instance holding these keys with `maxmemory-policy noeviction`
+> or any `volatile-*` policy (those only evict keys that have a TTL). This is
+> the one realistic double-credit sequence the design does not close in code.
+
+Marker count is bounded by purchase volume — one key per minted lot.
+
 ## Batch fairness
 
 `batchSize` is the total work items per sweep across **all three** arms
