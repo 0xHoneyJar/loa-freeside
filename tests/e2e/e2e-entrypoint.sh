@@ -59,6 +59,22 @@ if [ -n "$JWKS_EXPORT_PATH" ]; then
       rm -f "$tmp_path"
       exit 1
     fi
+    # `jq empty` only proves the response parses. {"keys":[]} parses fine and is
+    # exactly 11 bytes — which is what this export was writing, then reporting
+    # as "exported successfully". loa-finn mounts this file to verify arrakis
+    # tokens without an HTTP fetch, so an empty key set makes the whole handoff
+    # a no-op that still looks green. Assert the thing that matters.
+    key_count=$(jq '.keys | length' "$tmp_path" 2>/dev/null || echo 0)
+    if [ "$key_count" -lt 1 ]; then
+      echo "[e2e-entrypoint] ERROR: JWKS contains no keys (.keys is empty)" >&2
+      echo "[e2e-entrypoint] /.well-known/jwks.json is served from the" >&2
+      echo "[e2e-entrypoint] s2s_jwks_public_keys table (JwksService), not from" >&2
+      echo "[e2e-entrypoint] AGENT_JWT_PRIVATE_KEY. Nothing in the E2E seeds that" >&2
+      echo "[e2e-entrypoint] table, so the export is vacuous. Seed a public key" >&2
+      echo "[e2e-entrypoint] before startup, or drop the JWKS handoff." >&2
+      rm -f "$tmp_path"
+      exit 1
+    fi
   else
     echo "[e2e-entrypoint] WARNING: jq not found, skipping JWKS JSON validation"
   fi
