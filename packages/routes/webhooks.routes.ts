@@ -537,7 +537,10 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         }, 'NOWPayments webhook: credit lot processing complete');
       } catch (err) {
         // Lot minting failure should not fail the webhook response.
-        // Reconciliation sweep will catch missed mints.
+        // Intended recovery is the reconciliation sweep — which is NOT
+        // currently scheduled (no production caller; see
+        // packages/services/reconciliation-sweep.ts header). Until it is
+        // activated, a mint failure here is not automatically recovered.
         logger.error({ paymentId, err }, 'Credit lot minting failed — will retry via reconciliation');
       }
     }

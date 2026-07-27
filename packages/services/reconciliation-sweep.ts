@@ -1,9 +1,18 @@
 /**
  * NOWPayments Reconciliation Sweep — Missed Webhook Recovery
  *
- * EventBridge scheduled task (every 5 minutes) that polls NOWPayments API
- * for stuck payments and triggers idempotent credit lot minting for
- * missed webhooks.
+ * Polls the NOWPayments API for stuck payments and triggers idempotent credit
+ * lot minting for missed webhooks.
+ *
+ * !! NOT CURRENTLY SCHEDULED !!
+ * This module has no production caller: `runReconciliationSweep` is referenced
+ * only by its own tests. There is no EventBridge task, cron, or worker entry
+ * point invoking it, even though `infrastructure/terraform/monitoring.tf`
+ * already charts a `reconciliation_sweep_count` metric for it. Until an
+ * activation path is wired, any code that defers recovery to "the
+ * reconciliation sweep" is deferring to something that never runs — do not
+ * treat this module as a live safety net when reasoning about whether a
+ * payment path is safe to acknowledge.
  *
  * Operates independently of Redis availability — all queries are
  * PostgreSQL-first with Redis adjustment as best-effort.
