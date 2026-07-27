@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS agent_governance_proposals (
     CHECK (status IN ('open', 'quorum_reached', 'activated', 'rejected', 'expired', 'admin_overridden')),
   cooldown_ends_at TEXT,
   activated_config_id TEXT REFERENCES system_config(id),
+  -- Set when the activation sweep CLAIMS this proposal, cleared when a failed
+  -- activation releases the claim. Distinguishes a hard-crash orphan (claimed,
+  -- terminal, no config) from a pre-recovery-mechanism LEGACY activation, which
+  -- must never be re-activated. See migration 069 for the backfill path.
+  activation_claimed_at TEXT,
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))

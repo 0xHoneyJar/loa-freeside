@@ -530,8 +530,9 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       // same quorum_reached row; the conditional UPDATE lets exactly one
       // sweep win, so one proposal can never produce duplicate config
       // versions. (The proposal-status CHECK constraint has no in-progress
-      // state, so the claim writes the terminal status directly; the
-      // orphan-recovery arm below closes the crash window that leaves.)
+      // state, so the claim writes the terminal status directly, stamping
+      // activation_claimed_at so the orphan-recovery arm below can tell a
+      // hard-crash orphan from a legacy activation — see migration 069.)
       // expires_at > now is the authoritative gate: the hourly lifecycle job
       // runs activation BEFORE expiry, so after scheduler downtime a
       // quorum_reached proposal past its expires_at would otherwise be
@@ -540,9 +541,9 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       // not apply its config.
       const claim = this.db.prepare(`
         UPDATE agent_governance_proposals
-        SET status = 'activated', updated_at = ?
+        SET status = 'activated', activation_claimed_at = ?, updated_at = ?
         WHERE id = ? AND status = 'quorum_reached' AND expires_at > ?
-      `).run(now, row.id, now);
+      `).run(now, now, row.id, now);
       if (claim.changes === 0) continue; // another sweep claimed it, or it expired
 
       try {
@@ -558,7 +559,7 @@ export class AgentGovernanceService implements IAgentGovernanceService {
         // proposal would be closed with no active config behind it.
         this.db.prepare(`
           UPDATE agent_governance_proposals
-          SET status = 'quorum_reached', updated_at = ?
+          SET status = 'quorum_reached', activation_claimed_at = NULL, updated_at = ?
           WHERE id = ? AND status = 'activated'
         `).run(now, row.id);
         logger.error({
@@ -569,66 +570,123 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       }
     }
 
-    // Crash recovery — LINK ONLY. Recover exactly the window where
-    // activateFromAgentGovernance committed the config (stamping this
-    // proposal's agentProposalId provenance) but the follow-up transaction
-    // that writes activated_config_id + emits AgentProposalActivated did not
-    // run. Those rows are matched by the EXISTS provenance subquery; linking
-    // them is safe and idempotent — no config is created or superseded.
+    // -----------------------------------------------------------------------
+    // Crash recovery for terminal-but-unapplied proposals.
     //
-    // We deliberately do NOT recover 'activated' rows with activated_config_id
-    // NULL and no provenance-stamped config. That set conflates a rare
-    // hard-crash-before-config-create orphan with pre-recovery-mechanism
-    // LEGACY activations (whose configs, if any, were created without the
-    // provenance metadata). The two are indistinguishable, and re-running
-    // activation for a legacy row would CREATE a config that supersedes
-    // whatever is currently active — clobbering newer values on upgrade. A
-    // stranded hard-crash orphan can be re-proposed; silent config corruption
-    // cannot be undone.
+    // The claim writes the terminal status BEFORE the config exists (the status
+    // CHECK constraint has no in-progress state). A thrown error releases the
+    // claim; a hard crash — SIGKILL, OOM, eviction — cannot. Two distinct
+    // orphan shapes result, and they need different treatment:
+    //
+    //   LINK   — the config committed (carrying this proposal's
+    //            agentProposalId provenance) but the follow-up transaction that
+    //            writes activated_config_id + emits the event did not run.
+    //            Linking is idempotent; no config is created or superseded.
+    //
+    //   REAPPLY — the crash landed before the config existed at all. Safe only
+    //            because activation_claimed_at (migration 069) proves the claim
+    //            was made by THIS code path. A pre-recovery-mechanism LEGACY
+    //            activation has that column NULL, and re-running it would CREATE
+    //            a config superseding whatever is active now — clobbering newer
+    //            values on upgrade. Legacy rows are therefore still left alone:
+    //            a stranded proposal can be re-proposed, silent config
+    //            corruption cannot be undone.
+    // -----------------------------------------------------------------------
     if (this.governance) {
-      const linkable = this.db.prepare(`
-        SELECT p.* FROM agent_governance_proposals p
-        WHERE p.status = 'activated' AND p.activated_config_id IS NULL
-          AND EXISTS (
-            SELECT 1 FROM system_config c
-            WHERE c.metadata LIKE '%"agentProposalId":"' || p.id || '"%'
-          )
+      const orphans = this.db.prepare(`
+        SELECT * FROM agent_governance_proposals
+        WHERE status = 'activated' AND activated_config_id IS NULL
+        ORDER BY created_at ASC, id ASC
       `).all() as ProposalRow[];
 
-      for (const row of linkable) {
+      for (const row of orphans) {
         const config = this.db.prepare(`
           SELECT id FROM system_config
           WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
           LIMIT 1
         `).get(row.id) as { id: string } | undefined;
-        if (!config) continue;
-        try {
-          this.db.transaction(() => {
-            this.db.prepare(`
-              UPDATE agent_governance_proposals
-              SET activated_config_id = ?, updated_at = ?
-              WHERE id = ? AND activated_config_id IS NULL
-            `).run(config.id, now, row.id);
-            this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
+
+        if (config) {
+          try {
+            this.db.transaction(() => {
+              this.db.prepare(`
+                UPDATE agent_governance_proposals
+                SET activated_config_id = ?, updated_at = ?
+                WHERE id = ? AND activated_config_id IS NULL
+              `).run(config.id, now, row.id);
+              this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
+                proposalId: row.id,
+                paramKey: row.param_key,
+                proposedValue: row.proposed_value,
+                totalWeight: row.total_weight,
+                timestamp: now,
+              });
+            })();
+            activated++;
+            logger.warn({
+              event: 'agent.governance.proposal_link_recovered',
               proposalId: row.id,
               paramKey: row.param_key,
-              proposedValue: row.proposed_value,
-              totalWeight: row.total_weight,
-              timestamp: now,
-            });
-          })();
-          activated++;
+            }, 'Linked agent proposal to its already-committed config (link/event transaction had not run)');
+          } catch (err: any) {
+            logger.error({
+              event: 'agent.governance.link_recovery_error',
+              proposalId: row.id,
+              err: err.message,
+            }, 'Failed to link orphaned agent proposal activation');
+          }
+          continue;
+        }
+
+        // No config. Only a claimed row is recoverable — see REAPPLY above.
+        if (!row.activation_claimed_at) continue;
+
+        // Same supersede rule as the main loop: a crash orphan must not
+        // resurrect an older value over a newer proposal that already applied.
+        const newerActivated = this.db.prepare(`
+          SELECT id FROM agent_governance_proposals
+          WHERE param_key = ?
+            AND COALESCE(entity_type, '__global__') = ?
+            AND status = 'activated'
+            AND activated_config_id IS NOT NULL
+            AND (created_at > ? OR (created_at = ? AND id > ?))
+          LIMIT 1
+        `).get(
+          row.param_key,
+          row.entity_type ?? GLOBAL_ENTITY_SENTINEL,
+          row.created_at, row.created_at, row.id,
+        ) as { id: string } | undefined;
+
+        if (newerActivated) {
+          this.db.prepare(`
+            UPDATE agent_governance_proposals
+            SET status = 'expired', activation_claimed_at = NULL, updated_at = ?
+            WHERE id = ? AND status = 'activated' AND activated_config_id IS NULL
+          `).run(now, row.id);
           logger.warn({
-            event: 'agent.governance.proposal_link_recovered',
+            event: 'agent.governance.orphan_superseded',
             proposalId: row.id,
             paramKey: row.param_key,
-          }, 'Linked agent proposal to its already-committed config (link/event transaction had not run)');
+            supersededBy: newerActivated.id,
+          }, 'Crash-orphaned activation closed without applying — a newer proposal for the same scope already activated');
+          continue;
+        }
+
+        try {
+          await this.activateProposalConfig(row, now);
+          activated++;
+          logger.warn({
+            event: 'agent.governance.proposal_reapply_recovered',
+            proposalId: row.id,
+            paramKey: row.param_key,
+            claimedAt: row.activation_claimed_at,
+          }, 'Re-applied a claimed activation that crashed before its config was created');
         } catch (err: any) {
           logger.error({
-            event: 'agent.governance.link_recovery_error',
+            event: 'agent.governance.reapply_recovery_error',
             proposalId: row.id,
             err: err.message,
-          }, 'Failed to link orphaned agent proposal activation');
+          }, 'Failed to re-apply crash-orphaned agent proposal activation');
         }
       }
     }
@@ -807,6 +865,14 @@ interface ProposalRow {
   status: string;
   cooldown_ends_at: string | null;
   activated_config_id: string | null;
+  /**
+   * Set when the activation sweep claims this proposal, cleared when a failed
+   * activation releases the claim (migration 069). Non-null on an `activated`
+   * row with no config means a hard crash landed inside the claim→config
+   * window — the one orphan shape that is safe to re-apply. NULL means a
+   * legacy activation, which must never be re-applied.
+   */
+  activation_claimed_at: string | null;
   expires_at: string;
   created_at: string;
   updated_at: string;

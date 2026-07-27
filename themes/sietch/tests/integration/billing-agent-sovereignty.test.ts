@@ -13,7 +13,7 @@
  * Sprint refs: Sprint 291 Task 8.1
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
@@ -708,6 +708,125 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
         value: 900,
       }),
     ).resolves.toBeDefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // The activation crash window.
+  //
+  // The claim writes the terminal status BEFORE the config exists. A thrown
+  // error releases the claim; a hard crash (SIGKILL/OOM/eviction) cannot. The
+  // claim marker is what makes that orphan recoverable without also
+  // re-activating pre-recovery LEGACY rows.
+  // ---------------------------------------------------------------------------
+
+  /** An 'activated' proposal with no config — the shape a crash leaves behind. */
+  function seedOrphan(id: string, accountId: string, claimedAt: string | null, createdAt: string): void {
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         cooldown_ends_at, expires_at, activation_claimed_at, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, '900', ?, 1, 2, 2,
+              'activated', '2020-01-01T00:00:00Z', '2099-01-01T00:00:00Z', ?, ?, ?)
+    `).run(id, accountId, claimedAt, createdAt, createdAt);
+  }
+
+  it('stamps the claim marker on activation and clears it when the claim is released', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-claim-marker');
+    const okId = randomUUID();
+    seedClaimable(okId, agentId, '900', '2026-01-01T00:00:00Z');
+
+    await governanceService.activateExpiredCooldowns();
+
+    const claimed = db.prepare(
+      `SELECT activation_claimed_at FROM agent_governance_proposals WHERE id = ?`,
+    ).get(okId) as { activation_claimed_at: string | null };
+    expect(claimed.activation_claimed_at).not.toBeNull();
+
+    // A failing activation must release the claim AND clear the marker —
+    // a released claim is retryable, not a crash orphan.
+    const failId = randomUUID();
+    seedClaimable(failId, agentId, '600', '2026-03-01T00:00:00Z');
+    const boom = new ConstitutionalGovernanceService(db);
+    vi.spyOn(boom, 'activateFromAgentGovernance').mockRejectedValue(new Error('db exploded'));
+    const failing = new AgentGovernanceService(db, undefined, boom);
+
+    await failing.activateExpiredCooldowns();
+
+    const released = db.prepare(
+      `SELECT status, activation_claimed_at FROM agent_governance_proposals WHERE id = ?`,
+    ).get(failId) as { status: string; activation_claimed_at: string | null };
+    expect(released.status).toBe('quorum_reached');
+    expect(released.activation_claimed_at).toBeNull();
+  });
+
+  it('re-applies a claimed activation that crashed before its config was created', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-crash-orphan');
+    const orphanId = randomUUID();
+    // Claimed (marker set), terminal, no config — a hard crash mid-window.
+    seedOrphan(orphanId, agentId, '2026-01-01T00:00:05Z', '2026-01-01T00:00:00Z');
+
+    expect(activeValue()).toBeUndefined();
+
+    const recovered = await governanceService.activateExpiredCooldowns();
+
+    expect(recovered).toBe(1);
+    expect(activeValue()).toBe('900');
+    const p = await governanceService.getProposal(orphanId);
+    expect(p!.status).toBe('activated');
+    expect(p!.activatedConfigId).not.toBeNull();
+  });
+
+  it('recovery is idempotent — a second sweep neither re-creates nor duplicates', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-crash-idem');
+    const orphanId = randomUUID();
+    seedOrphan(orphanId, agentId, '2026-01-01T00:00:05Z', '2026-01-01T00:00:00Z');
+
+    await governanceService.activateExpiredCooldowns();
+    const firstConfig = (await governanceService.getProposal(orphanId))!.activatedConfigId;
+
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
+
+    expect((await governanceService.getProposal(orphanId))!.activatedConfigId).toBe(firstConfig);
+    const activeCount = db.prepare(`
+      SELECT COUNT(*) AS n FROM system_config
+      WHERE param_key = 'reservation.default_ttl_seconds' AND status = 'active'
+    `).get() as { n: number };
+    expect(activeCount.n).toBe(1);
+  });
+
+  it('does NOT re-apply a legacy activation that was never claimed', async () => {
+    // The marker is the whole safety argument: an unclaimed 'activated' row
+    // predates this mechanism, and re-running it would create a config that
+    // supersedes whatever is active now.
+    const agentId = createAccount(db, 'agent', 'agent-legacy');
+    const legacyId = randomUUID();
+    seedOrphan(legacyId, agentId, null, '2026-01-01T00:00:00Z');
+
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
+
+    expect(activeValue()).toBeUndefined();
+    const p = await governanceService.getProposal(legacyId);
+    expect(p!.status).toBe('activated');
+    expect(p!.activatedConfigId).toBeNull();
+  });
+
+  it('closes a crash orphan without applying when a newer proposal already activated', async () => {
+    // Recovery must obey the same supersede rule as the main loop — a delayed
+    // orphan must not resurrect an older value over a newer applied one.
+    const agentId = createAccount(db, 'agent', 'agent-orphan-superseded');
+    const orphanId = randomUUID();
+    seedOrphan(orphanId, agentId, '2026-01-01T00:00:05Z', '2026-01-01T00:00:00Z');
+    seedClaimable(randomUUID(), agentId, '1200', '2026-02-01T00:00:00Z');
+
+    await governanceService.activateExpiredCooldowns();
+
+    // The newer proposal's value is active…
+    expect(activeValue()).toBe('1200');
+    // …and the orphan is closed, not applied.
+    const p = await governanceService.getProposal(orphanId);
+    expect(p!.status).toBe('expired');
+    expect(p!.activatedConfigId).toBeNull();
   });
 
   it('fails closed when constructed without a governance service (never activates without applying config)', async () => {
