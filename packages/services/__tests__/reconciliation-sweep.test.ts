@@ -617,6 +617,69 @@ describe('runReconciliationSweep — every mutation is tenant-scoped', () => {
     expect(result.details[0].error).toMatch(/rotation cursor stamp failed/);
   });
 
+  it('keeps two tenants fully separated across every arm in one batch', async () => {
+    // The sweep is the one place that legitimately sees all tenants at once.
+    // Enumeration is cross-community by nature; every MUTATION that follows
+    // must be attributed to exactly one community and carry only that
+    // community's identifiers.
+    const pool = { query: makeQuery({
+      stuck: [
+        stuckRow('a_pay', '2020-01-01T00:00:00Z', { community_id: 'comm_a' }),
+        stuckRow('b_pay', '2020-01-02T00:00:00Z', { community_id: 'comm_b' }),
+      ],
+      missed: [
+        missedRow('a_mint', '2020-01-03T00:00:00Z', { community_id: 'comm_a' }),
+        missedRow('b_mint', '2020-01-04T00:00:00Z', { community_id: 'comm_b' }),
+      ],
+      outbox: [
+        outboxRow('a_lot', '2020-01-05T00:00:00Z', { community_id: 'comm_a' }),
+        outboxRow('b_lot', '2020-01-06T00:00:00Z', { community_id: 'comm_b' }),
+      ],
+    }) } as unknown as import('pg').Pool;
+    stubProvider('expired');
+
+    // Record which community scope each mutation ran under.
+    const perScope: Array<{ community: string; ids: unknown }> = [];
+    mockWithCommunityScope.mockImplementation(
+      async (communityId: string, _p: unknown, fn: (c: unknown) => unknown) => {
+        scopedCommunities.push(communityId);
+        const tracking = vi.fn(async (_sql: string, params?: unknown[]) => {
+          perScope.push({ community: communityId, ids: params?.[0] });
+          return { rows: [] };
+        });
+        return fn({ query: tracking });
+      },
+    );
+
+    await runReconciliationSweep(pool, mockRedis, { ...config, batchSize: 6 });
+
+    // Every scoped statement carries only its own tenant's identifiers.
+    const belongsTo = (community: string, id: unknown): boolean =>
+      typeof id === 'string' && id.startsWith(community === 'comm_a' ? 'a_' : 'b_');
+    for (const { community, ids } of perScope) {
+      const list = Array.isArray(ids) ? ids : [ids];
+      for (const id of list) {
+        if (typeof id !== 'string' || !/^[ab]_/.test(id)) continue;
+        expect(belongsTo(community, id)).toBe(true);
+      }
+    }
+
+    // Both tenants were actually serviced — the assertion above would pass
+    // vacuously if one tenant had been dropped.
+    expect(new Set(scopedCommunities)).toEqual(new Set(['comm_a', 'comm_b']));
+    expect(mockProcessPaymentForLedger.mock.calls.map((c) => c[2].communityId).sort())
+      .toEqual(['comm_a', 'comm_b']);
+    expect(mockApplyAdj.mock.calls.map((c) => c[2].communityId).sort())
+      .toEqual(['comm_a', 'comm_b']);
+    // No mint or adjustment was attributed to the wrong tenant.
+    for (const call of mockProcessPaymentForLedger.mock.calls) {
+      expect(belongsTo(call[2].communityId, call[2].paymentId)).toBe(true);
+    }
+    for (const call of mockApplyAdj.mock.calls) {
+      expect(belongsTo(call[2].communityId, call[2].lotId)).toBe(true);
+    }
+  });
+
   it('stamps each community under its own scope and never crosses tenants', async () => {
     const pool = { query: makeQuery({
       stuck: [
