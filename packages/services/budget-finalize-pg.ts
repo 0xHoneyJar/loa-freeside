@@ -99,8 +99,13 @@ export async function finalizePg(
   try {
     await client.query('BEGIN');
 
-    // Step 2: Set tenant context for RLS (standardized SET LOCAL per Sprint 1, Task 1.1)
-    await client.query('SET LOCAL app.community_id = $1', [params.communityId]);
+    // Step 2: Set tenant context for RLS (standardized per Sprint 1, Task 1.1).
+    // set_config(..., true) is the transaction-local equivalent of SET LOCAL
+    // that ACCEPTS A BIND PARAMETER — `SET LOCAL app.community_id = $1` is a
+    // parse error, so node-postgres never reaches the query at all.
+    await client.query(`SELECT set_config('app.community_id', $1, true)`, [
+      params.communityId,
+    ]);
 
     // Step 3: Verify fence token (stale → ROLLBACK)
     const fenceValid = await verifyAndAdvanceFence(
