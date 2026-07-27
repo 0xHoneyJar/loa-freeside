@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -36,6 +36,12 @@ const refreshFileDependencyDist = (sourceRel, installedRel) => {
   // workspace links. Refresh only the built dist payload for the exact local
   // dependency package that Node will load when executing the compiled CLI.
   const installedDist = resolve(installedRoot, "dist");
+
+  // npm can materialize file: dependencies as symlinks. In that layout the
+  // installed dist is the source dist; deleting it would erase the build we
+  // just produced and make the following copy fail with ENOENT.
+  if (existsSync(installedDist) && realpathSync(installedDist) === realpathSync(sourceDist)) return;
+
   rmSync(installedDist, { recursive: true, force: true });
   cpSync(sourceDist, installedDist, { recursive: true });
 };
