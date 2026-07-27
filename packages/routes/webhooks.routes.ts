@@ -450,14 +450,26 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       const isTerminalTransition = ['failed', 'refunded', 'expired'].includes(payload.payment_status);
       const isTerminalCurrent = ['finished', 'failed', 'refunded', 'expired'].includes(statusResult.rows[0].status);
 
-      if (isTerminalCurrent) {
+      // A `finished` event arriving after the row already settled as
+      // failed/expired still owes credit — the provider says the customer
+      // paid (a late payment on an expired invoice is the common case). The
+      // status itself is not correctable (monotonicity ranks finished 5 below
+      // expired 6 / failed 7) and neither reconciliation arm revisits those
+      // rows, so short-circuiting here would lose the purchase permanently.
+      // Fall through to the idempotent mint instead; the UPDATE below still
+      // (correctly) refuses to move the status backwards.
+      const isRecoverableFinished =
+        payload.payment_status === 'finished' &&
+        ['failed', 'expired'].includes(statusResult.rows[0].status);
+
+      if (isTerminalCurrent && !isRecoverableFinished) {
         logger.info({ paymentId, current: statusResult.rows[0].status, incoming: payload.payment_status },
           'Payment already in terminal state');
         res.status(200).json({ status: 'skipped', reason: 'terminal_state' });
         return;
       }
 
-      if (!isTerminalTransition && currentOrdinal <= existingOrdinal) {
+      if (!isTerminalTransition && !isRecoverableFinished && currentOrdinal <= existingOrdinal) {
         logger.info(
           { paymentId, current: statusResult.rows[0].status, incoming: payload.payment_status },
           'Backward status transition rejected (monotonicity)',
@@ -507,13 +519,51 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       ],
     );
 
+    // Losing the status write does NOT decide whether credits are owed.
+    //
+    // `finished` is the credit-bearing fact: the provider states the payment
+    // completed. A concurrent `failed`/`expired` delivery can commit first —
+    // both bypass the rank check from any non-terminal state — and then the
+    // monotonicity trigger makes the status permanently uncorrectable
+    // (finished is rank 5, BELOW expired 6 and failed 7), while both
+    // reconciliation arms exclude failed/expired rows. Suppressing the mint
+    // here would lose the purchased credit forever. credit_lots is unique on
+    // payment_id, so minting without owning the status column is idempotent.
+    //
+    // `refunded` is the one terminal state that must still suppress the mint:
+    // it means the money was returned.
+    let mintWithoutStatusWrite = false;
+
     if (updateResult.rowCount === 0) {
-      logger.info(
-        { paymentId, incoming: payload.payment_status },
-        'Status update lost a concurrent transition race — no overwrite',
+      if (!isFinished) {
+        logger.info(
+          { paymentId, incoming: payload.payment_status },
+          'Status update lost a concurrent transition race — no overwrite',
+        );
+        res.status(200).json({ status: 'skipped', reason: 'concurrent_transition' });
+        return;
+      }
+
+      const raceWinner = await pool.query<{ status: string }>(
+        `SELECT status FROM crypto_payments WHERE payment_id = $1`,
+        [paymentId],
       );
-      res.status(200).json({ status: 'skipped', reason: 'concurrent_transition' });
-      return;
+      const winningStatus = raceWinner.rows[0]?.status ?? null;
+
+      if (winningStatus === 'refunded') {
+        logger.warn(
+          { paymentId, winningStatus },
+          'finished webhook lost to a refund — not minting',
+        );
+        res.status(200).json({ status: 'skipped', reason: 'refunded' });
+        return;
+      }
+
+      mintWithoutStatusWrite = true;
+      logger.warn(
+        { paymentId, winningStatus },
+        'finished webhook lost the status race — crediting anyway (status is not correctable)',
+      );
     }
 
     // -------------------------------------------------------------------
@@ -557,6 +607,9 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
             actually_paid: payload.actually_paid,
             pay_currency: payload.pay_currency,
             price_amount: payload.price_amount,
+            // Durable operator signal: the credit was applied while the
+            // payment row stayed at a non-correctable terminal failure.
+            ...(mintWithoutStatusWrite ? { credited_without_status_write: true } : {}),
           }),
           existingPayment.community_id,
         ],
@@ -565,7 +618,11 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       // Audit log failure is non-blocking
     }
 
-    res.status(200).json({ status: 'processed' });
+    res.status(200).json(
+      mintWithoutStatusWrite
+        ? { status: 'processed', reason: 'credited_without_status_write' }
+        : { status: 'processed' },
+    );
   });
 
   return router;

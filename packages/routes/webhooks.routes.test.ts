@@ -571,6 +571,142 @@ describe('POST /webhooks/nowpayments — concurrent status transitions', () => {
     // Credits minted exactly once (by the finished delivery)
     expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
   });
+
+  // -------------------------------------------------------------------------
+  // `finished` is the credit-bearing fact and must never lose it.
+  //
+  // The monotonicity trigger ranks finished(5) BELOW expired(6) and failed(7),
+  // so once a failure transition commits the status can never be corrected —
+  // and neither reconciliation arm revisits failed/expired rows. If the route
+  // let a failure transition suppress the mint, the purchase would be lost
+  // permanently.
+  // -------------------------------------------------------------------------
+
+  it('credits a finished delivery that LOSES the status race to a concurrent failure', async () => {
+    let selects = 0;
+    const holder: { state?: { status: string } } = {};
+    const { pool, state } = makeFakePool({
+      status: 'waiting',
+      selectStatus: () => {
+        selects += 1;
+        if (selects === 1) {
+          // A concurrent `failed` delivery commits between our advisory read
+          // and our UPDATE — the classic lost-race window.
+          holder.state!.status = 'failed';
+          return 'waiting';
+        }
+        return holder.state!.status;
+      },
+    });
+    holder.state = state;
+    const { app } = makeApp({ pool });
+
+    const finished = signedBody({
+      payment_id: 801, payment_status: 'finished', order_id: 'order-lost-race',
+      price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+    });
+
+    const res = await post(app, finished.raw, finished.sig);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'processed', reason: 'credited_without_status_write' });
+    // Status legitimately stays 'failed' (the trigger forbids moving it back)…
+    expect(state.status).toBe('failed');
+    // …but the credit was minted anyway.
+    expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+    expect(processPaymentForLedger).toHaveBeenCalledWith(expect.anything(), expect.anything(),
+      expect.objectContaining({ paymentId: '801', communityId: 'community-1' }));
+  });
+
+  it.each(['failed', 'expired'])(
+    'credits a late finished delivery arriving after the row already settled as %s',
+    async (settled) => {
+      // Sequential (not a race): the invoice expired / failed, the customer
+      // paid late, and the provider sends a signed `finished`.
+      const { pool, state } = makeFakePool({ status: settled });
+      const { app } = makeApp({ pool });
+
+      const finished = signedBody({
+        payment_id: 802, payment_status: 'finished', order_id: 'order-late',
+        price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+      });
+
+      const res = await post(app, finished.raw, finished.sig);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ status: 'processed', reason: 'credited_without_status_write' });
+      expect(state.status).toBe(settled);
+      expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does NOT credit a finished delivery when the payment was refunded', async () => {
+    // `refunded` is the one terminal state that must suppress the mint —
+    // the money went back to the customer.
+    const { pool } = makeFakePool({ status: 'refunded' });
+    const { app } = makeApp({ pool });
+
+    const finished = signedBody({
+      payment_id: 803, payment_status: 'finished', order_id: 'order-refunded',
+      price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+    });
+
+    const res = await post(app, finished.raw, finished.sig);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'skipped', reason: 'terminal_state' });
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
+  });
+
+  it('does NOT credit a finished delivery that loses the race to a refund', async () => {
+    let selects = 0;
+    const holder: { state?: { status: string } } = {};
+    const { pool, state } = makeFakePool({
+      status: 'waiting',
+      selectStatus: () => {
+        selects += 1;
+        if (selects === 1) {
+          holder.state!.status = 'refunded';
+          return 'waiting';
+        }
+        return holder.state!.status;
+      },
+    });
+    holder.state = state;
+    const { app } = makeApp({ pool });
+
+    const finished = signedBody({
+      payment_id: 804, payment_status: 'finished', order_id: 'order-refund-race',
+      price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+    });
+
+    const res = await post(app, finished.raw, finished.sig);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'skipped', reason: 'refunded' });
+    expect(processPaymentForLedger).not.toHaveBeenCalled();
+  });
+
+  it('still mints exactly once when finished and failed are delivered in either order', async () => {
+    // Both orderings must converge on exactly one credit lot. The mint itself
+    // is idempotent on payment_id; the route must simply never skip it.
+    for (const order of [['finished', 'failed'], ['failed', 'finished']]) {
+      vi.mocked(processPaymentForLedger).mockClear();
+      const { pool } = makeFakePool({ status: 'waiting' });
+      const { app } = makeApp({ pool });
+
+      for (const status of order) {
+        const body = signedBody({
+          payment_id: 805, payment_status: status, order_id: 'order-either',
+          price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+        });
+        const res = await post(app, body.raw, body.sig);
+        expect(res.status).toBe(200);
+      }
+
+      expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
+    }
+  });
 });
 
 describe('POST /webhooks/nowpayments — per-IP rate limiting', () => {

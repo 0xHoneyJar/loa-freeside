@@ -97,10 +97,9 @@ CREATE TABLE IF NOT EXISTS pending_redis_credit_adjustments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Drain order: least-recently-attempted (never-attempted first) among pending.
--- Drain order: oldest-created first (created_at ASC), so a sustained stream of
--- fresh never-attempted rows can never starve older failed rows — see the sweep
--- drain query. Partial index keeps only unresolved rows hot.
+-- Drain order: least-recently-serviced first. Superseded by the expression
+-- index in migration 0021 — see the rationale there. Partial index keeps only
+-- unresolved rows hot.
 CREATE INDEX IF NOT EXISTS idx_pending_redis_adj_pending
   ON pending_redis_credit_adjustments(created_at)
   WHERE applied_at IS NULL;

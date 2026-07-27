@@ -1,14 +1,26 @@
 /**
  * NOWPayments Reconciliation Sweep — Missed Webhook Recovery
  *
- * EventBridge scheduled task (every 5 minutes) that polls NOWPayments API
- * for stuck payments and triggers idempotent credit lot minting for
- * missed webhooks.
+ * Scheduled task (every 5 minutes) that recovers purchases the webhook path
+ * could not complete. Three arms share one batch:
+ *
+ *   1. stuck            — non-terminal payments whose provider status moved on
+ *   2. missed_mint      — payments that owe a credit lot (status `finished`,
+ *                         or `failed`/`expired` with a signed `finished` IPN
+ *                         on record — see migration 0021)
+ *   3. redis_adjustment — durable outbox of budget increments whose Redis
+ *                         INCRBY has not landed yet (migration 0020)
+ *
+ * Slots are allocated by least-recently-serviced across all three, so neither a
+ * standing backlog nor a permanently-failing row can starve the others — see
+ * the SweepCandidate fairness contract.
  *
  * Operates independently of Redis availability — all queries are
- * PostgreSQL-first with Redis adjustment as best-effort.
+ * PostgreSQL-first, and a Postgres-only mint enqueues its Redis adjustment in
+ * the same transaction so nothing is lost while Redis is down.
  *
  * @see Sprint 2, Task 2.2 (F-19)
+ * @see docs/runbook/nowpayments-webhook-reliability.md
  * @module packages/services/reconciliation-sweep
  */
 
@@ -98,14 +110,85 @@ export interface ReconciliationConfig {
   /** Minimum age before checking (prevents racing with webhooks) */
   minAgeMins: number;
   /**
-   * Maximum payments to process per sweep, across both the non-terminal and
-   * missed-mint arms. Effective floor is 2: the two arms each need a slot, so a
-   * value of 1 is treated as 2 (one per arm) to keep either arm from starving
-   * the other. Set >= 2 for the cap to apply exactly.
+   * Maximum work items processed per sweep, across ALL arms (non-terminal
+   * poll, missed-mint recovery, Redis-adjustment drain). Honored exactly —
+   * `batchSize: 1` means one item per sweep, never two.
+   *
+   * Slots are allocated by least-recently-serviced across arms, so a small
+   * batch cannot let one arm monopolise the sweep (see SweepCandidate).
    */
   batchSize: number;
   /** Request timeout in ms */
   timeoutMs: number;
+}
+
+/**
+ * One unit of work competing for a slot in the sweep's batch.
+ *
+ * FAIRNESS CONTRACT. Every arm exposes the same `fairnessKey`: the instant the
+ * sweep last serviced that item (its creation time if never serviced). Slots go
+ * to the globally-least-recently-serviced items, and servicing an item stamps
+ * its key to NOW() *before* the work runs. Two properties follow:
+ *
+ *   1. No arm starves another. A standing backlog in one arm cannot consume
+ *      every slot forever, because its rows rotate to the back of the global
+ *      order as soon as they are serviced — including at `batchSize: 1`, where
+ *      the single slot alternates instead of being permanently captured.
+ *   2. No item starves within its arm. A permanently-failing "poison" row is
+ *      stamped even when its processing throws, so it cannot re-win the head
+ *      slot every sweep and block the rows behind it. It is still retried, just
+ *      at the back of the rotation.
+ *
+ * Ties break on a stable secondary key so a given DB state always yields the
+ * same batch — sweeps are deterministic and reproducible in tests.
+ */
+type SweepCandidate =
+  | { kind: 'stuck'; fairnessKey: number; row: StuckRow }
+  | { kind: 'missed_mint'; fairnessKey: number; row: MissedMintRow }
+  | { kind: 'redis_adjustment'; fairnessKey: number; row: PendingAdjustmentRow };
+
+interface StuckRow {
+  payment_id: string;
+  community_id: string;
+  status: string;
+  price_amount: number;
+  order_id: string;
+  fairness_key: string | Date;
+}
+
+interface MissedMintRow {
+  payment_id: string;
+  community_id: string;
+  price_amount: number;
+  order_id: string;
+  status: string;
+  fairness_key: string | Date;
+}
+
+interface PendingAdjustmentRow {
+  lot_id: string;
+  community_id: string;
+  amount_cents: string;
+  fairness_key: string | Date;
+}
+
+/** Arm precedence for the sweep's stable tie-break. */
+const KIND_ORDER = { stuck: 0, missed_mint: 1, redis_adjustment: 2 } as const;
+
+/** Stable secondary sort key for a candidate. */
+function candidateId(c: SweepCandidate): string {
+  return c.kind === 'redis_adjustment' ? c.row.lot_id : c.row.payment_id;
+}
+
+/** Normalize a Postgres timestamptz (Date or ISO string) to epoch millis. */
+function toEpochMs(value: string | Date | null | undefined): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  // Unknown/absent cursor sorts oldest — never-serviced work wins the slot.
+  return 0;
 }
 
 // --------------------------------------------------------------------------
@@ -152,17 +235,18 @@ const STATUS_RANK: Record<string, number> = {
 /**
  * Run the NOWPayments reconciliation sweep.
  *
- * Queries crypto_payments for every non-terminal status — including
- * partially_paid, which can still receive a delayed `finished` webhook that
- * the freshness gate quarantines — AND created_at < now() - minAgeMins.
- * For each:
- *   1. Poll NOWPayments API for current status
- *   2. If finished + no credit_lots row: trigger idempotent mint
- *   3. If failed/expired: update crypto_payments status
+ * Enumerates each arm's candidates (oldest cursor first, capped at batchSize),
+ * merges them into one batch of exactly batchSize least-recently-serviced
+ * items, stamps every selected item's rotation cursor, then processes them:
+ *   - stuck            → poll the provider, persist only forward transitions,
+ *                        mint if the provider now reports `finished`
+ *   - missed_mint      → idempotent mint for a purchase that owes a lot
+ *   - redis_adjustment → exactly-once Redis budget increment + acknowledgement
  *
- * @param pool - PostgreSQL connection pool
- * @param redis - Redis client (best-effort for budget adjustment)
+ * @param pool - PostgreSQL connection pool used for all per-tenant mutations
+ * @param redis - Redis client (null disables the outbox drain; mints still work)
  * @param config - Reconciliation configuration
+ * @param options - Cross-tenant read authority for candidate enumeration
  * @returns Sweep result with metrics
  */
 export async function runReconciliationSweep(
@@ -184,54 +268,223 @@ export async function runReconciliationSweep(
   // via withCommunityScope, so this authority is read-only in effect.
   const maintenancePool = options.maintenancePool ?? pool;
 
-  // Split the batch between the two arms so a persistent backlog of stuck
-  // non-terminal payments can NEVER starve the missed-mint recovery arm below.
-  // The stuck arm is capped to ceil(batch/2); the missed-mint arm then always
-  // has >= floor(batch/2) capacity. The effective batch floors at 2 so that
-  // even batchSize:1 gives each arm one slot — a single shared slot would
-  // otherwise be consumed entirely by whichever arm has a standing backlog,
-  // starving the other on every sweep.
-  const effectiveBatch = Math.max(2, mergedConfig.batchSize);
-  const stuckLimit = Math.max(1, Math.ceil(effectiveBatch / 2));
+  // batchSize is honored EXACTLY: it is the total across all arms, never a
+  // per-arm allowance and never silently raised. Each arm offers up to
+  // batchSize candidates; the merge below keeps only the batchSize
+  // least-recently-serviced of them (see SweepCandidate for the fairness
+  // contract that makes this starvation-free even at batchSize 1).
+  const batchSize = Math.max(1, Math.floor(mergedConfig.batchSize));
 
-  // Query stuck payments from PostgreSQL, least-recently-checked first.
-  // The crypto_payment_checks sidecar (migration 0020) records when each row
-  // was last polled; ordering by it (NULLS FIRST = never-checked wins) rotates
-  // the capped half-batch through the whole backlog instead of refilling it
-  // with the same oldest rows every sweep, which would starve newer payments.
-  const stuckResult = await maintenancePool.query<{
-    payment_id: string;
-    community_id: string;
-    status: string;
-    price_amount: number;
-    order_id: string;
-  }>(
-    `SELECT p.payment_id, p.community_id, p.status, p.price_amount, p.order_id
+  // Arm 1 — non-terminal payments whose provider status may have moved on.
+  const stuckResult = await maintenancePool.query<StuckRow>(
+    `SELECT p.payment_id, p.community_id, p.status, p.price_amount, p.order_id,
+            COALESCE(c.last_checked_at, p.created_at) AS fairness_key
      FROM crypto_payments p
      LEFT JOIN crypto_payment_checks c ON c.payment_id = p.payment_id
      WHERE p.status IN ('waiting', 'confirming', 'confirmed', 'sending', 'partially_paid')
        AND p.created_at < NOW() - $1 * INTERVAL '1 minute'
-     ORDER BY c.last_checked_at ASC NULLS FIRST, p.created_at ASC
+     ORDER BY COALESCE(c.last_checked_at, p.created_at) ASC, p.payment_id ASC
      LIMIT $2`,
-    [mergedConfig.minAgeMins, stuckLimit],
+    [mergedConfig.minAgeMins, batchSize],
   );
 
-  // Stamp every fetched row's check cursor to NOW() so it rotates to the back
-  // of the queue next sweep — even if the poll below errors or leaves it
-  // pending. Trigger-free sidecar write; the monotonicity guard is untouched.
+  // Arm 2 — purchases that owe a credit lot but will never be revisited by
+  // arm 1 because the row is already terminal. Two sources:
+  //   (a) status = 'finished' but the mint threw after the webhook acked.
+  //   (b) status = 'failed'/'expired' while a SIGNED `finished` IPN is on
+  //       record in webhook_events. A concurrent or late failure transition
+  //       wins the status column (monotonicity ranks finished 5 below expired
+  //       6 / failed 7, so it can never be corrected), but the customer paid
+  //       and the credit is owed. The webhook_events row is durable proof:
+  //       it is written only after HMAC verification.
+  // The mint is idempotent on payment_id, so re-running either source is safe.
+  const missedMintResult = await maintenancePool.query<MissedMintRow>(
+    `SELECT p.payment_id, p.community_id, p.price_amount, p.order_id, p.status,
+            COALESCE(c.last_checked_at, p.updated_at) AS fairness_key
+     FROM crypto_payments p
+     LEFT JOIN credit_lots l ON l.payment_id = p.payment_id
+     LEFT JOIN crypto_payment_checks c ON c.payment_id = p.payment_id
+     WHERE l.id IS NULL
+       AND p.updated_at < NOW() - $1 * INTERVAL '1 minute'
+       AND (
+         p.status = 'finished'
+         OR (
+           p.status IN ('failed', 'expired')
+           AND EXISTS (
+             SELECT 1 FROM webhook_events w
+             WHERE w.provider = 'nowpayments'
+               AND w.event_id = p.payment_id || ':finished'
+           )
+         )
+       )
+     ORDER BY COALESCE(c.last_checked_at, p.updated_at) ASC, p.payment_id ASC
+     LIMIT $2`,
+    [mergedConfig.minAgeMins, batchSize],
+  );
+
+  // Arm 3 — durable Redis-adjustment outbox: mints whose budget INCRBY failed
+  // (or was deferred because Redis was down) are retried until the credit
+  // lands exactly once. The apply is idempotent (atomic marker+INCRBY), so a
+  // race with the inline webhook apply is safe. Only runs when Redis is up.
+  const pendingAdjResult = redis
+    ? await maintenancePool.query<PendingAdjustmentRow>(
+        `SELECT lot_id, community_id, amount_cents,
+                COALESCE(last_attempt_at, created_at) AS fairness_key
+         FROM pending_redis_credit_adjustments
+         WHERE applied_at IS NULL
+         ORDER BY COALESCE(last_attempt_at, created_at) ASC, lot_id ASC
+         LIMIT $1`,
+        [batchSize],
+      )
+    : { rows: [] as PendingAdjustmentRow[] };
+
+  // Merge the arms and keep the batchSize least-recently-serviced items.
+  // Ties break on kind then id so an identical DB state always produces an
+  // identical batch.
+  const batch: SweepCandidate[] = [
+    ...stuckResult.rows.map((row: StuckRow): SweepCandidate => ({
+      kind: 'stuck', fairnessKey: toEpochMs(row.fairness_key), row,
+    })),
+    ...missedMintResult.rows.map((row: MissedMintRow): SweepCandidate => ({
+      kind: 'missed_mint', fairnessKey: toEpochMs(row.fairness_key), row,
+    })),
+    ...pendingAdjResult.rows.map((row: PendingAdjustmentRow): SweepCandidate => ({
+      kind: 'redis_adjustment', fairnessKey: toEpochMs(row.fairness_key), row,
+    })),
+  ]
+    .sort(
+      (a: SweepCandidate, b: SweepCandidate) =>
+        a.fairnessKey - b.fairnessKey ||
+        KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
+        candidateId(a).localeCompare(candidateId(b)),
+    )
+    .slice(0, batchSize);
+
+  // Stamp every selected item's rotation cursor to NOW() BEFORE doing the work,
+  // so an item that errors (or stays pending) still rotates to the back of the
+  // global order. Without the pre-stamp, one permanently-failing row would
+  // re-win the head slot every sweep and block everything behind it.
   //
-  // crypto_payment_checks carries forced tenant RLS, so the write is grouped by
+  // Both cursor tables carry forced tenant RLS, so writes are grouped by
   // community and each group runs inside withCommunityScope. A single
-  // cross-community upsert would either trip the strict
+  // cross-community write would either trip the strict
   // app.current_community_id() guard or silently write nothing.
-  const stuckByCommunity = new Map<string, string[]>();
-  for (const row of stuckResult.rows) {
-    const ids = stuckByCommunity.get(row.community_id) ?? [];
-    ids.push(row.payment_id);
-    stuckByCommunity.set(row.community_id, ids);
+  await stampRotationCursors(pool, batch);
+
+  const result: ReconciliationSweepResult = {
+    paymentsChecked: 0,
+    recoveredCount: 0,
+    failedCount: 0,
+    pendingCount: 0,
+    errorCount: 0,
+    redisAdjustmentsApplied: 0,
+    details: [],
+  };
+
+  for (const candidate of batch) {
+    if (candidate.kind === 'stuck') {
+      const payment = candidate.row;
+      result.paymentsChecked++;
+      try {
+        const detail = await reconcilePayment(pool, redis, payment, mergedConfig);
+        result.details.push(detail);
+
+        switch (detail.action) {
+          case 'recovered': result.recoveredCount++; break;
+          case 'failed':
+          case 'expired': result.failedCount++; break;
+          case 'pending': result.pendingCount++; break;
+          case 'error': result.errorCount++; break;
+        }
+      } catch (err) {
+        result.errorCount++;
+        result.details.push({
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          previousStatus: payment.status,
+          newStatus: null,
+          action: 'error',
+          error: (err as Error).message,
+        });
+      }
+      continue;
+    }
+
+    if (candidate.kind === 'missed_mint') {
+      const payment = candidate.row;
+      result.paymentsChecked++;
+      try {
+        const lotId = await mintMissedLot(pool, redis, payment);
+        result.recoveredCount++;
+        result.details.push({
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          previousStatus: payment.status,
+          newStatus: payment.status,
+          action: 'recovered',
+          lotId,
+        });
+      } catch (err) {
+        result.errorCount++;
+        result.details.push({
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          previousStatus: payment.status,
+          newStatus: null,
+          action: 'error',
+          error: (err as Error).message,
+        });
+      }
+      continue;
+    }
+
+    const adj = candidate.row;
+    try {
+      // Apply + acknowledge inside the adjustment's own tenant scope: the
+      // outbox table has forced RLS, and scoping per row also makes a
+      // cross-tenant acknowledgement impossible.
+      const applied = await withCommunityScope(adj.community_id, pool, (client) =>
+        applyRedisCreditAdjustment(redis as Redis, client, {
+          lotId: adj.lot_id,
+          communityId: adj.community_id,
+          amountCents: BigInt(adj.amount_cents),
+        }),
+      );
+      if (applied) result.redisAdjustmentsApplied++;
+    } catch (err) {
+      result.errorCount++;
+      result.details.push({
+        paymentId: adj.lot_id,
+        communityId: adj.community_id,
+        previousStatus: 'finished',
+        newStatus: null,
+        action: 'error',
+        error: (err as Error).message,
+      });
+    }
   }
 
-  for (const [communityId, paymentIds] of stuckByCommunity) {
+  return result;
+}
+
+/**
+ * Stamp the rotation cursor of every selected item, grouped by community and
+ * written inside that community's RLS scope. Runs before any processing so a
+ * failing item still rotates.
+ */
+async function stampRotationCursors(pool: Pool, batch: SweepCandidate[]): Promise<void> {
+  const paymentsByCommunity = new Map<string, string[]>();
+  const lotsByCommunity = new Map<string, string[]>();
+
+  for (const candidate of batch) {
+    const target = candidate.kind === 'redis_adjustment' ? lotsByCommunity : paymentsByCommunity;
+    const key = candidate.row.community_id;
+    const ids = target.get(key) ?? [];
+    ids.push(candidate.kind === 'redis_adjustment' ? candidate.row.lot_id : candidate.row.payment_id);
+    target.set(key, ids);
+  }
+
+  for (const [communityId, paymentIds] of paymentsByCommunity) {
     await withCommunityScope(communityId, pool, (client) =>
       client.query(
         `INSERT INTO crypto_payment_checks (payment_id, community_id)
@@ -242,194 +495,63 @@ export async function runReconciliationSweep(
     );
   }
 
-  const result: ReconciliationSweepResult = {
-    paymentsChecked: stuckResult.rows.length,
-    recoveredCount: 0,
-    failedCount: 0,
-    pendingCount: 0,
-    errorCount: 0,
-    redisAdjustmentsApplied: 0,
-    details: [],
-  };
-
-  for (const payment of stuckResult.rows) {
-    try {
-      const detail = await reconcilePayment(
-        pool,
-        redis,
-        payment,
-        mergedConfig,
-      );
-      result.details.push(detail);
-
-      switch (detail.action) {
-        case 'recovered': result.recoveredCount++; break;
-        case 'failed':
-        case 'expired': result.failedCount++; break;
-        case 'pending': result.pendingCount++; break;
-        case 'error': result.errorCount++; break;
-      }
-    } catch (err) {
-      result.errorCount++;
-      result.details.push({
-        paymentId: payment.payment_id,
-        communityId: payment.community_id,
-        previousStatus: payment.status,
-        newStatus: null,
-        action: 'error',
-        error: (err as Error).message,
-      });
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Missed mints on already-terminal rows: when the webhook marked the
-  // payment 'finished' but processPaymentForLedger threw afterwards, the
-  // handler acked 200 and the row is terminal — the non-terminal sweep above
-  // never sees it again. Recover: finished payments with no credit_lots row
-  // get an idempotent mint (no API poll needed; the status is known).
-  // -------------------------------------------------------------------------
-  // batchSize is the max payments per sweep across BOTH arms — cap this arm to
-  // the capacity the non-terminal arm left, so a backlog can't double the
-  // configured DB/Redis/mint workload in one run.
-  const missedMintLimit = Math.max(0, effectiveBatch - stuckResult.rows.length);
-  const missedMintResult = missedMintLimit === 0
-    ? { rows: [] as Array<{ payment_id: string; community_id: string; price_amount: number; order_id: string }> }
-    : await maintenancePool.query<{
-        payment_id: string;
-        community_id: string;
-        price_amount: number;
-        order_id: string;
-      }>(
-        `SELECT p.payment_id, p.community_id, p.price_amount, p.order_id
-         FROM crypto_payments p
-         LEFT JOIN credit_lots l ON l.payment_id = p.payment_id
-         WHERE p.status = 'finished'
-           AND l.id IS NULL
-           AND p.updated_at < NOW() - $1 * INTERVAL '1 minute'
-         ORDER BY p.updated_at ASC
-         LIMIT $2`,
-        [mergedConfig.minAgeMins, missedMintLimit],
-      );
-
-  for (const payment of missedMintResult.rows) {
-    result.paymentsChecked++;
-    try {
-      if (redis) {
-        const lotResult = await processPaymentForLedger(pool, redis, {
-          paymentId: payment.payment_id,
-          communityId: payment.community_id,
-          priceUsd: payment.price_amount,
-          orderId: payment.order_id,
-        });
-        result.recoveredCount++;
-        result.details.push({
-          paymentId: payment.payment_id,
-          communityId: payment.community_id,
-          previousStatus: 'finished',
-          newStatus: 'finished',
-          action: 'recovered',
-          lotId: lotResult.lotId,
-        });
-      } else {
-        // Redis unavailable — Postgres-only mint, with the Redis adjustment
-        // durably enqueued in the SAME transaction so the outbox drain below
-        // applies it once Redis returns (no lost purchased credit).
-        const amountMicro = usdToMicroSafe(payment.price_amount);
-        const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-        const lotId = await withCommunityScope(payment.community_id, pool, async (client) => {
-          const id = await mintCreditLot(client, {
-            community_id: payment.community_id,
-            source: 'purchase',
-            amount_micro: amountMicro,
-            payment_id: payment.payment_id,
-            expires_at: expiresAt,
-          });
-          if (id) {
-            await enqueueRedisCreditAdjustment(client, {
-              lotId: id,
-              communityId: payment.community_id,
-              amountCents: amountMicro / MICRO_PER_CENT,
-            });
-          }
-          return id;
-        });
-        result.recoveredCount++;
-        result.details.push({
-          paymentId: payment.payment_id,
-          communityId: payment.community_id,
-          previousStatus: 'finished',
-          newStatus: 'finished',
-          action: 'recovered',
-          lotId,
-        });
-      }
-    } catch (err) {
-      result.errorCount++;
-      result.details.push({
-        paymentId: payment.payment_id,
-        communityId: payment.community_id,
-        previousStatus: 'finished',
-        newStatus: null,
-        action: 'error',
-        error: (err as Error).message,
-      });
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Drain the durable Redis-adjustment outbox: mints whose INCRBY failed (or
-  // was deferred because Redis was down) are retried here until the credit
-  // lands exactly once. The apply is idempotent (atomic marker+INCRBY), so a
-  // race with the inline webhook apply is safe. Only runs when Redis is up.
-  //
-  // Order oldest-created first (NOT least-recently-attempted): a NULLS-FIRST
-  // last_attempt_at order would let a sustained stream of fresh never-attempted
-  // rows perpetually jump ahead of older failed rows and starve them. FIFO by
-  // created_at guarantees every purchase is eventually credited.
-  // -------------------------------------------------------------------------
-  if (redis) {
-    const pendingAdj = await maintenancePool.query<{
-      lot_id: string;
-      community_id: string;
-      amount_cents: string;
-    }>(
-      `SELECT lot_id, community_id, amount_cents
-       FROM pending_redis_credit_adjustments
-       WHERE applied_at IS NULL
-       ORDER BY created_at ASC
-       LIMIT $1`,
-      [mergedConfig.batchSize],
+  for (const [communityId, lotIds] of lotsByCommunity) {
+    // attempts is bumped by applyRedisCreditAdjustment (which also runs on the
+    // inline webhook path); this write only advances the rotation cursor.
+    await withCommunityScope(communityId, pool, (client) =>
+      client.query(
+        `UPDATE pending_redis_credit_adjustments
+         SET last_attempt_at = NOW()
+         WHERE lot_id = ANY($1::uuid[]) AND applied_at IS NULL`,
+        [lotIds],
+      ),
     );
+  }
+}
 
-    for (const adj of pendingAdj.rows) {
-      try {
-        // Apply + acknowledge inside the adjustment's own tenant scope: the
-        // outbox table has forced RLS, and scoping per row also makes a
-        // cross-tenant acknowledgement impossible.
-        const applied = await withCommunityScope(adj.community_id, pool, (client) =>
-          applyRedisCreditAdjustment(redis, client, {
-            lotId: adj.lot_id,
-            communityId: adj.community_id,
-            amountCents: BigInt(adj.amount_cents),
-          }),
-        );
-        if (applied) result.redisAdjustmentsApplied++;
-      } catch (err) {
-        result.errorCount++;
-        result.details.push({
-          paymentId: adj.lot_id,
-          communityId: adj.community_id,
-          previousStatus: 'finished',
-          newStatus: null,
-          action: 'error',
-          error: (err as Error).message,
-        });
-      }
-    }
+/**
+ * Idempotently mint the credit lot a terminal payment still owes.
+ *
+ * With Redis: processPaymentForLedger mints and applies the budget increment,
+ * enqueuing the durable outbox row in the mint transaction so a failed INCRBY
+ * is retried by arm 3. Without Redis: Postgres-only mint with the same
+ * outbox row enqueued in the same transaction — no lost purchased credit.
+ */
+async function mintMissedLot(
+  pool: Pool,
+  redis: Redis | null,
+  payment: MissedMintRow,
+): Promise<string | null> {
+  if (redis) {
+    const lotResult = await processPaymentForLedger(pool, redis, {
+      paymentId: payment.payment_id,
+      communityId: payment.community_id,
+      priceUsd: payment.price_amount,
+      orderId: payment.order_id,
+    });
+    return lotResult.lotId;
   }
 
-  return result;
+  const amountMicro = usdToMicroSafe(payment.price_amount);
+  const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+  return withCommunityScope(payment.community_id, pool, async (client) => {
+    const id = await mintCreditLot(client, {
+      community_id: payment.community_id,
+      source: 'purchase',
+      amount_micro: amountMicro,
+      payment_id: payment.payment_id,
+      expires_at: expiresAt,
+    });
+    if (id) {
+      await enqueueRedisCreditAdjustment(client, {
+        lotId: id,
+        communityId: payment.community_id,
+        amountCents: amountMicro / MICRO_PER_CENT,
+      });
+    }
+    return id;
+  });
 }
 
 /**
