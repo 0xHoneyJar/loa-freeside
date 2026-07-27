@@ -27,6 +27,18 @@ vi.mock('../services/nowpayments-handler.js', () => ({
   verifyPaymentExists: vi.fn(),
 }));
 
+// withCommunityScope wraps each tenant-scoped statement in BEGIN/SET LOCAL/
+// COMMIT against a real pg client. Replace it with a pass-through that records
+// the community it was given, so the tests can assert WHICH connection ran a
+// statement and under WHICH scope.
+const { mockWithCommunityScope, scopedCommunities } = vi.hoisted(() => ({
+  mockWithCommunityScope: vi.fn(),
+  scopedCommunities: [] as string[],
+}));
+vi.mock('../services/community-scope.js', () => ({
+  withCommunityScope: mockWithCommunityScope,
+}));
+
 import { createWebhookRouter, captureRawBody } from './webhooks.routes.js';
 import { processPaymentForLedger, verifyPaymentExists } from '../services/nowpayments-handler.js';
 
@@ -107,6 +119,8 @@ function makeFakePool(opts: { status?: string; failInsertTimes?: number; selectS
 
 type AppOpts = {
   pool: { query: ReturnType<typeof vi.fn> };
+  /** Privileged connection for the two operations that cannot be scoped. */
+  systemPool?: { query: ReturnType<typeof vi.fn> };
   rawBodyMode?: 'verify-hook' | 'raw-buffer' | 'parsed-json-only';
   webhookMaxAgeMs?: number;
 };
@@ -131,6 +145,8 @@ function makeApp(opts: AppOpts) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       pool: opts.pool as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      systemPool: opts.systemPool as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       redis: {} as any,
       ipnSecret: IPN_SECRET,
       logger,
@@ -150,7 +166,26 @@ function post(app: express.Express, raw: string, sig: string | string[]) {
     .send(raw);
 }
 
+/** Statements the route ran through withCommunityScope (tenant connection). */
+const scopedQuery = vi.fn();
+
 beforeEach(() => {
+  scopedCommunities.length = 0;
+  scopedQuery.mockReset();
+  mockWithCommunityScope.mockReset();
+  // Pass-through scope: record the community, then delegate to the pool the
+  // caller handed us so the fake keeps one shared view of the payment row.
+  mockWithCommunityScope.mockImplementation(
+    async (
+      communityId: string,
+      poolArg: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+      fn: (client: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => unknown,
+    ) => {
+      scopedCommunities.push(communityId);
+      scopedQuery.mockImplementation((sql: string, params?: unknown[]) => poolArg.query(sql, params));
+      return fn({ query: scopedQuery });
+    },
+  );
   vi.mocked(verifyPaymentExists).mockReset();
   vi.mocked(processPaymentForLedger).mockReset();
   vi.mocked(verifyPaymentExists).mockResolvedValue(PAYMENT_ROW);
@@ -161,6 +196,11 @@ beforeEach(() => {
     redisAdjusted: true,
   });
 });
+
+/** SQL the route ran inside a community scope. */
+function scopedSql(): string[] {
+  return scopedQuery.mock.calls.map((c) => String(c[0]));
+}
 
 // ---------------------------------------------------------------------------
 // #325 — raw-body HMAC verification, fail closed
@@ -706,6 +746,110 @@ describe('POST /webhooks/nowpayments — concurrent status transitions', () => {
 
       expect(processPaymentForLedger).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tenant isolation — which connection runs what
+//
+// crypto_payments carries forced RLS with tenant policies; webhook_events
+// carries forced RLS with NO policy and is admin-only (migration 0010). The
+// route must therefore split its work across exactly two authorities, and the
+// privileged one must be as narrow as possible.
+// ---------------------------------------------------------------------------
+
+describe('POST /webhooks/nowpayments — tenant isolation', () => {
+  const finishedPayload = () => ({
+    payment_id: 901, payment_status: 'finished', order_id: 'order-rls',
+    price_amount: 100, price_currency: 'usd', updated_at: new Date().toISOString(),
+  });
+
+  it('runs every community-known statement inside that community scope', async () => {
+    const { pool } = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(finishedPayload());
+
+    const res = await post(app, raw, sig);
+
+    expect(res.status).toBe(200);
+    // The status read, the monotonic UPDATE and the audit write are all scoped…
+    const scoped = scopedSql();
+    expect(scoped.some((s) => /SELECT status FROM crypto_payments/.test(s))).toBe(true);
+    expect(scoped.some((s) => /UPDATE crypto_payments/.test(s))).toBe(true);
+    expect(scoped.some((s) => /INSERT INTO billing_audit_log/.test(s))).toBe(true);
+    // …and always under the community the payment lookup resolved.
+    expect(new Set(scopedCommunities)).toEqual(new Set([PAYMENT_ROW.community_id]));
+  });
+
+  it('confines the privileged connection to the lookup and the dedupe insert', async () => {
+    // Two distinct connections: the tenant pool must never see a
+    // webhook_events write, and the privileged pool must never see a
+    // crypto_payments mutation.
+    const tenant = makeFakePool({ status: 'waiting' });
+    const system = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool: tenant.pool, systemPool: system.pool });
+    const { raw, sig } = signedBody(finishedPayload());
+
+    const res = await post(app, raw, sig);
+    expect(res.status).toBe(200);
+
+    const systemSql = system.pool.query.mock.calls.map((c) => String(c[0]));
+    // The privileged connection does exactly one thing: dedupe.
+    expect(systemSql).toHaveLength(1);
+    expect(systemSql[0]).toMatch(/INSERT INTO webhook_events/);
+    // It never touches payment state.
+    expect(systemSql.some((s) => /crypto_payments|billing_audit_log/.test(s))).toBe(false);
+
+    // The tenant connection never attempts the admin-only dedupe table.
+    const tenantSql = tenant.pool.query.mock.calls.map((c) => String(c[0]));
+    expect(tenantSql.some((s) => /webhook_events/.test(s))).toBe(false);
+    expect(tenantSql.length).toBeGreaterThan(0);
+  });
+
+  it('routes the payment lookup through the privileged connection', async () => {
+    // The lookup is what establishes tenant context, so it cannot be scoped.
+    const tenant = makeFakePool();
+    const system = makeFakePool();
+    const { app } = makeApp({ pool: tenant.pool, systemPool: system.pool });
+    const { raw, sig } = signedBody(finishedPayload());
+
+    await post(app, raw, sig);
+
+    expect(verifyPaymentExists).toHaveBeenCalledWith(system.pool, '901');
+    expect(verifyPaymentExists).not.toHaveBeenCalledWith(tenant.pool, expect.anything());
+  });
+
+  it('quarantines a stale event on the privileged connection without a tenant scope', async () => {
+    const tenant = makeFakePool();
+    const system = makeFakePool();
+    const { app } = makeApp({
+      pool: tenant.pool, systemPool: system.pool, webhookMaxAgeMs: 1000,
+    });
+    const { raw, sig } = signedBody({
+      ...finishedPayload(),
+      updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+
+    const res = await post(app, raw, sig);
+
+    expect(res.body).toEqual({ status: 'quarantined', reason: 'stale_timestamp' });
+    expect(String(system.pool.query.mock.calls[0][0])).toMatch(/INSERT INTO webhook_events/);
+    // Nothing tenant-scoped runs: no community work happens on a stale event.
+    expect(scopedCommunities).toEqual([]);
+    expect(tenant.pool.query).not.toHaveBeenCalled();
+  });
+
+  it('defaults systemPool to the tenant pool when not injected', async () => {
+    // Correct only where that pool already holds cross-tenant authority —
+    // documented on WebhookDeps.systemPool.
+    const { pool } = makeFakePool({ status: 'waiting' });
+    const { app } = makeApp({ pool });
+    const { raw, sig } = signedBody(finishedPayload());
+
+    const res = await post(app, raw, sig);
+
+    expect(res.status).toBe(200);
+    expect(pool.query.mock.calls.some(([s]) => /INSERT INTO webhook_events/.test(String(s)))).toBe(true);
   });
 });
 

@@ -48,6 +48,7 @@ import { rateLimit } from 'express-rate-limit';
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { processPaymentForLedger, verifyPaymentExists } from '../services/nowpayments-handler.js';
+import { withCommunityScope } from '../services/community-scope.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -99,7 +100,33 @@ export const DEFAULT_WEBHOOK_MAX_AGE_MS = 15 * 60 * 1000;
 
 /** Dependencies injected at server init */
 interface WebhookDeps {
+  /**
+   * Tenant connection. Every read and write that has a known community runs
+   * through `withCommunityScope` on this pool, so it is safe (and correct) for
+   * this to be the ordinary `arrakis_app` role.
+   */
   pool: Pool;
+  /**
+   * Connection for the two operations that CANNOT carry a tenant scope, and
+   * therefore need cross-tenant authority (BYPASSRLS or table ownership —
+   * `arrakis_admin` in the deployed schema):
+   *
+   *   1. The `crypto_payments` lookup that resolves the payment's community.
+   *      An IPN arrives with no tenant context; this read is what establishes
+   *      it, so it cannot itself be scoped. `crypto_payments` carries forced
+   *      RLS with tenant policies (migration 0010), so under the app role this
+   *      lookup returns no rows and every webhook 404s.
+   *   2. `webhook_events` dedupe INSERTs. That table is system-level by
+   *      design — forced RLS with NO policy and only `arrakis_admin` granted
+   *      write (migration 0010: "webhooks are processed before tenant context
+   *      is established"). Under the app role the INSERT is default-denied,
+   *      which this route reports as a retriable 503 forever.
+   *
+   * Nothing else uses it. Defaults to `pool`, which is correct only where that
+   * pool already holds such authority; a deployment running the route under
+   * the ordinary tenant role MUST inject a privileged connection here.
+   */
+  systemPool?: Pool;
   redis: Redis;
   ipnSecret: string;
   logger: Logger;
@@ -165,6 +192,9 @@ export const WEBHOOK_RATE_LIMIT_WINDOW_MS = 60_000;
 export function createWebhookRouter(deps: WebhookDeps): Router {
   const router = Router();
   const { pool, redis, ipnSecret, logger, featureBillingEnabled } = deps;
+  // See WebhookDeps.systemPool: the only two operations that cannot be
+  // tenant-scoped. Everything else goes through withCommunityScope(pool).
+  const systemPool = deps.systemPool ?? pool;
   const webhookMaxAgeMs = deps.webhookMaxAgeMs ?? DEFAULT_WEBHOOK_MAX_AGE_MS;
 
   // Per-IP fixed-window limiter, mounted BEFORE signature verification and
@@ -320,7 +350,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         // strand the payment once its row is created. Verify existence first
         // and return the same retriable 404 the fresh path uses; the provider
         // redelivers after the row appears, and the freshness gate re-runs.
-        const stalePaymentExists = await verifyPaymentExists(pool, paymentId);
+        const stalePaymentExists = await verifyPaymentExists(systemPool, paymentId);
         if (!stalePaymentExists) {
           logger.warn(
             { paymentId, status: payload.payment_status, ageMs },
@@ -336,7 +366,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         // itself fails, we must NOT ack: a 200 would silently drop the event
         // from the reconciliation trail. Return retriable 503 instead.
         try {
-          await pool.query(
+          await systemPool.query(
             `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
              VALUES ('nowpayments', $1, $2, NOW())
              ON CONFLICT (provider, event_id) DO NOTHING`,
@@ -386,7 +416,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // after the crypto_payments row appears would be suppressed. The 404 is
     // retriable — NOWPayments redelivers on non-2xx.
     // -------------------------------------------------------------------
-    const existingPayment = await verifyPaymentExists(pool, paymentId);
+    const existingPayment = await verifyPaymentExists(systemPool, paymentId);
 
     if (!existingPayment) {
       logger.warn(
@@ -404,7 +434,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // slot of the later `finished` event that mints credits.
     // -------------------------------------------------------------------
     try {
-      const dedupResult = await pool.query<{ id: string }>(
+      const dedupResult = await systemPool.query<{ id: string }>(
         `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
          VALUES ('nowpayments', $1, $2, NOW())
          ON CONFLICT (provider, event_id) DO NOTHING
@@ -437,8 +467,15 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     const currentOrdinal = STATUS_ORDINAL[payload.payment_status] ?? -1;
 
-    // Query current status from crypto_payments
-    const statusResult = await pool.query<{ status: string }>(
+    // Query current status from crypto_payments. The community is known now,
+    // so this and every write below run inside that community's RLS scope.
+    const scoped = <T extends import('pg').QueryResultRow>(
+      sql: string,
+      params: unknown[],
+    ): Promise<import('pg').QueryResult<T>> =>
+      withCommunityScope(existingPayment.community_id, pool, (client) => client.query<T>(sql, params));
+
+    const statusResult = await scoped<{ status: string }>(
       `SELECT status FROM crypto_payments WHERE payment_id = $1`,
       [paymentId],
     );
@@ -494,7 +531,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     const isFinished = payload.payment_status === 'finished';
     const isTerminalFailure = ['failed', 'refunded', 'expired'].includes(payload.payment_status);
 
-    const updateResult = await pool.query(
+    const updateResult = await scoped(
       `UPDATE crypto_payments
        SET status = $2,
            actually_paid = COALESCE($3, actually_paid),
@@ -544,7 +581,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         return;
       }
 
-      const raceWinner = await pool.query<{ status: string }>(
+      const raceWinner = await scoped<{ status: string }>(
         `SELECT status FROM crypto_payments WHERE payment_id = $1`,
         [paymentId],
       );
@@ -596,7 +633,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // Step 9: Audit log
     // -------------------------------------------------------------------
     try {
-      await pool.query(
+      await scoped(
         `INSERT INTO billing_audit_log (event_type, payload, community_id, created_at)
          VALUES ($1, $2, $3, NOW())`,
         [
