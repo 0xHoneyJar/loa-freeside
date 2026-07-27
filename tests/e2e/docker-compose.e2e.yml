@@ -81,7 +81,11 @@ services:
   loa-finn-e2e:
     build:
       context: ${LOA_FINN_DIR:-.loa-finn-checkout}
-      dockerfile: Dockerfile
+      # loa-finn keeps its Dockerfile under deploy/, not at the repo root — its
+      # own docker-compose.yml builds with `context: .` + `dockerfile:
+      # deploy/Dockerfile`. Bare `Dockerfile` here resolves to nothing in the
+      # checkout and fails the build context read.
+      dockerfile: deploy/Dockerfile
     environment:
       - REDIS_URL=redis://redis-e2e:6379
       - PORT=8080
