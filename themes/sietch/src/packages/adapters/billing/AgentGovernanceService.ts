@@ -172,10 +172,19 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     const entityTypeNorm = entityType ?? null;
 
     return this.db.transaction(() => {
-      // Step 6: Check for existing open proposal (partial unique index enforces this too)
+      // Step 6: Reject a second in-flight proposal for the same scope.
+      //
+      // 'quorum_reached' counts as in-flight, not settled: it is approved but
+      // not yet applied (it waits out the cooldown). Excluding only 'open' let
+      // a second proposal be created and also reach quorum, after which BOTH
+      // enter the activation sweep for one scope and each activation supersedes
+      // the other's config — the final active value then depended on retry
+      // timing. Keeping one in-flight proposal per scope makes that impossible
+      // at the source. (The partial unique index covers the 'open' half.)
       const existing = this.db.prepare(`
         SELECT id FROM agent_governance_proposals
-        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = ? AND status = 'open'
+        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = ?
+          AND status IN ('open', 'quorum_reached')
       `).get(paramKey, entityTypeNorm ?? '__global__') as { id: string } | undefined;
 
       if (existing) {
@@ -470,12 +479,52 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       return 0;
     }
 
+    // ORDER matters and must be total. Two proposals for the same
+    // (param_key, entity_type) can both be quorum_reached, and each activation
+    // supersedes the previously active config — so an unordered scan could
+    // apply them in either order and leave the OLDER value active. Oldest
+    // first (with a total tie-break) means the newest approved value is
+    // applied last and wins, every run.
     const proposals = this.db.prepare(`
       SELECT * FROM agent_governance_proposals
       WHERE status = 'quorum_reached' AND cooldown_ends_at <= ? AND expires_at > ?
+      ORDER BY created_at ASC, id ASC
     `).all(now, now) as ProposalRow[];
 
     for (const row of proposals) {
+      // Cross-sweep guard for the same reversal. If a NEWER proposal for this
+      // scope already activated — because this one failed a previous sweep and
+      // was released for retry — applying this one now would supersede the
+      // newer approved value with an older one. It is stale, not pending:
+      // close it instead.
+      const newerActivated = this.db.prepare(`
+        SELECT id FROM agent_governance_proposals
+        WHERE param_key = ?
+          AND COALESCE(entity_type, '__global__') = ?
+          AND status = 'activated'
+          AND (created_at > ? OR (created_at = ? AND id > ?))
+        LIMIT 1
+      `).get(
+        row.param_key,
+        row.entity_type ?? GLOBAL_ENTITY_SENTINEL,
+        row.created_at, row.created_at, row.id,
+      ) as { id: string } | undefined;
+
+      if (newerActivated) {
+        this.db.prepare(`
+          UPDATE agent_governance_proposals
+          SET status = 'expired', updated_at = ?
+          WHERE id = ? AND status = 'quorum_reached'
+        `).run(now, row.id);
+        logger.warn({
+          event: 'agent.governance.proposal_superseded',
+          proposalId: row.id,
+          paramKey: row.param_key,
+          supersededBy: newerActivated.id,
+        }, 'Approved proposal closed without applying — a newer proposal for the same scope already activated');
+        continue;
+      }
+
       // CLAIM the proposal atomically before doing any work: overlapping
       // sweeps (multiple app instances running the cron) can both read the
       // same quorum_reached row; the conditional UPDATE lets exactly one

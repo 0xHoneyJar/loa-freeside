@@ -433,6 +433,18 @@ export class GlobalDiscordTokenBucket {
       return; // Already running
     }
 
+    // refillRate 0 is a supported "no automatic refill" configuration (the
+    // bucket is topped up externally, or is a fixed allowance). Running the
+    // interval anyway costs one Redis Lua round-trip per second per worker
+    // forever and, while the bucket is still full, logs "refilled to maximum"
+    // on every tick — all to add zero tokens.
+    if (this.config.refillRate <= 0) {
+      this.logger.info({
+        refillRate: this.config.refillRate,
+      }, 'Token refill loop not started (no automatic refill configured)');
+      return;
+    }
+
     this.refillIntervalId = setInterval(async () => {
       try {
         const newTokens = await this.redis.eval(

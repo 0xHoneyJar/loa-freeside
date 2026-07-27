@@ -593,6 +593,123 @@ describe('Agent Sovereignty E2E Proof (G-6)', () => {
     expect(Date.parse(row.expires_at)).toBeGreaterThan(Date.parse(row.cooldown_ends_at));
   });
 
+  // ---------------------------------------------------------------------------
+  // Competing proposals for one scope must resolve deterministically.
+  //
+  // Each activation supersedes the previously active config, so if two
+  // proposals for the same (param_key, entity_type) are both approved, the
+  // final active value must not depend on scan order or retry timing.
+  // ---------------------------------------------------------------------------
+
+  /** Insert a claimable (quorum_reached, cooldown elapsed, unexpired) proposal. */
+  function seedClaimable(
+    id: string,
+    accountId: string,
+    proposedValue: string,
+    createdAt: string,
+  ): void {
+    db.prepare(`
+      INSERT INTO agent_governance_proposals
+        (id, param_key, entity_type, proposed_value, proposer_account_id,
+         proposer_weight, total_weight, required_weight, status,
+         cooldown_ends_at, expires_at, created_at, updated_at)
+      VALUES (?, 'reservation.default_ttl_seconds', NULL, ?, ?, 1, 2, 2,
+              'quorum_reached', '2020-01-01T00:00:00Z', '2099-01-01T00:00:00Z', ?, ?)
+    `).run(id, proposedValue, accountId, createdAt, createdAt);
+  }
+
+  function activeValue(paramKey = 'reservation.default_ttl_seconds'): string | undefined {
+    const row = db.prepare(`
+      SELECT value_json FROM system_config WHERE param_key = ? AND status = 'active'
+    `).get(paramKey) as { value_json: string } | undefined;
+    return row?.value_json;
+  }
+
+  it('applies the NEWEST approved proposal last when two are activated in one sweep', async () => {
+    const agentId = createAccount(db, 'agent', 'agent-order');
+    // Inserted newest-first so an unordered scan would naturally apply the
+    // OLDER value last and leave it active.
+    seedClaimable(randomUUID(), agentId, '900', '2026-02-01T00:00:00Z');
+    seedClaimable(randomUUID(), agentId, '600', '2026-01-01T00:00:00Z');
+
+    expect(await governanceService.activateExpiredCooldowns()).toBe(2);
+
+    expect(activeValue()).toBe('900');
+  });
+
+  it('is deterministic regardless of the order rows come back in', async () => {
+    // Same scenario with the insert order reversed: the outcome must not move.
+    const agentId = createAccount(db, 'agent', 'agent-order-2');
+    seedClaimable(randomUUID(), agentId, '600', '2026-01-01T00:00:00Z');
+    seedClaimable(randomUUID(), agentId, '900', '2026-02-01T00:00:00Z');
+
+    await governanceService.activateExpiredCooldowns();
+
+    expect(activeValue()).toBe('900');
+  });
+
+  it('does NOT let an older proposal retried on a later sweep overwrite a newer applied value', async () => {
+    // The cross-sweep reversal: the older proposal failed once (claim released
+    // back to quorum_reached) while the newer one succeeded. Retrying the older
+    // one must not supersede the newer approved value.
+    const agentId = createAccount(db, 'agent', 'agent-stale-retry');
+    const olderId = randomUUID();
+    seedClaimable(olderId, agentId, '600', '2026-01-01T00:00:00Z');
+    seedClaimable(randomUUID(), agentId, '900', '2026-02-01T00:00:00Z');
+
+    // Sweep 1 applies both in order; the newest wins.
+    await governanceService.activateExpiredCooldowns();
+    expect(activeValue()).toBe('900');
+
+    // Simulate the older proposal having been released for retry.
+    db.prepare(`
+      UPDATE agent_governance_proposals SET status = 'quorum_reached' WHERE id = ?
+    `).run(olderId);
+
+    // Sweep 2 must close it as superseded, not re-apply it.
+    expect(await governanceService.activateExpiredCooldowns()).toBe(0);
+    expect(activeValue()).toBe('900');
+    expect((await governanceService.getProposal(olderId))!.status).toBe('expired');
+  });
+
+  it('refuses a second in-flight proposal for a scope that is already quorum_reached', async () => {
+    // Preventing the overlap at the source is what makes the reversal above
+    // unreachable in normal operation.
+    const agentId = createAccount(db, 'agent', 'agent-overlap');
+    const seed = (key: string, value: string) =>
+      db.prepare(`
+        INSERT INTO system_config (id, param_key, entity_type, value_json, status, proposed_by, proposed_at, activated_at, created_at)
+        VALUES (?, ?, NULL, ?, 'active', 'test', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      `).run(randomUUID(), key, value);
+    seed('governance.agent_quorum_weight', '1');
+    seed('governance.agent_cooldown_seconds', '3600');
+    seed('governance.agent_weight_source', '"fixed_allocation"');
+    seed('governance.fixed_weight_per_agent', '1');
+    seed('governance.max_weight_per_agent', '10');
+
+    // Single proposer auto-reaches quorum.
+    const first = await governanceService.proposeAsAgent(agentId, {
+      paramKey: 'governance.reputation_scale_factor',
+      value: 2,
+    });
+    expect(first.status).toBe('quorum_reached');
+
+    await expect(
+      governanceService.proposeAsAgent(agentId, {
+        paramKey: 'governance.reputation_scale_factor',
+        value: 3,
+      }),
+    ).rejects.toThrow(/Active proposal already exists/);
+
+    // A different scope is unaffected.
+    await expect(
+      governanceService.proposeAsAgent(agentId, {
+        paramKey: 'reservation.default_ttl_seconds',
+        value: 900,
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('fails closed when constructed without a governance service (never activates without applying config)', async () => {
     const agentId = createAccount(db, 'agent', 'agent-no-governance');
     const proposalId = randomUUID();
