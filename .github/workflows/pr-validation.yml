@@ -214,22 +214,34 @@ jobs:
           # Known unfixable transitive vulns (node-vault → postman-request → form-data/qs/tough-cookie)
           # are excluded via JSON filtering. node-vault is unmaintained; replacement tracked in backlog.
           #
-          # @trigger.dev/sdk chain (@trigger.dev/core → @opentelemetry/sdk-node): the only fix is
-          # the breaking v3→v4 SDK migration (npm marks it isSemVerMajor). Telemetry-side exposure,
-          # not a request-serving surface. Remove from this list when the trigger.dev v4 migration
-          # lands. Everything else was remediated 2026-07-04 (criticals via npm audit fix;
-          # undici→6.27.0 and ws→8.21.0 via overrides).
+          # @trigger.dev/sdk chain: @trigger.dev/{sdk,core} → @opentelemetry/{sdk-node,
+          # sdk-trace-node,propagator-jaeger}. These five are ONE advisory group with ONE fix —
+          # `npm audit --json` reports the identical fixAvailable for every one of them:
+          #   {"name":"@trigger.dev/sdk","version":"4.5.7","isSemVerMajor":true}
+          # i.e. the breaking v3→v4 SDK migration. Telemetry-side exposure, not a request-serving
+          # surface. Remove all five when the trigger.dev v4 migration lands.
           #
-          # The list is deliberately NOT the dumping ground for the rest of that chain.
-          # @opentelemetry/propagator-jaeger (GHSA-45rx-2jwx-cxfr) and
-          # @opentelemetry/sdk-trace-node both reported fixAvailable:true, so they are pinned
-          # forward via overrides in themes/sietch/package.json rather than excluded here —
-          # an allowlist entry for a fixable advisory is a suppressed vulnerability, not a
-          # known-unfixable one.
+          # Do NOT try to pin the OpenTelemetry members forward with an override to clear this.
+          # It was attempted (e033078, reverted): `@opentelemetry/sdk-trace-node: ">=2.8.0"` does
+          # turn the gate green, but only by dragging the tracer provider across the otel 1.x→2.x
+          # major boundary while @trigger.dev/core@3.3.17 and @opentelemetry/sdk-node@0.52.1 both
+          # pin 1.25.1 EXACTLY and call APIs 2.x removed (addSpanProcessor, _getSpanExporter).
+          # Result: `new NodeTracerProvider().addSpanProcessor(...)` throws TypeError at
+          # @trigger.dev/core/dist/commonjs/v3/otel/tracingSDK.js:83, so every Trigger task fails
+          # to boot — including the agentGovernance lifecycle cron. A green scanner bought with a
+          # production outage is a worse trade than a documented telemetry-path advisory.
+          # Guard: themes/sietch/tests/unit/otel-trigger-compat.test.ts.
+          #
+          # The list is still deliberately NOT a dumping ground: an allowlist entry for an
+          # advisory with a genuinely non-breaking fix is a suppressed vulnerability. The bar is
+          # that npm itself reports the only fix as isSemVerMajor, as it does for all five here.
+          # Everything else was remediated 2026-07-04 (criticals via npm audit fix; undici→6.27.0
+          # and ws→8.21.0 via overrides) and 2026-07-27 (sharp→0.35.3, GHSA-f88m-g3jw-g9cj,
+          # reachable from src/utils/image.ts — a real fix, taken at the source, not allowlisted).
           AUDIT_JSON=$(npm audit --omit=dev --json 2>/dev/null || true)
 
           # Count high+critical vulns, excluding known unfixable packages
-          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request|node-vault|@trigger.dev/sdk|@trigger.dev/core|@opentelemetry/sdk-node"
+          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request|node-vault|@trigger.dev/sdk|@trigger.dev/core|@opentelemetry/sdk-node|@opentelemetry/sdk-trace-node|@opentelemetry/propagator-jaeger"
           HIGH_CRIT=$(echo "$AUDIT_JSON" | jq -r "
             [.vulnerabilities // {} | to_entries[] |
              select(.value.severity == \"high\" or .value.severity == \"critical\") |

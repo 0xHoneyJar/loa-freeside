@@ -98,9 +98,7 @@
       "qs": ">=6.14.1"
     },
     "undici": "^6.27.0",
-    "ws": "$ws",
-    "@opentelemetry/propagator-jaeger": ">=2.9.0",
-    "@opentelemetry/sdk-trace-node": ">=2.8.0"
+    "ws": "$ws"
   },
   "devDependencies": {
     "@types/argon2": "^0.14.1",
