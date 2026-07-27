@@ -81,6 +81,21 @@ cleanup() {
   done
   echo "[run-e2e] Logs saved to $E2E_LOG_DIR"
 
+  # On failure, ECHO the tails as well as saving them. Saving alone puts the
+  # cause in an uploaded artifact, which needs a separate authenticated download
+  # to read — so a red run shows only "Docker compose up failed" and the actual
+  # reason stays invisible to anyone reading the job log. Bounded to 40 lines a
+  # service so a green run's output is unaffected and a red one stays readable.
+  if [ "$exit_code" -ne 0 ]; then
+    for svc in arrakis-e2e loa-finn-e2e contract-validator; do
+      [ -s "$E2E_LOG_DIR/${svc}.log" ] || continue
+      echo ""
+      echo "─── last 40 lines: ${svc} ──────────────────────────────"
+      tail -n 40 "$E2E_LOG_DIR/${svc}.log"
+    done
+    echo "───────────────────────────────────────────────────────"
+  fi
+
   echo "[run-e2e] Tearing down Docker Compose stack..."
   docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
   exit "$exit_code"
