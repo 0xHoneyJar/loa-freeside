@@ -251,13 +251,43 @@ describe('CryptoWebhookService', () => {
 
         expect(result.status).toBe('quarantined');
         expect(result.message).toContain('too old');
-        // Durable record for the reconciliation sweep
+        // Operator trail only — nothing in sietch consumes this row, so the
+        // message must not promise reconciliation that will never happen.
         expect(mockedBillingQueries.logBillingAuditEvent).toHaveBeenCalledWith(
           'crypto_webhook_quarantined_stale',
           expect.objectContaining({ paymentId: staleEvent.paymentId }),
         );
+        expect(result.message).not.toMatch(/reconcil/i);
         // No processing side effects
         expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
+      });
+
+      it('never quarantines a money-bearing status, however late it arrives', async () => {
+        // The safety property the quarantine gate depends on: quarantine can
+        // only ever drop a NON-terminal transition. Every status that decides
+        // credit or settlement is processed regardless of age, so a dropped
+        // event can never cost a customer their credits or leave a settled
+        // payment looking pending.
+        const terminal = ['finished', 'failed', 'refunded', 'expired'] as const;
+        const nonTerminal = ['waiting', 'confirming', 'confirmed', 'sending', 'partially_paid'] as const;
+
+        for (const status of terminal) {
+          vi.clearAllMocks();
+          const result = await cryptoWebhookService.processEvent(
+            createTestEvent({ status, timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000) }),
+          );
+          expect(result.status).not.toBe('quarantined');
+        }
+
+        for (const status of nonTerminal) {
+          vi.clearAllMocks();
+          const result = await cryptoWebhookService.processEvent(
+            createTestEvent({ status, timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000) }),
+          );
+          expect(result.status).toBe('quarantined');
+          // …and dropping it touches no payment state.
+          expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
+        }
       });
 
       it('should return quarantine_failed when the durable record cannot be written', async () => {

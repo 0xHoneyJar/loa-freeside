@@ -72,8 +72,14 @@ const PROCESSED_EVENT_CACHE_TTL = 24 * 60 * 60;
 export interface CryptoWebhookResult {
   /**
    * Processing status.
-   * - 'quarantined': stale signed event, durably recorded for reconciliation,
-   *   safe to ack (a provider retry would still be stale).
+   * - 'quarantined': stale signed event that was NOT applied. Only reachable
+   *   for NON-terminal statuses — every terminal status is processed however
+   *   late it arrives (see staleProcessableStatuses), so no credit or
+   *   settlement outcome can be dropped here. The audit record is an
+   *   observability trail, not a work queue: nothing in sietch consumes it.
+   *   The payment's status simply stays where it was until the next event
+   *   (which for a real payment always includes a terminal one). Safe to ack —
+   *   a provider retry of a stale event is still stale.
    * - 'quarantine_failed': stale signed event that could NOT be durably
    *   recorded — the route must return a retriable 503, never ack.
    */
@@ -249,9 +255,16 @@ class CryptoWebhookService {
           },
           'Quarantining stale crypto webhook event (potential replay attack)'
         );
-        // Durably record the quarantined event so the reconciliation sweep
-        // can recover the payment. If the record itself fails, the event
-        // must NOT be acked (the caller returns a retriable 503).
+        // Only NON-terminal statuses reach here (terminal ones are processed
+        // above however late they arrive), so dropping this transition cannot
+        // lose credit or a settlement outcome — it can only leave the row at a
+        // slightly older non-terminal status until the next event.
+        //
+        // Record it for the operator trail. Deliberately NOT a work queue:
+        // sietch has no provider-polling recovery job, and nothing consumes
+        // this audit row. If the record itself fails we still refuse to ack
+        // (the caller returns a retriable 503) so a quarantine decision is
+        // never invisible.
         try {
           logBillingAuditEvent('crypto_webhook_quarantined_stale', {
             paymentId,
@@ -277,7 +290,7 @@ class CryptoWebhookService {
           status: 'quarantined',
           paymentId,
           paymentStatus,
-          message: 'Event timestamp too old - quarantined for reconciliation',
+          message: 'Event timestamp too old - non-terminal transition dropped (no credit impact)',
         };
       }
 
