@@ -1,0 +1,55 @@
+/* =================================================================== */
+/* Sprawl shadcn-compat — VENDORED                                      */
+/*                                                                      */
+/* Source: 0xHoneyJar/world-sprawl                                      */
+/*   packages/sprawlos-tokens/src/shadcn-compat.css                     */
+/*                                                                      */
+/* Maps shadcn semantic vars (--primary, --card, --radius, etc.) onto   */
+/* sprawl semantic tokens. Re-exported by globals.css.                  */
+/* =================================================================== */
+
+:root {
+	--primary: var(--color-accent-primary);
+	--primary-foreground: var(--color-bg-void);
+	--secondary: var(--color-bg-surface);
+	--secondary-foreground: var(--color-text-primary);
+	--muted: var(--color-bg-surface);
+	--muted-foreground: var(--color-text-tertiary);
+	--accent: var(--color-bg-elevated);
+	--accent-foreground: var(--color-text-primary);
+	--destructive: var(--color-status-danger);
+	--destructive-foreground: var(--color-text-bright);
+	--card: var(--color-bg-void);
+	--card-foreground: var(--color-text-primary);
+	--popover: var(--color-bg-surface);
+	--popover-foreground: var(--color-text-primary);
+	--input: var(--color-border-default);
+	--ring: var(--color-accent-primary-dim);
+	--radius: 0px;
+
+	/* Score-dashboard sidebar shadcn aliases */
+	--sidebar: var(--color-bg-panel);
+	--sidebar-foreground: var(--color-text-secondary);
+	--sidebar-primary: var(--color-accent-primary);
+	--sidebar-primary-foreground: var(--color-bg-void);
+	--sidebar-accent: var(--color-bg-elevated);
+	--sidebar-accent-foreground: var(--color-text-primary);
+	--sidebar-border: var(--color-border-default);
+	--sidebar-border-subtle: var(--border-subtle);
+	--sidebar-ring: var(--color-accent-primary-dim);
+
+	/* Foreground / background base aliases used by freeside-dashboard */
+	--background: var(--color-bg-void);
+	--foreground: var(--color-text-primary);
+	--border: var(--color-border-default);
+	/* Point at grid-line source — tokens' --color-border-subtle aliases the same
+	   value; @theme re-registers --color-border-subtle via --border-subtle. */
+	--border-subtle: var(--color-grid-line);
+
+	/* Chart palette — restrained: cyan, phosphor, crimson, bone, anomaly */
+	--chart-1: var(--color-cyan-base);
+	--chart-2: var(--color-phosphor-base);
+	--chart-3: var(--color-crimson-base);
+	--chart-4: var(--color-bone-dim);
+	--chart-5: var(--color-anomaly-base);
+}

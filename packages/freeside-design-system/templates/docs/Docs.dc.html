@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="./copy.js"></script>
+<style>html,body{margin:0;padding:0}</style>
+</helmet>
+<div data-register="{{ register }}" data-accent="{{ pair }}" data-exposure="{{ exposureNum }}" style="min-height:100vh;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);display:flex;flex-direction:column;padding:var(--fs-pad-page)">
+
+<div style="display:flex;align-items:center;gap:16px;padding-bottom:24px;border-bottom:1px solid var(--fs-line-hairline)">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ audience }}</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ revision }}</span>
+</div>
+
+<div style="flex:1;display:flex;gap:48px;padding:48px 0">
+
+<div style="width:200px;flex:0 0 auto;display:flex;flex-direction:column;gap:8px;align-self:flex-start;position:sticky;top:48px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding-bottom:8px">Contents</span>
+<a href="#how" style="color:var(--fs-accent-1);text-decoration:none;padding:4px 0">How scoring works</a>
+<a href="#dimensions" style="color:var(--fs-ink-secondary);text-decoration:none;padding:4px 0" style-hover="color:var(--fs-accent-1)">The three dimensions</a>
+<a href="#epochs" style="color:var(--fs-ink-secondary);text-decoration:none;padding:4px 0" style-hover="color:var(--fs-accent-1)">Epochs and weighting</a>
+<a href="#standing" style="color:var(--fs-ink-secondary);text-decoration:none;padding:4px 0" style-hover="color:var(--fs-accent-1)">Losing standing</a>
+</div>
+
+<div style="max-width:70ch;display:flex;flex-direction:column;gap:24px">
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<h1 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">How standing is scored</h1>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary);font-size:var(--fs-body-size)">Every member carries one score, recomputed when an epoch closes. This document explains what feeds it, what it is used for, and what happens when it falls.</p>
+</div>
+
+<sc-if value="{{ hasStanding }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:16px;align-items:flex-start;padding:16px;background:var(--fs-surface-raised);border-left:3px solid var(--fs-state-caution)">
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ standingNote }}</p>
+</div>
+</sc-if>
+
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-muted);font-size:var(--fs-size-xs);padding-bottom:8px;border-bottom:1px solid var(--fs-line-hairline)">{{ accessNote }}</p>
+
+<div id="how" style="display:flex;flex-direction:column;gap:8px">
+<h2 style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh);margin:0">How scoring works</h2>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Your score is a weighted sum of three dimensions, each measured independently and none of them able to carry the whole figure alone. A member strong in one dimension and absent in the others lands mid-range by design — the score rewards breadth of participation rather than a single kind of commitment.</p>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Weights are fixed when an epoch opens and cannot be changed while it runs. This is deliberate: a score that could be reweighted mid-epoch would be a score nobody could plan against.</p>
+</div>
+
+<div id="dimensions" style="display:flex;flex-direction:column;gap:8px">
+<h2 style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh);margin:0">The three dimensions</h2>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)"><strong style="color:var(--fs-ink-primary);font-weight:600">Standing</strong> measures how long you have been here and how consistently. It moves slowly and is difficult to acquire quickly, which is the point.</p>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)"><strong style="color:var(--fs-ink-primary);font-weight:600">Collection</strong> measures depth rather than volume. Holding a great many of one thing reads as less than holding across the range.</p>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)"><strong style="color:var(--fs-ink-primary);font-weight:600">Activity</strong> measures onchain participation in the current epoch, and is the only dimension that can move sharply in either direction.</p>
+</div>
+
+<div id="epochs" style="display:flex;flex-direction:column;gap:8px">
+<h2 style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh);margin:0">Epochs and weighting</h2>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">An epoch closes on a schedule, not on demand. At close, the roster is snapshotted, dimensions are recomputed, and the new scores commit together. Nothing is written between close and commit, so a score you read mid-close is the previous epoch's and is labelled as such.</p>
+</div>
+
+<div id="standing" style="display:flex;flex-direction:column;gap:8px">
+<h2 style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh);margin:0">Losing standing</h2>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Scores decay when activity stops, and the decay is gradual and reversible. What is not reversible is a flag: an account flagged for wash activity is removed from scoring entirely and is reviewed by a person rather than a system.</p>
+</div>
+
+<div style="display:flex;gap:8px;padding-top:24px;border-top:1px solid var(--fs-line-hairline)">
+<button style="font:inherit;font-weight:600;padding:12px 24px;border:none;cursor:pointer;background:var(--fs-accent-1);color:var(--fs-on-accent)" style-hover="opacity:.88">{{ primaryLabel }}</button>
+<button style="font:inherit;padding:12px 24px;border:1px solid var(--fs-line-structural);cursor:pointer;background:transparent;color:var(--fs-ink-primary)" style-hover="background:var(--fs-surface-raised)">{{ secondaryLabel }}</button>
+</div>
+
+</div>
+</div>
+
+<div style="display:flex;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding-top:24px;border-top:1px solid var(--fs-line-hairline)">
+<span style="margin-left:auto">{{ stamp }}</span>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;guest&quot;,&quot;member&quot;,&quot;operator&quot;,&quot;principal&quot;],&quot;default&quot;:&quot;member&quot;,&quot;tsType&quot;:&quot;'guest'|'member'|'operator'|'principal'&quot;,&quot;section&quot;:&quot;Access&quot;,&quot;label&quot;:&quot;Who is reading&quot;},&quot;destination&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;account&quot;,&quot;console&quot;],&quot;default&quot;:&quot;account&quot;,&quot;tsType&quot;:&quot;'account'|'console'&quot;,&quot;section&quot;:&quot;Depth&quot;,&quot;label&quot;:&quot;Where they are&quot;},&quot;systemState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;nominal&quot;,&quot;degraded&quot;,&quot;alert&quot;],&quot;default&quot;:&quot;nominal&quot;,&quot;tsType&quot;:&quot;'nominal'|'degraded'|'alert'&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;What the system is doing&quot;}}">
+/* Article prose lives in the template — it carries no state. Chrome projects.
+   See the boundary note at the top of templates/docs/copy.js. */
+class Component extends DCLogic {
+  /* The pack arrives asynchronously and componentDidMount cannot be relied on to
+     notice it: the runtime defers didMount for a logic instance created after the
+     initial mount, so it waits for an update that nothing will ever schedule.
+     renderVals() always runs, so the retry is driven from there instead. */
+  _awaitPack() {
+    if (this._poll) return;
+    this._poll = setInterval(() => {
+      const D = window.FreesideDoctrine;
+      if (!D || !D.packs.docs) return;
+      clearInterval(this._poll); this._poll = null; this.forceUpdate();
+    }, 30);
+    setTimeout(() => this._stopAwaiting(), 8000);
+  }
+
+  _stopAwaiting() {
+    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+
+  componentWillUnmount() { this._stopAwaiting(); }
+
+  renderVals() {
+    const D = window.FreesideDoctrine;
+    if (!D || !D.packs.docs) {
+      this._awaitPack();
+      return {
+      register: 'light', pair: 'garden', exposureNum: 1,
+      audience: '', standingNote: '', hasStanding: false, accessNote: '',
+      primaryLabel: '', secondaryLabel: '', stamp: '', revision: ''
+      };
+    }
+    return D.project('docs', D.resolve({
+      role: this.props.role ?? 'member',
+      destination: this.props.destination ?? 'account',
+      systemState: this.props.systemState ?? 'nominal'
+    }));
+  }
+}
+
+</script>
+</body>
+</html>

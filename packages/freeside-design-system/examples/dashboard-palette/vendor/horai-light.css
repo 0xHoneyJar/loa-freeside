@@ -1,0 +1,93 @@
+/* =================================================================== */
+/* Sprawl horai light register — VENDORED + EXTENDED                    */
+/*                                                                      */
+/* Source: 0xHoneyJar/world-sprawl                                      */
+/*   apps/rektdrop/src/app.css (full horai register reference)          */
+/*                                                                      */
+/* Doctrine: "daylight processing — the loss already happened. Look at  */
+/* it in the sun." Material = sun-baked clay tablet with dried blood    */
+/* marks. Cool palette (void/bone/cyan) collapses to warm earth tones   */
+/* (sand/ink/ochre/clay-red).                                           */
+/*                                                                      */
+/* Activation: next-themes flips `class="light"` on <html>.             */
+/* =================================================================== */
+
+.light {
+	/* Bone — charred ink on sand */
+	--color-bone-bright: oklch(0.18 0.008 50);
+	--color-bone-base: oklch(0.25 0.010 50);
+	--color-bone-dim: oklch(0.45 0.008 55);
+	--color-bone-muted: oklch(0.55 0.006 55);
+	--color-bone-ghost: oklch(0.66 0.005 58);
+
+	/* Void — bone ash sand (light backgrounds) */
+	--color-void-base: oklch(0.93 0.008 65);
+	--color-void-raised: oklch(0.89 0.010 62);
+	--color-void-surface: oklch(0.85 0.012 60);
+	--color-void-border: oklch(0.76 0.015 55);
+
+	/* Crimson — earthy red, clay-stamped */
+	--color-crimson-base: oklch(0.43 0.16 22);
+	--color-crimson-dim: oklch(0.32 0.10 22);
+
+	/* Cyan — true cyan. Was "ochre / warm clay" (hue 70 = brown), but the cyan
+	   tints + pill-text below were already at the cool hue 215, leaving the theme
+	   self-inconsistent (cyan-base rendered brown on buttons/icons). Realigned to
+	   hue 215 at the same lightness, so cyan reads as cyan everywhere. */
+	--color-cyan-base: oklch(0.52 0.13 215);
+	--color-cyan-dim: oklch(0.42 0.10 215);
+
+	/* Phosphor — clay-fired green */
+	--color-phosphor-base: oklch(0.50 0.12 145);
+	--color-phosphor-dim: oklch(0.40 0.08 145);
+	--color-phosphor-bright: oklch(0.58 0.16 145);
+
+	/* Crimson glow / cyan glow flatten on horai (no glass-glow IRL) */
+	--color-glow-cyan: oklch(0.52 0.13 215 / 0.18);
+	--color-glow-crimson: oklch(0.43 0.16 22 / 0.18);
+
+	/* Surface panel sits a touch above void-raised */
+	--color-surface-panel: oklch(0.91 0.010 63);
+
+	/* Tier accents — earth pigment register (matches stock horai) */
+	--color-tier-tourist: oklch(0.45 0.06 60);
+	--color-tier-panther: oklch(0.42 0.08 55);
+	--color-tier-cowboy: oklch(0.38 0.10 50);
+	--color-tier-flatline: oklch(0.38 0.12 25);
+	--color-tier-tessier: oklch(0.35 0.08 320);
+	--color-tier-wintermute: oklch(0.33 0.14 22);
+
+	/* Grid line — whisper sepia hairlines (bento gutters, internal lattice) */
+	--color-grid-line: oklch(0.68 0.018 60 / 0.12);
+
+	/* Tints — light sand-tinted bgs with hue carrying just enough chroma to
+	   identify channel without competing with content. */
+	--color-cyan-tint-bg: oklch(0.93 0.025 215);
+	--color-cyan-tint-border: oklch(0.78 0.040 215);
+	--color-crimson-tint-bg: oklch(0.93 0.030 25);
+	--color-crimson-tint-border: oklch(0.78 0.060 25);
+	--color-stable-tint-bg: oklch(0.93 0.025 145);
+	--color-stable-tint-border: oklch(0.78 0.040 145);
+	--color-beta-tint-bg: oklch(0.93 0.030 80);
+	--color-beta-tint-border: oklch(0.78 0.045 80);
+
+	/* Token yellow — sprawl base (oklch 0.78) is too light on sand. Deepen for og pill text. */
+	--color-token-yellow: oklch(0.42 0.14 75);
+
+	/* Pill text — DEEP variants for guaranteed contrast on light tint bgs.
+	   Distinct from base channel colors (which retain sprawl horai aesthetic). */
+	--color-pill-text-yellow: oklch(0.38 0.14 75);
+	--color-pill-text-cyan: oklch(0.32 0.12 215);
+	--color-pill-text-phosphor: oklch(0.32 0.14 145);
+	--color-pill-text-crimson: oklch(0.38 0.18 25);
+
+	/* shadcn aliases re-resolve via the sprawl semantic chain (no extra
+	   work needed — they reference --color-bg-void / --color-text-primary
+	   / etc. which in turn read the overridden primitives above). */
+}
+
+/* Light-mode glow elevation: keep it whisper-quiet. */
+.light {
+	--elevation-2: 0 0 0 1px var(--color-void-border);
+	--elevation-3: 0 0 0 1px var(--color-void-border), 0 4px 12px oklch(0.40 0.020 60 / 0.06);
+}

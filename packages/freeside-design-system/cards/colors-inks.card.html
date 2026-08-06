@@ -1,0 +1,30 @@
+<!-- @dsCard group="Colors" viewport="720x230" name="Ink" subtitle="One ink. Text is Deep Space Ink on light, Lado Sunlight on deep — colour is never a letterform" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.pane{padding:20px;border:1px solid var(--fs-line-structural)}
+.k{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);font-weight:600;margin-bottom:12px}
+.big{font-size:22px;font-weight:600;margin-bottom:4px}
+.sm{font-size:13px;color:var(--fs-ink-secondary)}
+.mu{font-size:11px;color:var(--fs-ink-muted);margin-top:6px;font-family:var(--fs-font-body)}
+.rule{display:flex;gap:0;margin-top:16px}.rule div{flex:1;height:6px}
+.note{font-size:12px;color:var(--fs-ink-secondary);line-height:1.6;border-top:1px solid var(--fs-line-structural);padding-top:14px}</style>
+</head><body>
+<div class="cols">
+<div class="pane">
+<div class="k">Light · ink = Deep Space Ink</div>
+<div class="big">Prove credit.</div>
+<div class="sm">Secondary — Ink 2</div>
+<div class="mu">muted · #6B6862</div>
+<div class="rule"><div style="background:var(--fs-state-positive)"></div><div style="background:var(--fs-state-info)"></div><div style="background:var(--fs-state-caution)"></div><div style="background:var(--fs-accent-authority)"></div></div>
+</div>
+<div class="pane" data-register="deep-space" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<div class="k">Deep Space · ink = Lado Sunlight</div>
+<div class="big">Prove credit.</div>
+<div class="sm">Secondary — Cold Mist</div>
+<div class="mu">muted · Lunar Concrete</div>
+<div class="rule"><div style="background:var(--fs-state-positive)"></div><div style="background:var(--fs-state-info)"></div><div style="background:var(--fs-state-caution)"></div><div style="background:var(--fs-accent-authority)"></div></div>
+</div>
+</div>
+<div class="note"><strong>Colour is a fill, never a letterform.</strong> Of the five mains only Deep Space Ink and Lado Sunlight hold contrast as text, so those two are the entire ink table. State and accent meaning is carried by the bar, dot, tint, or rule beside mono text — which is why no <code>*-ink</code> token needs a per-register override.</div>
+</body></html>

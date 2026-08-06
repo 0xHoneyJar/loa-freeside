@@ -1,0 +1,217 @@
+/* =================================================================== */
+/* Sprawl design tokens — VENDORED                                      */
+/*                                                                      */
+/* Source: 0xHoneyJar/world-sprawl                                      */
+/*   packages/sprawlos-tokens/src/tokens.css                            */
+/*                                                                      */
+/* Vendored on 2026-05-03 because freeside-dashboard lives outside the  */
+/* world-sprawl monorepo and the upstream package is `private: true`.   */
+/* When @sprawl-world/sprawlos-tokens publishes (or freeside-dashboard  */
+/* moves into the monorepo), replace this file with `@import` of the    */
+/* package and delete this comment.                                     */
+/*                                                                      */
+/* DO NOT edit individual tokens here. Local overrides for the score    */
+/* dashboard live in globals.css (typography scale + density tweaks).   */
+/* =================================================================== */
+
+:root {
+	/* === CHROMATIC ENGINE === */
+
+	/* Void — the abyss, backgrounds */
+	--color-void-base: oklch(0.08 0.005 250);
+	--color-void-raised: oklch(0.12 0.008 250);
+	--color-void-surface: oklch(0.16 0.01 250);
+	--color-void-border: oklch(0.22 0.012 250);
+
+	/* Bone — primary data, text, interface chrome */
+	--color-bone-bright: oklch(0.97 0.005 95);
+	--color-bone-base: oklch(0.88 0.01 95);
+	--color-bone-dim: oklch(0.68 0.008 95);
+	--color-bone-muted: oklch(0.48 0.006 95);
+	--color-bone-ghost: oklch(0.32 0.004 95);
+
+	/* Cyan — structure, chrome, navigation */
+	--color-cyan-base: oklch(0.85 0.15 195);
+	--color-cyan-dim: oklch(0.65 0.12 195);
+
+	/* Crimson — alert / critical / emphasis */
+	--color-crimson-base: oklch(0.55 0.24 25);
+	--color-crimson-dim: oklch(0.35 0.18 25);
+
+	/* Cobalt — decorative / lattice */
+	--color-cobalt-base: oklch(0.45 0.20 265);
+	--color-cobalt-dim: oklch(0.25 0.12 265);
+	--color-cobalt-bright: oklch(0.55 0.24 265);
+
+	/* Phosphor — P31 CRT phosphor, success / organic signal */
+	--color-phosphor-base: oklch(0.72 0.18 155);
+	--color-phosphor-dim: oklch(0.52 0.12 155);
+	--color-phosphor-bright: oklch(0.82 0.22 155);
+	--color-phosphor-glow: oklch(0.72 0.18 155 / 0.35);
+
+	/* Anomaly — bioscan / contamination */
+	--color-anomaly-base: oklch(0.58 0.20 15);
+	--color-anomaly-dim: oklch(0.40 0.14 15);
+	--color-anomaly-bright: oklch(0.68 0.24 15);
+	--color-anomaly-glow: oklch(0.58 0.20 15 / 0.35);
+
+	/* Tier accents — narrative weights, flip on horai register */
+	--color-tier-tourist: oklch(0.50 0.08 195);
+	--color-tier-panther: oklch(0.55 0.10 195);
+	--color-tier-cowboy: oklch(0.60 0.14 195);
+	--color-tier-flatline: oklch(0.50 0.16 15);
+	--color-tier-tessier: oklch(0.40 0.10 280);
+	--color-tier-wintermute: oklch(0.45 0.18 15);
+
+	/* Tints — solid OKLCH equivalents of opacity blends on void-base */
+	--color-cyan-tint-bg: oklch(0.14 0.015 195);
+	--color-cyan-tint-border: oklch(0.25 0.04 195);
+	--color-cyan-dim-tint-bg: oklch(0.13 0.012 195);
+	--color-cyan-dim-tint-border: oklch(0.22 0.035 195);
+	--color-stable-tint-bg: oklch(0.14 0.02 155);
+	--color-stable-tint-border: oklch(0.25 0.05 155);
+	--color-beta-tint-bg: oklch(0.14 0.02 85);
+	--color-beta-tint-border: oklch(0.25 0.05 85);
+	--color-crimson-tint-bg: oklch(0.14 0.03 25);
+	--color-crimson-tint-border: oklch(0.25 0.06 25);
+
+	/* Grid + glow + panel */
+	--color-grid-line: oklch(0.30 0.08 195 / 0.15);
+	--color-glow-cyan: oklch(0.85 0.15 195 / 0.4);
+	--color-glow-crimson: oklch(0.55 0.24 25 / 0.3);
+	--color-surface-panel: oklch(0.12 0.005 250);
+
+	/* Status & data */
+	--color-node-green: var(--color-phosphor-base);
+	--color-token-yellow: oklch(0.78 0.15 85);
+
+	/* Pill text — register-aware, high-contrast pair for tintBg pills.
+	   Dark mode: bright (defaults below). Horai: deep (overridden in horai-light.css). */
+	--color-pill-text-yellow: var(--color-token-yellow);
+	--color-pill-text-cyan: var(--color-cyan-base);
+	--color-pill-text-phosphor: var(--color-phosphor-base);
+	--color-pill-text-crimson: var(--color-crimson-base);
+
+	--color-severity-critical: var(--color-crimson-base);
+	--color-severity-high: oklch(0.75 0.16 55);
+	--color-severity-medium: var(--color-token-yellow);
+	--color-severity-low: var(--color-cyan-base);
+	--color-severity-info: var(--color-bone-muted);
+
+	/* Quantum motion unit (~120Hz tick) */
+	--quantum: 83ms;
+
+	/* Tracking */
+	--tracking-whisper: 0.25em;
+	--tracking-terminal: 0.1em;
+	--tracking-emphasis: 0.05em;
+	--tracking-display: 0.02em;
+	--tracking-impact: 0em;
+
+	/* === SEMANTIC TOKENS === */
+
+	/* Backgrounds */
+	--color-bg-void: var(--color-void-base);
+	--color-bg-surface: var(--color-void-raised);
+	--color-bg-panel: var(--color-surface-panel);
+	--color-bg-elevated: var(--color-void-surface);
+	--color-bg-overlay: oklch(0.06 0.003 250 / 0.8);
+
+	/* Text */
+	--color-text-primary: var(--color-bone-base);
+	--color-text-secondary: var(--color-bone-dim);
+	--color-text-tertiary: var(--color-bone-muted);
+	--color-text-ghost: var(--color-bone-ghost);
+	--color-text-bright: var(--color-bone-bright);
+
+	/* Accent */
+	--color-accent-primary: var(--color-cyan-base);
+	--color-accent-primary-dim: var(--color-cyan-dim);
+	--color-accent-warm: var(--color-crimson-base);
+	--color-accent-warm-dim: var(--color-crimson-dim);
+
+	/* Borders */
+	--color-border-default: var(--color-void-border);
+	--color-border-subtle: var(--color-grid-line);
+	--color-border-active: var(--color-glow-cyan);
+
+	/* Status */
+	--color-status-success: var(--color-node-green);
+	--color-status-warning: var(--color-token-yellow);
+	--color-status-danger: var(--color-crimson-base);
+	--color-status-info: var(--color-cyan-dim);
+
+	/* Glow */
+	--color-glow-primary: var(--color-glow-cyan);
+	--color-glow-danger: var(--color-glow-crimson);
+
+	/* Interactive */
+	--color-interactive-default: var(--color-bone-dim);
+	--color-interactive-hover: var(--color-bone-base);
+	--color-interactive-active: var(--color-cyan-base);
+	--color-interactive-disabled: var(--color-bone-ghost);
+
+	/* === SPACING (4px base) === */
+	--space-0: 0;
+	--space-025: 1px;
+	--space-050: 2px;
+	--space-100: 4px;
+	--space-150: 6px;
+	--space-200: 8px;
+	--space-300: 12px;
+	--space-400: 16px;
+	--space-500: 20px;
+	--space-600: 24px;
+	--space-800: 32px;
+	--space-1200: 48px;
+	--space-1600: 64px;
+
+	/* === MOTION === */
+	--duration-instant: 0ms;
+	--duration-quantum: 83ms;
+	--duration-fast: 100ms;
+	--duration-normal: 200ms;
+	--duration-slow: 400ms;
+	--duration-deliberate: 800ms;
+
+	--ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+	--ease-in: cubic-bezier(0.4, 0, 1, 1);
+	--ease-out: cubic-bezier(0, 0, 0.2, 1);
+	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--ease-snap: steps(1);
+	--ease-step-4: steps(4);
+	--ease-step-8: steps(8);
+	--ease-quantum: steps(4);
+
+	/* === ELEVATION (glow-based, no drop shadows) === */
+	--elevation-0: none;
+	--elevation-1: 0 0 0 1px var(--color-border-subtle);
+	--elevation-2: 0 0 8px var(--color-glow-primary);
+	--elevation-3: 0 0 16px var(--color-glow-primary);
+	--elevation-danger: 0 0 8px var(--color-glow-danger);
+
+	/* === ICON SIZES === */
+	--icon-xs: 12px;
+	--icon-sm: 14px;
+	--icon-md: 16px;
+	--icon-lg: 20px;
+	--icon-xl: 24px;
+
+	/* === DENSITY === */
+	--density-row-height: 40px;
+	--density-cell-padding: var(--space-300);
+	--density-gap: var(--space-200);
+}
+
+/* === REDUCED MOTION === */
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--duration-quantum: 0ms;
+		--duration-fast: 0ms;
+		--duration-normal: 0ms;
+		--duration-slow: 0ms;
+		--duration-deliberate: 0ms;
+		--ease-quantum: linear;
+		--ease-spring: linear;
+	}
+}

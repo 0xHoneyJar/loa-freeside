@@ -1,0 +1,64 @@
+<!-- @dsCard group="Doctrine" viewport="1280x4700" name="Review · Guest surface" subtitle="One reading at four precisions, and one action whose label degrades" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — Review · Guest surface</title>
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="review-frames.css">
+<script src="../templates/_doctrine/doctrine.js"></script>
+</head>
+<body>
+
+<section>
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Doctrine 02 · Review</span>
+<h2 class="title">Guest surface, six contexts</h2>
+<p>The gauge holds one reading and publishes it at four precisions. Every channel is quantized to the level: at Terrace, three positions and no figure anywhere in the fill width, the ARIA label, the title, a data attribute or a form value. Frames three and four are the same operator with the same capability, one level apart.</p>
+</div>
+<div class="g3">
+<div class="stack-8"><div class="sec">Geometry is a channel</div><p class="body">A bar whose width is the reading states the reading. Terrace gets three segments, Atrium six steps, Service and Ledger 5% ticks beside the stated figure.</p></div>
+<div class="stack-8"><div class="sec">Availability is not exposure</div><p class="body">The operator holds view:all, so operations are offered from the terrace. Only the wording waits for Service.</p></div>
+<div class="stack-8"><div class="sec">Severity tracks state</div><p class="body">A guest during an alert hears a calm sentence, because the ceiling holds specificity and the gardens genuinely are open.</p></div>
+</div>
+<div class="note"><p class="body">A presentation review. Nothing here asserts that the exact reading was withheld from the response — only that no channel on the screen carries it.</p></div>
+</div>
+</section>
+
+<section>
+<div class="g2" id="guest"></div>
+</section>
+
+<section>
+<div class="stack-16">
+<div class="row-8"><span class="wordmark">FREESIDE</span><span class="ghost" id="measure">measuring</span></div>
+<p class="body">Sibling cards: <a href="doctrine-review-permission-gate.card.html">Review · Permission gate</a> · <a href="doctrine-review-roster.card.html">Review · Roster</a> · <a href="doctrine-conformance.card.html">Conformance</a></p>
+</div>
+</section>
+
+<script src="review-frames.js"></script>
+<script>
+FreesideReview.render({
+  host: 'guest',
+  src: '../templates/guest-surface/GuestSurface.dc.html',
+  pack: 'guest-surface',
+  destination: 'arrival',
+  tiles: [
+    { props: { role: 'guest', destination: 'arrival' }, h: 980,
+      note: 'Terrace. Three segments of geometry and a band in words. The exact reading exists nowhere on the client \u2014 the renderer is never handed it.' },
+    { props: { role: 'member', destination: 'account' }, h: 980,
+      note: 'Atrium. A range in words, six steps of geometry. Coarser than the truth, and consistent with it.' },
+    { props: { role: 'operator', destination: 'arrival' }, h: 980,
+      note: 'Availability is not exposure. The operator is offered operations from the terrace, in Terrace-safe words \u2014 \u201cOpen the console\u201d. The destination will resolve its own exposure when opened.' },
+    { props: { role: 'operator', destination: 'arrival', systemState: 'degraded' }, h: 980,
+      note: 'The same operator, the same capability, the same offer, one level up: \u201cOpen operations \u00b7 sector 4\u201d. Only the label moved.' },
+    { props: { role: 'guest', destination: 'arrival', systemState: 'alert' }, h: 980,
+      note: 'A guest during an alert. Under-disclosure, not contradiction: the ceiling holds specificity at Terrace and nothing said here is untrue at Ledger.' },
+    { props: { role: 'principal', destination: 'account', systemState: 'alert' }, h: 980,
+      note: 'Ledger. The exact reading, and what holding the band costs the resort.' }
+  ]
+});
+</script>
+</body>
+</html>

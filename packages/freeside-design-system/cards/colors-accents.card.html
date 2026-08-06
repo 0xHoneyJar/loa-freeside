@@ -1,0 +1,19 @@
+<!-- @dsCard group="Colors" viewport="720x430" name="Accent pairs" subtitle="A surface picks ONE pair. Components read only accent-1 and accent-2 — never past them." -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{margin:0;padding:48px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary);display:flex;flex-direction:column;gap:24px}
+.pair{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:24px}
+.name{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.sub{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);margin-top:8px}
+.bars{display:flex;gap:8px}
+.bar{height:40px;flex:1;display:flex;align-items:flex-end;padding:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.bar1{color:var(--fs-on-accent)}
+.bar2{color:var(--fs-deep-space-ink)}
+.note{font-size:14px;line-height:1.5;color:var(--fs-ink-secondary);padding-top:24px;border-top:1px solid var(--fs-line-hairline)}</style>
+</head><body>
+<div class="pair" data-accent="resort"><div><div class="name">Resort</div><div class="sub">Default</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Sunset</div><div class="bar bar2" style="background:var(--fs-accent-2)">Cannes</div></div></div>
+<div class="pair" data-accent="garden"><div><div class="name">Garden</div><div class="sub">Hospitality</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Foliage</div><div class="bar bar2" style="background:var(--fs-accent-2)">Sand</div></div></div>
+<div class="pair" data-accent="vice"><div><div class="name">Vice</div><div class="sub">Nightlife</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Magenta</div><div class="bar bar2" style="background:var(--fs-accent-2)">Hazard</div></div></div>
+<div class="pair" data-accent="systems"><div><div class="name">Systems</div><div class="sub">Ops</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Teal</div><div class="bar bar2" style="background:var(--fs-accent-2)">Cannes</div></div></div>
+<div class="pair" data-accent="dynasty"><div><div class="name">Dynasty</div><div class="sub">Formal</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Brick</div><div class="bar bar2" style="background:var(--fs-accent-2)">Sand</div></div></div>
+<div class="note">Twelve colours exist. Two are visible at a time. Each pair carries its own <b>--fs-on-accent</b> — the readable ink on a solid fill is a property of the colour, not the register. Status — positive, caution, critical — is not an accent: it is a dot or a bar, at most one per row.</div>
+</body></html>

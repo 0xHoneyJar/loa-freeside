@@ -1,0 +1,337 @@
+<!-- @dsCard group="Doctrine" viewport="1280x6300" name="Exposure" subtitle="The one mechanism: how much of the machine is showing, and what turns it" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — Exposure</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--fs-deep-space-ink)}
+body{width:1280px;font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric)}
+section{padding:48px;background:var(--fs-surface-base);color:var(--fs-ink-primary)}
+a{color:var(--fs-accent-2)}a:hover{color:var(--fs-accent-1)}
+.wordmark{font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1}
+.display{font-family:var(--fs-font-display);font-size:var(--fs-display-size);letter-spacing:var(--fs-display-track);line-height:var(--fs-display-lh);text-transform:uppercase}
+.title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}
+.sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh)}
+.lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);line-height:var(--fs-label-lh);text-transform:uppercase;color:var(--fs-ink-muted)}
+.body{font-size:var(--fs-body-size)}
+p{max-width:74ch;text-wrap:pretty;color:var(--fs-ink-secondary)}
+.stack-8{display:flex;flex-direction:column;gap:8px}
+.stack-16{display:flex;flex-direction:column;gap:16px}
+.stack-24{display:flex;flex-direction:column;gap:24px}
+.stack-48{display:flex;flex-direction:column;gap:48px}
+.row-8{display:flex;gap:8px;align-items:center}
+.row-16{display:flex;gap:16px;align-items:center}
+.row-24{display:flex;gap:24px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.panel{background:var(--fs-surface-raised);padding:24px;display:flex;flex-direction:column;gap:16px}
+.rule{height:1px;background:var(--fs-line-hairline)}
+.bar{height:3px;background:var(--fs-accent-1)}
+.dot{width:8px;height:8px;flex:0 0 auto}
+/* exposure meter */
+.meter{display:flex;gap:2px;width:168px}
+.meter i{height:8px;flex:1;background:var(--fs-line-structural);display:block}
+.meter i.on{background:var(--fs-accent-1)}
+/* specimen */
+.spec{display:flex;flex-direction:column;gap:16px;padding:24px;min-height:236px}
+.spec .num{font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em}
+.spec .cell{font-size:var(--fs-data-sm)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:0 16px 8px 0;white-space:nowrap;vertical-align:bottom}
+.tbl td{padding:8px 16px 8px 0;border-top:1px solid var(--fs-line-hairline);vertical-align:top;font-size:var(--fs-body-size)}
+.tbl td:first-child,.tbl th:first-child{padding-left:0}
+.tbl .k{color:var(--fs-ink-muted);font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;white-space:nowrap}
+.law{display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start}
+.law .n{font-family:var(--fs-font-display);font-size:26px;line-height:1;color:var(--fs-accent-1)}
+.tag{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent);display:inline-block}
+.ghost{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;border:1px solid var(--fs-line-structural);color:var(--fs-ink-muted);display:inline-block}
+.no{border-left:3px solid var(--fs-state-critical);padding-left:16px}
+.formula{font-size:var(--fs-size-md);font-weight:600;letter-spacing:-.01em;padding:16px 24px;background:var(--fs-surface-raised);border-left:3px solid var(--fs-accent-1);color:var(--fs-ink-primary)}
+.meter i.cap{background:var(--fs-state-critical);opacity:.32}
+.yes{border-left:3px solid var(--fs-state-positive);padding-left:16px}
+</style>
+</head>
+<body>
+
+<!-- ══ 0 · TERRACE ══ -->
+<section data-register="light" data-accent="resort" data-screen-label="Doctrine — premise">
+<div class="stack-48">
+<div class="row-16"><span class="wordmark">FREESIDE</span><span class="lab" style="margin-left:auto">Doctrine 01 · Exposure</span></div>
+<div class="stack-24">
+<h1 class="display">The machine<br>is dressed,<br>not hidden</h1>
+<p style="font-size:var(--fs-body-size)">Freeside is a resort wrapped around a machine built for profit. The garden is a life-support system wearing a garden costume, and the costume is honest — on the terrace the machinery is visible, elegant, and simply not labelled. Nothing is concealed. It is <em>undescribed</em>.</p>
+<p>Every screen in this system sits somewhere on one scale: <strong style="color:var(--fs-ink-primary)">how much of the machine is showing</strong>. That number is called <strong style="color:var(--fs-ink-primary)">exposure</strong>. It is the only mechanism in the doctrine, and everything else — register, pair, density, wording — is downstream of it.</p>
+</div>
+<div class="rule"></div>
+<div class="g3">
+<div class="stack-8"><span class="lab">Not a mood</span><p class="body">Exposure is computed, not chosen. A designer never picks "cyberpunk here". They state depth, access and state; the register follows.</p></div>
+<div class="stack-8"><span class="lab">Not a theme toggle</span><p class="body">There is no dark mode. Deep Space is not night — it is the service level. Paradise is not day — it is the guest level.</p></div>
+<div class="stack-8"><span class="lab">Not decoration</span><p class="body">Higher exposure means more arithmetic on screen, not more texture. No grime, no hazard tape, no distress. The underneath is clean.</p></div>
+</div>
+</div>
+</section>
+
+<!-- ══ THREE DIALS ══ -->
+<section data-register="light" data-accent="garden" data-screen-label="Doctrine — the three dials">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">The mechanism</span>
+<h2 class="title">Two dials and a ceiling</h2>
+<p><strong style="color:var(--fs-ink-primary)">Depth</strong> sets what the task normally requires. <strong style="color:var(--fs-ink-primary)">State</strong> can force more structure to appear, for diagnosis or recovery. <strong style="color:var(--fs-ink-primary)">Access</strong> does neither — it is the ceiling on how far the interface may disclose. Elevated access <em>permits</em> deeper views; it never activates them.</p>
+<div class="formula">exposure = min( access ceiling, max( depth baseline, state floor ) )</div>
+<p>The asymmetry is the point. State pushes up from below and access caps from above, so a failing system can never widen disclosure. A guest watching the station fail still sees the terrace — the resort does not show its machinery to guests, least of all when the machinery is what is failing.</p>
+</div>
+<div class="g3">
+<div class="panel">
+<span class="lab">Baseline · Depth</span>
+<div class="sec">What the task requires</div>
+<div class="stack-8">
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Arrival, amenity, wayfinding</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Your account, your standing</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Consoles, rosters, tooling</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Settlement, weights, audit</span></div>
+</div>
+</div>
+<div class="panel">
+<span class="lab">Ceiling · Access</span>
+<div class="sec">How far disclosure may go</div>
+<div class="stack-8">
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Guest — ceiling 0</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Member — ceiling 1, own record</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Operator — ceiling 2, every record</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Principal — ceiling 3, the arithmetic</span></div>
+<p class="body" style="color:var(--fs-ink-muted)">Permits. Never activates.</p>
+</div>
+</div>
+<div class="panel">
+<span class="lab">Floor · State</span>
+<div class="sec">What must be diagnosable</div>
+<div class="stack-8">
+<div class="row-8"><span class="dot" style="background:var(--fs-state-positive)"></span><span class="body">Nominal — floor 0</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-caution)"></span><span class="body">Degraded — floor 2</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-critical)"></span><span class="body">Alert — floor 3</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-neutral)"></span><span class="body">Frozen — floor 3, read-only</span></div>
+<p class="body" style="color:var(--fs-ink-muted)">Pushes up. Stops at the ceiling.</p>
+</div>
+</div>
+</div>
+<div class="panel" style="gap:24px">
+<span class="lab">Resolution</span>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Guest · arrival · nominal</span><div class="meter"><i class="on"></i><i></i><i></i><i></i></div><span class="lab" style="color:var(--fs-ink-primary)">0 · Terrace</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Operator · arrival · nominal</span><div class="meter"><i class="on"></i><i></i><i></i><i></i></div><span class="lab" style="color:var(--fs-ink-primary)">0 · Terrace — permitted, not required</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Member · account · alert</span><div class="meter"><i class="on"></i><i class="on"></i><i class="cap"></i><i class="cap"></i></div><span class="lab" style="color:var(--fs-ink-primary)">1 · Atrium — clamped at ceiling</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Operator · console · degraded</span><div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><span class="lab" style="color:var(--fs-ink-primary)">2 · Service</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Principal · settlement · nominal</span><div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><span class="lab" style="color:var(--fs-ink-primary)">3 · Ledger</span></div>
+<div class="rule"></div>
+<div class="row-16"><span class="dot" style="background:var(--fs-state-critical);opacity:.32"></span><p class="body">Clamped — the state floor asked for this level and the access ceiling refused. That refusal is a designed screen, not an error. It is the seam.</p></div>
+</div>
+</div>
+</section>
+
+<!-- ══ FOUR LEVELS — specimen strip ══ -->
+<section data-register="light" data-accent="resort" style="background:var(--fs-surface-sunk)" data-screen-label="Doctrine — the four levels">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">The ladder</span>
+<h2 class="title">One member's standing, four exposures</h2>
+<p>The same record, rendered at each level. Read left to right: nothing becomes true that was not true before. The terrace is not a lie — it is the same number without its working shown.</p>
+</div>
+<div class="g4" style="gap:24px">
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">0 · Terrace</span></div>
+<div class="spec" data-register="light" data-accent="resort" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<div class="stack-8"><span class="lab">Standing</span><div class="title">Good</div></div>
+<div class="bar" style="background:var(--fs-accent-2)"></div>
+<p class="body" style="color:var(--fs-ink-secondary)">Everything on the terrace is open to you.</p>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Paradise · resort</span>
+<span class="body" style="color:var(--fs-ink-muted)">48 rhythm · no visible line · prose figures</span>
+</div>
+</div>
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">1 · Atrium</span></div>
+<div class="spec" data-register="light" data-accent="garden" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<div class="stack-8"><span class="lab">Standing</span><div class="num">941</div></div>
+<div class="bar"></div>
+<div class="stack-8">
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Rising this epoch</span><span class="cell" style="margin-left:auto">+38</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Tier</span><span class="cell" style="margin-left:auto">Wintermute</span></div>
+</div>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Paradise · garden</span>
+<span class="body" style="color:var(--fs-ink-muted)">24 rhythm · hairline · rounded figures</span>
+</div>
+</div>
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">2 · Service</span></div>
+<div class="spec" data-register="deep" data-accent="systems" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<span class="lab">Record 0412</span>
+<div class="stack-8">
+<div class="row-8"><span class="body" style="color:var(--fs-ink-primary)">molly.eth</span><span class="cell" style="margin-left:auto">941</span></div>
+<div class="rule"></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Δ epoch 41</span><span class="cell" style="margin-left:auto">+38</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Weight</span><span class="cell" style="margin-left:auto">0.34</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-positive)"></span><span class="body" style="color:var(--fs-ink-muted)">Nominal</span></div>
+</div>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Deep Space · systems</span>
+<span class="body" style="color:var(--fs-ink-muted)">16 rhythm · structural line · exact figures</span>
+</div>
+</div>
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">3 · Ledger</span></div>
+<div class="spec" data-register="deep" data-accent="vice" style="background:var(--fs-surface-base);color:var(--fs-ink-primary);gap:8px">
+<span class="lab">0412 · e41 · op zk</span>
+<div class="stack-8" style="gap:8px">
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">gross</span><span class="cell" style="margin-left:auto">2,400.00</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">house 4.2%</span><span class="cell" style="margin-left:auto">−100.80</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">spread</span><span class="cell" style="margin-left:auto">−7.20</span></div>
+<div class="rule"></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-primary)">net pool</span><span class="cell" style="margin-left:auto">2,292.00</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">party</span><span class="cell" style="margin-left:auto">T-A Ltd</span></div>
+</div>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Deep Space · vice</span>
+<span class="body" style="color:var(--fs-ink-muted)">8 rhythm · line is the grid · signed figures</span>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<!-- ══ LEVERS ══ -->
+<section data-accent="systems" data-screen-label="Doctrine — the levers">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Specification</span>
+<h2 class="title">What each level sets</h2>
+<p>Seven levers. Once exposure is known, none of these is a judgement call. This table is the contract — a screen that mixes rows from different columns is wrong, and that is a reviewable defect rather than a matter of taste.</p>
+</div>
+<table class="tbl">
+<thead><tr><th style="width:132px">Lever</th><th>0 · Terrace</th><th>1 · Atrium</th><th>2 · Service</th><th>3 · Ledger</th></tr></thead>
+<tbody>
+<tr><td class="k">Register</td><td>Paradise</td><td>Paradise</td><td>Deep Space</td><td>Deep Space</td></tr>
+<tr><td class="k">Accent pair</td><td>resort</td><td>garden</td><td>systems</td><td>vice</td></tr>
+<tr><td class="k">Rhythm</td><td>48 only</td><td>24 and 48</td><td>16 and 24</td><td>8 and 16</td></tr>
+<tr><td class="k">Figures</td><td>Words. "Good", "rising", "most weeks"</td><td>Rounded, with a unit</td><td>Exact, tabular, aligned</td><td>Exact, signed, to the cent</td></tr>
+<tr><td class="k">Structure</td><td>No visible line. Space separates</td><td>Hairline where a box ends</td><td>Structural line, load-bearing</td><td>The line is the grid</td></tr>
+<tr><td class="k">Naming</td><td>Machinery unnamed. It is scenery</td><td>Systems named in plain words</td><td>Systems carry identifiers</td><td>Identifiers, epoch, operator, party</td></tr>
+<tr><td class="k">Arithmetic</td><td>"Included"</td><td>Itemised total</td><td>Itemised with rate</td><td>Every leg, both counterparties</td></tr>
+</tbody>
+</table>
+<div class="rule"></div>
+<div class="g3">
+<div class="stack-8"><span class="lab">On the pairs</span><p class="body">The pair ladder is not arbitrary. <strong style="color:var(--fs-ink-primary)">resort</strong> is the sun on concrete. <strong style="color:var(--fs-ink-primary)">garden</strong> is the life-support costume. <strong style="color:var(--fs-ink-primary)">systems</strong> is the clinical machine, cold and competent. <strong style="color:var(--fs-ink-primary)">vice</strong> is the house edge, and it appears only where money is being taken.</p></div>
+<div class="stack-8"><span class="lab">On nesting</span><p class="body">A subtree may re-enter a register: <strong style="color:var(--fs-ink-primary)">data-register="deep"</strong> inside a light page renders a Service panel correctly without hex literals. Use it for the seam — a raised-exposure fragment quoted inside a lower-exposure page. Never use it to put two registers side by side for contrast.</p></div>
+<div class="stack-8"><span class="lab">On dynasty</span><p class="body">The fifth pair sits outside the ladder. <strong style="color:var(--fs-ink-primary)">dynasty</strong> is ownership — Tessier-Ashpool itself. Use it for governance, provenance and anything that speaks as the house rather than about it. Never mix it into a level.</p></div>
+</div>
+</div>
+</section>
+
+<!-- ══ LAWS ══ -->
+<section data-accent="systems" style="background:var(--fs-surface-raised)" data-screen-label="Doctrine — the three laws">
+<div class="stack-48">
+<div class="stack-16"><span class="lab">Non-negotiable</span><h2 class="title">Three laws</h2></div>
+<div class="stack-48">
+<div class="law">
+<span class="n">01</span>
+<div class="stack-8">
+<div class="sec">One underlying truth, progressively disclosed</div>
+<p class="body">The substrate is identical at every level; what changes is how much of it is disclosed. Terrace need not surface every fact the Ledger holds — but nothing at Terrace may contradict it. If the terrace says "included" and the ledger says "4.2% to the house", both are true and the guest was not misled. If a level needs a <em>different fact</em> to hold, the design is lying and the level is wrong.</p>
+</div>
+</div>
+<div class="law">
+<span class="n">02</span>
+<div class="stack-8">
+<div class="sec">The machine is dressed, not hidden</div>
+<p class="body">Surface machinery stays visible. A gauge on the terrace is a real gauge reading a real number, quantized to what the terrace may know: three positions, no units, no figure. Never fake an instrument, never draw a system that does not exist, and never hide one behind an illustration.</p>
+<p class="body">Every channel is a disclosure channel. Text, numerals, geometry, ordering, colour, animation, accessibility metadata and DOM structure all represent the same facts, and each must stay within the precision the level permits. A bar whose width is the reading states the reading, whatever the caption beside it says.</p>
+</div>
+</div>
+<div class="law">
+<span class="n">03</span>
+<div class="stack-8">
+<div class="sec">State cannot breach the ceiling</div>
+<p class="body">Depth and state raise exposure; access caps it. A failure may force structure to appear so it can be diagnosed, but it may never widen disclosure — an alert is not an authorisation. Where the floor exceeds the ceiling the screen <em>clamps</em>: it acknowledges without detailing. What a clamp may say is set by the disclosure mode, not by the level alone.</p>
+</div>
+</div>
+<div class="law">
+<span class="n">04</span>
+<div class="stack-8">
+<div class="sec">Agency tracks role</div>
+<p class="body">Two users may receive equally honest accounts of the same state and still be offered different things to do about it. A guest reads "ask at the desk"; a member reads "request access"; an operator reads "request elevation"; a principal reads "open on record". The description is shared; the affordance is not. Never render an action the role cannot complete — a dead button is a worse disclosure than a plain refusal.</p>
+<p class="body">Availability and presentation are separate concerns. Role and capability decide whether an action may be performed; the resource's existence policy decides whether it may be offered at all; exposure governs only how specifically it is labelled and explained; and the destination resolves its own exposure under the same access ceiling. An operator on the terrace is still offered operations — below Service it is simply called "the console" rather than named by sector. Availability must never depend on exposure alone; presentation may.</p>
+</div>
+</div>
+</div>
+<div class="rule"></div>
+<div class="stack-16">
+<span class="lab">The three copy laws, together</span>
+<div class="g3">
+<div class="stack-8"><div class="sec">Severity tracks state</div><p class="body">Degraded and offline are different words. A guest during an alert hears a calm sentence — that is under-disclosure, not contradiction.</p></div>
+<div class="stack-8"><div class="sec">Specificity tracks exposure</div><p class="body">How much working is shown. No exposure integer and no ladder vocabulary appears below Service, in any string, ever.</p></div>
+<div class="stack-8"><div class="sec">Agency tracks role</div><p class="body">What you may do about it. Actions are projected from the role, never from the outcome alone. Availability never depends on exposure; the wording may.</p></div>
+</div>
+<p class="body">These are three axes, not one. Conflating them is what produces a screen that softens the severity word and then prints the machine's own counting underneath it.</p>
+</div>
+</div>
+</section>
+
+<!-- ══ DISCLOSURE ══ -->
+<section data-accent="systems" data-screen-label="Doctrine — disclosure">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Clamp policy</span>
+<h2 class="title">What a refusal may admit</h2>
+<p>A clamp is not one behaviour. Whether it may acknowledge hidden handling depends on the resource, not the screen — so sensitivity is declared on the resource and the mode is derived. The governing rule: <strong style="color:var(--fs-ink-primary)">a clamp may acknowledge that hidden handling exists, but it must not confirm a sensitive object's existence or disclose the shape of the inaccessible layer.</strong></p>
+</div>
+<div class="g3">
+<div class="panel"><span class="lab">Silent</span><div class="sec">Do not confirm existence</div><p class="body">The screen reads as though the destination is not a thing here. No acknowledgment, no name, no shape. For sensitive resources whose existence is above the asker's ceiling.</p></div>
+<div class="panel"><span class="lab">Abstract</span><div class="sec">Admit handling, not contents</div><p class="body">Something is being attended to and it is not yours. No structure, no identifiers, no counting. The normal Terrace and Atrium clamp.</p></div>
+<div class="panel"><span class="lab">Explicit</span><div class="sec">Name the withheld layer</div><p class="body">The asker already knows the layer exists, so the refusal states which, at what ceiling, and that it was recorded. Service and above.</p></div>
+</div>
+<p class="body">Implemented in <strong style="color:var(--fs-ink-primary)">templates/_doctrine/doctrine.js</strong> and asserted by the <strong style="color:var(--fs-ink-primary)">Conformance</strong> card, which runs all forty-eight role × depth × state combinations on every load.</p>
+</div>
+</section>
+
+<!-- ══ NOT THIS ══ -->
+<section data-accent="vice" data-screen-label="Doctrine — anti-patterns">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Failure modes</span>
+<h2 class="title">Not this</h2>
+<p>Every one of these has been produced by a well-intentioned generator working from the palette alone. They are the reason this page exists.</p>
+</div>
+<div class="g2">
+<div class="stack-16">
+<div class="no"><div class="sec">Cyberpunk as texture</div><p class="body">Scanlines, glitch, terminal green, monospace everywhere, hazard chevrons. The underneath is <em>clinical</em> — cold, well-lit, competent. Nothing on Freeside is broken; it is simply not for guests.</p></div>
+<div class="no"><div class="sec">Solarpunk as illustration</div><p class="body">Drawn leaves, vine borders, hand-lettered warmth. The garden is infrastructure. It reads as light, water, concrete and space — not as ornament applied to a UI.</p></div>
+<div class="no"><div class="sec">Elevated access as a theme</div><p class="body">An operator signs in and the whole product turns dark. Access permits depth; it does not apply it. An operator reading the welcome page is on the terrace like everybody else.</p></div>
+<div class="no"><div class="sec">Both registers on one screen for contrast</div><p class="body">A dark hero above a light body is not the duality. It is a gradient with extra steps. One screen resolves to one exposure.</p></div>
+</div>
+<div class="stack-16">
+<div class="no"><div class="sec">Lore in the information architecture</div><p class="body">Navigation reads "Members", "Settlement", "Access" — not "Villa Straylight". Gibson supplies the logic, not the labels. Flavour lives in transitions, empty states, and the words around the data.</p></div>
+<div class="no"><div class="sec">Density as seriousness</div><p class="body">A roster is dense because it holds 4,000 rows, not because density looks professional. Exposure sets density; content does not get to vote.</p></div>
+<div class="yes"><div class="sec">The test</div><p class="body">Name the depth, the access and the state. If those three do not produce the screen in front of you, the screen is decorated rather than designed.</p></div>
+</div>
+</div>
+<div class="rule"></div>
+<div class="row-16"><span class="tag">Doctrine 01</span><span class="ghost">Next — Templates, one per level</span><span class="lab" style="margin-left:auto">Freeside · Tessier-Ashpool</span></div>
+</div>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!-- @dsCard group="Doctrine" viewport="1280x3900" name="Review · Permission gate" subtitle="One refusal, six contexts — silent, abstract and explicit disclosure" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — Review · Permission gate</title>
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="review-frames.css">
+<script src="../templates/_doctrine/doctrine.js"></script>
+</head>
+<body>
+
+<section>
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Doctrine 02 · Review</span>
+<h2 class="title">Permission gate, six contexts</h2>
+<p>Every frame is the real Design Component from <strong style="color:var(--fs-ink-primary)">templates/permission-gate</strong>, handed one context and nothing else. The copy, the withheld note, the meter and the two action labels are whatever the projector returned. Badges and axis figures are computed here, not typed.</p>
+</div>
+<div class="g3">
+<div class="stack-8"><div class="sec">Silent</div><p class="body">Do not confirm existence. The screen reads as though the destination is not a thing here — for resources whose existence sits above the asker's ceiling.</p></div>
+<div class="stack-8"><div class="sec">Abstract</div><p class="body">Admit handling, not contents. Something is being attended to and it is not yours. No structure, no identifiers, no counting.</p></div>
+<div class="stack-8"><div class="sec">Explicit</div><p class="body">Name the withheld layer. The asker already knows it exists, so the refusal states which, at what ceiling, and that it was recorded.</p></div>
+</div>
+<div class="note"><p class="body">A presentation review. A frame that shows nothing proves the screen said nothing, not that the payload was filtered — server-side authorization is the boundary.</p></div>
+</div>
+</section>
+
+<section>
+<div class="g2" id="gate"></div>
+</section>
+
+<section>
+<div class="stack-16">
+<div class="row-8"><span class="wordmark">FREESIDE</span><span class="ghost" id="measure">measuring</span></div>
+<p class="body">Sibling cards: <a href="doctrine-review-guest-surface.card.html">Review · Guest surface</a> · <a href="doctrine-review-roster.card.html">Review · Roster</a> · <a href="doctrine-conformance.card.html">Conformance</a></p>
+</div>
+</section>
+
+<script src="review-frames.js"></script>
+<script>
+FreesideReview.render({
+  host: 'gate',
+  src: '../templates/permission-gate/PermissionGate.dc.html',
+  pack: 'permission-gate',
+  destination: 'console',
+  tiles: [
+    { props: { role: 'guest', destination: 'settlement' }, h: 740,
+      note: 'Silent. Settlement\u2019s existence sits above a guest\u2019s ceiling, so the gate reads as though the destination is not a thing here \u2014 no name, no shape, no acknowledgment that anything was refused.' },
+    { props: { role: 'member', destination: 'console' }, h: 740,
+      note: 'Abstract. Depth 2 over a ceiling of 1: handling is admitted, structure is not. Your own record is named as unaffected, which is true at every level.' },
+    { props: { role: 'operator', destination: 'settlement' }, h: 740,
+      note: 'Explicit. The operator already knows the layer exists, so the refusal states which layer, at what ceiling, and that the attempt was recorded.' },
+    { props: { role: 'member', destination: 'account', systemState: 'degraded' }, h: 740,
+      note: 'Clamped, not denied. The state floor wants Service; the ceiling holds it at Atrium. An alert is not an authorisation.' },
+    { props: { role: 'operator', destination: 'console', systemState: 'degraded' }, h: 740,
+      note: 'Permitted at full depth. Floor and ceiling agree, so nothing is withheld and no clamp notice is owed.' },
+    { props: { role: 'principal', destination: 'settlement', systemState: 'alert' }, h: 740,
+      note: 'Ledger. Everything the ladder holds, including its own counting \u2014 the only level where the exposure integers are legible.' }
+  ]
+});
+</script>
+</body>
+</html>

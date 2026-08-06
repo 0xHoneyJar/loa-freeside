@@ -1,0 +1,173 @@
+<!-- @dsCard group="Doctrine" viewport="1280x3600" name="Retrofit" subtitle="Putting Freeside colour into a repo that already has its own token layer — one file, no component edits" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — retrofit recipe</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);padding:48px}
+a{color:var(--fs-accent-2)}a:hover{color:var(--fs-accent-1)}
+.lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)}
+.title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}
+.sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh)}
+.stack-8{display:flex;flex-direction:column;gap:8px}
+.stack-16{display:flex;flex-direction:column;gap:16px}
+.stack-24{display:flex;flex-direction:column;gap:24px}
+.stack-48{display:flex;flex-direction:column;gap:48px}
+.row-16{display:flex;gap:16px;align-items:center}
+p{max-width:80ch;text-wrap:pretty;color:var(--fs-ink-secondary)}
+.rule{height:1px;background:var(--fs-line-hairline)}
+.panel{background:var(--fs-surface-raised);padding:24px;display:flex;flex-direction:column;gap:16px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.step{display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start}
+.step .n{font-family:var(--fs-font-display);font-size:22px;line-height:1.2;color:var(--fs-accent-1)}
+pre{background:var(--fs-surface-sunk);padding:16px;overflow-x:auto;font-size:var(--fs-size-xs);line-height:1.7;color:var(--fs-ink-secondary);border-left:3px solid var(--fs-accent-1)}
+code{color:var(--fs-ink-primary)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:0 16px 8px 0;white-space:nowrap}
+td{padding:8px 16px 8px 0;border-top:1px solid var(--fs-line-hairline);vertical-align:top;font-size:var(--fs-size-xs)}
+.sw{display:inline-flex;align-items:center;gap:8px}
+.sw i{width:24px;height:14px;border:1px solid var(--fs-line-structural);display:block;flex:0 0 auto}
+.no{border-left:3px solid var(--fs-state-critical);padding-left:16px}
+.yes{border-left:3px solid var(--fs-state-positive);padding-left:16px}
+.warn{border-left:3px solid var(--fs-state-caution);padding-left:16px}
+</style>
+</head>
+<body data-accent="systems" data-screen-label="Retrofit recipe">
+<div class="stack-48">
+
+<div class="stack-16">
+<span class="lab">Adoption · pattern 2 of 2</span>
+<h1 class="title">Retrofitting a repo that already has tokens</h1>
+<p>A greenfield project consumes this system directly: link <code>styles.css</code>, read components off the bundle, set <code>data-register</code> and <code>data-exposure</code>. Most repos are not greenfield. They already have a token layer somebody trusts, a component library built on it, and no appetite for a rewrite. For those, do not replace the token layer — <strong style="color:var(--fs-ink-primary)">retint its primitives from one file and change nothing else</strong>.</p>
+</div>
+
+<div class="g2">
+<div class="panel"><span class="lab">Pattern 1 · Consume</span><div class="sec">Greenfield</div><p style="font-size:var(--fs-size-xs)">Link this system's stylesheets, use its components, follow the doctrine. Full access to registers, exposure rhythm and the projector.</p></div>
+<div class="panel"><span class="lab">Pattern 2 · Retint</span><div class="sec">Existing token layer</div><p style="font-size:var(--fs-size-xs)">One override file appended last. Freeside colour, the host's own type and spacing, zero component edits. Doctrine adopted later, screen by screen.</p></div>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-48">
+
+<div class="step">
+<span class="n">01</span>
+<div class="stack-8">
+<div class="sec">Find the primitive layer</div>
+<p>Most mature token layers are three tiers: raw primitives (<code>void</code>, <code>bone</code>, <code>cyan</code>), semantic tokens that reference them (<code>--color-bg-card</code>), and framework aliases on top (<code>--primary</code>, <code>--muted-foreground</code>). Grep the repo for hex literals. If the only matches are in the primitive file and in brand-data files, the layer is clean and this recipe works. If components carry their own hexes, fix those first — an override cannot reach them.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">02</span>
+<div class="stack-8">
+<div class="sec">Append one file, last</div>
+<p>Not a patch to the existing token file — a new file loaded after it, so the host's tokens stay pristine and the retint is one deletable line.</p>
+<pre>@import "./tokens.css";
+@import "./compat.css";
+@import "./light.css";
+@import "./freeside-palette.css";   <span style="color:var(--fs-accent-1)">/* ← the only new line */</span></pre>
+</div>
+</div>
+
+<div class="step">
+<span class="n">03</span>
+<div class="stack-8">
+<div class="sec">Keep every token name</div>
+<p>Override values, never identifiers. <code>bg-void-base</code>, <code>text-cyan-base</code> and <code>--color-phosphor-base</code> keep working and now resolve to Freeside colours. Every utility class, every component, every Tailwind arbitrary value continues to compile. Renaming tokens turns a one-file change into a repo-wide refactor and is the single most common way this goes wrong.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">04</span>
+<div class="stack-8">
+<div class="sec">Map the host's registers onto ours</div>
+<p>Whatever the host calls its themes, one of them is Deep Space and one is Paradise. Redeclare every value in both. Do not assume the host's dark theme is only used at night — in Freeside terms it is the service level, and that reframing is usually the most useful thing the retint delivers.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">05</span>
+<div class="stack-8">
+<div class="sec">Pick one accent pair for the whole app</div>
+<p>Two accents on screen. Map the host's chrome accent to the pair's first colour and its emphasis accent to the second; leave status colours functional. Choose by what the app <em>is</em>: an operator console is <code>systems</code>, a member-facing surface is <code>garden</code>, anything handling money is <code>vice</code>.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">06</span>
+<div class="stack-8">
+<div class="sec">Measure on the surface the text actually sits on</div>
+<p>The recurring defect, and it cost four rounds on the first retrofit. A colour measured against the page is not measured: small text lives on cards, on table-header tones, on row-hover, and on its own tint. Check the darkest and lightest surface each colour lands on, and take the worst.</p>
+<div class="warn stack-8" style="margin-top:8px">
+<p style="font-size:var(--fs-size-xs)"><strong style="color:var(--fs-ink-primary)">Light registers invert the tint rule.</strong> Mixing an accent into a light page lands <em>darker</em> than the page, so a tinted pill or active row eats the accent's contrast on the one surface it always sits on. In a light register, pin tints as literals just under the page colour. In a dark register, <code>color-mix</code> is safe — there the tint moves away from the ink.</p>
+</div>
+</div>
+</div>
+
+<div class="step">
+<span class="n">07</span>
+<div class="stack-8">
+<div class="sec">Do not retint what is not colour</div>
+<p>Type, spacing, radius, elevation and density belong to the host. A retint that also changes the type scale is a redesign wearing a retint's clothes, and it will be reverted. Freeside's own type and rhythm arrive later, per screen, when a team adopts the doctrine.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">08</span>
+<div class="stack-8">
+<div class="sec">Leave third-party colour alone</div>
+<p>Partner logos, chain marks and community brand swatches are not yours to restyle. Where they need to sit on-register, pull them onto it with a relative-colour recipe rather than replacing the hue.</p>
+</div>
+</div>
+
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-24">
+<div class="stack-16">
+<span class="lab">Worked example</span>
+<h2 class="title">freeside-dashboard</h2>
+<p>The dashboard ran on a mature three-tier palette with no component-level hexes, so the whole retint is one file overriding primitives. Its two previews and the full mapping table live in <code>dashboard-palette/</code> — unlisted from this tab on purpose, since they document a consumer, not this system.</p>
+</div>
+<table>
+<thead><tr><th style="width:190px">Host primitive</th><th style="width:170px">Freeside role</th><th style="width:150px">Deep Space</th><th style="width:150px">Paradise</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td><code>void-base</code></td><td>surface-base</td><td><span class="sw"><i style="background:#081F28"></i>#081F28</span></td><td><span class="sw"><i style="background:#F7F1E5"></i>#F7F1E5</span></td><td>Five surface rungs, because the app used five</td></tr>
+<tr><td><code>bone-base</code></td><td>one ink</td><td><span class="sw"><i style="background:#F7F1E5"></i>#F7F1E5</span></td><td><span class="sw"><i style="background:#081F28"></i>#081F28</span></td><td>Hierarchy from dim/muted rungs, never from tinting the letterform</td></tr>
+<tr><td><code>cyan-base</code></td><td>accent 1 · cannes sky</td><td><span class="sw"><i style="background:#66ADC6"></i>#66ADC6</span></td><td><span class="sw"><i style="background:#2F6579"></i>#2F6579</span></td><td>Light value set by its own tint, not the page</td></tr>
+<tr><td><code>anomaly-base</code></td><td>accent 2 · bermuda sunset</td><td><span class="sw"><i style="background:#C8705B"></i>#C8705B</span></td><td><span class="sw"><i style="background:#A0503A"></i>#A0503A</span></td><td>The <code>resort</code> pair, chosen for a member-facing console</td></tr>
+<tr><td><code>phosphor-base</code></td><td>positive</td><td><span class="sw"><i style="background:#6DAC9E"></i>#6DAC9E</span></td><td><span class="sw"><i style="background:#5C6647"></i>#5C6647</span></td><td>Babylon Foliage is 3.7:1 on Deep Space — legal for a dot, not for small numerals</td></tr>
+<tr><td><code>token-yellow</code></td><td>caution</td><td><span class="sw"><i style="background:#F7D481"></i>#F7D481</span></td><td><span class="sw"><i style="background:#7A5E1C"></i>#7A5E1C</span></td><td>Hazard is unreadable on sand; light drops to ochre</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-16">
+<span class="lab">Before you adopt the doctrine</span>
+<h2 class="title">Exposure is presentation, not access control</h2>
+<div class="no stack-8">
+<p>The exposure model decides what a permitted viewer is <strong style="color:var(--fs-ink-primary)">shown</strong>. It does not decide what they are permitted to <strong style="color:var(--fs-ink-primary)">receive</strong>. Unauthorized rows, cells, counts, pagination metadata and exports must be filtered or authorized <strong style="color:var(--fs-ink-primary)">server-side, before the payload reaches the client</strong>.</p>
+<p>Dropping a column, omitting a row from the DOM, and hiding an element with CSS are not access control — the record is still in the response and the response is readable. A retrofitted app that moves its authorization into the client because the doctrine looks like a permission system has been made less safe, not more.</p>
+<p>Read the levels as: <em>given data this client is already entitled to, how much of it does this screen state, and in what words.</em> Nothing more.</p>
+</div>
+</div>
+
+<div class="rule"></div>
+
+<div class="g3">
+<div class="yes stack-8"><div class="sec">Ship it when</div><p style="font-size:var(--fs-size-xs)">Hex literals live only in the primitive file and brand data. One import retints every screen, and reverting is one deleted line.</p></div>
+<div class="warn stack-8"><div class="sec">Fix first when</div><p style="font-size:var(--fs-size-xs)">Components carry their own colours, or semantic tokens are bypassed with arbitrary values. Consolidate those into primitives, then retint.</p></div>
+<div class="no stack-8"><div class="sec">Don't retint when</div><p style="font-size:var(--fs-size-xs)">The app is new, or the team wants the doctrine. Consume the system directly instead — a retint gets you the palette and none of the thinking.</p></div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+/* Freeside — REVIEW CARD CHROME
+   Card-level styling only, shared by the three Doctrine review cards. The frames
+   themselves carry no styling from here: each one is a real Design Component
+   rendering its own registers. */
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--fs-deep-space-ink)}
+body{width:1280px;font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric)}
+section{padding:48px;background:var(--fs-surface-base);color:var(--fs-ink-primary)}
+a{color:var(--fs-accent-2)}a:hover{color:var(--fs-accent-1)}
+.wordmark{font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1}
+.title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}
+.sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh)}
+.lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);line-height:var(--fs-label-lh);text-transform:uppercase;color:var(--fs-ink-muted)}
+.body{font-size:var(--fs-body-size)}
+p{max-width:74ch;text-wrap:pretty;color:var(--fs-ink-secondary)}
+.stack-8{display:flex;flex-direction:column;gap:8px}
+.stack-16{display:flex;flex-direction:column;gap:16px}
+.stack-24{display:flex;flex-direction:column;gap:24px}
+.stack-48{display:flex;flex-direction:column;gap:48px}
+.row-8{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.rule{height:1px;background:var(--fs-line-hairline)}
+.tag{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent);display:inline-block}
+.ghost{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;border:1px solid var(--fs-line-structural);color:var(--fs-ink-muted);display:inline-block}
+.note{border-left:3px solid var(--fs-accent-1);padding-left:16px}
+.tile{display:flex;flex-direction:column;gap:16px;background:var(--fs-surface-raised);padding:24px}
+.tile .axes{font-size:var(--fs-size-xs);color:var(--fs-ink-muted);font-variant-numeric:tabular-nums}
+.tile p{max-width:64ch;font-size:var(--fs-size-sm)}
+.frame{position:relative;overflow:hidden;background:var(--fs-surface-base);border:1px solid var(--fs-line-hairline)}
+.frame iframe{display:block;width:100%;height:100%;border:0}

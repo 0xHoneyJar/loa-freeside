@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="720x260" name="Concierge messaging" subtitle="ChatBubble — guest / concierge / system" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<style>body{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
+.thread{display:flex;flex-direction:column;gap:10px;max-width:460px;margin:0 auto}</style>
+</head><body><div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const { ChatBubble } = window.FreesideDesignSystem_1cacde;
+function Demo(){return (
+  <div className="thread">
+    <ChatBubble role="system">Concierge · Villa Straylight</ChatBubble>
+    <ChatBubble role="guest">What's on the Promenade tonight?</ChatBubble>
+    <ChatBubble role="concierge">The Bermuda Sunset lounge opens at 20:00, and the casino floor is at full tilt. Shall I reserve a table?</ChatBubble>
+    <ChatBubble role="guest">Yes — two, by the water.</ChatBubble>
+    <ChatBubble role="concierge">Done. Your credit has been noted. Why wait?</ChatBubble>
+  </div>
+);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script></body></html>

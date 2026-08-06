@@ -1,0 +1,117 @@
+<!-- @dsCard group="Brand" viewport="1280x4700" name="Environment" subtitle="One plate, four precisions — the media system for the inside of the cylinder" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — Environment</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--fs-deep-space-ink)}
+body{width:1280px;font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric)}
+section{padding:48px;background:var(--fs-surface-base);color:var(--fs-ink-primary);display:flex;flex-direction:column;gap:32px}
+a{color:var(--fs-accent-2)}a:hover{color:var(--fs-accent-1)}
+.lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)}
+.title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}
+.sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)}
+p{max-width:78ch;text-wrap:pretty;color:var(--fs-ink-secondary)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.cap{display:flex;flex-direction:column;gap:2px}
+.capname{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)}
+.capsub{font-size:var(--fs-size-sm);color:var(--fs-ink-muted);max-width:86ch;text-wrap:pretty}
+.rule{height:1px;background:var(--fs-line-hairline)}
+.key{display:grid;grid-template-columns:140px 1fr;gap:12px 24px}
+.key dt{color:var(--fs-ink-muted);font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding-top:3px}
+.key dd{color:var(--fs-ink-secondary);max-width:82ch;text-wrap:pretty}
+.no{border-left:3px solid var(--fs-state-critical);padding-left:16px;display:flex;flex-direction:column;gap:6px}
+.yes{border-left:3px solid var(--fs-state-positive);padding-left:16px;display:flex;flex-direction:column;gap:6px}
+.spec{display:flex;flex-direction:column;gap:12px}
+.spec .fs-env{height:420px}
+</style>
+</head>
+<body>
+
+<section data-register="light" data-accent="resort">
+<div class="cap"><span class="lab">Brand · Environment</span></div>
+<h2 class="title">There is no horizon here</h2>
+<p>Freeside is a spindle and you stand on the inside of it. The ground curves up at both sides and closes overhead, the light is a tube down the axis, the far side of the habitat hangs above you as haze. That place arrives as a render or a photograph. The system around it is deliberately thin: sky behind, one arc closing overhead, and the overlays that seat the image in the page.</p>
+
+<div class="fs-env" data-env="terrace" style="height:520px">
+<div class="fs-env-plate"><img src="../assets/terrace-plate.png" alt="Interior of the Freeside cylinder"></div>
+<i class="fs-env-curve"></i>
+<i class="fs-env-veil"></i>
+</div>
+
+<dl class="key">
+<dt>Plate</dt><dd>The render or photograph. The only place the place appears — everything else is scaffolding.</dd>
+<dt>Grid</dt><dd>Survey overlay. Invisible at Terrace and Atrium, full at Service, two thirds at Ledger.</dd>
+<dt>Axis</dt><dd>Lado-Acheson, for frames with no plate. One hard line and one bloom, never a sun disc. A render carries its own axis in perspective, so the two are never combined.</dd>
+<dt>Curve</dt><dd>A single wide arc with a hairline edge, implying the habitat closing overhead. One arc, not a panorama.</dd>
+<dt>Scrim</dt><dd>Top light-wash, added only where ink text sits over the plate.</dd>
+<dt>Veil</dt><dd>The bottom feather into the page surface. No hard photo edge ever meets content.</dd>
+<dt>Order</dt><dd>Plate, grid, axis, curve, scrim, veil, annotation. Every layer is optional; a plate and a veil is a legitimate composition.</dd>
+</dl>
+
+<div class="rule"></div>
+<p>An earlier version of this file built the whole panorama in CSS — terraces, canal, crowd marks, an inverted far side. It read as an airport diagram. Gradients cannot carry luxury architecture, and a diagram of paradise is worse than a frame waiting for a picture. The geometry now lives in the image.</p>
+</section>
+
+<section data-register="light" data-accent="resort">
+<div class="cap"><span class="lab">Canonical specimens</span><span class="capsub">One plate, four precisions. Exposure tunes the frame — saturation, bloom, survey grid, what may be labelled — and never the asset.</span></div>
+
+<div class="spec">
+<div class="cap"><span class="capname">0 · Terrace</span><span class="capsub">Full colour, full bloom, unlabelled. The resort as it is sold.</span></div>
+<div class="fs-env" data-env="terrace">
+<div class="fs-env-plate"><img src="../assets/terrace-plate.png" alt="The cylinder at Terrace precision"></div>
+<i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i>
+</div>
+</div>
+
+<div class="spec">
+<div class="cap"><span class="capname">1 · Atrium</span><span class="capsub">A half step cooler. One label is permitted — a place, never a figure.</span></div>
+<div class="fs-env" data-env="atrium">
+<div class="fs-env-plate"><img src="../assets/terrace-plate.png" alt="The cylinder at Atrium precision"></div>
+<i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i>
+<span class="fs-env-anno" style="left:32px;bottom:24px">Sector four · gardens</span>
+</div>
+</div>
+
+<div class="spec">
+<div class="cap"><span class="capname">2 · Service</span><span class="capsub">Clean resort infrastructure. Colour steps back, the survey grid steps forward, the machine may be named. Bright and swept, never a dark ops room.</span></div>
+<div class="fs-env" data-env="service">
+<div class="fs-env-plate"><img src="../assets/terrace-plate.png" alt="The cylinder at Service precision"></div>
+<i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i>
+<span class="fs-env-anno" style="left:32px;top:26%">Lado-Acheson · axial source</span>
+<span class="fs-env-anno" style="left:32px;bottom:24px">Joint 07 · routing strip live</span>
+</div>
+</div>
+
+<div class="spec">
+<div class="cap"><span class="capname">3 · Ledger</span><span class="capsub">The same view with its ownership showing. The air thins toward vacuum clarity and the axis reads as a metered source.</span></div>
+<div class="fs-env" data-env="ledger">
+<div class="fs-env-plate"><img src="../assets/terrace-plate.png" alt="The cylinder at Ledger precision"></div>
+<i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i>
+<span class="fs-env-anno" style="left:32px;top:26%">Axis · 4.2% of ring power</span>
+<span class="fs-env-anno" style="left:32px;bottom:24px">Sector 4 · Tessier-Ashpool, freehold</span>
+</div>
+</div>
+</section>
+
+<section data-register="light" data-accent="resort">
+<div class="cap"><span class="lab">Scaffolding alone</span><span class="capsub">With no plate the frame is still a place: fabricated sky, the axis, the arc overhead. Use it where a render would be too much.</span></div>
+<div class="fs-env" data-env="terrace" style="height:220px">
+<i class="fs-env-axis"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i>
+</div>
+
+<div class="rule"></div>
+
+<div class="cap"><span class="lab">Plates</span><span class="capsub">What the image owes the composition</span></div>
+<div class="g2">
+<div class="yes"><span class="sec">Yes</span><p style="font-size:var(--fs-size-sm)">Fabricated blue sky. Linear axial light. Ground and terraces curving up at the frame edges. Cultivated planting against poured concrete. Water or mist. Guests, staff, a tender — evidence that the place is worked. Machinery as elegant seams and service traces.</p></div>
+<div class="no"><span class="sec">No</span><p style="font-size:var(--fs-size-sm)">Wilderness. A flat Earth horizon. Rust, damp, ruin. Empty spa minimalism with one plant. Neon, rain-slick streets, holograms. Windows onto space, and the station seen from outside.</p></div>
+</div>
+<p>Implemented in <strong style="color:var(--fs-ink-primary)">environment.css</strong>, imported by <strong style="color:var(--fs-ink-primary)">styles.css</strong>. In a template the plate is an <code>&lt;image-slot&gt;</code> so the render can be replaced by dropping a file on it; in a specimen it is a plain <code>&lt;img&gt;</code>. Add <code>.fs-env-band</code> for the horizon-strip proportion used inside a page, and <code>.fs-env-scrim</code> wherever ink text sits over the plate. Annotations are permitted only where the level permits them, and in a product they must be projected through Exposure like any other copy — never typed into the markup.</p>
+</section>
+
+</body>
+</html>

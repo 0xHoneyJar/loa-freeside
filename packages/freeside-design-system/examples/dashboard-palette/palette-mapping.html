@@ -1,0 +1,127 @@
+<!-- Consumer artifact — Sprawl → Freeside primitive mapping for 0xHoneyJar/freeside-dashboard. See guidelines/retrofit.card.html. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Palette mapping — Sprawl → Freeside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;background:#081F28;color:#F7F1E5;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:13px;padding:48px}
+a{color:#66ADC6;text-decoration:none}a:hover{color:#4A8FA8}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8B979D}
+h1{font-size:32px;font-weight:500;letter-spacing:-.02em;margin:8px 0 8px}
+.lede{font-size:15px;color:#D1D9DB;max-width:78ch;text-wrap:pretty;margin-bottom:32px}
+h2{font-size:11px;font-family:'IBM Plex Mono',monospace;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#8B979D;margin:32px 0 8px;padding-bottom:8px;border-bottom:1px solid rgba(247,241,229,.13)}
+table{width:100%;border-collapse:collapse}
+th{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#8B979D;text-align:left;padding:8px 12px 8px 0}
+td{padding:7px 12px 7px 0;border-top:1px solid rgba(247,241,229,.09);vertical-align:middle}
+td.tok{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#D1D9DB;width:250px}
+td.name{width:210px}
+td.hex{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8B979D;width:78px}
+td.note{color:#8B979D;font-size:12px}
+.sw{display:flex;align-items:center;gap:9px}
+.sw i{width:26px;height:16px;flex:0 0 auto;border:1px solid rgba(247,241,229,.16)}
+.ratio{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7FB5A8}
+.pair{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:8px}
+.reg{padding:20px;border:1px solid rgba(247,241,229,.13)}
+.reg.lt{background:#F7F1E5;color:#081F28;border-color:rgba(8,31,40,.14)}
+.reg h3{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;color:#8B979D;margin-bottom:14px}
+.reg.lt h3{color:#6B6862}
+.ramp{display:flex;gap:1px;margin-bottom:14px}
+.ramp i{height:34px;flex:1}
+.rows{display:flex;flex-direction:column;gap:9px;font-size:12px}
+.row{display:flex;align-items:center;gap:10px}
+.row s{width:16px;height:16px;flex:0 0 auto;text-decoration:none}
+.row b{font-weight:500}
+.row span{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8B979D}
+.reg.lt .row span{color:#6B6862}
+.kept{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:8px}
+.kept div{border-left:2px solid #22323A;padding-left:14px}
+.kept b{display:block;font-weight:500;margin-bottom:5px}
+.kept p{color:#8B979D;font-size:12px;text-wrap:pretty}
+code{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#66ADC6}
+</style>
+</head>
+<body data-screen-label="Palette mapping">
+<div class="eyebrow">// freeside-dashboard</div>
+<h1>Sprawl palette → Freeside palette</h1>
+<p class="lede">One stylesheet, appended last, overriding Sprawl primitives only. Token names are deliberately unchanged: <code>bg-void-base</code>, <code>text-cyan-base</code> and <code>--color-phosphor-base</code> all keep working and now resolve to Freeside colours. No component file changes.</p>
+
+<h2>Surfaces + ink</h2>
+<table>
+<thead><tr><th>Sprawl token</th><th>Freeside colour</th><th>Deep</th><th>Light</th><th>Role in the app</th></tr></thead>
+<tbody>
+<tr><td class="tok">--color-void-base</td><td class="name">surface-base</td><td><div class="sw"><i style="background:#081F28"></i><span class="hex">#081F28</span></div></td><td><div class="sw"><i style="background:#F7F1E5"></i><span class="hex">#F7F1E5</span></div></td><td class="note">Page background</td></tr>
+<tr><td class="tok">--color-surface-panel</td><td class="name">base, lifted</td><td><div class="sw"><i style="background:#0A242E"></i><span class="hex">#0A242E</span></div></td><td><div class="sw"><i style="background:#EFE8DA"></i><span class="hex">#EFE8DA</span></div></td><td class="note">Sidebar</td></tr>
+<tr><td class="tok">--color-bg-card</td><td class="name">surface-raised</td><td><div class="sw"><i style="background:#0E2A34"></i><span class="hex">#0E2A34</span></div></td><td><div class="sw"><i style="background:#FFFDF8"></i><span class="hex">#FFFDF8</span></div></td><td class="note">Cards, bento cells, roster</td></tr>
+<tr><td class="tok">--color-void-raised</td><td class="name">raised, lifted</td><td><div class="sw"><i style="background:#112F3A"></i><span class="hex">#112F3A</span></div></td><td><div class="sw"><i style="background:#EFEBDF"></i><span class="hex">#EFEBDF</span></div></td><td class="note">Table headers, chip shells, search</td></tr>
+<tr><td class="tok">--color-void-surface</td><td class="name">raised, lifted twice</td><td><div class="sw"><i style="background:#143643"></i><span class="hex">#143643</span></div></td><td><div class="sw"><i style="background:#E3E7E8"></i><span class="hex">#E3E7E8</span></div></td><td class="note">Row hover, popover, dropdown</td></tr>
+<tr><td class="tok">--color-void-border</td><td class="name">line-structural</td><td><div class="sw"><i style="background:#22323A"></i><span class="hex">#22323A</span></div></td><td><div class="sw"><i style="background:#D9D3C7"></i><span class="hex">#D9D3C7</span></div></td><td class="note">Frames, inputs</td></tr>
+<tr><td class="tok">--color-grid-line</td><td class="name">line-hairline</td><td><div class="sw"><i style="background:#1A2E36"></i><span class="hex">ink 13%</span></div></td><td><div class="sw"><i style="background:#DDD9CE"></i><span class="hex">ink 12%</span></div></td><td class="note">Bento gutters, row dividers</td></tr>
+<tr><td class="tok">--color-bone-base / -bright</td><td class="name">lado sunlight / deep space ink</td><td><div class="sw"><i style="background:#F7F1E5"></i><span class="hex">#F7F1E5</span></div></td><td><div class="sw"><i style="background:#081F28"></i><span class="hex">#081F28</span></div></td><td class="note">All body + title text — one ink</td></tr>
+<tr><td class="tok">--color-bone-dim</td><td class="name">cold mist / ink-2</td><td><div class="sw"><i style="background:#D1D9DB"></i><span class="hex">#D1D9DB</span></div></td><td><div class="sw"><i style="background:#2C3E47"></i><span class="hex">#2C3E47</span></div></td><td class="note">Secondary text, muted-foreground</td></tr>
+<tr><td class="tok">--color-bone-muted</td><td class="name">ink-muted / ink-3</td><td><div class="sw"><i style="background:#92A2A4"></i><span class="hex">#92A2A4</span></div></td><td><div class="sw"><i style="background:#6B6862"></i><span class="hex">#6B6862</span></div></td><td class="note">Mono labels, eyebrows <span class="ratio">AA on all four rungs</span></td></tr>
+<tr><td class="tok">--color-bone-ghost</td><td class="name">—</td><td><div class="sw"><i style="background:#5D6B72"></i><span class="hex">#5D6B72</span></div></td><td><div class="sw"><i style="background:#9A958C"></i><span class="hex">#9A958C</span></div></td><td class="note">Disabled only, never live text</td></tr>
+</tbody>
+</table>
+
+<h2>Accents — the resort pair</h2>
+<table>
+<thead><tr><th>Sprawl token</th><th>Freeside colour</th><th>Deep</th><th>Light</th><th>Role in the app</th></tr></thead>
+<tbody>
+<tr><td class="tok">--color-cyan-base</td><td class="name">cannes sky</td><td><div class="sw"><i style="background:#66ADC6"></i><span class="hex">#66ADC6</span></div></td><td><div class="sw"><i style="background:#2F6579"></i><span class="hex">#2F6579</span></div></td><td class="note">Nav active, focus, --primary, chart-1 <span class="ratio">5.7 / 5.5 on tint</span></td></tr>
+<tr><td class="tok">--color-cyan-dim</td><td class="name">cannes, darkened</td><td><div class="sw"><i style="background:#4A8FA8"></i><span class="hex">#4A8FA8</span></div></td><td><div class="sw"><i style="background:#1F4E61"></i><span class="hex">#1F4E61</span></div></td><td class="note">Focus ring, plaque underline</td></tr>
+<tr><td class="tok">--color-anomaly-base</td><td class="name">bermuda sunset</td><td><div class="sw"><i style="background:#C8705B"></i><span class="hex">#C8705B</span></div></td><td><div class="sw"><i style="background:#A0503A"></i><span class="hex">#A0503A</span></div></td><td class="note">Emphasis fills, chart-5 <span class="ratio">4.79 / 5.04</span></td></tr>
+<tr><td class="tok">--color-anomaly-bright</td><td class="name">bermuda, small-text rung</td><td><div class="sw"><i style="background:#D8836D"></i><span class="hex">#D8836D</span></div></td><td><div class="sw"><i style="background:#96412D"></i><span class="hex">#96412D</span></div></td><td class="note">Negative deltas, crimson pill text <span class="ratio">5.6 / 6.04</span></td></tr>
+<tr><td class="tok">--color-cobalt-*</td><td class="name">cannes, deepened</td><td><div class="sw"><i style="background:#3F6E80"></i><span class="hex">#3F6E80</span></div></td><td><div class="sw"><i style="background:#3E6C7E"></i><span class="hex">#3E6C7E</span></div></td><td class="note">Decorative lattice — no new hue introduced</td></tr>
+</tbody>
+</table>
+
+<h2>Status — functional, never an accent</h2>
+<table>
+<thead><tr><th>Sprawl token</th><th>Freeside colour</th><th>Deep</th><th>Light</th><th>Role in the app</th></tr></thead>
+<tbody>
+<tr><td class="tok">--color-phosphor-base</td><td class="name">teal / babylon deep</td><td><div class="sw"><i style="background:#6DAC9E"></i><span class="hex">#6DAC9E</span></div></td><td><div class="sw"><i style="background:#5C6647"></i><span class="hex">#5C6647</span></div></td><td class="note">Positive deltas, success <span class="ratio">5.7 on card / 5.41</span></td></tr>
+<tr><td class="tok">--color-token-yellow</td><td class="name">hazard / ochre</td><td><div class="sw"><i style="background:#F7D481"></i><span class="hex">#F7D481</span></div></td><td><div class="sw"><i style="background:#7A5E1C"></i><span class="hex">#7A5E1C</span></div></td><td class="note">Warning, beta pills, BGT figures <span class="ratio">12.4 / 5.42</span></td></tr>
+<tr><td class="tok">--color-crimson-base</td><td class="name">critical</td><td><div class="sw"><i style="background:#B23A2E"></i><span class="hex">#B23A2E</span></div></td><td><div class="sw"><i style="background:#9E3427"></i><span class="hex">#9E3427</span></div></td><td class="note">Destructive fills, chart-3</td></tr>
+</tbody>
+</table>
+
+<h2>Tier ramp — one Freeside ramp, cool → warm as tier escalates. Rendered as a 3px bar beside one-ink text, never as a tinted letterform.</h2>
+<div class="pair">
+<div class="reg">
+<h3>Deep Space</h3>
+<div class="ramp"><i style="background:#4A8FA8"></i><i style="background:#66ADC6"></i><i style="background:#58988B"></i><i style="background:#C8705B"></i><i style="background:#936064"></i><i style="background:#E1588E"></i></div>
+<div class="rows">
+<div class="row"><s style="background:#4A8FA8"></s><b>Tourist</b><span>cannes dim</span></div>
+<div class="row"><s style="background:#66ADC6"></s><b>Panther</b><span>cannes sky</span></div>
+<div class="row"><s style="background:#58988B"></s><b>Cowboy</b><span>teal</span></div>
+<div class="row"><s style="background:#C8705B"></s><b>Flatline</b><span>bermuda sunset</span></div>
+<div class="row"><s style="background:#936064"></s><b>Tessier</b><span>brick</span></div>
+<div class="row"><s style="background:#E1588E"></s><b>Wintermute</b><span>casino magenta</span></div>
+</div>
+</div>
+<div class="reg lt">
+<h3>Light (Paradise)</h3>
+<div class="ramp"><i style="background:#4E6F7D"></i><i style="background:#3E6C7E"></i><i style="background:#4C6D64"></i><i style="background:#A0503A"></i><i style="background:#7C4A4E"></i><i style="background:#9E3B63"></i></div>
+<div class="rows">
+<div class="row"><s style="background:#4E6F7D"></s><b>Tourist</b><span>#4E6F7D</span></div>
+<div class="row"><s style="background:#3E6C7E"></s><b>Panther</b><span>#3E6C7E</span></div>
+<div class="row"><s style="background:#4C6D64"></s><b>Cowboy</b><span>#4C6D64</span></div>
+<div class="row"><s style="background:#A0503A"></s><b>Flatline</b><span>#A0503A</span></div>
+<div class="row"><s style="background:#7C4A4E"></s><b>Tessier</b><span>#7C4A4E</span></div>
+<div class="row"><s style="background:#9E3B63"></s><b>Wintermute</b><span>#9E3B63</span></div>
+</div>
+</div>
+</div>
+
+<h2>Left alone, on purpose</h2>
+<div class="kept">
+<div><b>Role-ladder swatches</b><p>Community and partner brand colours in <code>_data/roles-shared.ts</code>. The existing <code>.ds-role-chip</code> relative-colour recipe already pulls any hue onto the register.</p></div>
+<div><b>Project mark backgrounds</b><p>Third-party logos in <code>_data/projects.ts</code> keep their own colour. Retinting them would misrepresent the brand.</p></div>
+<div><b>Type, spacing, radius, glow geometry</b><p>Plex Sans, the analytics density scale, square corners and the glow-elevation mechanism are unchanged — glow is dialled to a rim, since Freeside doesn't bloom.</p></div>
+</div>
+</body>
+</html>

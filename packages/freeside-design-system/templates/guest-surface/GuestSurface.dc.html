@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../../image-slot.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="./copy.js"></script>
+<style>html,body{margin:0;padding:0}</style>
+</helmet>
+<div data-register="{{ register }}" data-accent="{{ pair }}" data-exposure="{{ exposureNum }}" style="min-height:100vh;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);display:flex;flex-direction:column;gap:var(--fs-gap-stack);padding:var(--fs-pad-page)">
+
+<div style="display:flex;align-items:baseline;gap:24px">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ eyebrow }}</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ stamp }}</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<h1 style="font-family:var(--fs-font-display);font-size:clamp(26px,2.4vw,38px);letter-spacing:var(--fs-display-track);line-height:1.14;text-transform:uppercase;margin:0;max-width:24ch">{{ headline }}</h1>
+<p style="margin:0;max-width:56ch;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ lede }}</p>
+</div>
+
+<div class="fs-env" data-env="{{ envLevel }}" style="height:400px">
+<div class="fs-env-plate"><image-slot id="fs-guest-plate" shape="rect" src="../../assets/terrace-plate.png" placeholder="Terrace render — fabricated sky, the Lado-Acheson axis, lunar-concrete terraces, cultivated planting"></image-slot></div>
+<i class="fs-env-grid"></i>
+<i class="fs-env-curve"></i>
+<i class="fs-env-veil"></i>
+</div>
+
+<sc-if value="{{ hasNotice }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:16px;align-items:flex-start;padding:24px;background:var(--fs-surface-raised);max-width:74ch">
+<span style="width:8px;height:8px;flex:0 0 auto;margin-top:7px;background:var(--fs-accent-2)"></span>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ noticeNote }}</p>
+</div>
+</sc-if>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;column-gap:48px">
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ lightLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ lightNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ occupancyLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ occupancyNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ arrivalsLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ arrivalsNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ tonightLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ tonightNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ workLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ workNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ whoLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ whoNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:148px 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-hairline)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ ratesLabel }}</span>
+<span style="text-wrap:pretty;color:var(--fs-ink-secondary)">{{ ratesNote }}</span>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:148px minmax(0,340px) 1fr;gap:24px;align-items:baseline;padding:16px 0;border-top:1px solid var(--fs-line-structural)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ gaugeCaption }}</span>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-if value="{{ gaugeIsTerrace }}" hint-placeholder-val="{{ true }}">
+<div role="img" aria-label="{{ gauge.ariaText }}" style="display:flex;gap:2px;height:8px">
+<sc-for list="{{ gauge.segLit }}" as="s" hint-placeholder-count="2">
+<i style="flex:1;display:block;background:var(--fs-accent-1);opacity:1"></i>
+</sc-for>
+<sc-for list="{{ gauge.segDim }}" as="s" hint-placeholder-count="1">
+<i style="flex:1;display:block;background:var(--fs-accent-1);opacity:0.18"></i>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ gaugeIsAtrium }}" hint-placeholder-val="{{ false }}">
+<div role="img" aria-label="{{ gauge.ariaText }}" style="display:flex;gap:2px;height:8px">
+<sc-for list="{{ gauge.stepLit }}" as="s" hint-placeholder-count="6">
+<i style="flex:1;display:block;background:var(--fs-accent-1);opacity:1"></i>
+</sc-for>
+<sc-for list="{{ gauge.stepDim }}" as="s" hint-placeholder-count="4">
+<i style="flex:1;display:block;background:var(--fs-accent-1);opacity:0.18"></i>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ gaugeIsMachine }}" hint-placeholder-val="{{ false }}">
+<div role="meter" aria-valuenow="{{ gauge.ariaNow }}" aria-valuemin="{{ gauge.ariaMin }}" aria-valuemax="{{ gauge.ariaMax }}" aria-label="{{ gauge.ariaText }}" title="{{ gauge.title }}" data-band="{{ gauge.dataBand }}" data-value="{{ gauge.dataValue }}" style="display:flex;gap:1px;height:8px">
+<sc-for list="{{ gauge.tickLit }}" as="s" hint-placeholder-count="12">
+<i style="flex:1;display:block;background:var(--fs-accent-1);opacity:1"></i>
+</sc-for>
+<sc-for list="{{ gauge.tickDim }}" as="s" hint-placeholder-count="8">
+<i style="flex:1;display:block;background:var(--fs-accent-1);opacity:0.18"></i>
+</sc-for>
+</div>
+</sc-if>
+<span style="color:var(--fs-ink-secondary)">{{ gaugeReading }}</span>
+</div>
+<sc-if value="{{ hasConsequence }}" hint-placeholder-val="{{ false }}">
+<span style="font-size:var(--fs-size-sm);color:var(--fs-ink-muted);text-wrap:pretty">{{ gaugeConsequence }}</span>
+</sc-if>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:auto;padding-top:8px">
+<button style="font:inherit;font-weight:600;padding:14px 28px;border:none;cursor:pointer;background:var(--fs-accent-1);color:var(--fs-on-accent)" style-hover="opacity:.88">{{ primaryLabel }}</button>
+<button style="font:inherit;padding:14px 28px;border:1px solid var(--fs-line-structural);cursor:pointer;background:transparent;color:var(--fs-ink-primary)" style-hover="background:var(--fs-surface-raised)">{{ secondaryLabel }}</button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1000},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;guest&quot;,&quot;member&quot;,&quot;operator&quot;,&quot;principal&quot;],&quot;default&quot;:&quot;guest&quot;,&quot;tsType&quot;:&quot;'guest'|'member'|'operator'|'principal'&quot;,&quot;section&quot;:&quot;Access&quot;,&quot;label&quot;:&quot;Who is asking&quot;},&quot;destination&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;arrival&quot;,&quot;account&quot;],&quot;default&quot;:&quot;arrival&quot;,&quot;tsType&quot;:&quot;'arrival'|'account'&quot;,&quot;section&quot;:&quot;Depth&quot;,&quot;label&quot;:&quot;Where they are&quot;},&quot;systemState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;nominal&quot;,&quot;degraded&quot;,&quot;alert&quot;],&quot;default&quot;:&quot;nominal&quot;,&quot;tsType&quot;:&quot;'nominal'|'degraded'|'alert'&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;What the system is doing&quot;}}">
+/* No copy here — see templates/guest-surface/copy.js. The environment is a media
+   frame, not a reading: it carries no projected value and no data reaches it. */
+class Component extends DCLogic {
+  /* The pack arrives asynchronously and componentDidMount cannot be relied on to
+     notice it: the runtime defers didMount for a logic instance created after the
+     initial mount, so it waits for an update that nothing will ever schedule.
+     renderVals() always runs, so the retry is driven from there instead. */
+  _awaitPack() {
+    if (this._poll) return;
+    this._poll = setInterval(() => {
+      const D = window.FreesideDoctrine;
+      if (!D || !D.packs['guest-surface']) return;
+      clearInterval(this._poll); this._poll = null; this.forceUpdate();
+    }, 30);
+    setTimeout(() => this._stopAwaiting(), 8000);
+  }
+
+  _stopAwaiting() {
+    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+
+  componentWillUnmount() { this._stopAwaiting(); }
+
+  renderVals() {
+    const D = window.FreesideDoctrine;
+    if (!D || !D.packs['guest-surface']) {
+      this._awaitPack();
+      return {
+      register: 'light', pair: 'resort', exposureNum: 0, envLevel: 'terrace',
+      eyebrow: '', headline: '', lede: '', hasNotice: false, noticeNote: '',
+      lightLabel: '', occupancyLabel: '', arrivalsLabel: '', tonightLabel: '',
+      workLabel: '', whoLabel: '', ratesLabel: '',
+      lightNote: '', occupancyNote: '', arrivalsNote: '', tonightNote: '',
+      workNote: '', whoNote: '', ratesNote: '',
+      gaugeCaption: '', gaugeReading: '', gaugeConsequence: '', hasConsequence: false,
+      gaugeIsTerrace: true, gaugeIsAtrium: false, gaugeIsMachine: false,
+      gauge: { segLit: [], segDim: [], stepLit: [], stepDim: [], tickLit: [], tickDim: [], ariaText: '' },
+      primaryLabel: '', secondaryLabel: '', stamp: ''
+      };
+    }
+    return D.project('guest-surface', D.resolve({
+      role: this.props.role ?? 'guest',
+      destination: this.props.destination ?? 'arrival',
+      systemState: this.props.systemState ?? 'nominal'
+    }));
+  }
+}
+</script>
+</body>
+</html>

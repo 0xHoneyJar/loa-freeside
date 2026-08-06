@@ -1,0 +1,7 @@
+/* Freeside webfonts — TWO faces. That is the whole system.
+   Michroma  — the wordmark and the display role (hero statements, sparingly).
+               Never body, never labels, never numerals.
+   Archivo   — everything else, including all numerals (tabular figures).
+   A third face is loaded ONLY for literal code blocks; it is not a brand face
+   and must not be used to decorate UI. */
+@import url('https://fonts.googleapis.com/css2?family=Michroma&family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@400;600&display=swap');
