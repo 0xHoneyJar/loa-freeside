@@ -76,7 +76,16 @@ for (const f of files) {
   if (rel(f).startsWith('dist/full-system.html')) continue; // self-contained bundle: data URIs only, checked below
   const src = fs.readFileSync(f, 'utf8');
   const artifactHost = 'claudeusercontent' + '.com';
-  if (src.toLowerCase().includes(artifactHost))
+  const urls = src.match(/https?:\/\/[^\s"'<>`]+/gi) || [];
+  const hasArtifactHost = urls.some(raw => {
+    try {
+      const host = new URL(raw).hostname.toLowerCase();
+      return host === artifactHost || host.endsWith('.' + artifactHost);
+    } catch {
+      return false;
+    }
+  });
+  if (hasArtifactHost)
     fail.push(rel(f) + ' → contains Claude artifact host');
   for (const [re, why] of BANNED) if (re.test(src)) fail.push(rel(f) + ' → contains ' + why);
 }

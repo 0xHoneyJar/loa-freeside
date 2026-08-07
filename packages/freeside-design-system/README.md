@@ -101,7 +101,7 @@ claimed to run offline without locally supplied browser runtimes.
 ```bash
 npm run dev          # serve the whole package at http://localhost:4173
 npm run build        # regenerate dist/index.html + dist/manifest.json from the tree
-npm run preview      # serve just dist/ at http://localhost:4174
+npm run preview      # serve the package at http://localhost:4174; open /dist/index.html
 npm test             # the conformance suite
 npm run check        # alias of npm test
 npm run verify       # portability check: paths, case, absolute refs, style holes

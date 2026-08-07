@@ -15,7 +15,7 @@ const VARIANTS = (focus) => ({
 });
 
 /** Freeside text input — `field` (default), `mono` (credit/access treatment), `pill` (garden context). */
-export function Input({ variant = 'field', value, placeholder, type = 'text', disabled = false, style, ...rest }) {
+export function Input({ variant = 'field', value, placeholder, type = 'text', disabled = false, style, onFocus, onBlur, ...rest }) {
   const [focus, setFocus] = useState(false);
   const v = VARIANTS(focus)[variant] || VARIANTS(focus).field;
   return (
@@ -24,8 +24,14 @@ export function Input({ variant = 'field', value, placeholder, type = 'text', di
       value={value}
       placeholder={placeholder}
       disabled={disabled}
-      onFocus={() => setFocus(true)}
-      onBlur={() => setFocus(false)}
+      onFocus={(event) => {
+        setFocus(true);
+        onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocus(false);
+        onBlur?.(event);
+      }}
       style={{ ...v, opacity: disabled ? 0.5 : 1, ...style }}
       {...rest}
     />

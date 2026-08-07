@@ -19,7 +19,7 @@ const SIZES = {
 };
 
 /** Freeside button. Square-cornered, engineered; sunset `primary` is the everyday authority action. */
-export function Button({ variant = 'primary', size = 'md', fullWidth = false, disabled = false, children, style, ...rest }) {
+export function Button({ variant = 'primary', size = 'md', fullWidth = false, disabled = false, children, style, onMouseEnter, onMouseLeave, ...rest }) {
   const [hover, setHover] = useState(false);
   const v = VARIANTS[variant] || VARIANTS.primary;
   const s = SIZES[size] || SIZES.md;
@@ -27,8 +27,14 @@ export function Button({ variant = 'primary', size = 'md', fullWidth = false, di
   return (
     <button
       disabled={disabled}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseEnter={(event) => {
+        setHover(true);
+        onMouseEnter?.(event);
+      }}
+      onMouseLeave={(event) => {
+        setHover(false);
+        onMouseLeave?.(event);
+      }}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
         fontFamily: 'var(--fs-font-body)', fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',

@@ -97,7 +97,7 @@ npm run build
 Regenerates `dist/index.html` and `dist/manifest.json` by reading the tree. Then:
 
 ```bash
-npm run preview     # serves dist/ on http://localhost:4174
+npm run preview     # serves the package on http://localhost:4174; open /dist/index.html
 ```
 
 ## 8 · Compare counts against the release baseline

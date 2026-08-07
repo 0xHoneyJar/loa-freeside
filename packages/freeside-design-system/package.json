@@ -42,7 +42,7 @@
     "check": "node templates/_doctrine/run-checks.js",
     "build": "node scripts/build.js",
     "dev": "node scripts/serve.js . 4173",
-    "preview": "node scripts/serve.js dist 4174",
+    "preview": "node scripts/serve.js . 4174",
     "verify": "node scripts/verify.js"
   },
   "keywords": [
