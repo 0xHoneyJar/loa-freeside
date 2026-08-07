@@ -54,3 +54,10 @@ Outside that host, edit the defaults in the `renderVals()` fallback at the botto
 - The layout IS the causal claim: cause (headline, body) \u2192 impact \u2192 measured effect (the metric row) \u2192 recovery, threaded on one spine that begins as a 3px severity bar and tapers to a hairline.
 - Recovery steps are numbered because they are ordered work. The pack returns them in dependency order; the numbering only makes that legible.
 - A state floor RAISES exposure but never breaches the access ceiling. Try role=member, systemState=alert: the floor wants Service, the ceiling holds Atrium, and the result is a clamp notice rather than a leak.
+
+## Browser runtime
+
+This interactive template uses pinned browser copies of React, ReactDOM and Babel from unpkg.
+Restricted or offline deployments must remap those URLs to approved local copies through
+`window.__resources` before `support.js` loads. See
+[`../../README.md`](../../README.md#browser-runtime).

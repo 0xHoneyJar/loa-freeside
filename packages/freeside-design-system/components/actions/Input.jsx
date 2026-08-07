@@ -21,7 +21,7 @@ export function Input({ variant = 'field', value, placeholder, type = 'text', di
   return (
     <input
       type={type}
-      defaultValue={value}
+      value={value}
       placeholder={placeholder}
       disabled={disabled}
       onFocus={() => setFocus(true)}

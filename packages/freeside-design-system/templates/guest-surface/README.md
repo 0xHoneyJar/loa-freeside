@@ -56,3 +56,10 @@ Outside that host, edit the defaults in the `renderVals()` fallback at the botto
 - The gauge is the reference implementation of geometry-as-disclosure. At Terrace it renders three segments and the exact figure exists nowhere on the client — not in the fill width, the ARIA label, the title, a data attribute or a form value. At Service and above it becomes role="meter" with the real reading.
 - The plate is an <image-slot>. Drop a render on it in a browser and the choice persists; the shipped default is assets/terrace-plate.png.
 - act.console demonstrates action projection on four axes: it carries min: 2 AND plain: "Open the console", so an operator standing on the terrace is still offered operations — in Terrace-safe words.
+
+## Browser runtime
+
+This interactive template uses pinned browser copies of React, ReactDOM and Babel from unpkg.
+Restricted or offline deployments must remap those URLs to approved local copies through
+`window.__resources` before `support.js` loads. See
+[`../../README.md`](../../README.md#browser-runtime).

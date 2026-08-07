@@ -53,3 +53,10 @@ Outside that host, edit the defaults in the `renderVals()` fallback at the botto
 
 - This is the one template where prose is AUTHORED rather than projected: article body copy lives in the template because it carries no state. Everything around it — the chrome, the contents rail, the applicability note, the actions — projects.
 - The boundary is documented at the top of copy.js. If a string varies by who is reading or what the system is doing, it is chrome and must project.
+
+## Browser runtime
+
+This interactive template uses pinned browser copies of React, ReactDOM and Babel from unpkg.
+Restricted or offline deployments must remap those URLs to approved local copies through
+`window.__resources` before `support.js` loads. See
+[`../../README.md`](../../README.md#browser-runtime).

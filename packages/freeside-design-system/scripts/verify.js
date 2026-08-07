@@ -66,7 +66,6 @@ for (const f of files) {
 
 /* 2 · No editor-host or ephemeral references may survive the export. */
 const BANNED = [
-  [/claudeusercontent\.com/i, 'Claude artifact host'],
   [/blob:https?:/i, 'temporary blob URL'],
   [/\/Users\/[a-z0-9_.-]+\//i, 'absolute macOS path'],
   [/[A-Z]:\\\\Users\\\\/i, 'absolute Windows path'],
@@ -76,6 +75,9 @@ for (const f of files) {
   if (!TEXT.test(f)) continue;
   if (rel(f).startsWith('dist/full-system.html')) continue; // self-contained bundle: data URIs only, checked below
   const src = fs.readFileSync(f, 'utf8');
+  const artifactHost = 'claudeusercontent' + '.com';
+  if (src.toLowerCase().includes(artifactHost))
+    fail.push(rel(f) + ' → contains Claude artifact host');
   for (const [re, why] of BANNED) if (re.test(src)) fail.push(rel(f) + ' → contains ' + why);
 }
 
@@ -97,7 +99,14 @@ const bundlePath = path.join(root, 'dist/full-system.html');
 if (fs.existsSync(bundlePath)) {
   const b = fs.readFileSync(bundlePath, 'utf8');
   const remote = [...b.matchAll(/(?:src|href)\s*=\s*"(https?:\/\/[^"]+)"/gi)].map(m => m[1]);
-  const offsite = remote.filter(u => !/fonts\.(googleapis|gstatic)\.com/.test(u));
+  const allowedFontHosts = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
+  const offsite = remote.filter(raw => {
+    try {
+      return !allowedFontHosts.has(new URL(raw).hostname.toLowerCase());
+    } catch {
+      return true;
+    }
+  });
   if (offsite.length) fail.push('dist/full-system.html → ' + offsite.length + ' remote subresource(s): ' + offsite.slice(0, 3).join(', '));
 } else warn.push('dist/full-system.html absent — run npm run build? (it is shipped, not generated)');
 

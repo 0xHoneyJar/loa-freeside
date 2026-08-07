@@ -56,3 +56,10 @@ Outside that host, edit the defaults in the `renderVals()` fallback at the botto
 - The environment band renders at the ASKER\u2019s own level, never the destination\u2019s. Offering the console from the terrace neither carries Terrace into the console nor lifts the ceiling on arrival.
 - The held panel is a threshold, not a redaction block: a recess in the deep register with one Lado Sunlight seam. It appears only where the disclosure mode already admits handling exists, and carries no rows, counts or shape.
 - Set role=guest, destination=settlement to see silent mode: no door at all, because a door is itself an acknowledgment.
+
+## Browser runtime
+
+This interactive template uses pinned browser copies of React, ReactDOM and Babel from unpkg.
+Restricted or offline deployments must remap those URLs to approved local copies through
+`window.__resources` before `support.js` loads. See
+[`../../README.md`](../../README.md#browser-runtime).

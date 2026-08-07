@@ -4,8 +4,11 @@ State at v1.0.0-rc.1. Nothing here is a blocking defect; the distinction is kept
 
 ## Blocking defects
 
-**None.** The suite is green with zero suppressions, the tree passes `npm run verify`, and every
-template renders from a clean checkout served over http.
+**None.** The suite is green with zero suppressions and the tree passes `npm run verify`.
+Interactive templates render from a clean checkout served over HTTP when their pinned browser
+runtime assets are reachable or remapped to approved local copies through `window.__resources`.
+Only the committed conformance and full-system documents under `dist/` are claimed to work
+offline without additional browser assets.
 
 ---
 

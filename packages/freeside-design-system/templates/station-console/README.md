@@ -52,3 +52,10 @@ Outside that host, edit the defaults in the `renderVals()` fallback at the botto
 
 - This template is NOT doctrine-projected. Its strings are template-owned, which is why it has no copy.js and is exempt from the pack checks. It demonstrates layout, register and accent discipline, not Exposure.
 - A reorganization around systems, flows, capacity and dependencies is a known post-RC task \u2014 see KNOWN-GAPS.md. The current zone IA (Overview · Members · Operations · Settlement) is settled and correct; the internal structure of each zone is not.
+
+## Browser runtime
+
+This interactive template uses pinned browser copies of React, ReactDOM and Babel from unpkg.
+Restricted or offline deployments must remap those URLs to approved local copies through
+`window.__resources` before `support.js` loads. See
+[`../../README.md`](../../README.md#browser-runtime).

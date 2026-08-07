@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-/* Freeside Design System — zero-dependency static server.
-   The design system has no build step and no runtime dependencies: every card and
-   template is a plain HTML file that loads sibling CSS and JS by relative path. So
-   "run the docs" only needs something that serves files over http:// rather than
-   file://, which module scripts and fetch() require.
+/* Freeside Design System — zero-Node-dependency static server.
+   The package has no npm dependencies. Interactive cards and templates use pinned
+   browser runtimes; restricted or offline consumers must provide approved local
+   copies as documented in README.md. Serving the files still requires http://
+   rather than file://, which module scripts and fetch() require.
 
    Usage: node scripts/serve.js [root] [port]        default: . 4173 */
 'use strict';

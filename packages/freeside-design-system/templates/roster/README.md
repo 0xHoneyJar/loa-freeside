@@ -56,3 +56,10 @@ Outside that host, edit the defaults in the `renderVals()` fallback at the botto
 - Row ordinals (01, 02, \u2026) are positions in the VISIBLE SET ONLY. They are not identifiers, they are not stable, and they change under sorting, filtering, pagination or any access change. The durable key is rows[].id. Never persist an ordinal, never put one in a URL, never use one as a foreign key.
 - The count, the skeleton row and the row identifiers are all built from the visible set, so none of them can be differenced against the page to recover a hidden total.
 - checks.js holds this template\u2019s own conformance assertions and is registered via D.registerChecks().
+
+## Browser runtime
+
+This interactive template uses pinned browser copies of React, ReactDOM and Babel from unpkg.
+Restricted or offline deployments must remap those URLs to approved local copies through
+`window.__resources` before `support.js` loads. See
+[`../../README.md`](../../README.md#browser-runtime).

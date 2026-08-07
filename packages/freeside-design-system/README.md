@@ -70,16 +70,31 @@ check in the suite asserts presentation only; a green verdict says nothing about
 
 ## Install
 
-There are no runtime dependencies and no build step. Node 22+ is needed only for the test
-runner and the static server.
+There are no npm dependencies and no package compilation prerequisite. Node 22+ is needed
+only for the test runner, generated documentation and the static server. Interactive cards
+and templates have browser runtime requirements described below.
 
 ```bash
 # nothing to install — but this is harmless and creates no lockfile churn
 npm install          # or: pnpm install
 ```
 
-There is no lockfile in this package because there are no dependencies to lock. See
+There is no lockfile in this package because there are no npm dependencies to lock. See
 MANIFEST.md.
+
+## Browser runtime
+
+Interactive templates use React 18.3.1, ReactDOM 18.3.1 and Babel Standalone 7.29.0 in the
+browser. Their bundled `support.js` files default to pinned `unpkg.com` URLs.
+
+Restricted or offline deployments must provide approved local copies and remap those exact
+URLs through `window.__resources` before `support.js` loads. Interactive component cards also
+load pinned browser runtimes from unpkg and must have those script URLs replaced when external
+CDN access is unavailable.
+
+The committed `dist/conformance.html` and `dist/full-system.html` files are the explicitly
+standalone offline artifacts. Source templates and interactive component cards are not
+claimed to run offline without locally supplied browser runtimes.
 
 ## Run
 

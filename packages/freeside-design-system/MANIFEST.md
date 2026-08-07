@@ -46,18 +46,22 @@ across Windows, Linux, archive tooling and Git clients.
 
 ## Dependencies and the lockfile
 
-**There is no lockfile, because there are no dependencies.** The dependency graph is empty:
-every file is plain CSS, plain JavaScript or HTML. Node 22+ is required only by `npm test`
-(the conformance runner) and `npm run dev` (a zero-dependency static server built on
-`node:http`).
+**There is no lockfile, because there are no npm dependencies.** The package dependency
+graph is empty. Node 22+ is required by the conformance runner, documentation generator and
+the zero-package-dependency static server built on `node:http`.
 
 Consequences worth knowing:
 
 - `npm install` succeeds and installs nothing.
 - `npm ci` **fails**, because it requires a lockfile. That is expected, not a defect.
-- Nothing needs to be built before the templates or cards will render.
+- No package compilation is required before serving the source tree.
+- Interactive cards and templates require pinned browser copies of React, ReactDOM and Babel.
+  They default to unpkg; template runtimes can be remapped through `window.__resources` as
+  documented in `README.md`.
+- The committed conformance and full-system documents under `dist/` are the offline artifacts.
 
-Fonts are the one external requirement and are deliberately not vendored — see `docs/FONTS.md`.
+Fonts and interactive browser runtimes are deliberately not vendored. See `docs/FONTS.md` and
+the Browser runtime section of `README.md`.
 
 ## Structure, and where it departs from the requested tree
 
