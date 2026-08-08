@@ -1,0 +1,33 @@
+# Shared CodeQL configuration.
+#
+# Referenced by both CodeQL workflows so the two analyses agree on scope; queries,
+# languages and every other setting stay in the workflows. The two are reached by
+# different events, and both references are load-bearing:
+#
+#   security-audit.yml  runs on every pull_request (no paths filter) and is the
+#                       analysis that produces a PR's alerts. This is the one that
+#                       decides the CodeQL check on a PR.
+#   security.yml        is paths-filtered to apps/worker/** and package*.json, so
+#                       it does not run on most PRs — but `schedule` ignores paths
+#                       filters, so its daily run scans all of main under a
+#                       DIFFERENT category (/language:javascript-typescript).
+#                       A config on only one workflow would leave the other
+#                       reporting the same generated files.
+#
+# Neither workflow's triggers are widened here. Broadening security.yml's paths
+# would also pull in its Dependency Audit job, which fails on a pre-existing
+# apps/worker advisory and is unrelated to this scope.
+#
+# The one exclusion is the design system's committed dist/ artifacts. They are
+# generated, self-contained portable documents: the design-system publisher
+# inlines the tree into single files (a base64 asset manifest plus a bundler
+# unpacker that mints blob URLs and relays page text between frames). CodeQL
+# reads that unpacker as first-party source and reports on it, but it is not
+# authored here and cannot be edited here — the authored source it was built
+# from stays in scope, so a real finding still surfaces at the file a fix would
+# actually land in.
+#
+# Scoped to dist/ only, deliberately. packages/freeside-design-system/** as a
+# whole stays scanned, and no security rule is disabled anywhere.
+paths-ignore:
+  - packages/freeside-design-system/dist/**

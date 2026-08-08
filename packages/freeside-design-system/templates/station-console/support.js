@@ -1442,6 +1442,14 @@
             const el = doc.createElement("script");
             for (const { name: an, value } of [...child.attributes])
               el.setAttribute(an, value);
+            // A script built with createElement carries the spec's force-async
+            // flag, so external ones execute in completion order rather than
+            // helmet order. Clearing it puts them back in document order, which
+            // the helmet blocks depend on: copy.js reads window.FreesideDoctrine
+            // at top level and silently returns — with no retry — if doctrine.js
+            // has not run yet. Setting the IDL property is what unsets the flag;
+            // an author-declared `async` is left alone.
+            if (!child.hasAttribute("async")) el.async = false;
             if (child.textContent) el.textContent = child.textContent;
             doc.head.appendChild(el);
           } else if (tag === "LINK" || tag === "META") {

@@ -1,7 +1,7 @@
 {
   "name": "@freeside/design-system",
   "version": "1.0.0-rc.1",
-  "generatedAt": "2026-08-07T20:23:17.888Z",
+  "generatedAt": "2026-08-08T19:59:29.993Z",
   "entry": {
     "css": "styles.css",
     "environment": "environment.css",

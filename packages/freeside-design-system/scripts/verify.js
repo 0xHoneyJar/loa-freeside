@@ -147,6 +147,121 @@ for (const f of files) {
     warn.push(rel(f) + ' → style hole: ' + m[0].slice(0, 70));
 }
 
+/* 7 · Every compiler-manifest card target must exist. The card index in
+      `_ds_manifest.json` was hard-coded once and went stale when the cards left
+      a `guidelines/` directory — 21 of its 26 entries pointed at nothing, and no
+      check noticed. `npm run build` now derives it from the tree; this asserts
+      the committed file agrees with the tree it claims to index. */
+const dsManifestPath = path.join(root, '_ds_manifest.json');
+if (fs.existsSync(dsManifestPath)) {
+  let ds = null;
+  try { ds = JSON.parse(fs.readFileSync(dsManifestPath, 'utf8')); }
+  catch (e) { fail.push('_ds_manifest.json → not valid JSON: ' + e.message); }
+  const byId = new Map();
+  for (const c of (ds && Array.isArray(ds.cards)) ? ds.cards : []) {
+    if (!c || !c.path) { fail.push('_ds_manifest.json → card entry with no path'); continue; }
+    if (!fs.existsSync(path.join(root, c.path)))
+      fail.push('_ds_manifest.json → card target missing: "' + c.path + '"');
+    /* One entry per logical card. `retrofit.card.html` is deliberately stored
+       twice (cards/ and retrofit/ — see cards/README.md) and both copies carry
+       the same group+name, so a walk that forgets to dedupe silently inflates
+       the index and presents one card as two. */
+    const id = (c.group || '') + ' · ' + c.name;
+    if (byId.has(id))
+      fail.push('_ds_manifest.json → duplicate logical card "' + id + '": '
+        + byId.get(id) + ' and ' + c.path);
+    else byId.set(id, c.path);
+  }
+}
+
+/* 7b · Same rule for the bundle's own source index: a compiled path that no
+      longer exists on disk cannot be rebuilt or diffed against its source. */
+const bundlePathJs = path.join(root, '_ds_bundle.js');
+if (fs.existsSync(bundlePathJs)) {
+  const head = fs.readFileSync(bundlePathJs, 'utf8').slice(0, 8192);
+  const m = head.match(/^\/\* @ds-bundle: (\{[\s\S]*?\}) \*\//);
+  if (m) {
+    let meta = null;
+    try { meta = JSON.parse(m[1]); }
+    catch (e) { fail.push('_ds_bundle.js → @ds-bundle header is not valid JSON: ' + e.message); }
+    for (const p of Object.keys((meta && meta.sourceHashes) || {}))
+      if (!fs.existsSync(path.join(root, p)))
+        fail.push('_ds_bundle.js → compiled source missing: "' + p + '"');
+  }
+}
+
+/* 8 · The template runtime must keep dynamically inserted external scripts in
+      document order. `document.createElement('script')` sets the spec's
+      force-async flag, so appended src-scripts execute in COMPLETION order —
+      and the helmet blocks depend on declaration order: every copy.js reads
+      `window.FreesideDoctrine` at top level and returns silently, with no
+      retry, when doctrine.js has not run yet. That fault presents as a template
+      rendering with all its projected copy blank, which reviews as a design
+      error rather than a load-order one. Assert the ordering is still enforced
+      where the helmet mounts a <script>, and that every copy stays in step. */
+const supports = files.filter(f => /(^|\/)templates\/[^/]+\/support\.js$/.test(rel(f)));
+if (!supports.length) fail.push('no templates/*/support.js found — runtime missing?');
+const sig = new Set();
+for (const f of supports) {
+  const src = fs.readFileSync(f, 'utf8');
+  sig.add(src);
+  const helmetMount = src.indexOf('doc.createElement("script")');
+  if (helmetMount < 0) {
+    warn.push(rel(f) + ' → no helmet script mount found; ordered-execution check skipped');
+    continue;
+  }
+  /* The unset must sit between creating the element and appending it: after the
+     append it is too late to matter. */
+  const append = src.indexOf('doc.head.appendChild', helmetMount);
+  const window_ = append < 0 ? src.slice(helmetMount) : src.slice(helmetMount, append);
+  if (!/\.async\s*=\s*false/.test(window_))
+    fail.push(rel(f) + ' → helmet script mount does not enforce ordered execution'
+      + ' (expected `async = false` before insertion)');
+}
+if (sig.size > 1)
+  fail.push('templates/*/support.js copies have diverged (' + sig.size
+    + ' distinct versions across ' + supports.length + ' files)');
+
+/* 8b · dist/full-system.html embeds templates/_print/support.js gzip-compressed
+      in its asset manifest, and that copy really runs — the bundled document's
+      helmet mounts nine ordered external scripts through it. No generator for
+      the artifact lives here, so nothing else would notice the embedded runtime
+      falling behind the fixed one on disk. Compare the decompressed bytes; the
+      gzip stream itself is not required to match any particular encoder. */
+const fullSystem = path.join(root, 'dist/full-system.html');
+const printRuntime = path.join(root, 'templates/_print/support.js');
+if (fs.existsSync(fullSystem) && fs.existsSync(printRuntime)) {
+  const art = fs.readFileSync(fullSystem, 'utf8');
+  const mm = art.match(/<script type="__bundler\/manifest">\s*([\s\S]*?)\s*<\/script>/);
+  if (!mm) fail.push('dist/full-system.html → no __bundler/manifest block');
+  else {
+    let assets = null;
+    try { assets = JSON.parse(mm[1]); }
+    catch (e) { fail.push('dist/full-system.html → asset manifest is not valid JSON: ' + e.message); }
+    const want = fs.readFileSync(printRuntime);
+    const zlib = require('node:zlib');
+    let found = false;
+    for (const [uuid, e] of Object.entries(assets || {})) {
+      if (!e || typeof e.data !== 'string' || !/javascript/i.test(e.mime || '')) continue;
+      let bytes;
+      try {
+        bytes = Buffer.from(e.data, 'base64');
+        if (e.compressed) bytes = zlib.gunzipSync(bytes);
+      } catch { continue; }
+      /* Identify the runtime by a marker only it carries, so the check does not
+         depend on a uuid the publisher is free to change. */
+      if (!bytes.includes('dc-runtime: window.React is not available yet')) continue;
+      found = true;
+      if (!bytes.equals(want))
+        fail.push('dist/full-system.html → embedded support.js (' + uuid.slice(0, 8)
+          + '…) is stale: ' + bytes.length + ' bytes vs templates/_print/support.js '
+          + want.length + ' bytes');
+    }
+    if (!found)
+      warn.push('dist/full-system.html → no embedded dc-runtime found; staleness check skipped');
+  }
+}
+
 console.log('Freeside Design System · portability verification');
 console.log('  files scanned: ' + files.length);
 for (const w of warn) console.log('  WARN  ' + w);

@@ -294,12 +294,45 @@ relative paths are load-bearing.
 | `dist/index.html` | `npm run build` | Derived by reading the tree, so it cannot drift |
 | `dist/manifest.json` | `npm run build` | Same. `generatedAt` changes each run |
 | `_ds_bundle.js` | *(design-system compiler)* | Compiled from `components/**/*.jsx`. Committed so consumers need no build step |
-| `_ds_manifest.json` | *(design-system compiler)* | Namespace + component/card index |
+| `_ds_manifest.json` | `npm run build` **(card index)** + *(design-system compiler)* | The build rewrites `cards` from the tree; every other key is the compiler's. `npm run verify` fails on a card target that does not exist |
 | `_adherence.oxlintrc.json` | *(design-system compiler)* | Optional lint rules |
 | `templates/_print/*` | see below | Generated from the live templates |
+| `dist/conformance.html` | *(no generator in this repo)* | Hand-synchronized — see below |
 | `dist/full-system.html` | inline the print document | 3 MB, fully self-contained |
 | `dist/previews/*.png` | page captures of the above | Review material |
 | `assets/terrace-plate.png` | luminance-keyed duotone over `station-interior.png` | The grading recipe is in `KNOWN-GAPS.md §4` |
+
+### `dist/conformance.html` is synchronized by hand
+
+`npm run build` regenerates `dist/index.html` and `dist/manifest.json` only. The two
+standalone artifacts — `dist/conformance.html` and `dist/full-system.html` — are produced by
+the design-system publisher, which is not part of this repo, so a change to a card does not
+reach them automatically.
+
+`dist/conformance.html` carries the Conformance card as an inline copy: a JSON-encoded
+document in `<script type="__bundler/template">`, whose trailing `<script>` block is
+byte-identical to the trailing `<script>` of `cards/doctrine-conformance.card.html`. When that
+renderer changes, splice the new block into the encoded template and re-encode with the
+bundler's own convention — `JSON.stringify` with literal non-ASCII, then `</` → `</`.
+Nothing else in the file changes: the asset manifest, the external-resource and page-order
+blocks, and the unpacker prologue are all left byte-for-byte alone.
+
+`dist/full-system.html` does **not** embed the Conformance card — it bundles the
+`templates/_print/*` documents — so a Conformance renderer change does not apply to it. It
+**does** embed `templates/_print/support.js`, gzip-compressed and base64-encoded in its
+`<script type="__bundler/manifest">` asset map, and that runtime executes: the bundled
+document's helmet mounts nine ordered external scripts (`doctrine.js`, then five `copy.js`
+packs), which is exactly the path the ordered-execution fix protects. A `support.js` change
+therefore has to be re-embedded, not merely noted.
+
+To re-embed: decode the entry (base64 → gzip), confirm it differs from the file on disk,
+recompress the disk bytes deterministically (level 9, `mtime=0`), and write back only that
+entry's `data` — `mime` and `compressed` stay as the publisher set them. The replacement
+stream will **not** be byte-identical to the publisher's original, which used a different gzip
+implementation (header OS byte `0x0a`); that is not a requirement. What must hold is that the
+entry decompresses to exactly the on-disk file, that the operation is idempotent, and that the
+finished artifact still unpacks in a browser — verify by loading it and checking that all five
+copy packs register and the helmet scripts report `async === false`.
 
 ### Print variants
 

@@ -75,14 +75,72 @@ for (const t of templates) {
 }
 
 /* ── CARDS ──────────────────────────────────────────────────────────────── */
-const cards = [];
-for (const f of listDir('cards')) {
-  if (!f.endsWith('.html')) continue;
-  const head = read('cards/' + f).slice(0, 400);
-  const m = head.match(/@dsCard\s+group="([^"]*)"\s+viewport="([^"]*)"\s+name="([^"]*)"(?:\s+subtitle="([^"]*)")?/);
-  cards.push({ file: 'cards/' + f, group: m ? m[1] : null, viewport: m ? m[2] : null,
-    name: m ? m[3] : f, subtitle: m ? (m[4] || '') : '' });
+/* Discovered by walking the tree for the `@dsCard` marker, not by listing one
+   directory. Cards live in two places — `cards/` and beside the components they
+   specimen — and the compiler manifest below indexes both. `dist/` is skipped:
+   the generated artifacts embed card markup, and re-indexing them would list
+   each card twice. */
+const cardFiles = [];
+(function findCards(relDir) {
+  for (const e of fs.readdirSync(path.join(root, relDir || '.'), { withFileTypes: true })) {
+    if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'dist') continue;
+    const p = relDir ? relDir + '/' + e.name : e.name;
+    if (e.isDirectory()) findCards(p);
+    else if (e.name.endsWith('.card.html')) cardFiles.push(p);
+  }
+})('');
+cardFiles.sort();
+
+const walkedCards = cardFiles.map(p => {
+  const m = read(p).slice(0, 400).match(
+    /@dsCard\s+group="([^"]*)"\s+viewport="([^"]*)"\s+name="([^"]*)"(?:\s+subtitle="([^"]*)")?/);
+  return { file: p, group: m ? m[1] : null, viewport: m ? m[2] : null,
+    name: m ? m[3] : path.basename(p), subtitle: m ? (m[4] || '') : '' };
+});
+
+/* One entry per LOGICAL card, ordered by (group, path) — the contract the
+   committed manifest already encoded, read back off its own 26 entries. The
+   distinction matters because `retrofit.card.html` is deliberately duplicated
+   at `retrofit/retrofit.card.html` (see cards/README.md), and the two copies are
+   byte-identical: they are one card stored twice, not two cards. Indexing both
+   would report 27 and make the duplicate look like a distinct specimen. The
+   `(group, path)` sort also picks the canonical copy for free — within Doctrine,
+   `cards/…` precedes `retrofit/…`, and `cards/` is the successor to the
+   `guidelines/` directory the original entry named. */
+const cardId = c => (c.group || '') + ' · ' + c.name;
+const bytesOf = p => fs.readFileSync(path.join(root, p));
+const allCards = [];
+const seenCard = new Map();
+const cardConflicts = [];
+for (const c of walkedCards.slice().sort((x, y) =>
+  (x.group || '').localeCompare(y.group || '') || x.file.localeCompare(y.file))) {
+  const id = cardId(c);
+  const twin = seenCard.get(id);
+  if (twin) {
+    /* Byte-identical is the sanctioned duplicate — one card stored twice.
+       Same identity with DIFFERENT content is ambiguous compiler input: there is
+       no basis for deciding which file the index should name, and picking one
+       would ship a manifest built on a coin flip. Collect every conflict, then
+       stop before anything is written. */
+    if (!bytesOf(c.file).equals(bytesOf(twin)))
+      cardConflicts.push(id + '\n      ' + twin + '\n      ' + c.file);
+    continue;
+  }
+  seenCard.set(id, c.file);
+  allCards.push(c);
 }
+if (cardConflicts.length) {
+  console.error('build failed — divergent duplicate logical card'
+    + (cardConflicts.length > 1 ? 's' : '') + ':');
+  for (const c of cardConflicts) console.error('  ' + c);
+  console.error('\nTwo cards declaring the same @dsCard group + name must be byte-identical'
+    + '\n(the sanctioned Retrofit duplicate) or must be given distinct names.');
+  process.exit(1);
+}
+
+/* dist/manifest.json keeps its established scope: the `cards/` catalogue only.
+   Component specimens are already reachable there through `components`. */
+const cards = allCards.filter(c => c.file.startsWith('cards/'));
 
 /* ── ASSETS ─────────────────────────────────────────────────────────────── */
 const assets = listDir('assets').map(f => ({ file: 'assets/' + f,
@@ -103,6 +161,24 @@ const manifest = {
 
 fs.mkdirSync(dist, { recursive: true });
 fs.writeFileSync(path.join(dist, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+
+/* ── COMPILER MANIFEST (card index only) ─────────────────────────────────── */
+/* `_ds_manifest.json` is the design-system compiler's own file and most of it —
+   namespace, bundle component list, themes, token index — is the compiler's to
+   write; this build owns none of that and rewrites none of it. The card index is
+   the exception: it was hard-coded, and it went stale when the cards moved out
+   of a `guidelines/` directory that no longer exists, leaving 26 entries whose
+   paths resolve to nothing. Rebuilding just that array from the tree walk above
+   is what keeps it honest. Every other key is carried through untouched, and the
+   file's compact one-line serialization is preserved. */
+const dsManifestPath = path.join(root, '_ds_manifest.json');
+if (fs.existsSync(dsManifestPath)) {
+  const dsManifest = JSON.parse(fs.readFileSync(dsManifestPath, 'utf8'));
+  dsManifest.cards = allCards.map(c => ({
+    path: c.file, group: c.group, viewport: c.viewport, subtitle: c.subtitle, name: c.name }));
+  fs.writeFileSync(dsManifestPath, JSON.stringify(dsManifest));
+  console.log('rewrote _ds_manifest.json card index: ' + dsManifest.cards.length + ' cards');
+}
 
 /* ── INDEX ──────────────────────────────────────────────────────────────── */
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

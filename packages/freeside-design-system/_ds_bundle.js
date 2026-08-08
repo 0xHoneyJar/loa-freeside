@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"FreesideDesignSystem_1cacde","components":[{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"Input","sourcePath":"components/actions/Input.jsx"},{"name":"ChatBubble","sourcePath":"components/chat/ChatBubble.jsx"},{"name":"DataTable","sourcePath":"components/data/DataTable.jsx"},{"name":"InfoRow","sourcePath":"components/data/InfoRow.jsx"},{"name":"MessageBox","sourcePath":"components/data/MessageBox.jsx"},{"name":"Step","sourcePath":"components/data/Step.jsx"},{"name":"Callout","sourcePath":"components/status/Callout.jsx"},{"name":"Spinner","sourcePath":"components/status/Spinner.jsx"},{"name":"StatusBadge","sourcePath":"components/status/StatusBadge.jsx"},{"name":"StatusPill","sourcePath":"components/status/StatusPill.jsx"},{"name":"TierBadge","sourcePath":"components/status/TierBadge.jsx"},{"name":"Card","sourcePath":"components/surfaces/Card.jsx"},{"name":"Panel","sourcePath":"components/surfaces/Panel.jsx"},{"name":"Tile","sourcePath":"components/surfaces/Tile.jsx"}],"sourceHashes":{"components/actions/Button.jsx":"8434b70ba4ea","components/actions/Input.jsx":"072cb78f77a5","components/chat/ChatBubble.jsx":"cb820aadf2c1","components/data/DataTable.jsx":"c5c65f80b741","components/data/InfoRow.jsx":"a9de5133ac81","components/data/MessageBox.jsx":"dff22c4e649c","components/data/Step.jsx":"b54eafaa3dc6","components/status/Callout.jsx":"fbc3c5adc53c","components/status/Spinner.jsx":"093ee945b5f4","components/status/StatusBadge.jsx":"c2014ed909e4","components/status/StatusPill.jsx":"41fffb5579d5","components/status/TierBadge.jsx":"f1a218ae2f14","components/surfaces/Card.jsx":"d6382d120ee5","components/surfaces/Panel.jsx":"4c276fe6199a","components/surfaces/Tile.jsx":"d06d600221d6","doc-page.js":"371bab66f42d","guidelines/review-frames.js":"2babb7915ad9","image-slot.js":"fff26d081c8d"},"inlinedExternals":[],"unexposedExports":[]} */
+/* @ds-bundle: {"format":4,"namespace":"FreesideDesignSystem_1cacde","components":[{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"Input","sourcePath":"components/actions/Input.jsx"},{"name":"ChatBubble","sourcePath":"components/chat/ChatBubble.jsx"},{"name":"DataTable","sourcePath":"components/data/DataTable.jsx"},{"name":"InfoRow","sourcePath":"components/data/InfoRow.jsx"},{"name":"MessageBox","sourcePath":"components/data/MessageBox.jsx"},{"name":"Step","sourcePath":"components/data/Step.jsx"},{"name":"Callout","sourcePath":"components/status/Callout.jsx"},{"name":"Spinner","sourcePath":"components/status/Spinner.jsx"},{"name":"StatusBadge","sourcePath":"components/status/StatusBadge.jsx"},{"name":"StatusPill","sourcePath":"components/status/StatusPill.jsx"},{"name":"TierBadge","sourcePath":"components/status/TierBadge.jsx"},{"name":"Card","sourcePath":"components/surfaces/Card.jsx"},{"name":"Panel","sourcePath":"components/surfaces/Panel.jsx"},{"name":"Tile","sourcePath":"components/surfaces/Tile.jsx"}],"sourceHashes":{"components/actions/Button.jsx":"8434b70ba4ea","components/actions/Input.jsx":"072cb78f77a5","components/chat/ChatBubble.jsx":"cb820aadf2c1","components/data/DataTable.jsx":"c5c65f80b741","components/data/InfoRow.jsx":"a9de5133ac81","components/data/MessageBox.jsx":"dff22c4e649c","components/data/Step.jsx":"b54eafaa3dc6","components/status/Callout.jsx":"fbc3c5adc53c","components/status/Spinner.jsx":"093ee945b5f4","components/status/StatusBadge.jsx":"c2014ed909e4","components/status/StatusPill.jsx":"41fffb5579d5","components/status/TierBadge.jsx":"f1a218ae2f14","components/surfaces/Card.jsx":"d6382d120ee5","components/surfaces/Panel.jsx":"4c276fe6199a","components/surfaces/Tile.jsx":"d06d600221d6","doc-page.js":"371bab66f42d","cards/review-frames.js":"2babb7915ad9","image-slot.js":"fff26d081c8d"},"inlinedExternals":[],"unexposedExports":[]} */
 
 (() => {
 
@@ -1581,7 +1581,7 @@ try { (() => {
 })();
 })(); } catch (e) { __ds_ns.__errors.push({ path: "doc-page.js", error: String((e && e.message) || e) }); }
 
-// guidelines/review-frames.js
+// cards/review-frames.js
 try { (() => {
 /* Freeside — REVIEW FRAME LOADER
    Shared by the three Doctrine review cards. Each card declares its contexts;
@@ -1728,7 +1728,7 @@ try { (() => {
     render: render
   };
 })();
-})(); } catch (e) { __ds_ns.__errors.push({ path: "guidelines/review-frames.js", error: String((e && e.message) || e) }); }
+})(); } catch (e) { __ds_ns.__errors.push({ path: "cards/review-frames.js", error: String((e && e.message) || e) }); }
 
 // image-slot.js
 try { (() => {

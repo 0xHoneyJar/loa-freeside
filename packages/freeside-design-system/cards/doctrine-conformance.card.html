@@ -143,6 +143,34 @@ code{font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
 (function(){
   var D = window.FreesideDoctrine;
   var el = function(id){ return document.getElementById(id); };
+
+  /* Audit output is DATA, never markup. Every value below reaches the page as a
+     text node or an attribute set through the DOM API — never as an HTML string.
+     Escaping-by-replacement was the earlier approach and it was wrong twice
+     over: it only covered `<`, so `"` inside a failure line could still close
+     an attribute, and it put the burden on each call site to remember. Building
+     the nodes removes the parse step entirely, so there is nothing left to
+     escape and no site left to forget. */
+  var mk = function(tag, cls, text){
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+  };
+  var styled = function(tag, css, text){
+    var n = mk(tag, null, text);
+    n.style.cssText = css;
+    return n;
+  };
+  var cell = function(text, wrap){
+    var td = mk('td', null, text);
+    if (wrap) td.style.whiteSpace = 'normal';
+    return td;
+  };
+  var replace = function(node, kids){
+    node.replaceChildren.apply(node, kids);
+  };
+
   if (!D) { el('verdict').textContent = 'NO MODULE'; return; }
   /* A throwing check must not blank the card. Without this the first statement
      dies and every dynamic section below stays empty, which reads as "nothing
@@ -153,56 +181,105 @@ code{font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
     el('verdict').textContent = 'ERROR';
     el('verdict').style.color = 'var(--fs-state-critical)';
     el('scope').textContent = 'audit() threw';
-    el('checks').innerHTML = '<div class="check bad"><s></s><div class="stack-8">' +
-      '<div class="sec">The audit itself failed</div>' +
-      '<p style="font-size:var(--fs-size-xs)">A check threw before it could report. Fix this first — every verdict below is meaningless until it runs.</p>' +
-      '<div class="fail">' + String((err && err.stack) || err).replace(/</g, '&lt;') + '</div>' +
-      '</div><span class="verdict">Threw</span></div>';
+    var body = mk('div', 'stack-8');
+    body.append(
+      mk('div', 'sec', 'The audit itself failed'),
+      styled('p', 'font-size:var(--fs-size-xs)',
+        'A check threw before it could report. Fix this first — every verdict below is meaningless until it runs.'),
+      mk('div', 'fail', (err && err.stack) || err)
+    );
+    var row = mk('div', 'check bad');
+    row.append(mk('s'), body, mk('span', 'verdict', 'Threw'));
+    replace(el('checks'), [row]);
     return;
   }
   el('verdict').textContent = a.pass ? 'PASS' : 'FAIL';
   el('verdict').style.color = a.pass ? 'var(--fs-state-positive)' : 'var(--fs-state-critical)';
   el('scope').textContent = a.results.length + ' checks · ' + a.cases + ' cases · ' + a.packs.length + ' packs';
 
-  el('checks').innerHTML = a.results.map(function(r){
-    return '<div class="check ' + (r.pass ? 'ok' : 'bad') + '"><s></s>' +
-      '<div class="stack-8"><div class="sec">' + r.title + '</div>' +
-      '<p style="font-size:var(--fs-size-xs)">' + r.why + '</p>' +
-      (r.failures.length ? '<div class="fail">' + r.failures.slice(0,8).map(function(f){return String(f).replace(/</g,'&lt;');}).join('<br>') +
-        (r.failures.length > 8 ? '<br>… ' + (r.failures.length - 8) + ' more' : '') + '</div>' : '') +
-      '</div><span class="verdict">' + (r.pass ? 'Pass' : r.failures.length + ' failing') + '</span></div>';
-  }).join('');
+  replace(el('checks'), a.results.map(function(r){
+    var stack = mk('div', 'stack-8');
+    stack.append(
+      mk('div', 'sec', r.title),
+      styled('p', 'font-size:var(--fs-size-xs)', r.why)
+    );
+    if (r.failures.length) {
+      /* One <br> between lines, appended as real elements — the failure text
+         itself is never parsed. */
+      var fail = mk('div', 'fail');
+      r.failures.slice(0, 8).forEach(function(f, i){
+        if (i) fail.appendChild(document.createElement('br'));
+        fail.appendChild(document.createTextNode(String(f)));
+      });
+      if (r.failures.length > 8) {
+        fail.appendChild(document.createElement('br'));
+        fail.appendChild(document.createTextNode('… ' + (r.failures.length - 8) + ' more'));
+      }
+      stack.appendChild(fail);
+    }
+    var check = mk('div', 'check ' + (r.pass ? 'ok' : 'bad'));
+    check.append(
+      mk('s'),
+      stack,
+      mk('span', 'verdict', r.pass ? 'Pass' : r.failures.length + ' failing')
+    );
+    return check;
+  }));
 
-  el('fallbacks').innerHTML = D.packs['permission-gate']
-    ? '<table><thead><tr><th>Field</th><th>Required</th><th>Fallback</th></tr></thead><tbody>' +
-      Object.keys(D.packs['permission-gate'].fields).map(function(f){
-        var s = D.packs['permission-gate'].fields[f];
-        var fb = typeof s.fallback === 'function' ? '(computed from role)' : (s.fallback == null ? '— omits' : '"' + s.fallback + '"');
-        return '<tr><td>' + f + '</td><td>' + (s.required ? 'yes' : 'no') + '</td><td style="white-space:normal">' + fb + '</td></tr>';
-      }).join('') + '</tbody></table>'
-    : '';
+  var gate = D.packs['permission-gate'];
+  if (gate) {
+    var head = mk('tr');
+    ['Field', 'Required', 'Fallback'].forEach(function(h){ head.appendChild(mk('th', null, h)); });
+    var thead = mk('thead'); thead.appendChild(head);
+    var fbBody = mk('tbody');
+    Object.keys(gate.fields).forEach(function(f){
+      var s = gate.fields[f];
+      var fb = typeof s.fallback === 'function' ? '(computed from role)'
+        : (s.fallback == null ? '— omits' : '"' + s.fallback + '"');
+      var tr = mk('tr');
+      tr.append(cell(f), cell(s.required ? 'yes' : 'no'), cell(fb, true));
+      fbBody.appendChild(tr);
+    });
+    var fbTable = mk('table');
+    fbTable.append(thead, fbBody);
+    replace(el('fallbacks'), [fbTable]);
+  } else {
+    replace(el('fallbacks'), []);
+  }
 
-  var tb = document.querySelector('#roster tbody');
-  tb.innerHTML = Object.keys(D.CEILING).map(function(role){
+  replace(document.querySelector('#roster tbody'), Object.keys(D.CEILING).map(function(role){
     var p = D.project('roster', D.resolve({role:role, destination:'console', systemState:'nominal'}));
     var acts = p.rows.length ? p.rows[0].actions.map(function(x){return x.label;}).join(', ') : '—';
     var hidden = D.rosterFixture.RECORDS.length - p.rows.length;
-    return '<tr><td>' + role + '</td><td>' + p.rows.length + '</td><td>' + p.columns.length + '</td><td>' +
-      (p.countLabel || '—') + '</td><td style="white-space:normal">' + (acts || '—') + '</td><td>' +
-      (p.canExport ? 'granted' : 'no') + '</td><td>' + hidden + ' omitted</td></tr>';
-  }).join('');
+    var tr = mk('tr');
+    tr.append(
+      cell(role), cell(p.rows.length), cell(p.columns.length),
+      cell(p.countLabel || '—'), cell(acts || '—', true),
+      cell(p.canExport ? 'granted' : 'no'), cell(hidden + ' omitted')
+    );
+    return tr;
+  }));
 
-  var mb = document.querySelector('#matrix tbody');
-  mb.innerHTML = Object.keys(D.DEPTH).map(function(dest){
-    return '<tr><td>' + dest + '</td>' + Object.keys(D.CEILING).map(function(role){
+  replace(document.querySelector('#matrix tbody'), Object.keys(D.DEPTH).map(function(dest){
+    var tr = mk('tr');
+    tr.appendChild(cell(dest));
+    Object.keys(D.CEILING).forEach(function(role){
       var m = D.disclosureMode(D.resolve({role:role, destination:dest, systemState:'nominal'}));
-      return '<td><span class="m m-' + m + '">' + m + '</span></td>';
-    }).join('') + '</tr>';
-  }).join('');
+      /* The mode is both the class suffix and the label. Assigned through
+         className, it is a class list and nothing else — it cannot open a tag. */
+      var td = mk('td');
+      td.appendChild(mk('span', 'm m-' + m, m));
+      tr.appendChild(td);
+    });
+    return tr;
+  }));
 
-  el('advisories').innerHTML = a.advisories.length
-    ? a.advisories.map(function(x){ return '<div style="font-size:var(--fs-size-xs);color:var(--fs-state-caution)">' + String(x).replace(/</g,'&lt;') + '</div>'; }).join('')
-    : '<p style="font-size:var(--fs-size-xs);margin:0">None. No doctrine vocabulary found inside domain fragments.</p>';
+  replace(el('advisories'), a.advisories.length
+    ? a.advisories.map(function(x){
+        return styled('div', 'font-size:var(--fs-size-xs);color:var(--fs-state-caution)', x);
+      })
+    : [styled('p', 'font-size:var(--fs-size-xs);margin:0',
+        'None. No doctrine vocabulary found inside domain fragments.')]);
 })();
 </script>
 </body>
