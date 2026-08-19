@@ -1,4 +1,4 @@
-# EXPECTED — mid-tier bundle (herald) · 8/9
+# EXPECTED — mid-tier bundle (herald) · 9/9 (grounded 2026-07-03)
 
 Source: `construct-herald` (schema_version 3, slug `herald`, v0.1.0).
 Picked as the mid-tier exemplar: clean manifest + valid tier, fails **only** the
@@ -14,8 +14,8 @@ common ~8/9 shape flagged in the task.
 | 4 | write cap never routes through read-only agent type | PASS | `synthesizing-voice` declares `Write` but pins no `agent:`; no read-only agent type anywhere. |
 | 5 | capability declarations match toolset | PASS | `requires.tool_calling: true` matches Bash/Read/Write; `vision: false`, none used. |
 | 6 | skill prose uses canonical primitives | PASS | No `bd`; `git log --grep` is a git commit-message flag, not a code-search `grep`/`rg`. No task tracking. |
-| 7 | grounding file exists (reality.md axis) | **FAIL** | construct-herald has **no** `identity/environment.md`. `reality.md` here is an honest absence stub — no harness-grounding axis document exists to carry. |
+| 7 | grounding file exists (reality.md axis) | PASS | herald grounded in the C7 rollout (construct-herald@1886d07): thin construct-specific layer citing the shared ground (loa-constructs/docs/the-ground.md), probe manifest included. The 8/9→9/9 flip is the live demonstration that grounding moves the cert score. |
 | 8 | genome hash chain verifies | PASS | Fabricated valid 2-link `genome.jsonl`; recomputes; parent links match. |
 | 9 | proof-of-run valid_run verdict | PASS | `proof-of-run.json` verdict `valid_run`; content_hash recomputes. |
 
-**Expected score: 8/9 — fails check 7 (missing grounding file).**
+**Expected score: 9/9.** (Was 8/9 before the grounding rollout — C7 was the only gap.)
