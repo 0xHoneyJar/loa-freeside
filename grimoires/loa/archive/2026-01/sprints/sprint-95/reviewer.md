@@ -81,7 +81,7 @@ Uncommented and activated `kms_key_id` in both backend configuration files.
 **Key Changes**:
 ```hcl
 # environments/staging/backend.tfvars:
-bucket         = "arrakis-tfstate-891376933289"
+bucket         = "arrakis-tfstate-<AWS_ACCOUNT_ID>"
 key            = "staging/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
@@ -225,7 +225,7 @@ aws secretsmanager describe-secret \
 
 # Verify Terraform state uses KMS (after terraform init -reconfigure)
 aws s3api head-object \
-  --bucket arrakis-tfstate-891376933289 \
+  --bucket arrakis-tfstate-<AWS_ACCOUNT_ID> \
   --key staging/terraform.tfstate \
   --query '[ServerSideEncryption, SSEKMSKeyId]'
 # Expected: ["aws:kms", "arn:aws:kms:us-east-1:...:key/..."]
@@ -261,7 +261,7 @@ aws iam get-role-policy \
 
 2. **Backup Current State**:
    ```bash
-   aws s3 cp s3://arrakis-tfstate-891376933289/staging/terraform.tfstate \
+   aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/staging/terraform.tfstate \
      ./terraform-state-backup-staging-$(date +%Y%m%d).tfstate
    ```
 

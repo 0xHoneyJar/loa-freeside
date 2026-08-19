@@ -26,7 +26,8 @@ terraform {
   # See environments/*/backend.tfvars for environment-specific configs
   backend "s3" {
     # These values are overridden by backend.tfvars
-    bucket         = "arrakis-tfstate-891376933289"
+    # bucket is supplied at init time: -backend-config flag or environments/*/backend.tfvars
+    # (kept out of the public tree deliberately - 2026-08-19 identifier scrub)
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "arrakis-terraform-locks"

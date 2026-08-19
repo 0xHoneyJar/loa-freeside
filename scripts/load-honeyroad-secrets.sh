@@ -59,7 +59,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # Preflight: confirm AWS identity before writing anything
-EXPECTED_ACCOUNT="${EXPECTED_ACCOUNT:-891376933289}"
+EXPECTED_ACCOUNT="${EXPECTED_ACCOUNT:?set EXPECTED_ACCOUNT to your AWS account id (guard against wrong-account runs)}"
 ACTUAL_ACCOUNT=$(aws sts get-caller-identity --profile "$AWS_PROFILE" --query Account --output text)
 if [[ "$ACTUAL_ACCOUNT" != "$EXPECTED_ACCOUNT" ]]; then
   echo "ERROR: Wrong AWS account. Expected $EXPECTED_ACCOUNT, got $ACTUAL_ACCOUNT" >&2

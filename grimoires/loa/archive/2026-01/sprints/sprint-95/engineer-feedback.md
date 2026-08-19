@@ -145,7 +145,7 @@ Before deployment, ensure:
 
 2. **Backup state before migration**:
    ```bash
-   aws s3 cp s3://arrakis-tfstate-891376933289/staging/terraform.tfstate ./backup/
+   aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/staging/terraform.tfstate ./backup/
    ```
 
 3. **After terraform apply**:

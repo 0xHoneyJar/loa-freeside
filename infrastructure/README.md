@@ -95,7 +95,7 @@ This directory contains the Infrastructure as Code (IaC) for Freeside, using Ter
 
 - AWS CLI v2 configured
 - Terraform >= 1.5.0
-- Access to AWS account 891376933289
+- Access to AWS account <AWS_ACCOUNT_ID>
 
 ## State Management
 
@@ -103,7 +103,7 @@ Terraform state is stored in S3 with DynamoDB locking:
 
 ```hcl
 backend "s3" {
-  bucket         = "arrakis-tfstate-891376933289"
+  bucket         = "arrakis-tfstate-<AWS_ACCOUNT_ID>"
   key            = "production/terraform.tfstate"
   region         = "us-east-1"
   encrypt        = true

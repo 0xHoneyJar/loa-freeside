@@ -24,7 +24,7 @@ The design prioritizes safety: stateful resources (S3 Object Lock, KMS, DynamoDB
 
 ```
 infrastructure/terraform/           ← COMPUTE ROOT (existing, extended)
-├── main.tf                         ← Backend: s3://arrakis-tfstate-891376933289
+├── main.tf                         ← Backend: s3://arrakis-tfstate-<AWS_ACCOUNT_ID>
 ├── environments/
 │   ├── staging/
 │   │   ├── terraform.tfvars
@@ -44,7 +44,7 @@ infrastructure/terraform/           ← COMPUTE ROOT (existing, extended)
 └── autoscaling-dixie.tf            ← NEW: AppAutoScaling target + CPU policy
 
 infrastructure/terraform/dns/       ← DNS ROOT (new, separate state)
-├── main.tf                         ← Backend: s3://arrakis-tfstate-891376933289
+├── main.tf                         ← Backend: s3://arrakis-tfstate-<AWS_ACCOUNT_ID>
 │                                      key via -backend-config
 ├── variables.tf
 ├── outputs.tf
@@ -79,7 +79,7 @@ Both roots share the same S3 bucket but use different key prefixes:
 - DynamoDB lock table: point-in-time recovery enabled
 - IAM: only CI service role (`github-actions-terraform`) and designated operators may read/write state
 - Prohibition of local state files in CI — all runs must use remote backend
-- State bucket access logging enabled (existing `arrakis-tfstate-891376933289` already has versioning)
+- State bucket access logging enabled (existing `arrakis-tfstate-<AWS_ACCOUNT_ID>` already has versioning)
 
 ### 2.3 Cross-Root References
 
@@ -1247,7 +1247,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "arrakis-tfstate-891376933289"
+    bucket         = "arrakis-tfstate-<AWS_ACCOUNT_ID>"
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "arrakis-terraform-locks"
@@ -1846,7 +1846,7 @@ Dixie SG:   ingress from ALB SG (3001) + Finn SG (3001)
 - S3 bucket policy: deny `s3:PutObject` without `aws:kms` encryption
 - DynamoDB lock table: `arrakis-terraform-locks` with PITR enabled
 - IAM policy for CI: `arn:aws:iam::<account>:role/github-actions-terraform`
-- No wildcard permissions on `s3://arrakis-tfstate-891376933289/*`
+- No wildcard permissions on `s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/*`
 - Access logging on state bucket
 
 ### 9.3 DNS Security (Post-Migration)

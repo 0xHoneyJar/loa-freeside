@@ -25,8 +25,8 @@
       "file": "infrastructure/terraform/dns/main.tf",
       "line": 6,
       "description": "Provider version constraint is malformed; `aws = \"~> 5.0\"` must be nested under `required_providers.aws.source/version`, otherwise Terraform init will fail.",
-      "current_code": "terraform {\n  required_version = \">= 1.6.0\"\n\n  required_providers {\n    aws = \"~> 5.0\"\n  }\n\n  backend \"s3\" {\n    bucket         = \"arrakis-tfstate-891376933289\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"arrakis-terraform-locks\"\n  }\n}\n",
-      "fixed_code": "terraform {\n  required_version = \">= 1.6.0\"\n\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n\n  backend \"s3\" {\n    bucket         = \"arrakis-tfstate-891376933289\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"arrakis-terraform-locks\"\n  }\n}\n",
+      "current_code": "terraform {\n  required_version = \">= 1.6.0\"\n\n  required_providers {\n    aws = \"~> 5.0\"\n  }\n\n  backend \"s3\" {\n    bucket         = \"arrakis-tfstate-<AWS_ACCOUNT_ID>\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"arrakis-terraform-locks\"\n  }\n}\n",
+      "fixed_code": "terraform {\n  required_version = \">= 1.6.0\"\n\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n\n  backend \"s3\" {\n    bucket         = \"arrakis-tfstate-<AWS_ACCOUNT_ID>\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"arrakis-terraform-locks\"\n  }\n}\n",
       "explanation": "Terraform requires `required_providers` entries to be objects with `source` and `version` (or at least `version`), not a bare string."
     },
     {
@@ -34,8 +34,8 @@
       "file": "infrastructure/terraform/dns/main.tf",
       "line": 13,
       "description": "Backend key cannot be set via `*.tfvars` as stated; `backend \"s3\"` does not read `var.*` or tfvars. Without `-backend-config=key=...` (or a backend config file), both environments will collide on the same state key or fail expectations.",
-      "current_code": "backend \"s3\" {\n  bucket         = \"arrakis-tfstate-891376933289\"\n  region         = \"us-east-1\"\n  encrypt        = true\n  dynamodb_table = \"arrakis-terraform-locks\"\n  # key set in environments/*.tfvars: \"dns/staging.tfstate\" or \"dns/production.tfstate\"\n}\n",
-      "fixed_code": "backend \"s3\" {\n  bucket         = \"arrakis-tfstate-891376933289\"\n  region         = \"us-east-1\"\n  encrypt        = true\n  dynamodb_table = \"arrakis-terraform-locks\"\n  # key is set via -backend-config, e.g.:\n  # terraform init -backend-config=environments/staging/backend.tfvars\n}\n",
+      "current_code": "backend \"s3\" {\n  bucket         = \"arrakis-tfstate-<AWS_ACCOUNT_ID>\"\n  region         = \"us-east-1\"\n  encrypt        = true\n  dynamodb_table = \"arrakis-terraform-locks\"\n  # key set in environments/*.tfvars: \"dns/staging.tfstate\" or \"dns/production.tfstate\"\n}\n",
+      "fixed_code": "backend \"s3\" {\n  bucket         = \"arrakis-tfstate-<AWS_ACCOUNT_ID>\"\n  region         = \"us-east-1\"\n  encrypt        = true\n  dynamodb_table = \"arrakis-terraform-locks\"\n  # key is set via -backend-config, e.g.:\n  # terraform init -backend-config=environments/staging/backend.tfvars\n}\n",
       "explanation": "Terraform backend configuration is loaded only at init time via `-backend-config` (or hardcoded in the backend block). Using tfvars for backend keys is not supported."
     },
     {

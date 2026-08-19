@@ -50,7 +50,7 @@ All Terraform code, deploy scripts, wiring tests, and DNS modules were implement
 **Acceptance Criteria**:
 - [ ] `terraform plan` shows only creates (no destroys/replaces)
 - [ ] `terraform apply` succeeds without errors
-- [ ] `finn_ci_deploy_role_arn` output has value `arn:aws:iam::891376933289:role/arrakis-staging-finn-ci-deploy`
+- [ ] `finn_ci_deploy_role_arn` output has value `arn:aws:iam::<AWS_ACCOUNT_ID>:role/arrakis-staging-finn-ci-deploy`
 
 ### Task 1.2: Configure Finn Repo Secret → **[G-3]**
 
@@ -163,13 +163,13 @@ grep -c '^module ' infrastructure/terraform/*finn*.tf 2>/dev/null || echo "Confi
 # State backup
 terraform state pull > backup-$(date +%Y%m%d-%H%M%S).tfstate
 sha256sum backup-*.tfstate > backup-checksums.txt
-aws s3 cp backup-*.tfstate s3://arrakis-tfstate-891376933289/backups/ --sse aws:kms
-aws s3 cp backup-checksums.txt s3://arrakis-tfstate-891376933289/backups/ --sse aws:kms
+aws s3 cp backup-*.tfstate s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/ --sse aws:kms
+aws s3 cp backup-checksums.txt s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/ --sse aws:kms
 ```
 
 Restore drill:
 ```bash
-aws s3 cp s3://arrakis-tfstate-891376933289/backups/backup-*.tfstate /tmp/restore-test.tfstate
+aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/backup-*.tfstate /tmp/restore-test.tfstate
 # Verify: file size > 0 and valid JSON
 jq '.version' /tmp/restore-test.tfstate
 ```
@@ -475,7 +475,7 @@ aws ecs wait services-stable --cluster arrakis-staging-cluster \
 # 5. Verify task roles have ssmmessages permissions
 for role in arrakis-staging-finn-task arrakis-staging-dixie-task arrakis-staging-freeside-task; do
   echo "=== $role ==="
-  aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::891376933289:role/$role \
+  aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::<AWS_ACCOUNT_ID>:role/$role \
     --action-names ssmmessages:CreateControlChannel ssmmessages:CreateDataChannel \
     ssmmessages:OpenControlChannel ssmmessages:OpenDataChannel \
     --query 'EvaluationResults[].{Action:EvalActionName,Decision:EvalDecision}'
@@ -606,7 +606,7 @@ done
 **Scope**: MEDIUM (5 tasks) | **Priority**: P1
 **Sprint Goal**: Remove all legacy `loa-finn-armitage` and remaining `dixie-armitage` AWS resources that are now superseded by the canonical Freeside infrastructure.
 
-> From loa-finn #114 (final comment): "Old loa-finn-armitage resources need deletion from 891376933289 account" — ECS service, ALB listener rule, Route53, task defs, ECR, CloudWatch, IAM, ElastiCache.
+> From loa-finn #114 (final comment): "Old loa-finn-armitage resources need deletion from <AWS_ACCOUNT_ID> account" — ECS service, ALB listener rule, Route53, task defs, ECR, CloudWatch, IAM, ElastiCache.
 
 ### Deliverables
 

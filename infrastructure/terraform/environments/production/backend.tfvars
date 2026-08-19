@@ -7,7 +7,7 @@
 # The KMS key must be created before terraform init. See kms.tf for bootstrap steps.
 # =============================================================================
 
-bucket         = "arrakis-tfstate-891376933289"
+bucket         = "REPLACE-WITH-YOUR-TFSTATE-BUCKET" # real value: private deploy fork / TFSTATE_BUCKET repo secret (CI)
 key            = "production/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
