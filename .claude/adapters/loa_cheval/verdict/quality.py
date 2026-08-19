@@ -206,14 +206,46 @@ def compute_verdict_status(envelope: Dict[str, Any]) -> str:
     return _STATUS_DEGRADED
 
 
+def _reconcile_degenerate_consensus(envelope: Dict[str, Any]) -> None:
+    """arrakis-verdict-consensus-lie-qzo4 — a degenerate chain reached no
+    agreement, so it MUST NOT carry ``consensus_outcome == "consensus"``.
+
+    Every producer flows through ``emit_envelope_with_status``, but only the
+    aggregate path calls ``classify_consensus``; the single-voice producer
+    (``cheval.cmd_invoke``) and the aggregate placeholder both hardcode
+    ``"consensus"``. That is how a 0-voice / exhausted chain ended up stamped
+    ``consensus_outcome="consensus"`` while ``status="FAILED"`` (observed live
+    in ``.run/model-invoke.jsonl``) — a lie that fools any consumer keying off
+    consensus rather than status (e.g. Flatline HIGH_CONSENSUS auto-integrate).
+
+    Reconcile at this single chokepoint: when no voice succeeded OR the chain
+    exhausted, the honest in-vocabulary value is ``"impossible"``. Both of
+    those states already auto-promote to FAILED in ``compute_verdict_status``,
+    so this is status-preserving — it only removes the false consensus claim.
+    A single succeeded voice is left untouched: 1/1 is honest consensus.
+    """
+    voices_succeeded = int(envelope.get("voices_succeeded") or 0)
+    chain_health = envelope.get("chain_health", _CHAIN_HEALTH_OK)
+    degenerate = (
+        voices_succeeded == 0 or chain_health == _CHAIN_HEALTH_EXHAUSTED
+    )
+    if degenerate and (
+        envelope.get("consensus_outcome") == _CONSENSUS_OUTCOME_CONSENSUS
+    ):
+        envelope["consensus_outcome"] = _CONSENSUS_OUTCOME_IMPOSSIBLE
+
+
 def emit_envelope_with_status(envelope: Dict[str, Any]) -> Dict[str, Any]:
     """Single producer entry-point per v5 SKP-003 closure.
 
     Pipeline:
       1. ``validate_invariants`` — raises ``EnvelopeInvariantViolation``
          on malformed input. Producer MUST NOT emit an unvalidated envelope.
-      2. ``compute_verdict_status`` — writes the canonical status field.
-      3. Return the mutated envelope (the input dict is mutated in-place
+      2. ``_reconcile_degenerate_consensus`` — a no-voice / exhausted chain
+         cannot carry ``consensus_outcome="consensus"`` (the verdict-honesty
+         invariant; arrakis-verdict-consensus-lie-qzo4).
+      3. ``compute_verdict_status`` — writes the canonical status field.
+      4. Return the mutated envelope (the input dict is mutated in-place
          AND returned; callers can rely on either reference).
 
     Error paths (SDD §6.2) flow through this same function with the same
@@ -222,6 +254,7 @@ def emit_envelope_with_status(envelope: Dict[str, Any]) -> Dict[str, Any]:
     paths that bypass this helper.
     """
     validate_invariants(envelope)
+    _reconcile_degenerate_consensus(envelope)
     envelope["status"] = compute_verdict_status(envelope)
     return envelope
 

@@ -20,8 +20,15 @@ Inputs:
                         comparison.
 
 Algorithm:
-  1. Trivial cases: voices_succeeded < 2 → "consensus" (cannot have
-     contradiction with fewer than 2 voices).
+  1. Degenerate / trivial cases:
+       voices_succeeded == 0 → "impossible" — NO voice produced a verdict, so
+         no agreement exists (arrakis-verdict-consensus-lie-qzo4). "impossible"
+         here denotes "no consensus was reachable", which compute_verdict_status
+         maps to FAILED — the same status a 0-voice chain already carries. This
+         broadens "impossible" beyond the cross-voice-contradiction sense in
+         step 3 to also cover the no-agreement-possible (empty/exhausted) case.
+       voices_succeeded == 1 → "consensus" — a single voice cannot contradict
+         itself; that is honest (degenerate) consensus.
   2. Per-finding cross-voice comparison: for each BLOCKER-severity finding
      emitted by any voice, check whether at least one other voice's
      findings cover the same (file_path, line_number) location AND
@@ -114,6 +121,14 @@ def classify_consensus(
       location from another voice.
     """
     voices_succeeded = int(envelope.get("voices_succeeded") or 0)
+    # arrakis-verdict-consensus-lie-qzo4: a chain where NO voice succeeded
+    # reached no agreement at all — calling that "consensus" is a lie. The
+    # honest in-vocabulary value is "impossible" (compute_verdict_status maps
+    # it to FAILED, which a 0-voice chain already is). Distinct from the
+    # single-voice case below, which IS honest (degenerate) consensus: one
+    # voice cannot contradict itself.
+    if voices_succeeded == 0:
+        return _OUTCOME_IMPOSSIBLE
     if voices_succeeded < 2:
         return _OUTCOME_CONSENSUS
 
