@@ -1,0 +1,176 @@
+# CR-000 pending Discord-policy authority record
+# Schema: ./pending-authority-record.schema.json
+# This file is NOT a Go. decision=pending. Do not project into restricted work keys as approval.
+
+version: "cr000-pending-0"
+schema_version: "1.0.0"
+record_kind: "discord_policy_authority"
+task_id: "CR-000"
+cycle: "collection-report"
+
+decision: "pending"
+# Allowed later values after human ratification only: "go" | "no-go"
+# While decision is pending, restricted T2 must remain disabled.
+
+owners:
+  discord_application_owner:
+    role: "Discord application owner"
+    name: null
+    contact: null
+    status: "pending"
+  privacy_security_owner:
+    role: "Privacy / security owner"
+    name: null
+    contact: null
+    status: "pending"
+
+application:
+  application_id: null
+  bot_user_id: null
+  team_or_owner_attested: null
+  verification_or_review_state: "pending"
+  # Do not infer from DISCORD_* env var names.
+  notes: "Private Developer Portal fields required."
+
+privileged_intents:
+  guild_members:
+    portal_enabled: "pending"
+    review_required: "pending"
+    review_approved: "pending"
+    approved_use_case_text: null
+    approval_conditions: null
+  message_content:
+    portal_enabled: "pending"
+  presence:
+    portal_enabled: "pending"
+
+scale:
+  guild_installed_user_count: null
+  guild_installed_user_band: "pending"
+  # pending | under_10000 | at_or_over_10000
+  largest_target_guild_member_count: null
+  notes: "Public Discord threshold guidance exists; Freeside count is private evidence."
+
+privacy_policy:
+  public_url: null
+  url_verified_at: null
+  covers_discord_api_data: "pending"
+  covers_member_wallet_join_for_gate_leak: "pending"
+  retention_summary: null
+  deletion_opt_out_summary: null
+  encryption_safeguards_summary: null
+
+approved_purposes: []
+# Populate only on Go, for example:
+# - "gate_leak_v1_stale_access_audit_mapped_role_members"
+
+approved_data_classes: []
+# Populate only on Go, for example:
+# - "discord_guild_id"
+# - "discord_role_ids"
+# - "discord_user_ids_in_mapped_roles"
+# - "authorized_community_wallet_links"
+# - "k_anonymized_aggregates"
+
+excluded_purposes_or_data_classes: []
+# Example exclusions when Go is drafted:
+# - "user_profiling"
+# - "relationship_graph_mining"
+# - "cross_community_identity_broadcast"
+
+evidence_digests:
+  # algorithm:value — leave null until artifacts exist
+  public_policy_packet:
+    algorithm: "sha256"
+    value: "03a65638c2449855c5131732a2e5635bb05f4069e9d7245ad6a3bfc5ac74c68d"
+    path: "grimoires/loa/research/collection-report-cr000-source-packet.md"
+  developer_portal_export:
+    algorithm: "sha256"
+    value: null
+    path: null
+  privileged_intent_approval:
+    algorithm: "sha256"
+    value: null
+    path: null
+  privacy_policy_snapshot:
+    algorithm: "sha256"
+    value: null
+    path: null
+  privacy_security_determination:
+    algorithm: "sha256"
+    value: null
+    path: null
+  repository_evidence_notes:
+    algorithm: "sha256"
+    value: "11944ae92c40388f9c3921b4ec81d4098f2b99e934b15917b689827935623df9"
+    path: "grimoires/loa/coordination/collection-report/cr-000/repository-evidence.md"
+
+timing:
+  issue_start_at: "2026-07-16T08:49:00Z"
+  decision_deadline_at: "2026-07-30T23:59:59Z"
+  effective_at: null
+  expires_at: null
+  # On Go: expires_at must be <= effective_at + 90 days, or earlier review date
+  review_by: null
+  timezone_basis: "UTC"
+
+renewal:
+  owner_role: "Discord application owner"
+  owner_name: null
+  first_check_at: null
+  # Sprint: standing renewal check at day 60 and every 60 days while active
+  interval_days: 60
+  missed_renewal_behavior: "identical_to_expiry"
+  no_change_renewal_creates_new_version: true
+  changed_evidence_requires_privacy_security_reapproval: true
+
+emergency_revocation:
+  contacts: []
+  # Each contact: { name, role, contact }
+  triggers:
+    - "authority_expiry"
+    - "missed_renewal"
+    - "ownership_change"
+    - "terms_or_policy_change"
+    - "privileged_intent_change_or_loss"
+    - "explicit_owner_revocation"
+  effects:
+    - "stop_new_restricted_work"
+    - "quarantine_in_flight_restricted_work"
+    - "start_disposal_review"
+    - "require_new_go_record_before_resume"
+  revoke_at: null
+  revoked_by: null
+  revocation_reason: null
+
+tier_consequences:
+  t0_recognition: "intact"
+  t1_public_preparation: "intact"
+  t2_gate_leak_restricted: "disabled_while_pending"
+  on_no_go:
+    t0_recognition: "intact"
+    t1_public_preparation: "intact"
+    t2_gate_leak_restricted: "stopped"
+    invent_aggregate_only_fallback: false
+    alter_existing_bot_production_permissions: false
+  on_deadline_still_pending: "auto_no_go_for_t2"
+
+signatures:
+  discord_application_owner:
+    decision: null
+    signed_at: null
+    signature: null
+  privacy_security_owner:
+    decision: null
+    signed_at: null
+    signature: null
+
+audit:
+  created_at: "2026-07-16T08:53:29Z"
+  created_by: "kranz-autonomous-dispatch-cr-000"
+  git_tip: "3782fd47e8a20cdaf6325621962bd0443e6781b8"
+  branch: "coord/collection-report-coordinator-f09.10"
+  notes:
+    - "Pending template only."
+    - "Public-policy packet grounded; private portal evidence absent."
+    - "Do not treat code-requested GuildMembers intents as portal approval."
