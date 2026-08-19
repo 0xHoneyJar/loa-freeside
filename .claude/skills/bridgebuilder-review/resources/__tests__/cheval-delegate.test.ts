@@ -83,7 +83,16 @@ function makeFakeSpawn(script: FakeProcessScript, calls: SpawnCall[]) {
   }) as unknown as typeof import("node:child_process").spawn;
 }
 
-function makeAdapter(script: FakeProcessScript, calls: SpawnCall[], overrides: Partial<Parameters<typeof ChevalDelegateAdapter.prototype.generateReview>[0]> & Record<string, unknown> = {}) {
+function makeSequentialSpawn(scripts: FakeProcessScript[], calls: SpawnCall[]) {
+  let idx = 0;
+  return ((command: string, args: readonly string[], opts: { env?: NodeJS.ProcessEnv } = {}) => {
+    const script = scripts[Math.min(idx, scripts.length - 1)];
+    idx += 1;
+    return makeFakeSpawn(script, calls)(command, args, opts);
+  }) as unknown as typeof import("node:child_process").spawn;
+}
+
+function makeAdapter(script: FakeProcessScript, calls: SpawnCall[], overrides: Record<string, unknown> = {}) {
   return new ChevalDelegateAdapter({
     model: "anthropic:claude-sonnet-4-5-20250929",
     timeoutMs: 5_000,
@@ -268,6 +277,43 @@ describe("ChevalDelegateAdapter — success path", () => {
     );
     const result = await adapter.generateReview(baseRequest);
     assert.equal(result.model, "anthropic:claude-sonnet-4-5-20250929");
+  });
+
+  it("retries with opus when fable chain exhausts (loa#402)", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = new ChevalDelegateAdapter({
+      model: "anthropic:claude-fable-5",
+      timeoutMs: 5_000,
+      chevalScript: "/tmp/fake-cheval.py",
+      pythonBin: "/tmp/fake-python3",
+      spawnFn: makeSequentialSpawn(
+        [
+          {
+            stderr: JSON.stringify({
+              code: "RETRIES_EXHAUSTED",
+              message: "Claude Fable 5 is currently unavailable",
+            }),
+            exitCode: 1,
+          },
+          {
+            stdout: JSON.stringify({
+              content: "fallback review",
+              model: "claude-opus-4-8",
+              provider: "anthropic",
+              usage: { input_tokens: 10, output_tokens: 20 },
+            }),
+            exitCode: 0,
+          },
+        ],
+        calls,
+      ),
+    });
+
+    const result = await adapter.generateReview(baseRequest);
+    assert.equal(result.content, "fallback review");
+    assert.equal(calls.length, 2);
+    assert.ok(calls[0]!.args.includes("anthropic:claude-fable-5"));
+    assert.ok(calls[1]!.args.includes("anthropic:claude-opus-4-8"));
   });
 });
 

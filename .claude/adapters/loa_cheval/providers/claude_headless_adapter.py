@@ -120,7 +120,46 @@ class ClaudeHeadlessAdapter(ProviderAdapter):
         enforce_context_window(request, model_config)
 
         prompt = self._build_prompt(request.messages)
-        cmd = self._build_command(request, model_config, prompt)
+        configured_cli_model = (model_config.extra or {}).get("cli_model") or request.model
+        try:
+            return self._invoke_claude_p(
+                request, model_config, prompt, configured_cli_model,
+            )
+        except ProviderUnavailableError as exc:
+            # loa#402: when the headless terminal is pinned to fable (model-config
+            # claude-headless.extra.cli_model) and the CLI reports Fable outage,
+            # retry once with opus so BB completes when Opus subscription works.
+            if (
+                configured_cli_model == "fable"
+                and self._should_retry_fable_to_opus(exc)
+            ):
+                logger.warning(
+                    "claude-headless: fable CLI unavailable; retrying with cli_model=opus"
+                )
+                return self._invoke_claude_p(
+                    request, model_config, prompt, "opus",
+                )
+            raise
+
+    def _should_retry_fable_to_opus(self, exc: ProviderUnavailableError) -> bool:
+        msg = str(exc).lower()
+        return "fable" in msg and (
+            "unavailable" in msg
+            or "retries_exhausted" in msg
+            or "currently unavailable" in msg
+        )
+
+    def _invoke_claude_p(
+        self,
+        request: CompletionRequest,
+        model_config,
+        prompt: str,
+        cli_model: str,
+    ) -> CompletionResult:
+        """Run a single claude -p invocation with an explicit CLI model id."""
+        cmd = self._build_command(
+            request, model_config, prompt, cli_model_override=cli_model,
+        )
         timeout_s = self._compute_timeout()
         # Cycle-110 sprint-2b2b1 BB iter-2 F-001 closure: read per-model
         # headless_concurrency_limit (cycle-110 ModelConfig field). Default 50
@@ -128,8 +167,9 @@ class ClaudeHeadlessAdapter(ProviderAdapter):
         n_slots = getattr(model_config, "headless_concurrency_limit", None) or 50
 
         logger.debug(
-            "claude-headless invoking: model=%s timeout=%.0fs prompt_chars=%d slots=%d",
+            "claude-headless invoking: model=%s cli_model=%s timeout=%.0fs prompt_chars=%d slots=%d",
             request.model,
+            cli_model,
             timeout_s,
             len(prompt),
             n_slots,
@@ -274,6 +314,8 @@ class ClaudeHeadlessAdapter(ProviderAdapter):
         request: CompletionRequest,
         model_config,
         prompt: str,
+        *,
+        cli_model_override: Optional[str] = None,
     ) -> List[str]:
         """Build the claude argv. Headless, plan-mode (read-only), no tools."""
         # cycle-104 sprint-2 T2.11 amendment: when the chain entry is a
@@ -281,7 +323,11 @@ class ClaudeHeadlessAdapter(ProviderAdapter):
         # recognize the Loa alias as a model name. Honor `extra.cli_model`
         # if declared so the operator can map the alias to a real CLI
         # model identifier (e.g. `sonnet`, `opus`).
-        cli_model = (model_config.extra or {}).get("cli_model") or request.model
+        cli_model = (
+            cli_model_override
+            or (model_config.extra or {}).get("cli_model")
+            or request.model
+        )
         cmd: List[str] = [
             self._claude_bin(),
             "-p",
