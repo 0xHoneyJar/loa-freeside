@@ -7,7 +7,7 @@
 # The KMS key must be created before terraform init. See kms.tf for bootstrap steps.
 # =============================================================================
 
-bucket         = "arrakis-tfstate-891376933289"
+bucket         = "arrakis-tfstate-AWS_ACCOUNT_ID_REDACTED"
 key            = "staging/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true

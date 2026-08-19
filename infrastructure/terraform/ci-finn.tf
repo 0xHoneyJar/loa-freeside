@@ -14,7 +14,7 @@
 # =============================================================================
 
 # GitHub OIDC provider (account-level singleton)
-# Created as a resource since no pre-existing provider was found in account 891376933289.
+# Created as a resource since no pre-existing provider was found in account AWS_ACCOUNT_ID_REDACTED.
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]

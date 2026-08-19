@@ -269,9 +269,9 @@ After merge to main:
 - **`staging` tag**: Current staging
 
 ```bash
-891376933289.dkr.ecr.us-east-1.amazonaws.com/arrakis-production-api:abc1234
-891376933289.dkr.ecr.us-east-1.amazonaws.com/arrakis-production-api:latest
-891376933289.dkr.ecr.us-east-1.amazonaws.com/arrakis-staging-api:staging
+AWS_ACCOUNT_ID_REDACTED.dkr.ecr.us-east-1.amazonaws.com/arrakis-production-api:abc1234
+AWS_ACCOUNT_ID_REDACTED.dkr.ecr.us-east-1.amazonaws.com/arrakis-production-api:latest
+AWS_ACCOUNT_ID_REDACTED.dkr.ecr.us-east-1.amazonaws.com/arrakis-staging-api:staging
 ```
 
 ---
@@ -289,7 +289,7 @@ After merge to main:
 ### Infrastructure Separation
 
 ```
-AWS Account: 891376933289
+AWS Account: AWS_ACCOUNT_ID_REDACTED
 ├── arrakis-staging-*     # Staging resources
 │   ├── ECS Cluster
 │   ├── RDS (separate instance)

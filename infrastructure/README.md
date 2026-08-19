@@ -95,7 +95,17 @@ This directory contains the Infrastructure as Code (IaC) for Freeside, using Ter
 
 - AWS CLI v2 configured
 - Terraform >= 1.5.0
-- Access to AWS account 891376933289
+- Access to the target AWS account (ID is **not** committed; see below)
+
+## Account ID injection (public scrub)
+
+Committed `*.tfvars`, docs, and example backends use the placeholder `AWS_ACCOUNT_ID_REDACTED` so the real 12-digit account ID stays out of the public tree (Thin Hub G-7).
+
+For local or CI `terraform` runs, inject the real account via one of:
+
+1. **Private override file** (gitignored) — e.g. `backend.tfvars.local` / `*.auto.tfvars` with the real bucket/account strings, passed as `terraform init -backend-config=...`
+2. **Env / CI secrets** — substitute the placeholder before init (e.g. `sed`/`envsubst` from a secret store), or set backend config via `-backend-config="bucket=arrakis-tfstate-<ACCOUNT_ID>"`
+3. **Do not** re-commit the plaintext account ID into tracked `backend.tfvars` or docs
 
 ## State Management
 
@@ -103,13 +113,15 @@ Terraform state is stored in S3 with DynamoDB locking:
 
 ```hcl
 backend "s3" {
-  bucket         = "arrakis-tfstate-891376933289"
+  bucket         = "arrakis-tfstate-AWS_ACCOUNT_ID_REDACTED"
   key            = "production/terraform.tfstate"
   region         = "us-east-1"
   encrypt        = true
   dynamodb_table = "arrakis-terraform-locks"
 }
 ```
+
+Replace `AWS_ACCOUNT_ID_REDACTED` via the injection paths above before `terraform init`.
 
 ## Usage
 
@@ -118,8 +130,8 @@ backend "s3" {
 ```bash
 cd infrastructure/terraform
 
-# Initialize Terraform
-terraform init
+# Initialize Terraform (use private backend-config; see Account ID injection)
+terraform init -backend-config=environments/production/backend.tfvars.local
 
 # Plan changes
 terraform plan -out=tfplan
