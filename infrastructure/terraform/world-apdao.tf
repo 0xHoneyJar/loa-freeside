@@ -6,7 +6,7 @@ module "world_apdao" {
   source = "./modules/world"
 
   name        = "apdao"
-  repo        = "0xHoneyJar/apdao-world"
+  repo        = "0xHoneyJar/world-apdao"
   environment = var.environment
 
   cluster_id               = aws_ecs_cluster.main.id
