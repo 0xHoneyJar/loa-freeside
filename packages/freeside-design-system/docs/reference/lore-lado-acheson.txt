@@ -1,0 +1,5 @@
+Lado-Acheson is a system that provides artificial sunlight in Freeside.
+
+The system is a 2mm armature that runs the length of the station, an artificial interior "sun" that has the form of a brilliant white slash, and provides a day-night cycle. At the ends there are supports of the light pumps that absorb exterior sunlight from space (Desiderata Steet on either end terminates to these supports).
+
+At the same time, it displays a rotating library of sky effects around it such as a blue sky recorded from Cannes, or a smoldering imitation of some Bermudan sunset, striped by shreds of clouds. While Case was at the gulch during an artificial night, the hologram sky glittered with constellations forming cards, dice, top hats, martini glasses and so on.

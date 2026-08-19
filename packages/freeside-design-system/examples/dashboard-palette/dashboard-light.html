@@ -1,0 +1,135 @@
+<!-- Consumer artifact — light-register retint reference for 0xHoneyJar/freeside-dashboard. See guidelines/retrofit.card.html. -->
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="utf-8">
+<title>Dashboard retint — Light (Paradise)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- The real chain, in the real order. Only the last file is new. -->
+<link rel="stylesheet" href="vendor/tokens.css">
+<link rel="stylesheet" href="vendor/shadcn-compat.css">
+<link rel="stylesheet" href="vendor/horai-light.css">
+<link rel="stylesheet" href="freeside-palette.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-width:1280px;min-height:100vh;background:var(--color-bg-void);color:var(--color-text-primary);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;font-feature-settings:'tnum' 1;display:grid;grid-template-columns:208px 1fr;overflow:hidden}
+a{color:var(--color-cyan-base);text-decoration:none}a:hover{color:var(--color-cyan-dim)}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--color-text-tertiary)}
+/* ── sidebar ── */
+aside{background:var(--color-bg-panel);border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;padding:24px 0}
+.mark{padding:0 20px 28px;display:flex;flex-direction:column;gap:6px}
+.mark b{font-size:15px;font-weight:600;letter-spacing:.08em;color:var(--color-text-bright)}
+nav{display:flex;flex-direction:column;gap:2px;padding:0 8px}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13px;color:var(--color-text-secondary)}
+nav a i{width:5px;height:5px;background:currentColor;opacity:.5}
+nav a:hover{background:var(--color-bg-surface);color:var(--color-text-primary)}
+nav a.on{background:var(--color-cyan-tint-bg);color:var(--color-cyan-base);box-shadow:inset 2px 0 0 var(--color-cyan-tint-border)}
+nav a.on i{opacity:1}
+.side-foot{margin-top:auto;padding:16px 20px 0;border-top:1px solid var(--color-border-subtle);display:flex;flex-direction:column;gap:8px}
+.reg{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--color-text-tertiary)}
+.reg s{width:8px;height:8px;background:var(--color-phosphor-base);text-decoration:none}
+/* ── main ── */
+main{display:flex;flex-direction:column;min-width:0}
+.top{display:flex;align-items:center;gap:16px;padding:0 32px;height:56px;border-bottom:1px solid var(--color-border-subtle);flex:0 0 auto}
+.trail{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.trail b{color:var(--color-text-secondary);font-weight:500}
+.search{margin-left:auto;background:var(--color-bg-surface);border:1px solid var(--color-border-default);padding:6px 12px;font-size:12px;color:var(--color-text-tertiary);width:196px}
+.av{width:28px;height:28px;background:var(--color-cyan-tint-bg);border:1px solid var(--color-cyan-tint-border);color:var(--color-cyan-base);font-size:11px;font-weight:600;display:grid;place-items:center}
+.body{padding:32px;display:flex;flex-direction:column;gap:24px;min-height:0;flex:1}
+.hero{display:flex;flex-direction:column;gap:8px}
+h1{font-size:36px;font-weight:500;letter-spacing:-.02em;line-height:1.1;color:var(--color-text-bright)}
+.sub{font-size:15px;color:var(--color-text-secondary);max-width:62ch;text-wrap:pretty}
+/* ── hairline bento ── */
+.bento{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--color-border-subtle);border:1px solid var(--color-border-subtle)}
+.cell{background:var(--color-bg-card);padding:22px 24px;display:flex;flex-direction:column;gap:12px}
+.fig{font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1;color:var(--color-text-bright)}
+.delta{font-family:'IBM Plex Mono',monospace;font-size:12px;display:flex;align-items:center;gap:6px}
+.up{color:var(--color-phosphor-base)}.down{color:var(--color-anomaly-bright)}
+.bar{height:3px;width:100%;background:var(--color-bg-elevated);position:relative}
+.bar span{position:absolute;inset:0 auto 0 0;background:var(--color-cyan-base)}
+/* ── roster ── */
+.panel{background:var(--color-bg-card);display:flex;flex-direction:column;min-height:0;flex:1}
+.panel-head{background:var(--color-bg-surface);padding:12px 20px;display:flex;align-items:center;gap:12px}
+.panel-head h2{font-size:13px;font-weight:500;letter-spacing:-.01em}
+.count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--color-text-tertiary)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-secondary);text-align:left;padding:10px 20px;background:var(--color-bg-surface)}
+th.r,td.r{text-align:right}
+td{padding:11px 20px;font-size:13px;border-top:1px solid color-mix(in oklab,var(--color-border-subtle) 28%,transparent)}
+tr.sel td{background:var(--color-cyan-tint-bg)}
+tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--color-cyan-tint-border)}
+.who{display:flex;align-items:center;gap:10px}
+.who em{font-style:normal;font-weight:500}
+.who span{color:var(--color-text-tertiary);font-size:12px}
+/* Tier reads as a colour BAR beside one ink — never a tinted letterform. */
+.chip{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;background:var(--color-bg-surface);color:var(--color-text-secondary);border-left:3px solid;display:inline-block}
+.t-tourist{border-left-color:var(--color-tier-tourist)}
+.t-cowboy{border-left-color:var(--color-tier-cowboy)}
+.t-flatline{border-left-color:var(--color-tier-flatline)}
+.t-tessier{border-left-color:var(--color-tier-tessier)}
+.t-wintermute{border-left-color:var(--color-tier-wintermute)}
+.pill{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border:1px solid;display:inline-block}
+.p-cy{background:var(--color-cyan-tint-bg);border-color:var(--color-cyan-tint-border);color:var(--color-pill-text-cyan)}
+.p-ph{background:var(--color-stable-tint-bg);border-color:var(--color-stable-tint-border);color:var(--color-pill-text-phosphor)}
+.p-yl{background:var(--color-beta-tint-bg);border-color:var(--color-beta-tint-border);color:var(--color-pill-text-yellow)}
+.p-cr{background:var(--color-crimson-tint-bg);border-color:var(--color-crimson-tint-border);color:var(--color-pill-text-crimson)}
+.dims{display:flex;gap:6px}
+.dim{width:34px;height:6px}
+.d-og{background:var(--dimension-og)}.d-nft{background:var(--dimension-nft)}.d-on{background:var(--dimension-onchain)}
+.num{font-family:'IBM Plex Mono',monospace}
+.sev{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--color-text-secondary)}
+.sev s{width:7px;height:7px;text-decoration:none}
+.s-ok s{background:var(--color-severity-low)}.s-hi s{background:var(--color-severity-high)}
+.s-md s{background:var(--color-severity-medium)}.s-cr s{background:var(--color-severity-critical)}
+</style>
+</head>
+<body data-screen-label="Dashboard — Light (Paradise)">
+<aside>
+<div class="mark"><b>FREESIDE</b><span class="eyebrow">Station Console</span></div>
+<nav>
+<a href="#" class="on"><i></i>Overview</a>
+<a href="#"><i></i>Members</a>
+<a href="#"><i></i>Cohorts</a>
+<a href="#"><i></i>Campaigns</a>
+<a href="#"><i></i>Channels</a>
+<a href="#"><i></i>Operations</a>
+</nav>
+<div class="side-foot"><div class="reg"><s></s>Light (Paradise) register</div><div class="reg">Sync 04:12 ago</div></div>
+</aside>
+<main>
+<div class="top">
+<div class="trail">Console / <b>Overview</b></div>
+<div class="search">Search members…</div>
+<div class="av">ZK</div>
+</div>
+<div class="body">
+<div class="hero">
+<div class="eyebrow">// Overview</div>
+<h1>Station Score</h1>
+<p class="sub">Every member scored across OG standing, collection depth, and onchain activity. Cohort weights recalculate on each epoch close.</p>
+</div>
+<div class="bento">
+<div class="cell"><div class="eyebrow">Scored members</div><div class="fig">4,182</div><div class="delta up">▲ 214 this epoch</div><div class="bar"><span style="width:72%"></span></div></div>
+<div class="cell"><div class="eyebrow">Median score</div><div class="fig">618</div><div class="delta up">▲ 1.8%</div><div class="bar"><span style="width:54%"></span></div></div>
+<div class="cell"><div class="eyebrow">Onchain share</div><div class="fig">37%</div><div class="delta down">▼ 4.2%</div><div class="bar"><span style="width:37%;background:var(--color-anomaly-base)"></span></div></div>
+<div class="cell"><div class="eyebrow">BGT delegated</div><div class="fig">25,000</div><div class="delta up">▲ 3,900</div><div class="bar"><span style="width:88%;background:var(--color-token-yellow)"></span></div></div>
+</div>
+<div class="panel">
+<div class="panel-head"><h2>Roster</h2><span class="count">4,182 members · epoch 41</span><span class="pill p-ph" style="margin-left:auto">Stable</span><span class="pill p-yl">Beta scoring</span></div>
+<table>
+<thead><tr><th>Member</th><th>Tier</th><th>Dimensions</th><th class="r">Score</th><th class="r">Δ epoch</th><th>Signal</th></tr></thead>
+<tbody>
+<tr class="sel"><td><div class="who"><em>molly.eth</em><span>#0412</span></div></td><td><span class="chip t-wintermute">Wintermute</span></td><td><div class="dims"><i class="dim d-og"></i><i class="dim d-nft"></i><i class="dim d-on"></i></div></td><td class="r num">941</td><td class="r num up">+38</td><td><span class="sev s-ok"><s></s>Nominal</span></td></tr>
+<tr><td><div class="who"><em>3jane</em><span>#0088</span></div></td><td><span class="chip t-tessier">Tessier</span></td><td><div class="dims"><i class="dim d-og"></i><i class="dim d-nft"></i><i class="dim d-on" style="width:18px"></i></div></td><td class="r num">877</td><td class="r num up">+12</td><td><span class="sev s-md"><s></s>Review</span></td></tr>
+<tr><td><div class="who"><em>riviera</em><span>#1207</span></div></td><td><span class="chip t-flatline">Flatline</span></td><td><div class="dims"><i class="dim d-og" style="width:22px"></i><i class="dim d-nft"></i><i class="dim d-on"></i></div></td><td class="r num">742</td><td class="r num down">−61</td><td><span class="sev s-hi"><s></s>Decay</span></td></tr>
+<tr><td><div class="who"><em>armitage</em><span>#0031</span></div></td><td><span class="chip t-cowboy">Cowboy</span></td><td><div class="dims"><i class="dim d-og"></i><i class="dim d-nft" style="width:14px"></i><i class="dim d-on"></i></div></td><td class="r num">690</td><td class="r num up">+4</td><td><span class="sev s-ok"><s></s>Nominal</span></td></tr>
+<tr><td><div class="who"><em>lonny.zone</em><span>#2344</span></div></td><td><span class="chip t-tourist">Tourist</span></td><td><div class="dims"><i class="dim d-og" style="width:12px"></i><i class="dim d-nft" style="width:20px"></i><i class="dim d-on" style="width:8px"></i></div></td><td class="r num">218</td><td class="r num down">−9</td><td><span class="sev s-cr"><s></s>Flagged</span></td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!-- @dsCard group="Components" viewport="720x240" name="Buttons & Inputs" subtitle="Bermuda Sunset-authority button (primary / sky / secondary / quiet / ghost) + input variants" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<style>body{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);width:100%;margin:0 0 6px;font-weight:600}</style>
+</head><body><div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const { Button, Input } = window.FreesideDesignSystem_1cacde;
+function Demo(){return (<>
+  <div className="row"><span className="lbl">Button — variants</span>
+    <Button variant="primary">Reserve a suite</Button>
+    <Button variant="sky">Explore the resort</Button>
+    <Button variant="secondary">View rates</Button>
+    <Button variant="quiet">Details</Button>
+    <Button variant="ghost">Back</Button>
+    <Button variant="primary" disabled>Sold out</Button>
+  </div>
+  <div className="row"><span className="lbl">Button — sizes</span>
+    <Button variant="primary" size="sm">sm</Button>
+    <Button variant="primary" size="md">md</Button>
+    <Button variant="primary" size="lg">lg</Button>
+  </div>
+  <div className="row"><span className="lbl">Input — field · mono (credit) · pill (organic)</span>
+    <div style={{width:180}}><Input variant="field" placeholder="Guest name"/></div>
+    <div style={{minWidth:200}}><Input variant="mono" value="TA·4417·••••·2209"/></div>
+    <div style={{width:200}}><Input variant="pill" placeholder="Ask the concierge…"/></div>
+  </div>
+</>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script></body></html>

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#081F28}button{font:inherit;cursor:pointer;color:inherit}table{border-collapse:collapse;width:100%}</style>
+</helmet>
+<div data-register="{{ register }}" data-accent="{{ accent }}" style="min-height:100vh;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:14px;line-height:1.5;display:flex;flex-direction:column;gap:24px;padding:48px">
+
+<header style="display:flex;flex-wrap:wrap;align-items:center;gap:24px 48px">
+<div style="font-family:var(--fs-font-display);font-size:20px;letter-spacing:.16em;text-indent:.16em;flex:0 0 auto">FREESIDE</div>
+<nav style="display:flex;flex-wrap:wrap;gap:32px;justify-content:flex-start;flex:1 1 auto;border-bottom:1px solid var(--fs-line-hairline)">
+<sc-for list="{{ zones }}" as="z" hint-placeholder-count="4">
+<sc-if value="{{ z.active }}"><button onClick="{{ z.go }}" style="background:transparent;border:none;border-bottom:2px solid var(--fs-accent-1);padding:11px 2px;white-space:nowrap;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-primary)">{{ z.name }}</button></sc-if>
+<sc-if value="{{ z.idle }}"><button onClick="{{ z.go }}" style="background:transparent;border:none;border-bottom:2px solid transparent;padding:11px 2px;white-space:nowrap;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">{{ z.name }}</button></sc-if>
+</sc-for>
+</nav>
+<button onClick="{{ toggleRegister }}" style="display:flex;align-items:center;gap:8px;background:transparent;border:none;padding:0;white-space:nowrap;flex:0 0 auto;margin-left:auto;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)"><span style="width:6px;height:6px;background:var(--fs-ink-muted)"></span>{{ registerLabel }}</button>
+</header>
+
+<div class="fs-env fs-env-band" data-env="service" style="flex:0 0 auto;height:110px;margin:0 -48px;--fs-env-hem:var(--fs-surface-base)">
+<div class="fs-env-plate"><img src="../../assets/terrace-plate.png" alt=""></div>
+<i class="fs-env-grid"></i>
+<i class="fs-env-curve"></i>
+<i class="fs-env-veil"></i>
+</div>
+
+<main style="flex:1;display:flex;flex-direction:column;gap:24px">
+
+<div style="padding-top:24px;border-top:1px solid var(--fs-line-hairline)">
+<h1 style="font-size:26px;font-weight:600;letter-spacing:-.01em;line-height:1.15;margin:0">{{ zoneTitle }}</h1>
+</div>
+
+<sc-if value="{{ isMembers }}">
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:start">
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:24px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Access tier</div>
+<div style="font-family:var(--fs-font-display);font-size:26px;letter-spacing:.04em">SPINDLE</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;text-align:right">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Conviction</div>
+<div style="font-size:26px;font-variant-numeric:tabular-nums">0.784</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="height:2px;background:var(--fs-state-neutral)"><div style="height:2px;width:78%;background:var(--fs-accent-1)"></div></div>
+<div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums"><span>Spindle</span><span>7,400 to villa</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Badges</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--fs-line-structural);padding:8px 16px"><span style="width:6px;height:6px;background:var(--fs-accent-2)"></span><span style="font-size:14px">First light</span></div>
+<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--fs-line-structural);padding:8px 16px"><span style="width:6px;height:6px;background:var(--fs-accent-2)"></span><span style="font-size:14px">Zero-g</span></div>
+<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--fs-line-structural);padding:8px 16px"><span style="width:6px;height:6px;background:var(--fs-accent-2)"></span><span style="font-size:14px">Night shift</span></div>
+<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--fs-line-structural);padding:8px 16px"><span style="width:6px;height:6px;background:var(--fs-accent-2)"></span><span style="font-size:14px">Hang glider</span></div>
+</div>
+</div>
+</div>
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Prove credit</div>
+<div style="background:var(--fs-surface-sunk);border:1px solid var(--fs-line-structural);padding:16px;font-family:var(--fs-font-code);font-size:13px;word-break:break-all">0x9e80…6e3a2c</div>
+<div style="display:flex;align-items:center;gap:8px">
+<sc-if value="{{ verifyIdle }}"><span style="width:8px;height:8px;background:var(--fs-state-neutral)"></span></sc-if>
+<sc-if value="{{ verifySigning }}"><span style="width:8px;height:8px;background:var(--fs-state-caution)"></span></sc-if>
+<sc-if value="{{ verifyDone }}"><span style="width:8px;height:8px;background:var(--fs-state-positive)"></span></sc-if>
+<span style="font-size:14px;color:var(--fs-ink-secondary)">{{ verifyLabel }}</span>
+</div>
+<button onClick="{{ doVerify }}" style="width:100%;background:var(--fs-accent-1);color:var(--fs-on-accent);border:none;border-radius:2px;padding:13px 16px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase">{{ verifyCta }}</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isOperations }}">
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:start">
+<div style="display:flex;flex-direction:column;gap:24px">
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:24px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Manifests issued</div>
+<button onClick="{{ noop }}" style="background:transparent;border:1px solid var(--fs-line-structural);border-radius:2px;padding:8px 16px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-primary)">Issue key</button>
+</div>
+<table style="font-size:14px;font-variant-numeric:tabular-nums">
+<thead><tr>
+<th style="text-align:left;padding:0 16px 8px 0;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Label</th>
+<th style="text-align:left;padding:0 16px 8px 0;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Key</th>
+<th style="text-align:right;padding:0 0 8px;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Last seen</th>
+</tr></thead>
+<tbody>
+<sc-for list="{{ keys }}" as="k" hint-placeholder-count="3">
+<tr>
+<td style="padding:16px 16px 16px 0;border-bottom:1px solid var(--fs-line-hairline)">{{ k.label }}</td>
+<td style="padding:16px 16px 16px 0;border-bottom:1px solid var(--fs-line-hairline);font-family:var(--fs-font-code);font-size:13px;color:var(--fs-ink-secondary)">{{ k.key }}</td>
+<td style="padding:16px 0;border-bottom:1px solid var(--fs-line-hairline);text-align:right;color:var(--fs-ink-muted)">{{ k.seen }}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="background:var(--fs-surface-sunk);border:1px solid var(--fs-line-structural);padding:24px;font-family:var(--fs-font-code);font-size:13px;line-height:1.7;white-space:pre-wrap">{{ snippet }}</div>
+</div>
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Bring your own key</div>
+<sc-for list="{{ byok }}" as="p" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--fs-line-hairline)">
+<span style="font-size:14px">{{ p.name }}</span>
+<div style="display:flex;align-items:center;gap:8px">
+<sc-if value="{{ p.on }}"><span style="width:6px;height:6px;background:var(--fs-state-positive)"></span></sc-if>
+<sc-if value="{{ p.off }}"><span style="width:6px;height:6px;background:var(--fs-state-neutral)"></span></sc-if>
+<span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">{{ p.status }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:24px">
+
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:24px">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Credit line</div><div style="font-size:26px;font-variant-numeric:tabular-nums">250,000</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Settled</div><div style="font-size:26px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">128,400</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Reserved</div><div style="font-size:26px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">12,480</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Available</div><div style="font-size:26px;font-variant-numeric:tabular-nums">109,120</div></div>
+</div>
+<div style="display:flex;height:3px"><div style="width:51.4%;background:var(--fs-accent-1)"></div><div style="width:5%;background:var(--fs-accent-2)"></div><div style="flex:1;background:var(--fs-state-neutral)"></div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:24px;align-items:start">
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Service pools</div>
+
+<button onClick="{{ pickHouse }}" style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;background:transparent;border:none;padding:0">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%">
+<sc-if value="{{ onHouse }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-primary)">House</span></sc-if>
+<sc-if value="{{ offHouse }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-secondary)">House</span></sc-if>
+<span style="font-size:14px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">8,200</span>
+</div>
+<div style="height:8px;width:100%;background:var(--fs-state-neutral)">
+<sc-if value="{{ onHouse }}"><div style="height:8px;width:6%;background:var(--fs-accent-1)"></div></sc-if>
+<sc-if value="{{ offHouse }}"><div style="height:8px;width:6%;background:var(--fs-accent-2)"></div></sc-if>
+</div>
+</button>
+
+<button onClick="{{ pickExpress }}" style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;background:transparent;border:none;padding:0">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%">
+<sc-if value="{{ onExpress }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-primary)">Express</span></sc-if>
+<sc-if value="{{ offExpress }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-secondary)">Express</span></sc-if>
+<span style="font-size:14px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">18,600</span>
+</div>
+<div style="height:8px;width:100%;background:var(--fs-state-neutral)">
+<sc-if value="{{ onExpress }}"><div style="height:8px;width:15%;background:var(--fs-accent-1)"></div></sc-if>
+<sc-if value="{{ offExpress }}"><div style="height:8px;width:15%;background:var(--fs-accent-2)"></div></sc-if>
+</div>
+</button>
+
+<button onClick="{{ pickConcierge }}" style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;background:transparent;border:none;padding:0">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%">
+<sc-if value="{{ onConcierge }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-primary)">Concierge</span></sc-if>
+<sc-if value="{{ offConcierge }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-secondary)">Concierge</span></sc-if>
+<span style="font-size:14px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">24,900</span>
+</div>
+<div style="height:8px;width:100%;background:var(--fs-state-neutral)">
+<sc-if value="{{ onConcierge }}"><div style="height:8px;width:19%;background:var(--fs-accent-1)"></div></sc-if>
+<sc-if value="{{ offConcierge }}"><div style="height:8px;width:19%;background:var(--fs-accent-2)"></div></sc-if>
+</div>
+</button>
+
+<button onClick="{{ pickAtelier }}" style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;background:transparent;border:none;padding:0">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%">
+<sc-if value="{{ onAtelier }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-primary)">Atelier</span></sc-if>
+<sc-if value="{{ offAtelier }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-secondary)">Atelier</span></sc-if>
+<span style="font-size:14px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">61,300</span>
+</div>
+<div style="height:8px;width:100%;background:var(--fs-state-neutral)">
+<sc-if value="{{ onAtelier }}"><div style="height:8px;width:48%;background:var(--fs-accent-1)"></div></sc-if>
+<sc-if value="{{ offAtelier }}"><div style="height:8px;width:48%;background:var(--fs-accent-2)"></div></sc-if>
+</div>
+</button>
+
+<button onClick="{{ pickStraylight }}" style="display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;background:transparent;border:none;padding:0">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%">
+<sc-if value="{{ onStraylight }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-primary)">Straylight</span></sc-if>
+<sc-if value="{{ offStraylight }}"><span style="font-size:15px;font-weight:600;color:var(--fs-ink-secondary)">Straylight</span></sc-if>
+<span style="font-size:14px;font-variant-numeric:tabular-nums;color:var(--fs-ink-secondary)">15,400</span>
+</div>
+<div style="height:8px;width:100%;background:var(--fs-state-neutral)">
+<sc-if value="{{ onStraylight }}"><div style="height:8px;width:12%;background:var(--fs-accent-1)"></div></sc-if>
+<sc-if value="{{ offStraylight }}"><div style="height:8px;width:12%;background:var(--fs-accent-2)"></div></sc-if>
+</div>
+</button>
+
+</div>
+
+<div style="display:flex;flex-direction:column;gap:24px">
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Transition</div>
+<div style="display:flex;gap:8px">
+<sc-for list="{{ modes }}" as="m" hint-placeholder-count="4">
+<sc-if value="{{ m.on }}"><button onClick="{{ m.pick }}" style="flex:1;border:1px solid var(--fs-accent-1);border-radius:2px;padding:11px 8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;background:var(--fs-accent-1);color:var(--fs-on-accent)">{{ m.name }}</button></sc-if>
+<sc-if value="{{ m.off }}"><button onClick="{{ m.pick }}" style="flex:1;border:1px solid var(--fs-line-structural);border-radius:2px;padding:11px 8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;background:transparent;color:var(--fs-ink-muted)">{{ m.name }}</button></sc-if>
+</sc-for>
+</div>
+<div style="font-size:14px;line-height:1.5;color:var(--fs-ink-secondary)">{{ modeCopy }}</div>
+</div>
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Fitting out</div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">{{ stepCount }}</div>
+</div>
+<div style="display:flex;gap:8px">
+<sc-for list="{{ steps }}" as="s" hint-placeholder-count="8">
+<sc-if value="{{ s.on }}"><div style="flex:1;height:4px;background:var(--fs-accent-1)"></div></sc-if>
+<sc-if value="{{ s.off }}"><div style="flex:1;height:4px;background:var(--fs-state-neutral)"></div></sc-if>
+</sc-for>
+</div>
+<div style="font-size:15px;font-weight:600">{{ stepTitle }}</div>
+<button onClick="{{ nextStep }}" style="width:100%;background:var(--fs-accent-1);color:var(--fs-on-accent);border:none;border-radius:2px;padding:11px 16px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase">Continue</button>
+</div>
+</div>
+</div>
+
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Access tiers</div>
+<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:8px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.2"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Arrival</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">any</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.3"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Free port</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">100</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.4"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Promenade</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">500</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.5"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Terrace</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">1k</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.6"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Garden</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">5k</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.7"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Cannes</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">10k</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.8"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Spindle</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">25k</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1);opacity:.9"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Villa</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">50k</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="height:4px;background:var(--fs-accent-1)"></div><div style="font-family:var(--fs-font-narrow);font-size:14px;font-weight:600">Straylight</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">100k</div></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSettlement }}">
+<div style="display:flex;flex-direction:column;gap:24px">
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:grid;grid-template-columns:repeat(4,1fr);gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Registry</div><div style="font-size:26px;font-variant-numeric:tabular-nums">10</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Deployed</div><div style="font-size:26px;font-variant-numeric:tabular-nums">8</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Drift</div><div style="font-size:26px;font-variant-numeric:tabular-nums">1</div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Federation p95</div><div style="font-size:26px;font-variant-numeric:tabular-nums">42ms</div></div>
+</div>
+<div style="border:1px solid var(--fs-line-structural);padding:24px;display:flex;flex-direction:column;gap:16px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Cell registry</div>
+<table style="font-size:14px;font-variant-numeric:tabular-nums">
+<thead><tr>
+<th style="text-align:left;padding:0 16px 8px 0;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Cell</th>
+<th style="text-align:left;padding:0 16px 8px 0;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Role</th>
+<th style="text-align:right;padding:0 16px 8px 0;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">p95</th>
+<th style="text-align:right;padding:0 0 8px;border-bottom:1px solid var(--fs-line-structural);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">Status</th>
+</tr></thead>
+<tbody>
+<sc-for list="{{ cells }}" as="c" hint-placeholder-count="10">
+<tr>
+<td style="padding:16px 16px 16px 0;border-bottom:1px solid var(--fs-line-hairline);font-family:var(--fs-font-code);font-size:13px">{{ c.slug }}</td>
+<td style="padding:16px 16px 16px 0;border-bottom:1px solid var(--fs-line-hairline);color:var(--fs-ink-secondary)">{{ c.role }}</td>
+<td style="padding:16px 16px 16px 0;border-bottom:1px solid var(--fs-line-hairline);text-align:right;color:var(--fs-ink-muted)">{{ c.p95 }}</td>
+<td style="padding:16px 0;border-bottom:1px solid var(--fs-line-hairline);text-align:right">
+<span style="display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">
+<sc-if value="{{ c.ok }}"><span style="width:6px;height:6px;background:var(--fs-state-positive)"></span></sc-if>
+<sc-if value="{{ c.warn }}"><span style="width:6px;height:6px;background:var(--fs-state-caution)"></span></sc-if>
+{{ c.status }}</span>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</div>
+</sc-if>
+
+</main>
+
+<footer style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:48px;padding-top:24px;border-top:1px solid var(--fs-line-hairline);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)">
+<div>Tessier-Ashpool Holdings</div>
+<div style="height:1px;background:var(--fs-line-hairline)"></div>
+<div>mcp.0xhoneyjar.xyz</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1360,&quot;height&quot;:900},&quot;initialZone&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;overview&quot;,&quot;members&quot;,&quot;operations&quot;,&quot;settlement&quot;],&quot;default&quot;:&quot;overview&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Station&quot;},&quot;register&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;deep-space&quot;,&quot;light&quot;],&quot;default&quot;:&quot;deep-space&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Station&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;resort&quot;,&quot;garden&quot;,&quot;vice&quot;,&quot;systems&quot;,&quot;dynasty&quot;],&quot;default&quot;:&quot;resort&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Station&quot;}}">
+class Component extends DCLogic {
+  state = { zone: null, reg: null, verify: 'idle', mode: 'shadow', step: 4, pool: 'reasoning' };
+
+  pick(id) { this.setState({ pool: id }); }
+
+  renderVals() {
+    const p = this.props;
+    const zone = this.state.zone || p.initialZone || 'overview';
+    const seeded = p.register === 'light' ? 'light' : '';
+    const register = this.state.reg !== null ? this.state.reg : seeded;
+    const light = register === 'light';
+    const pool = this.state.pool;
+
+    /* Plain names. The console navigates FUNCTIONS, not places — a place name in
+       a nav row reads as a destination the operator can walk to, and none of
+       these are. Place names stay where a real place is being addressed: the
+       access-tier ladder, and a record's location. */
+    const zoneDefs = [
+      ['overview', 'Overview', 'Overview'],
+      ['members', 'Members', 'Members'],
+      ['operations', 'Operations', 'Operations'],
+      ['settlement', 'Settlement', 'Settlement'],
+    ];
+    const active = zoneDefs.find(z => z[0] === zone) || zoneDefs[0];
+
+    const verifyDefs = {
+      idle: ['No signature on file', 'Connect wallet'],
+      signing: ['Awaiting signature', 'Signing'],
+      verified: ['Session valid 24h', 'Re-verify'],
+    }[this.state.verify];
+
+    const modeDefs = [['shadow', 'Shadow'], ['parallel', 'Parallel'], ['primary', 'Primary'], ['exclusive', 'Exclusive']];
+    const modeCopy = {
+      shadow: 'Running beside the incumbent. Divergence is logged; no roles are written.',
+      parallel: 'Both systems write. Conflicts resolve to the incumbent.',
+      primary: 'Freeside writes first. The incumbent stays warm for rollback.',
+      exclusive: 'Freeside owns access. The incumbent is disconnected.',
+    };
+
+    const stepDefs = [
+      'Connect the server', 'Prove credit', 'Choose a chain', 'Set the tiers',
+      'Open the pools', 'Set the credit line', 'Run in shadow', 'Open the doors',
+    ];
+
+    const cellDefs = [
+      ['sonar-api', 'miner', '38ms', 1], ['storage-api', 'warehouse', '22ms', 1],
+      ['mint-api', 'assembler', '54ms', 1], ['activities-api', 'assembler', '61ms', 1],
+      ['inventory-api', 'assembler', '47ms', 1], ['score-api', 'smelter', '88ms', 1],
+      ['identity-api', 'assembler', '—', 0], ['mediums-api', 'presenter', '31ms', 1],
+      ['ledger-api', 'warehouse', '—', 0], ['events-api', 'belt', '19ms', 1],
+    ];
+
+    return {
+      register,
+      accent: p.accent || 'resort',
+      registerLabel: light ? 'Light' : 'Deep space',
+      toggleRegister: () => this.setState({ reg: light ? '' : 'light' }),
+      noop: () => {},
+
+      zones: zoneDefs.map(([id, name]) => ({
+        name,
+        active: id === zone,
+        idle: id !== zone,
+        go: () => this.setState({ zone: id }),
+      })),
+      zoneTitle: active[2],
+      isMembers: zone === 'members', isOperations: zone === 'operations',
+      isOverview: zone === 'overview', isSettlement: zone === 'settlement',
+
+      verifyIdle: this.state.verify === 'idle',
+      verifySigning: this.state.verify === 'signing',
+      verifyDone: this.state.verify === 'verified',
+      verifyLabel: verifyDefs[0],
+      verifyCta: verifyDefs[1],
+      doVerify: () => {
+        if (this.state.verify === 'signing') return;
+        this.setState({ verify: 'signing' });
+        setTimeout(() => this.setState({ verify: 'verified' }), 900);
+      },
+
+      keys: [
+        { label: 'Production', key: 'fs_live_9e80…2209', seen: '2m ago' },
+        { label: 'Staging', key: 'fs_test_4417…88a1', seen: '4h ago' },
+        { label: 'Dixie oracle', key: 'fs_live_c870…5b3f', seen: '11m ago' },
+      ],
+      snippet: 'curl -X POST https://api.0xhoneyjar.xyz/api/agents/invoke \\\n  -H "authorization: Bearer $FREESIDE_KEY" \\\n  -d \'{"pool":"reasoning","stream":true}\'',
+      byok: [['Anthropic', 1], ['OpenAI', 1], ['Bedrock', 1], ['Mistral', 0]].map(([name, on]) => ({
+        name, on: !!on, off: !on, status: on ? 'Active' : 'Unset',
+      })),
+
+      onHouse: pool === 'cheap', offHouse: pool !== 'cheap',
+      onExpress: pool === 'fast-code', offExpress: pool !== 'fast-code',
+      onConcierge: pool === 'reviewer', offConcierge: pool !== 'reviewer',
+      onAtelier: pool === 'reasoning', offAtelier: pool !== 'reasoning',
+      onStraylight: pool === 'native', offStraylight: pool !== 'native',
+      pickHouse: () => this.pick('cheap'),
+      pickExpress: () => this.pick('fast-code'),
+      pickConcierge: () => this.pick('reviewer'),
+      pickAtelier: () => this.pick('reasoning'),
+      pickStraylight: () => this.pick('native'),
+
+      modes: modeDefs.map(([id, name]) => ({
+        name,
+        on: id === this.state.mode,
+        off: id !== this.state.mode,
+        pick: () => this.setState({ mode: id }),
+      })),
+      modeCopy: modeCopy[this.state.mode],
+
+      steps: stepDefs.map((_, i) => ({ on: i < this.state.step, off: i >= this.state.step })),
+      stepCount: this.state.step + ' / 8',
+      stepTitle: stepDefs[Math.min(this.state.step, stepDefs.length) - 1],
+      nextStep: () => this.setState(s => ({ step: s.step >= 8 ? 1 : s.step + 1 })),
+
+      cells: cellDefs.map(([slug, role, p95, ok]) => ({
+        slug, role, p95, ok: !!ok, warn: !ok, status: ok ? 'Deployed' : 'Pending',
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

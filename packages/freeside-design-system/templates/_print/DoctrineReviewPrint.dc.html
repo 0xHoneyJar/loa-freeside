@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="../permission-gate/copy.js"></script>
+<script src="../guest-surface/copy.js"></script>
+<script src="../roster/copy.js"></script>
+<script src="../../doc-page.js"></script>
+<style>
+html,body{margin:0;padding:0}
+doc-page:not(:defined){visibility:hidden}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+*{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}
+.page div[data-register]{min-height:934px !important}
+.hold{height:934px;overflow:hidden}
+</style>
+</helmet>
+
+<doc-page size="letter" orientation="landscape" content-width="1280px" content-height="990px">
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);padding:64px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;align-items:baseline;gap:24px">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Doctrine 02 · Projection review · 4 August 2026</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:32px">
+<div style="height:3px;background:var(--fs-accent-1);width:220px"></div>
+<h1 style="font-family:var(--fs-font-display);font-size:var(--fs-display-size);letter-spacing:var(--fs-display-track);line-height:var(--fs-display-lh);text-transform:uppercase;margin:0;max-width:24ch">Three templates, thirteen contexts</h1>
+<p style="margin:0;max-width:80ch;text-wrap:pretty;color:var(--fs-ink-secondary);font-size:var(--fs-size-md)">Each page after the second is a real template render: the permission gate, the guest surface and the roster, at Terrace, Atrium, Service and Ledger. The copy, the gauge geometry, the row set and the action labels are whatever the projector returned for that role, destination, state and grant. Nothing on these pages was written for the page.</p>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-top:32px;border-top:1px solid var(--fs-line-hairline)">
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Verdict</span><span style="font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em">PASS</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Checks · cases</span><span style="font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em">37 · 276</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Fragments · packs</span><span style="font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em">163 · 6</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Suppressions</span><span style="font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em">0</span></div>
+</div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);padding:64px;display:flex;flex-direction:column;gap:40px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">The two corrections</span>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:64px;flex:1">
+
+<div style="display:flex;flex-direction:column;gap:24px">
+<h2 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">Actions sit on four axes</h2>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Availability and presentation are separate concerns. An operator standing on a Terrace page is entitled to open operations; the label reaching for Service vocabulary is not.</p>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:grid;grid-template-columns:200px 1fr;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--fs-line-hairline)"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Role · capability</span><span>whether the action may be performed</span></div>
+<div style="display:grid;grid-template-columns:200px 1fr;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--fs-line-hairline)"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Resource existence</span><span>whether it may be offered at all</span></div>
+<div style="display:grid;grid-template-columns:200px 1fr;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--fs-line-hairline)"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Exposure</span><span>the specificity of its label and explanation</span></div>
+<div style="display:grid;grid-template-columns:200px 1fr;gap:24px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Destination</span><span>resolves its own exposure under the ceiling</span></div>
+</div>
+<div style="border-left:3px solid var(--fs-accent-1);padding-left:16px"><p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Availability must not depend on exposure alone; presentation may be exposure-governed. An action carrying a minimum also carries a plain label, and the projector renders that instead of withdrawing the offer. Capability and existence still withdraw it.</p></div>
+<div style="display:flex;gap:16px;align-items:center;padding:16px 24px;background:var(--fs-surface-raised)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">A7</span>
+<span style="color:var(--fs-ink-secondary)">Action availability never depends on exposure alone</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:24px">
+<h2 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">Every channel is a disclosure channel</h2>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Text, numerals, geometry, ordering, colour, animation, accessibility metadata and DOM structure all represent the same facts, and each must stay within the precision the level permits. A bar whose width is the reading states the reading, whatever the caption beside it says. Geometry is quantized, not exempt.</p>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+<div style="padding:16px;background:var(--fs-surface-raised);display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Terrace</span><span>Three segments · a band in words · no figure anywhere</span></div>
+<div style="padding:16px;background:var(--fs-surface-raised);display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Atrium</span><span>Six steps · a range · still no figure</span></div>
+<div style="padding:16px;background:var(--fs-surface-raised);display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Service</span><span>5% ticks · 21.4 °C · 41% RH · role="meter"</span></div>
+<div style="padding:16px;background:var(--fs-surface-raised);display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Ledger</span><span>The same, plus what holding the band costs</span></div>
+</div>
+<div style="border-left:3px solid var(--fs-state-critical);padding-left:16px"><p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">Presentation doctrine only. Unauthorized rows, cells, counts and exports must be filtered server-side, before the payload reaches the client. A row omitted from the DOM is still in the response if the server sent it.</p></div>
+</div>
+
+</div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);padding:64px;display:flex;flex-direction:column;gap:40px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Conformance · eight classes, thirty-seven checks</span>
+<h2 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">Every pack, every case</h2>
+<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:32px 64px;align-content:start">
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">A · Structural validity — 7</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Duplicate declarations, unknown selector IDs, missing policy axes, missing required-field fallbacks, secret on a required field, actions ungated.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">B · Fragment policy — 6</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Every fragment through the projector at every context, with no selector involved. The check the inline-construction design could not make bite.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">C · Selector behaviour — 2</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Known contexts choose the expected IDs, and choose them deterministically.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">D · Reachability — 3</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Every production fragment is selected somewhere; canaries never are; required copy is never blank.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">E · Deliberate failure — 2</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">A canary projected below its floor really does fall back, records the reason, and fails a verdict.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">M · Mechanism — 7</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Exposure within the ceiling, state cannot breach it, access does not theme, silence never confirms, export separately authorized, agency matches role.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">N · Non-visual leakage — 3</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">ARIA, title, data-*, form values, geometry and metadata read off the view model rather than trusted in markup.</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">R · Roster pack — 7</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Row existence, cell sensitivity, action authorization, the export grant, and that a capability grant widens nothing unrelated.</span></div>
+</div>
+<p style="margin:0;max-width:100ch;text-wrap:pretty;color:var(--fs-ink-muted);font-size:var(--fs-size-sm);padding-top:24px;border-top:1px solid var(--fs-line-hairline)">Run headless with <span style="color:var(--fs-ink-secondary)">node templates/_doctrine/run-checks.js</span>, which exits non-zero on any failure or guard suppression. The Conformance card renders the same audit; it does not define the cases or the rules.</p>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Terrace 0</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Permission gate · guest · settlement · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 0 · depth 3 · floor 0 · exposure 0 · denied · silent</span>
+</div>
+<div class="hold"><dc-import name="PermissionGate" role="guest" destination="settlement" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Atrium 1</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Permission gate · member · console · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 1 · depth 2 · floor 0 · exposure 1 · denied · abstract</span>
+</div>
+<div class="hold"><dc-import name="PermissionGate" role="member" destination="console" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Service 2</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Permission gate · operator · settlement · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 2 · depth 3 · floor 0 · exposure 2 · denied · explicit</span>
+</div>
+<div class="hold"><dc-import name="PermissionGate" role="operator" destination="settlement" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Ledger 3</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Permission gate · principal · settlement · alert</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 3 · depth 3 · floor 3 · exposure 3</span>
+</div>
+<div class="hold"><dc-import name="PermissionGate" role="principal" destination="settlement" system-state="alert" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Terrace 0</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Guest surface · guest · arrival · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 0 · depth 0 · floor 0 · exposure 0 · three-segment gauge</span>
+</div>
+<div class="hold"><dc-import name="GuestSurface" role="guest" destination="arrival" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Atrium 1</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Guest surface · member · account · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 1 · depth 1 · floor 0 · exposure 1 · six-step gauge</span>
+</div>
+<div class="hold"><dc-import name="GuestSurface" role="member" destination="account" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Service 2</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Guest surface · operator · arrival · degraded</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 2 · depth 0 · floor 2 · exposure 2 · label at Service wording</span>
+</div>
+<div class="hold"><dc-import name="GuestSurface" role="operator" destination="arrival" system-state="degraded" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Ledger 3</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Guest surface · principal · account · alert</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 3 · depth 1 · floor 3 · exposure 3 · reading and its cost</span>
+</div>
+<div class="hold"><dc-import name="GuestSurface" role="principal" destination="account" system-state="alert" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Terrace 0</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Roster · guest · console · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 0 · depth 2 · floor 0 · exposure 0 · denied · no rows, no columns</span>
+</div>
+<div class="hold"><dc-import name="Roster" role="guest" destination="console" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Atrium 1</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Roster · member · account · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 1 · depth 1 · floor 0 · exposure 1 · one row, four columns</span>
+</div>
+<div class="hold"><dc-import name="Roster" role="member" destination="account" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Service 2</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Roster · operator · console · nominal</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 2 · depth 2 · floor 0 · exposure 2 · eight rows, six columns, no export</span>
+</div>
+<div class="hold"><dc-import name="Roster" role="operator" destination="console" system-state="nominal" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Service 2</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Roster · operator · console · nominal · export granted</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">the same eight rows and six columns · capability changes agency, never disclosure</span>
+</div>
+<div class="hold"><dc-import name="Roster" role="operator" destination="console" system-state="nominal" export-granted="{{ yes }}" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+<section class="page" style="width:1280px;height:990px;background:var(--fs-deep-space-ink)">
+<div style="height:56px;padding:0 32px;display:flex;align-items:center;gap:16px;color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-variant-numeric:tabular-nums">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)">Ledger 3</span>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Roster · principal · console · alert</span>
+<span style="margin-left:auto;font-size:var(--fs-size-xs);color:var(--fs-ink-muted)">ceiling 3 · depth 2 · floor 3 · exposure 3 · eight rows, eight columns</span>
+</div>
+<div class="hold"><dc-import name="Roster" role="principal" destination="console" system-state="alert" hint-size="1280px,934px"></dc-import></div>
+</section>
+
+</doc-page>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+/* Print harness only. The doctrine scripts arrive from the helmet asynchronously,
+   and a child that first renders without them paints the static template with
+   every projected hole empty — and has no reason to render again. So this waits
+   for all three packs and then re-renders the tree once, which is enough for the
+   children to project properly before the print view opens. */
+class Component extends DCLogic {
+  state = { tick: 0 };
+  componentDidMount() { this.wait(0); }
+  wait(n) {
+    var D = window.FreesideDoctrine;
+    var ready = !!(D && D.packs && D.packs['permission-gate'] && D.packs['guest-surface'] && D.packs.roster);
+    if (ready) {
+      this.setState({ tick: this.state.tick + 1 });
+      /* Two more passes, spaced out, in case a stylesheet or the bundle lands late. */
+      if (n < 2) setTimeout(this.wait.bind(this, n + 1), 600);
+      return;
+    }
+    if (n < 400) setTimeout(this.wait.bind(this, n), 50);
+  }
+  renderVals() {
+    return { yes: true, tick: this.state.tick };
+  }
+}
+
+</script>
+</body>
+</html>

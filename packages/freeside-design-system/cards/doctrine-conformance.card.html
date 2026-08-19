@@ -1,0 +1,286 @@
+<!-- @dsCard group="Doctrine" viewport="1280x7950" name="Conformance" subtitle="37 checks over 276 cases — catalogue validity, fragment policy, selectors, reachability, deliberate failure, non-visual leakage" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — doctrine conformance</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="../templates/_doctrine/doctrine.js"></script>
+<script src="../templates/_doctrine/fixtures.js"></script>
+<script src="../templates/_doctrine/tests.js"></script>
+<script src="../templates/permission-gate/copy.js"></script>
+<script src="../templates/roster/copy.js"></script>
+<script src="../templates/roster/checks.js"></script>
+<script src="../templates/guest-surface/copy.js"></script>
+<script src="../templates/degraded-states/copy.js"></script>
+<script src="../templates/docs/copy.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);padding:48px}
+a{color:var(--fs-accent-2)}a:hover{color:var(--fs-accent-1)}
+.lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)}
+.title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}
+.sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)}
+.stack-8{display:flex;flex-direction:column;gap:8px}
+.stack-16{display:flex;flex-direction:column;gap:16px}
+.stack-24{display:flex;flex-direction:column;gap:24px}
+.stack-48{display:flex;flex-direction:column;gap:48px}
+p{max-width:80ch;text-wrap:pretty;color:var(--fs-ink-secondary)}
+.rule{height:1px;background:var(--fs-line-hairline)}
+.panel{background:var(--fs-surface-raised);padding:24px;display:flex;flex-direction:column;gap:16px}
+.check{display:grid;grid-template-columns:24px 1fr auto;gap:16px;align-items:start;padding:16px;background:var(--fs-surface-raised)}
+.check s{width:12px;height:12px;margin-top:5px;text-decoration:none;display:block}
+.ok s{background:var(--fs-state-positive)}
+.bad s{background:var(--fs-state-critical)}
+.verdict{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;white-space:nowrap}
+/* Filled pills carry 11px text, so they use the *-fill tokens. --fs-state-positive
+   is dot-or-bar only: foliage behind small text measures 3.70:1. */
+.ok .verdict{background:var(--fs-state-positive-fill);color:var(--fs-state-positive-fill-ink)}
+.bad .verdict{background:var(--fs-state-critical-fill);color:var(--fs-state-critical-fill-ink)}
+.fail{font-size:var(--fs-size-xs);color:var(--fs-state-critical);padding-top:4px;line-height:1.5}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:0 16px 8px 0;white-space:nowrap}
+td{padding:8px 16px 8px 0;border-top:1px solid var(--fs-line-hairline);white-space:nowrap;font-size:var(--fs-size-xs)}
+.m{display:inline-block;padding:2px 8px;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase}
+.m-silent{background:var(--fs-state-critical-fill);color:var(--fs-state-critical-fill-ink)}
+.m-abstract{background:var(--fs-state-caution-fill);color:var(--fs-state-caution-fill-ink)}
+.m-explicit{background:var(--fs-accent-2);color:var(--fs-deep-space-ink)}
+.m-none{color:var(--fs-ink-muted);border:1px solid var(--fs-line-structural)}
+.hero{display:grid;grid-template-columns:1fr auto;gap:48px;align-items:end}
+.big{font-family:var(--fs-font-display);font-size:var(--fs-display-size);line-height:1}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.tag{display:inline-block;padding:2px 8px;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;border:1px solid var(--fs-line-structural);color:var(--fs-ink-muted)}
+/* Axis tags that carry an accent are FILLED, not tinted text. --fs-state-critical
+   and the accents carry the same dot-or-bar-only contract as --fs-state-positive:
+   #B23A2E as 11px text on raised measures 2.53:1, and swapping the ink does not
+   save it. Same rule that produced the *-fill tokens, one section later. */
+.tag-doctrine{background:var(--fs-state-positive-fill);border-color:var(--fs-state-positive-fill);color:var(--fs-state-positive-fill-ink)}
+.tag-sensitive{background:var(--fs-state-critical-fill);border-color:var(--fs-state-critical-fill);color:var(--fs-state-critical-fill-ink)}
+code{font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
+</style>
+</head>
+<body data-accent="systems" data-screen-label="Doctrine conformance">
+<div class="stack-48">
+
+<div class="hero">
+<div class="stack-16">
+<span class="lab">Doctrine 01 · Conformance</span>
+<h1 class="title">Every pack, every case</h1>
+<p>The doctrine is executable, and split three ways: <code>_doctrine/doctrine.js</code> is the engine, <code>_doctrine/fixtures.js</code> is the case matrix, <code>_doctrine/tests.js</code> holds the assertions. Each template ships its own copy pack and may add its own checks. This card is a <em>renderer for those tests</em>, not a second harness — <code>node templates/_doctrine/run-checks.js</code> loads the same four files and prints the same results, exiting non-zero on any failure.</p>
+<div style="border-left:3px solid var(--fs-state-critical);padding:16px 16px 16px 20px;background:var(--fs-surface-raised);max-width:80ch">
+<div class="sec" style="margin-bottom:8px">This is a presentation doctrine, not the security boundary</div>
+<p style="font-size:var(--fs-size-xs);margin:0">Everything asserted here decides what a permitted viewer is <em>shown</em>. It does not decide what they are permitted to <em>receive</em>. Unauthorized rows, cells, counts, pagination metadata and exports must be filtered or authorized <strong style="color:var(--fs-ink-primary)">server-side, before the payload reaches the client</strong>. Omitting a node from the DOM, dropping a column, and hiding an element with CSS are not access control — the data is still in the response, and the response is readable. A green verdict means the screen states the right amount; it says nothing about what was sent.</p>
+</div>
+</div>
+<div class="stack-8" style="text-align:right">
+<span class="lab">Verdict</span>
+<div class="big" id="verdict">—</div>
+<span class="lab" id="scope"></span>
+</div>
+</div>
+
+<div class="stack-16" id="checks"></div>
+
+<div class="rule"></div>
+
+<div class="stack-24">
+<div class="stack-16">
+<span class="lab">Classification</span>
+<h2 class="title">Orthogonal axes</h2>
+<p>The first guard banned standalone 0–3 and a word list below Service — that mistakes spelling for meaning, since <strong style="color:var(--fs-ink-primary)">"2 reservations"</strong> is ordinary product data and <em>service</em> is ordinary English. The second fixed provenance but conflated three questions into one tag: <code>meta</code> was provenance, <code>text</code>/<code>datum</code> were presentation forms, <code>secret</code> was a disclosure policy. So <code>text</code> silently meant <em>no minimum</em>, and prose could carry a Ledger fact past the guard while a harmless integer was blocked for looking like one.</p>
+<p>Each axis is now declared independently. Classification describes what a fragment <em>is</em>; policy decides separately whether it may exist, be disclosed, and be acted upon. <strong style="color:var(--fs-ink-primary)">A datum may be secret, and prose may require Ledger.</strong></p>
+<p>Declaration is also separated from selection. A pack lists its fragments once in a <code>catalogue</code>, with policy that cannot see the context; <code>select(ctx)</code> then returns declared <strong style="color:var(--fs-ink-primary)">IDs</strong> or an explicit none. That is what makes the policy class non-vacuous — while branches built their own fragments inline, a minimum could be derived from the same <code>ctx.exposure</code> the branch was keyed on, so the guard could not fail by construction. Class B now forces every catalogued fragment through <code>dispose()</code> at every context with no selector involved.</p>
+<p>Packs never receive a denial reason. <code>decide()</code> keeps the exact reason for the audit; a pack sees only a disposition — <code>render</code>, <code>fallback</code>, <code>omit</code>. When a fragment's existence may not be acknowledged, missing capability, insufficient exposure and true absence <strong style="color:var(--fs-ink-primary)">all collapse to the same disposition</strong>, so a refusal cannot be differenced into an enumeration oracle. The collapse is the default inside one function, never a branch a pack opts into.</p>
+</div>
+<div class="g3">
+<div class="panel"><span class="tag">kind</span><div class="sec">What it is</div><p style="font-size:var(--fs-size-xs)"><code>prose</code> · <code>datum</code> · <code>action</code> · <code>label</code>. A presentation form only — it grants and withholds nothing on its own.</p></div>
+<div class="panel"><span class="tag tag-doctrine">provenance</span><div class="sec">Where it came from</div><p style="font-size:var(--fs-size-xs)"><code>doctrine</code> · <code>domain</code>. Doctrine metadata is the ladder counting itself, and never renders below Service whatever its kind.</p></div>
+<div class="panel"><span class="tag">minExposure</span><div class="sec">When it may be shown</div><p style="font-size:var(--fs-size-xs)">0–3, and a property of the <em>content</em>, not of the branch that selected it — otherwise the check is unfalsifiable.</p></div>
+<div class="panel"><span class="tag tag-sensitive">existence</span><div class="sec">When it may be admitted</div><p style="font-size:var(--fs-size-xs)"><code>public</code> may be acknowledged as withheld; <code>conditional</code> only at or above its <code>existenceAt</code> ceiling; <code>secret</code> is omitted whole and never acknowledged.</p></div>
+<div class="panel"><span class="tag">capability</span><div class="sec">What you must hold</div><p style="font-size:var(--fs-size-xs)">Checked before exposure, because holding no grant is a harder no than standing too low — and must not be reported as an exposure problem.</p></div>
+<div class="panel"><span class="tag">fallback</span><div class="sec">What shows instead</div><p style="font-size:var(--fs-size-xs)">Per field, per pack. A refusal degrades that one field to a safe line and fails conformance separately; it never blanks critical UI.</p></div>
+</div>
+<p style="font-size:var(--fs-size-xs)">Unclassified text is itself a violation: a pack returning a bare string gets its field-specific fallback and fails conformance. Lexical scanning survives only as <strong style="color:var(--fs-ink-primary)">secondary lint</strong> — advisory, never part of a verdict, and with no digit rule.</p>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-16">
+<span class="lab">Fallbacks</span>
+<h2 class="title">A violation never blanks the screen</h2>
+<p>Required fields always render something coherent. When a projector fails — missing value, unclassified string, a fragment above the viewer's exposure — the field's own fallback renders and conformance fails separately. Optional fields omit silently, which is the designed behaviour rather than a fault.</p>
+<div class="panel" id="fallbacks"></div>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-16">
+<span class="lab">Roster · disclosure surface</span>
+<h2 class="title">What each role actually sees</h2>
+<p>Rows, columns and affordances resolved per role at the console. Hidden records are <em>absent</em>, not masked; aggregates are computed over the visible set only; export is a separate grant at every level.</p>
+<table id="roster"><thead><tr><th>Role</th><th>Rows</th><th>Columns</th><th>Count label</th><th>Row actions</th><th>Export</th><th>Hidden</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div class="stack-16">
+<span class="lab">Disclosure mode</span>
+<table id="matrix"><thead><tr><th>Destination</th><th>Guest</th><th>Member</th><th>Operator</th><th>Principal</th></tr></thead><tbody></tbody></table>
+<p style="font-size:var(--fs-size-xs)">At nominal state. <strong style="color:var(--fs-ink-primary)">settlement</strong> is the only sensitive resource, with existence public from ceiling 2 — so guests and members get silence rather than a refusal that confirms it exists.</p>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-16">
+<span class="lab">Secondary lint</span>
+<h2 class="title">Advisory only</h2>
+<p>Doctrine vocabulary appearing inside a <code>text</code> fragment is a naming smell, not a disclosure failure — provenance already governs. Deliberately contains no digit rule.</p>
+<div class="panel" id="advisories"></div>
+</div>
+
+</div>
+<script>
+(function(){
+  var D = window.FreesideDoctrine;
+  var el = function(id){ return document.getElementById(id); };
+
+  /* Audit output is DATA, never markup. Every value below reaches the page as a
+     text node or an attribute set through the DOM API — never as an HTML string.
+     Escaping-by-replacement was the earlier approach and it was wrong twice
+     over: it only covered `<`, so `"` inside a failure line could still close
+     an attribute, and it put the burden on each call site to remember. Building
+     the nodes removes the parse step entirely, so there is nothing left to
+     escape and no site left to forget. */
+  var mk = function(tag, cls, text){
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+  };
+  var styled = function(tag, css, text){
+    var n = mk(tag, null, text);
+    n.style.cssText = css;
+    return n;
+  };
+  var cell = function(text, wrap){
+    var td = mk('td', null, text);
+    if (wrap) td.style.whiteSpace = 'normal';
+    return td;
+  };
+  var replace = function(node, kids){
+    node.replaceChildren.apply(node, kids);
+  };
+
+  if (!D) { el('verdict').textContent = 'NO MODULE'; return; }
+  /* A throwing check must not blank the card. Without this the first statement
+     dies and every dynamic section below stays empty, which reads as "nothing
+     ran" instead of "one check is broken". */
+  var a;
+  try { a = D.audit(); }
+  catch (err) {
+    el('verdict').textContent = 'ERROR';
+    el('verdict').style.color = 'var(--fs-state-critical)';
+    el('scope').textContent = 'audit() threw';
+    var body = mk('div', 'stack-8');
+    body.append(
+      mk('div', 'sec', 'The audit itself failed'),
+      styled('p', 'font-size:var(--fs-size-xs)',
+        'A check threw before it could report. Fix this first — every verdict below is meaningless until it runs.'),
+      mk('div', 'fail', (err && err.stack) || err)
+    );
+    var row = mk('div', 'check bad');
+    row.append(mk('s'), body, mk('span', 'verdict', 'Threw'));
+    replace(el('checks'), [row]);
+    return;
+  }
+  el('verdict').textContent = a.pass ? 'PASS' : 'FAIL';
+  el('verdict').style.color = a.pass ? 'var(--fs-state-positive)' : 'var(--fs-state-critical)';
+  el('scope').textContent = a.results.length + ' checks · ' + a.cases + ' cases · ' + a.packs.length + ' packs';
+
+  replace(el('checks'), a.results.map(function(r){
+    var stack = mk('div', 'stack-8');
+    stack.append(
+      mk('div', 'sec', r.title),
+      styled('p', 'font-size:var(--fs-size-xs)', r.why)
+    );
+    if (r.failures.length) {
+      /* One <br> between lines, appended as real elements — the failure text
+         itself is never parsed. */
+      var fail = mk('div', 'fail');
+      r.failures.slice(0, 8).forEach(function(f, i){
+        if (i) fail.appendChild(document.createElement('br'));
+        fail.appendChild(document.createTextNode(String(f)));
+      });
+      if (r.failures.length > 8) {
+        fail.appendChild(document.createElement('br'));
+        fail.appendChild(document.createTextNode('… ' + (r.failures.length - 8) + ' more'));
+      }
+      stack.appendChild(fail);
+    }
+    var check = mk('div', 'check ' + (r.pass ? 'ok' : 'bad'));
+    check.append(
+      mk('s'),
+      stack,
+      mk('span', 'verdict', r.pass ? 'Pass' : r.failures.length + ' failing')
+    );
+    return check;
+  }));
+
+  var gate = D.packs['permission-gate'];
+  if (gate) {
+    var head = mk('tr');
+    ['Field', 'Required', 'Fallback'].forEach(function(h){ head.appendChild(mk('th', null, h)); });
+    var thead = mk('thead'); thead.appendChild(head);
+    var fbBody = mk('tbody');
+    Object.keys(gate.fields).forEach(function(f){
+      var s = gate.fields[f];
+      var fb = typeof s.fallback === 'function' ? '(computed from role)'
+        : (s.fallback == null ? '— omits' : '"' + s.fallback + '"');
+      var tr = mk('tr');
+      tr.append(cell(f), cell(s.required ? 'yes' : 'no'), cell(fb, true));
+      fbBody.appendChild(tr);
+    });
+    var fbTable = mk('table');
+    fbTable.append(thead, fbBody);
+    replace(el('fallbacks'), [fbTable]);
+  } else {
+    replace(el('fallbacks'), []);
+  }
+
+  replace(document.querySelector('#roster tbody'), Object.keys(D.CEILING).map(function(role){
+    var p = D.project('roster', D.resolve({role:role, destination:'console', systemState:'nominal'}));
+    var acts = p.rows.length ? p.rows[0].actions.map(function(x){return x.label;}).join(', ') : '—';
+    var hidden = D.rosterFixture.RECORDS.length - p.rows.length;
+    var tr = mk('tr');
+    tr.append(
+      cell(role), cell(p.rows.length), cell(p.columns.length),
+      cell(p.countLabel || '—'), cell(acts || '—', true),
+      cell(p.canExport ? 'granted' : 'no'), cell(hidden + ' omitted')
+    );
+    return tr;
+  }));
+
+  replace(document.querySelector('#matrix tbody'), Object.keys(D.DEPTH).map(function(dest){
+    var tr = mk('tr');
+    tr.appendChild(cell(dest));
+    Object.keys(D.CEILING).forEach(function(role){
+      var m = D.disclosureMode(D.resolve({role:role, destination:dest, systemState:'nominal'}));
+      /* The mode is both the class suffix and the label. Assigned through
+         className, it is a class list and nothing else — it cannot open a tag. */
+      var td = mk('td');
+      td.appendChild(mk('span', 'm m-' + m, m));
+      tr.appendChild(td);
+    });
+    return tr;
+  }));
+
+  replace(el('advisories'), a.advisories.length
+    ? a.advisories.map(function(x){
+        return styled('div', 'font-size:var(--fs-size-xs);color:var(--fs-state-caution)', x);
+      })
+    : [styled('p', 'font-size:var(--fs-size-xs);margin:0',
+        'None. No doctrine vocabulary found inside domain fragments.')]);
+})();
+</script>
+</body>
+</html>

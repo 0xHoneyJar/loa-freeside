@@ -1,0 +1,65 @@
+/* Freeside — SPACE / FORM / ELEVATION / MOTION.
+
+   LAYOUT USES FOUR NUMBERS. 8 / 16 / 24 / 48. Nothing else positions a box.
+     8   inside a control, between a dot and its label
+     16  inside a box, between stacked rows
+     24  between boxes — THE gutter, in both axes, always
+     48  page margin, and the gap between major sections
+   Boxes never touch. If two boxes share an edge, the gutter is missing. */
+:root{
+  --fs-gap-tight:8px;   /* @kind spacing */
+  --fs-gap:16px;        /* @kind spacing */
+  --fs-gutter:24px;     /* @kind spacing */
+  --fs-margin:48px;     /* @kind spacing */
+
+  /* Box padding is derived, not chosen: 24 in a panel, 16 in a dense cell. */
+  --fs-pad-box:24px;    /* @kind spacing */
+  --fs-pad-cell:16px;   /* @kind spacing */
+
+  /* Micro-scale for component internals. Layout must not read these. */
+  --fs-space-0:0;    --fs-space-1:4px;  --fs-space-2:8px;   --fs-space-3:12px;
+  --fs-space-4:16px; --fs-space-6:24px; --fs-space-8:32px;  --fs-space-12:48px;
+  --fs-space-16:64px;--fs-space-24:96px;
+  /* retired odd steps, aliased so nothing breaks */
+  --fs-space-5:var(--fs-space-4); --fs-space-10:var(--fs-space-8);
+  --fs-space-20:var(--fs-space-16); --fs-space-32:var(--fs-space-24);
+
+  /* Radius — square is the default; roundness is earned */
+  --fs-radius-none:0; --fs-radius-sm:2px; --fs-radius-md:4px; --fs-radius-pill:999px;
+
+  --fs-border-w:1px; --fs-accent-bar-w:3px;
+
+  /* Elevation — on deep space, elevation is a lighter surface, not a shadow */
+  --fs-shadow-1:none;
+  --fs-shadow-2:0 4px 16px rgba(0,0,0,.35);
+  --fs-shadow-3:0 12px 40px rgba(0,0,0,.45);
+
+  --fs-ease-standard:cubic-bezier(0.2,0,0,1); /* @kind other */
+  --fs-ease-exit:cubic-bezier(0.4,0,1,1); /* @kind other */
+  --fs-dur-fast:160ms; /* @kind other */
+  --fs-dur-base:240ms; /* @kind other */
+  --fs-dur-slow:420ms; /* @kind other */
+  --fs-dur-signature:1200ms; /* @kind other */
+
+  --fs-lado-sky:linear-gradient(180deg,#66ADC6 0%,#B4DAE4 42%,#F7F1E5 78%,#FFFFFF 100%); /* @kind color */
+
+  --fs-z-base:0; /* @kind other */
+  --fs-z-nav:100; /* @kind other */
+  --fs-z-overlay:400; /* @kind other */
+  --fs-z-modal:500; /* @kind other */
+  --fs-z-toast:700; /* @kind other */
+
+  --fs-page-pad:48px; --fs-band-pad:48px; --fs-panel-pad:24px; --fs-card-pad:24px; --fs-tile-pad:16px;
+
+  /* Exposure rhythm — see Doctrine 01. Rhythm is one of the seven levers, so it
+     is scoped to exposure rather than chosen per page. A page sets
+     data-exposure once at its root and every child reads these two. */
+  --fs-pad-page:48px;   /* @kind spacing */
+  --fs-gap-stack:24px;  /* @kind spacing */
+}
+[data-exposure="0"]{ --fs-pad-page:48px; --fs-gap-stack:24px; }
+[data-exposure="1"]{ --fs-pad-page:48px; --fs-gap-stack:24px; }
+[data-exposure="2"]{ --fs-pad-page:24px; --fs-gap-stack:16px; }
+[data-exposure="3"]{ --fs-pad-page:24px; --fs-gap-stack:8px;
+}
+[data-register="light"]{ --fs-shadow-1:0 1px 2px rgba(8,31,40,.06); --fs-shadow-2:0 4px 16px rgba(8,31,40,.08); --fs-shadow-3:0 12px 40px rgba(8,31,40,.12); }

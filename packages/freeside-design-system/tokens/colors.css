@@ -1,0 +1,154 @@
+/* Freeside — COLOR. Deep Space is the default; light is the exception.
+
+   TWO RULES, AND THEY ARE THE WHOLE SYSTEM
+   1. TEXT IS ONE INK. Deep Space Ink on light, Lado Sunlight on deep. Colour is
+      never a letterform — it is a bar, a dot, a rule, or a fill behind one ink.
+   2. TWO ACCENTS ON SCREEN. A surface picks ONE pair. Components read only
+      --fs-accent-1 and --fs-accent-2 and never reach past them into the palette.
+      Twelve named colours exist; two are visible at a time. That is what makes
+      an accent an accent.
+
+   Status is not an accent. Positive / caution / critical are functional, appear
+   as a dot or a 3px bar only, and never more than one per row.
+
+   CAUTION — a custom-property alias resolves at its DECLARATION site. Any *-ink
+   alias must be REDECLARED inside a register block even when the expression is
+   identical, or it inherits the other register's frozen literal. */
+:root{
+  /* ═══ Layer 1 · PRIMITIVES — the fixed palette ═══ */
+  --fs-deep-space-ink:#081F28;  /* the void; THE ink on light */
+  --fs-lado-sunlight:#F7F1E5;   /* artificial sun; THE ink on deep */
+  --fs-lunar-concrete:#C1BCB3;
+  --fs-cannes-sky:#66ADC6;
+  --fs-babylon-foliage:#6E7A56;
+  --fs-organic-sand:#CEBA99;
+  --fs-cold-mist:#D1D9DB;
+  --fs-brick:#936064;
+  --fs-casino-magenta:#E1588E;
+  --fs-teal:#58988B;
+  --fs-bermuda-sunset:#C8705B;  /* the signature */
+  --fs-hazard:#F7D481;
+  --fs-babylon-deep:#5C6647;    /* foliage darkened for accent duty — 5.42 with sunlight */
+  --fs-cold-mist-light:#E7ECEE;
+  --fs-ink-2:#2C3E47; --fs-ink-3:#6B6862;
+  --fs-critical:#B23A2E;
+
+  /* ═══ Layer 2 · DEEP SPACE — the default register ═══ */
+  --fs-surface-base:#081F28;
+  --fs-surface-raised:#0E2A34;
+  --fs-surface-sunk:#04141B;
+  --fs-surface-deep:#081F28;
+  --fs-ink-primary:var(--fs-lado-sunlight);
+  --fs-ink-secondary:var(--fs-cold-mist);
+  --fs-ink-muted:#8B979D;  /* AA on raised (5.01) and base (5.67) — the label role lives here */
+  --fs-line-hairline:rgba(247,241,229,.13);
+  --fs-line-structural:#22323A;
+  /* Ink on a solid accent-1 fill. Belongs to the PAIR, not the register — see the
+     [data-accent] blocks. Deep Space Ink is correct for 6 of 8 palette colours. */
+  --fs-on-accent:var(--fs-deep-space-ink);
+
+  /* ═══ Layer 3 · THE ACCENT PAIR — resort, the default ═══ */
+  --fs-accent-1:var(--fs-bermuda-sunset);
+  --fs-accent-2:var(--fs-cannes-sky);
+
+  /* Status — dot or bar only */
+  --fs-state-positive:var(--fs-babylon-foliage);
+  --fs-state-caution:var(--fs-hazard);
+  --fs-state-critical:var(--fs-critical);
+  --fs-state-neutral:#3A4B54;
+
+  /* Status FILLS — the same states, dark enough to carry small text on top.
+     The --fs-state-* values above are dot-or-bar only, exactly as that comment
+     says: Babylon Foliage is 3.70:1 on Deep Space, which is legal behind a dot
+     and illegal behind an 11px label. Reach for these the moment a status
+     becomes a filled pill, and use the paired ink. Absolute values, declared
+     once — a dark pill with light ink is correct on sand and on ink alike, so
+     these deliberately do not vary by register. */
+  --fs-state-positive-fill:#5C6647;                     /* babylon deep — 5.26 with sunlight */
+  --fs-state-positive-fill-ink:var(--fs-lado-sunlight);
+  --fs-state-caution-fill:#7A5E1C;                      /* hazard darkened — 7.29 */
+  --fs-state-caution-fill-ink:var(--fs-lado-sunlight);
+  --fs-state-critical-fill:var(--fs-critical);          /* 5.28 with sunlight */
+  --fs-state-critical-fill-ink:var(--fs-lado-sunlight);
+
+  /* Legacy aliases — old component code keeps working and inherits the pair rule. */
+  --fs-accent-authority:var(--fs-accent-1);
+  --fs-accent-sky:var(--fs-accent-2);
+  --fs-accent-foliage:var(--fs-accent-2);
+  --fs-accent-authority-ink:var(--fs-ink-primary);
+  --fs-accent-sky-ink:var(--fs-ink-primary);
+  --fs-accent-foliage-ink:var(--fs-ink-primary);
+  --fs-state-positive-ink:var(--fs-ink-primary);
+  --fs-state-info:var(--fs-accent-2);
+  --fs-state-info-ink:var(--fs-ink-primary);
+  --fs-state-caution-ink:var(--fs-ink-primary);
+  --fs-state-critical-ink:var(--fs-ink-primary);
+  --fs-state-neutral-ink:var(--fs-ink-muted);
+  --fs-elev-1:var(--fs-shadow-1); --fs-elev-2:var(--fs-shadow-2); --fs-elev-3:var(--fs-shadow-3);
+}
+
+/* ═══ Light (Paradise) — the exception, opted into ═══ */
+[data-register="light"]{
+  --fs-surface-base:var(--fs-lado-sunlight);
+  --fs-surface-raised:#FFFDF8;
+  --fs-surface-sunk:var(--fs-cold-mist-light);
+  --fs-surface-deep:var(--fs-deep-space-ink);
+  --fs-ink-primary:var(--fs-deep-space-ink);
+  --fs-ink-secondary:var(--fs-ink-2);
+  --fs-ink-muted:var(--fs-ink-3);
+  --fs-line-hairline:rgba(8,31,40,.14);
+  --fs-line-structural:#D9D3C7;
+  --fs-state-neutral:var(--fs-lunar-concrete);
+  /* redeclared — see CAUTION above */
+  --fs-accent-authority-ink:var(--fs-ink-primary);
+  --fs-accent-sky-ink:var(--fs-ink-primary);
+  --fs-accent-foliage-ink:var(--fs-ink-primary);
+  --fs-state-positive-ink:var(--fs-ink-primary);
+  --fs-state-info-ink:var(--fs-ink-primary);
+  --fs-state-caution-ink:var(--fs-ink-primary);
+  --fs-state-critical-ink:var(--fs-ink-primary);
+  --fs-state-neutral-ink:var(--fs-ink-muted);
+}
+
+/* ═══ Deep Space as an explicit register ═══
+   :root is already Deep Space, so this block is redundant at the top level and
+   deliberately so: it exists to let a subtree re-enter Deep Space from inside a
+   light one. Without it there is no selector that reverses [data-register="light"],
+   and a Service panel nested in an Atrium page has to hardcode hex literals.
+   Registers now nest in both directions. Values mirror :root exactly — if you
+   change one, change both. The *-ink aliases are redeclared for the reason in
+   the CAUTION above. */
+[data-register="deep"]{
+  --fs-surface-base:#081F28;
+  --fs-surface-raised:#0E2A34;
+  --fs-surface-sunk:#04141B;
+  --fs-surface-deep:#081F28;
+  --fs-ink-primary:var(--fs-lado-sunlight);
+  --fs-ink-secondary:var(--fs-cold-mist);
+  --fs-ink-muted:#8B979D;
+  --fs-line-hairline:rgba(247,241,229,.13);
+  --fs-line-structural:#22323A;
+  --fs-state-neutral:#3A4B54;
+  --fs-shadow-1:none;
+  --fs-shadow-2:0 4px 16px rgba(0,0,0,.35);
+  --fs-shadow-3:0 12px 40px rgba(0,0,0,.45);
+  /* redeclared — see CAUTION above */
+  --fs-accent-authority-ink:var(--fs-ink-primary);
+  --fs-accent-sky-ink:var(--fs-ink-primary);
+  --fs-accent-foliage-ink:var(--fs-ink-primary);
+  --fs-state-positive-ink:var(--fs-ink-primary);
+  --fs-state-info-ink:var(--fs-ink-primary);
+  --fs-state-caution-ink:var(--fs-ink-primary);
+  --fs-state-critical-ink:var(--fs-ink-primary);
+  --fs-state-neutral-ink:var(--fs-ink-muted);
+}
+
+/* ═══ Accent pairs — a surface picks exactly one ═══
+   Each pair carries its own --fs-on-accent, because the readable ink on a solid
+   fill is a property of the colour, not of the register. Measured against
+   accent-1; accent-2 is bars and dots only and never takes a text fill. */
+[data-accent="resort"] { --fs-accent-1:var(--fs-bermuda-sunset);  --fs-accent-2:var(--fs-cannes-sky);   --fs-on-accent:var(--fs-deep-space-ink); } /* 4.79 */
+[data-accent="garden"] { --fs-accent-1:var(--fs-babylon-deep);    --fs-accent-2:var(--fs-organic-sand); --fs-on-accent:var(--fs-lado-sunlight); }  /* 5.42 */
+[data-accent="vice"]   { --fs-accent-1:var(--fs-casino-magenta);  --fs-accent-2:var(--fs-hazard);       --fs-on-accent:var(--fs-deep-space-ink); } /* 4.84 */
+[data-accent="systems"]{ --fs-accent-1:var(--fs-teal);            --fs-accent-2:var(--fs-cannes-sky);   --fs-on-accent:var(--fs-deep-space-ink); } /* 5.08 */
+[data-accent="dynasty"]{ --fs-accent-1:var(--fs-brick);           --fs-accent-2:var(--fs-organic-sand); --fs-on-accent:var(--fs-lado-sunlight); }  /* 4.56 */

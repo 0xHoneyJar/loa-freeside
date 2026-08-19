@@ -1,0 +1,6 @@
+# Nothing here is built from anything else, so almost nothing is ignored.
+# dist/ IS committed: it is the portable documentation site consumers open
+# without a toolchain. Regenerate the two derived files with `npm run build`.
+node_modules/
+.DS_Store
+*.log

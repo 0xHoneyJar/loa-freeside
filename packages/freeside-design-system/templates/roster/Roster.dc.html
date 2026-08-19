@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="./copy.js"></script>
+<style>html,body{margin:0;padding:0}</style>
+</helmet>
+<div data-register="{{ register }}" data-accent="{{ pair }}" data-exposure="{{ exposureNum }}" style="min-height:100vh;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);display:flex;flex-direction:column;padding:var(--fs-pad-page)">
+
+<div style="display:flex;align-items:center;gap:16px">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ levelBadge }}</span>
+</div>
+
+<sc-if value="{{ envShow }}" hint-placeholder-val="{{ false }}">
+<div class="fs-env fs-env-band" data-env="{{ envLevel }}" style="flex:0 0 auto;height:120px;margin:24px calc(-1 * var(--fs-pad-page)) 0;--fs-env-hem:var(--fs-surface-base)">
+<div class="fs-env-plate"><img src="../../assets/terrace-plate.png" alt=""></div>
+<i class="fs-env-grid"></i>
+<i class="fs-env-curve"></i>
+<i class="fs-env-veil"></i>
+</div>
+</sc-if>
+
+<div style="flex:1;display:flex;flex-direction:column;gap:var(--fs-gap-stack);padding:48px 0">
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<h1 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">{{ title }}</h1>
+<p style="margin:0;max-width:74ch;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ subtitle }}</p>
+</div>
+
+<div style="display:flex;height:2px"><i style="width:96px;background:var(--fs-accent-1)"></i><i style="flex:1;background:var(--fs-line-structural)"></i></div>
+
+<sc-if value="{{ showTable }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+
+<div style="display:flex;align-items:center;gap:16px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ countLabel }}</span>
+<span style="margin-left:auto;display:flex;gap:8px">
+<sc-if value="{{ canExport }}" hint-placeholder-val="{{ true }}">
+<button style="font:inherit;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:6px 0;border:none;border-bottom:1px solid var(--fs-accent-1);background:transparent;color:var(--fs-ink-primary);cursor:pointer" style-hover="color:var(--fs-accent-1)">Export</button>
+</sc-if>
+</span>
+</div>
+
+<div style="overflow:hidden">
+<table style="width:100%;border-collapse:collapse">
+<thead>
+<tr>
+<th style="width:34px;text-align:right;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);color:var(--fs-ink-muted);padding:10px 16px 10px 0;border-top:1px solid var(--fs-line-structural);border-bottom:1px solid var(--fs-line-structural)"></th>
+<sc-for list="{{ columns }}" as="c" hint-placeholder-count="5">
+<sc-if value="{{ c.isNum }}" hint-placeholder-val="{{ false }}">
+<th style="text-align:right;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:10px 32px;white-space:nowrap;border-top:1px solid var(--fs-line-structural);border-bottom:1px solid var(--fs-line-structural)">{{ c.label }}</th>
+</sc-if>
+<sc-if value="{{ c.isWord }}" hint-placeholder-val="{{ true }}">
+<th style="text-align:left;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:10px 32px 10px 0;white-space:nowrap;border-top:1px solid var(--fs-line-structural);border-bottom:1px solid var(--fs-line-structural)">{{ c.label }}</th>
+</sc-if>
+</sc-for>
+<sc-if value="{{ showActions }}" hint-placeholder-val="{{ true }}">
+<th style="text-align:right;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:10px 0;white-space:nowrap;border-top:1px solid var(--fs-line-structural);border-bottom:1px solid var(--fs-line-structural)">Actions</th>
+</sc-if>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+<tr>
+<td style="text-align:right;font-size:var(--fs-size-xs);font-variant-numeric:tabular-nums;color:var(--fs-ink-muted);padding:13px 16px 13px 0;border-bottom:1px solid var(--fs-line-hairline);vertical-align:baseline">{{ r.n }}</td>
+<sc-for list="{{ r.cells }}" as="cell" hint-placeholder-count="5">
+<sc-if value="{{ cell.isId }}" hint-placeholder-val="{{ true }}">
+<td style="padding:13px 32px 13px 0;border-bottom:1px solid var(--fs-line-hairline);white-space:nowrap;vertical-align:baseline;font-weight:500;color:var(--fs-ink-primary)">{{ cell.v }}</td>
+</sc-if>
+<sc-if value="{{ cell.isNum }}" hint-placeholder-val="{{ false }}">
+<td style="padding:13px 32px;border-bottom:1px solid var(--fs-line-hairline);white-space:nowrap;vertical-align:baseline;text-align:right;font-variant-numeric:tabular-nums;color:var(--fs-ink-primary)">{{ cell.v }}</td>
+</sc-if>
+<sc-if value="{{ cell.isText }}" hint-placeholder-val="{{ false }}">
+<td style="padding:13px 32px 13px 0;border-bottom:1px solid var(--fs-line-hairline);white-space:nowrap;vertical-align:baseline;color:var(--fs-ink-secondary)">{{ cell.v }}</td>
+</sc-if>
+</sc-for>
+<sc-if value="{{ showActions }}" hint-placeholder-val="{{ true }}">
+<td style="padding:13px 0;border-bottom:1px solid var(--fs-line-hairline);text-align:right;white-space:nowrap;vertical-align:baseline">
+<span style="display:inline-flex;gap:20px;justify-content:flex-end">
+<sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2">
+<button style="font:inherit;font-size:var(--fs-size-xs);letter-spacing:.04em;padding:0;border:none;border-bottom:1px solid transparent;background:transparent;color:var(--fs-ink-secondary);cursor:pointer" style-hover="color:var(--fs-ink-primary);border-bottom-color:var(--fs-accent-1)">{{ a.label }}</button>
+</sc-for>
+</span>
+</td>
+</sc-if>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+
+<sc-if value="{{ exportNote }}" hint-placeholder-val="{{ true }}">
+<p style="margin:0;font-size:var(--fs-size-xs);color:var(--fs-ink-muted);max-width:74ch;text-wrap:pretty">{{ exportNote }}</p>
+</sc-if>
+
+</div>
+</sc-if>
+
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+<div style="padding:48px 24px;background:var(--fs-surface-raised);display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ countLabel }}</span>
+<p style="margin:0;color:var(--fs-ink-secondary)">{{ emptyLine }}</p>
+</div>
+</sc-if>
+
+<sc-if value="{{ withheld }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:16px;align-items:flex-start;padding:16px;background:var(--fs-surface-raised);border-left:3px solid var(--fs-state-caution)">
+<span style="width:8px;height:8px;flex:0 0 auto;margin-top:6px;background:var(--fs-state-caution)"></span>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ hiddenNote }}</p>
+</div>
+</sc-if>
+
+</div>
+
+<div style="display:flex;align-items:center;gap:16px;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">
+<span style="margin-left:auto">{{ stamp }}</span>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;guest&quot;,&quot;member&quot;,&quot;operator&quot;,&quot;principal&quot;],&quot;default&quot;:&quot;operator&quot;,&quot;tsType&quot;:&quot;'guest'|'member'|'operator'|'principal'&quot;,&quot;section&quot;:&quot;Access&quot;,&quot;label&quot;:&quot;Who is asking&quot;},&quot;destination&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;arrival&quot;,&quot;account&quot;,&quot;console&quot;,&quot;settlement&quot;],&quot;default&quot;:&quot;console&quot;,&quot;tsType&quot;:&quot;'arrival'|'account'|'console'|'settlement'&quot;,&quot;section&quot;:&quot;Depth&quot;,&quot;label&quot;:&quot;Where they are going&quot;},&quot;systemState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;nominal&quot;,&quot;degraded&quot;,&quot;alert&quot;],&quot;default&quot;:&quot;nominal&quot;,&quot;tsType&quot;:&quot;'nominal'|'degraded'|'alert'&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;What the system is doing&quot;},&quot;exportGranted&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Capability&quot;,&quot;label&quot;:&quot;Export separately granted&quot;}}">
+/* No copy here. Facts in, projected fields out — same contract as the gate. */
+class Component extends DCLogic {
+  /* The pack arrives asynchronously and componentDidMount cannot be relied on to
+     notice it: the runtime defers didMount for a logic instance created after the
+     initial mount, so it waits for an update that nothing will ever schedule.
+     renderVals() always runs, so the retry is driven from there instead. */
+  _awaitPack() {
+    if (this._poll) return;
+    this._poll = setInterval(() => {
+      const D = window.FreesideDoctrine;
+      if (!D || !D.packs.roster) return;
+      clearInterval(this._poll); this._poll = null; this.forceUpdate();
+    }, 30);
+    setTimeout(() => this._stopAwaiting(), 8000);
+  }
+
+  _stopAwaiting() {
+    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+
+  componentWillUnmount() { this._stopAwaiting(); }
+
+  renderVals() {
+    const D = window.FreesideDoctrine;
+    this._projected = !!(D && D.packs.roster);
+    if (!this._projected) {
+      this._awaitPack();
+      return {
+      register: 'deep', pair: 'systems', exposureNum: 2, levelBadge: '', envLevel: 'service', envShow: false,
+      title: '', subtitle: '', countLabel: '', emptyLine: '',
+      exportNote: null, hiddenNote: null, stamp: '',
+      columns: [], rows: [], isEmpty: false, showTable: false, canExport: false,
+      showActions: false, withheld: false
+      };
+    }
+    const grants = this.props.exportGranted ? ['export'] : [];
+    const vals = D.project('roster', D.resolve({
+      role: this.props.role ?? 'operator',
+      destination: this.props.destination ?? 'console',
+      systemState: this.props.systemState ?? 'nominal',
+      grants
+    }));
+    /* Presentation derivations only — no string is written and no projected value
+       is changed. The pack already declares which columns are numeric (align
+       right); the table simply had not been reading it.
+
+         isId    the identity column: the row's handle, carried at full ink
+         isNum   a measured figure: right-aligned, tabular, full ink
+         isText  a described value: left, secondary ink
+         n       the row's ordinal WITHIN THE VISIBLE SET, so an operator can say
+                 "row 4" out loud. Safe for the same reason the count is: it
+                 describes what is on screen and cannot be differenced. */
+    const classify = (c, i) => {
+      const num = !!c.right;
+      return Object.assign({}, c, {
+        isId: i === 0 && !num,
+        isNum: num,
+        isText: i > 0 && !num,
+        isWord: !num
+      });
+    };
+    return Object.assign({
+      envLevel: ['terrace', 'atrium', 'service', 'ledger'][vals.exposureNum] || 'terrace',
+      /* The plate belongs where the PLACE is the subject. At Service and above the
+         subject is the record, and a photograph above the table is decoration —
+         so the band stops at Atrium rather than being restyled. */
+      envShow: vals.exposureNum < 2
+    }, vals, {
+      columns: (vals.columns || []).map(classify),
+      rows: (vals.rows || []).map((r, ri) => Object.assign({}, r, {
+        n: String(ri + 1).padStart(2, '0'),
+        cells: (r.cells || []).map(classify)
+      }))
+    });
+  }
+}
+
+</script>
+</body>
+</html>

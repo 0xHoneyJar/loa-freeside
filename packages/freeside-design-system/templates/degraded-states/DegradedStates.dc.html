@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="./copy.js"></script>
+<style>html,body{margin:0;padding:0}</style>
+</helmet>
+<div data-register="{{ register }}" data-accent="{{ pair }}" data-exposure="{{ exposureNum }}" style="min-height:100vh;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);display:flex;flex-direction:column;padding:var(--fs-pad-page)">
+
+<div style="display:flex;align-items:center;gap:16px">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ levelBadge }}</span>
+</div>
+
+<div style="flex:1;display:flex;align-items:center;padding:48px 0">
+<div style="width:100%;max-width:760px;display:flex;flex-direction:column;gap:var(--fs-gap-stack)">
+
+<div style="display:flex;align-items:center;gap:16px">
+<sc-if value="{{ sevNominal }}" hint-placeholder-val="{{ false }}">
+<span style="width:12px;height:12px;flex:0 0 auto;background:var(--fs-state-positive)"></span>
+</sc-if>
+<sc-if value="{{ sevDegraded }}" hint-placeholder-val="{{ true }}">
+<span style="width:12px;height:12px;flex:0 0 auto;background:var(--fs-state-caution)"></span>
+</sc-if>
+<sc-if value="{{ sevAlert }}" hint-placeholder-val="{{ false }}">
+<span style="width:12px;height:12px;flex:0 0 auto;background:var(--fs-state-critical)"></span>
+</sc-if>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ eyebrow }}</span>
+<sc-if value="{{ showSince }}" hint-placeholder-val="{{ true }}">
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums">{{ sinceLabel }}</span>
+</sc-if>
+</div>
+
+<h1 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">{{ headline }}</h1>
+
+<p style="margin:0;max-width:66ch;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ body }}</p>
+
+<div style="display:grid;grid-template-columns:14px 1fr;column-gap:20px;row-gap:0;align-items:stretch">
+
+<sc-if value="{{ sevNominal }}" hint-placeholder-val="{{ false }}">
+<i style="grid-column:1;width:3px;justify-self:center;align-self:stretch;background:var(--fs-state-positive)"></i>
+</sc-if>
+<sc-if value="{{ sevDegraded }}" hint-placeholder-val="{{ true }}">
+<i style="grid-column:1;width:3px;justify-self:center;align-self:stretch;background:var(--fs-state-caution)"></i>
+</sc-if>
+<sc-if value="{{ sevAlert }}" hint-placeholder-val="{{ false }}">
+<i style="grid-column:1;width:3px;justify-self:center;align-self:stretch;background:var(--fs-state-critical)"></i>
+</sc-if>
+<p style="grid-column:2;margin:0 0 28px;max-width:66ch;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ impactNote }}</p>
+
+<sc-if value="{{ showMetrics }}" hint-placeholder-val="{{ true }}">
+<i style="grid-column:1;width:1px;justify-self:center;align-self:stretch;background:var(--fs-line-structural)"></i>
+<div style="grid-column:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:32px;padding-bottom:28px">
+<sc-for list="{{ metrics }}" as="m" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px 0 0;border-top:1px solid var(--fs-line-structural)">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ m.k }}</span>
+<span style="font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em;line-height:1;font-variant-numeric:tabular-nums">{{ m.v }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasSteps }}" hint-placeholder-val="{{ true }}">
+<i style="grid-column:1;width:1px;justify-self:center;align-self:stretch;background:var(--fs-line-structural)"></i>
+<div style="grid-column:2;display:flex;flex-direction:column;gap:12px;padding-bottom:4px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ recoveryTitle }}</span>
+<sc-for list="{{ steps }}" as="s" hint-placeholder-count="2">
+<div style="display:grid;grid-template-columns:28px 1fr;column-gap:12px;align-items:baseline">
+<span style="font-size:var(--fs-size-xs);font-variant-numeric:tabular-nums;color:var(--fs-ink-muted);text-align:right">{{ s.n }}</span>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary);max-width:64ch">{{ s.line }}</p>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+
+<div style="display:flex;gap:8px;padding-top:8px">
+<button style="font:inherit;font-weight:600;padding:12px 24px;border:none;cursor:pointer;background:var(--fs-accent-1);color:var(--fs-on-accent)" style-hover="opacity:.88">{{ primaryLabel }}</button>
+<button style="font:inherit;padding:12px 24px;border:1px solid var(--fs-line-structural);cursor:pointer;background:transparent;color:var(--fs-ink-primary)" style-hover="background:var(--fs-surface-raised)">{{ secondaryLabel }}</button>
+</div>
+
+</div>
+</div>
+
+<div style="display:flex;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">
+<span style="margin-left:auto">{{ stamp }}</span>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;systemState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;nominal&quot;,&quot;degraded&quot;,&quot;alert&quot;],&quot;default&quot;:&quot;degraded&quot;,&quot;tsType&quot;:&quot;'nominal'|'degraded'|'alert'&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;What the system is doing&quot;},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;guest&quot;,&quot;member&quot;,&quot;operator&quot;,&quot;principal&quot;],&quot;default&quot;:&quot;operator&quot;,&quot;tsType&quot;:&quot;'guest'|'member'|'operator'|'principal'&quot;,&quot;section&quot;:&quot;Access&quot;,&quot;label&quot;:&quot;Who is asking&quot;},&quot;destination&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;arrival&quot;,&quot;account&quot;,&quot;console&quot;,&quot;settlement&quot;],&quot;default&quot;:&quot;console&quot;,&quot;tsType&quot;:&quot;'arrival'|'account'|'console'|'settlement'&quot;,&quot;section&quot;:&quot;Depth&quot;,&quot;label&quot;:&quot;Where they are&quot;}}">
+/* No copy here — see templates/degraded-states/copy.js. */
+class Component extends DCLogic {
+  /* The pack arrives asynchronously and componentDidMount cannot be relied on to
+     notice it: the runtime defers didMount for a logic instance created after the
+     initial mount, so it waits for an update that nothing will ever schedule.
+     renderVals() always runs, so the retry is driven from there instead. */
+  _awaitPack() {
+    if (this._poll) return;
+    this._poll = setInterval(() => {
+      const D = window.FreesideDoctrine;
+      if (!D || !D.packs['degraded-states']) return;
+      clearInterval(this._poll); this._poll = null; this.forceUpdate();
+    }, 30);
+    setTimeout(() => this._stopAwaiting(), 8000);
+  }
+
+  _stopAwaiting() {
+    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+
+  componentWillUnmount() { this._stopAwaiting(); }
+
+  renderVals() {
+    const D = window.FreesideDoctrine;
+    if (!D || !D.packs['degraded-states']) {
+      this._awaitPack();
+      return {
+      register: 'deep', pair: 'systems', exposureNum: 2, levelBadge: '',
+      eyebrow: '', headline: '', body: '', impactNote: '', recoveryTitle: '',
+      sinceLabel: '', showSince: false, primaryLabel: '', secondaryLabel: '',
+      stamp: '', steps: [], hasSteps: false, metrics: [], showMetrics: false,
+      sevNominal: false, sevDegraded: true, sevAlert: false
+      };
+    }
+    const vals = D.project('degraded-states', D.resolve({
+      role: this.props.role ?? 'operator',
+      destination: this.props.destination ?? 'console',
+      systemState: this.props.systemState ?? 'degraded'
+    }));
+    /* Recovery steps are ordered work, so they carry their position. The pack
+       already returns them in dependency order; numbering only makes that legible
+       — no string is written and no projected value changes. */
+    return Object.assign({}, vals, {
+      steps: (vals.steps || []).map((s, i) => Object.assign({}, s, { n: String(i + 1).padStart(2, '0') }))
+    });
+  }
+}
+
+</script>
+</body>
+</html>

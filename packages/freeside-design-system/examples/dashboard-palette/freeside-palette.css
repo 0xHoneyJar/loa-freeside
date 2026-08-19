@@ -1,0 +1,270 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FREESIDE PALETTE OVERRIDE — for 0xHoneyJar/freeside-dashboard
+   Retints the vendored Sprawl palette to the Freeside Design System.
+   Colour only: no type, spacing, radius, or elevation geometry changes.
+
+   INSTALL — one line in src/app/globals.css, as the LAST @import:
+
+     @import "../styles/sprawl/tokens.css";
+     @import "../styles/sprawl/shadcn-compat.css";
+     @import "../styles/sprawl/horai-light.css";
+     @import "../styles/freeside-palette.css";   ← add this
+
+   WHY THIS IS THE WHOLE JOB. Sprawl's palette is a three-layer chain:
+   primitives (void / bone / cyan / crimson / phosphor…) → semantic tokens →
+   shadcn aliases → @theme inline → Tailwind utilities. Every UI colour in the
+   app resolves through the primitives, so overriding the primitives retints
+   the entire dashboard with zero component edits. Token NAMES are untouched
+   on purpose — `bg-void-base`, `text-cyan-base`, `--color-phosphor-base` all
+   keep working and now resolve to Freeside colours.
+
+   REGISTERS. Sprawl's dark register is Freeside DEEP SPACE (the default);
+   Sprawl's `.light` (horai) register is Freeside LIGHT (Paradise).
+
+   THE PAIR. Freeside allows two accents on screen. The dashboard lands on
+   `resort` — Cannes Sky for chrome / nav / active (Sprawl's `cyan` role) and
+   Bermuda Sunset for emphasis and negative deltas (Sprawl's `anomaly` role).
+   Status stays functional: it appears as a dot, a pill, or a 3px bar.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────────────────
+   DEEP SPACE — the default register
+   ─────────────────────────────────────────────────────────────────────────── */
+:root{
+  /* Freeside primitives, for reference and for app-layer use */
+  --fs-deep-space-ink:#081F28; --fs-lado-sunlight:#F7F1E5; --fs-cold-mist:#D1D9DB;
+  --fs-cannes-sky:#66ADC6; --fs-bermuda-sunset:#C8705B; --fs-teal:#58988B;
+  --fs-babylon-foliage:#6E7A56; --fs-babylon-deep:#5C6647; --fs-organic-sand:#CEBA99;
+  --fs-brick:#936064; --fs-casino-magenta:#E1588E; --fs-hazard:#F7D481;
+  --fs-lunar-concrete:#C1BCB3; --fs-critical:#B23A2E;
+
+  /* VOID → Freeside deep surfaces. Five rungs, because the dashboard uses
+     five: page < sidebar < card < header/chip < row-hover. */
+  --color-void-base:#081F28;      /* fs surface-base — the page */
+  --color-void-raised:#112F3A;    /* chip / table-header tone (bg-surface) */
+  --color-void-surface:#143643;   /* row hover, popover (bg-elevated) */
+  --color-void-border:#22323A;    /* fs line-structural */
+  --color-surface-panel:#0A242E;  /* sidebar */
+
+  /* BONE → ONE INK plus support rungs. Freeside rule 1: text is one ink —
+     Lado Sunlight on deep. Hierarchy comes from the dim/muted rungs, never
+     from tinting the letterform. */
+  --color-bone-bright:#F7F1E5;
+  --color-bone-base:#F7F1E5;
+  --color-bone-dim:#D1D9DB;       /* cold mist — secondary */
+  --color-bone-muted:#92A2A4;     /* AA on EVERY rung it lands on, not just the page:
+                                     6.2 page · 5.5 card · 5.1 raised · 4.7 elevated */
+  --color-bone-ghost:#5D6B72;     /* disabled only */
+
+  /* CYAN → Cannes Sky. Chrome, nav, active, focus, --primary. */
+  --color-cyan-base:#66ADC6;
+  --color-cyan-dim:#4A8FA8;
+
+  /* ANOMALY → Bermuda Sunset, the signature. Emphasis + negative deltas
+     (globals.css already repoints small crimson text here in dark). */
+  --color-anomaly-base:#C8705B;   /* 4.79 on page */
+  --color-anomaly-dim:#8E4A3A;
+  --color-anomaly-bright:#D8836D; /* 5.6 on page — the small-text rung */
+  --color-anomaly-glow:rgba(200,112,91,.26);
+
+  /* CRIMSON → Freeside critical. Fills, charts, destructive. */
+  --color-crimson-base:#B23A2E;
+  --color-crimson-dim:#7E2A21;
+
+  /* PHOSPHOR → teal ramp. Freeside's positive is Babylon Foliage, which is
+     3.7:1 on Deep Space — legal for a dot, not for the small green numerals
+     this dashboard is full of. Teal carries the ramp, lifted until it clears AA
+     on the surface deltas actually sit on: 5.8 page · 5.7 card · 4.9 row-hover.
+     (Plain #58988B is 5.08 on the page but only 4.49 on a card — the wrong
+     surface to measure.) Foliage stays available as --fs-babylon-foliage for
+     dots and bars. */
+  --color-phosphor-base:#6DAC9E;
+  --color-phosphor-dim:#4A7F74;
+  --color-phosphor-bright:#8CC4B7;
+  --color-phosphor-glow:rgba(109,172,158,.26);
+
+  /* COBALT → decorative lattice only. Deep Cannes, no new hue introduced. */
+  --color-cobalt-base:#3F6E80;
+  --color-cobalt-dim:#1D3A44;
+  --color-cobalt-bright:#66ADC6;
+
+  /* TOKEN YELLOW → Hazard. Warning / beta / BGT figures. */
+  --color-token-yellow:#F7D481;
+
+  /* TIER ACCENTS → one Freeside ramp, cool→warm as the tier escalates. */
+  --color-tier-tourist:#4A8FA8;
+  --color-tier-panther:#66ADC6;
+  --color-tier-cowboy:#58988B;
+  --color-tier-flatline:#C8705B;
+  --color-tier-tessier:#936064;
+  --color-tier-wintermute:#E1588E;
+
+  /* TINTS — solid, no opacity: the accent mixed into the page in OKLab.
+     Redeclared per register with literal colours so nothing resolves against
+     the wrong register's primitive. */
+  --color-cyan-tint-bg:color-mix(in oklab,#66ADC6 12%,#081F28);
+  --color-cyan-tint-border:color-mix(in oklab,#66ADC6 30%,#081F28);
+  --color-cyan-dim-tint-bg:color-mix(in oklab,#4A8FA8 10%,#081F28);
+  --color-cyan-dim-tint-border:color-mix(in oklab,#4A8FA8 24%,#081F28);
+  --color-stable-tint-bg:color-mix(in oklab,#6DAC9E 12%,#081F28);
+  --color-stable-tint-border:color-mix(in oklab,#6DAC9E 30%,#081F28);
+  --color-beta-tint-bg:color-mix(in oklab,#F7D481 10%,#081F28);
+  --color-beta-tint-border:color-mix(in oklab,#F7D481 26%,#081F28);
+  --color-crimson-tint-bg:color-mix(in oklab,#C8705B 12%,#081F28);
+  --color-crimson-tint-border:color-mix(in oklab,#C8705B 30%,#081F28);
+
+  /* HAIRLINES + GLOW. Freeside hairline is the ink at low alpha. Sprawl's
+     glow elevation is kept as a mechanism but dialled to a rim, not a bloom —
+     Freeside doesn't glow. */
+  --color-grid-line:rgba(247,241,229,.13);
+  --color-glow-cyan:rgba(102,173,198,.30);
+  --color-glow-crimson:rgba(200,112,91,.26);
+
+  /* PILL TEXT — bright rungs in deep. */
+  --color-pill-text-yellow:#F7D481;
+  --color-pill-text-cyan:#66ADC6;
+  --color-pill-text-phosphor:#8CC4B7;
+  --color-pill-text-crimson:#D8836D;
+
+  /* SEVERITY — functional, one per row. */
+  --color-severity-critical:#B23A2E;
+  --color-severity-high:#C8705B;
+  --color-severity-medium:#F7D481;
+  --color-severity-low:#66ADC6;
+  --color-severity-info:#92A2A4;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   LIGHT (Paradise) — the exception, opted into. Sprawl activates it with
+   `class="light"` on <html>; this block loads after horai-light.css and wins.
+   Every accent is re-darkened: the deep-register rungs are unreadable on sand.
+   ─────────────────────────────────────────────────────────────────────────── */
+.light{
+  --color-void-base:#F7F1E5;      /* fs lado sunlight — the page */
+  --color-void-raised:#EFEBDF;    /* chip / table-header tone */
+  --color-void-surface:#E3E7E8;   /* row hover (fs cold mist light) */
+  --color-void-border:#D9D3C7;
+  --color-surface-panel:#EFE8DA;  /* sidebar, a whisper under the page */
+
+  /* ONE INK — Deep Space Ink on light. */
+  --color-bone-bright:#081F28;
+  --color-bone-base:#081F28;
+  --color-bone-dim:#2C3E47;
+  --color-bone-muted:#6B6862;
+  --color-bone-ghost:#9A958C;
+
+  --color-cyan-base:#2F6579;      /* Cannes deepened. Measured against its own
+                                     TINT, the surface it always appears on:
+                                     5.5 on tint · 5.7 on page · 6.3 on card */
+  --color-cyan-dim:#1F4E61;
+
+  --color-anomaly-base:#A0503A;   /* Bermuda deepened — 5.04 */
+  --color-anomaly-dim:#7C3D2C;
+  --color-anomaly-bright:#96412D; /* "bright" = the high-contrast small-text rung,
+                                     so on sand it goes darker, not lighter — 6.04 */
+  --color-anomaly-glow:rgba(160,80,58,.16);
+
+  --color-crimson-base:#9E3427;
+  --color-crimson-dim:#7A281E;
+
+  --color-phosphor-base:#5C6647;  /* fs babylon deep — 5.41 */
+  --color-phosphor-dim:#454D34;
+  --color-phosphor-bright:#6E7A56;
+  --color-phosphor-glow:rgba(92,102,71,.16);
+
+  --color-cobalt-base:#3E6C7E;
+  --color-cobalt-dim:#8FA6B0;
+  --color-cobalt-bright:#2F6579;
+
+  --color-token-yellow:#7A5E1C;   /* Hazard is unreadable on sand — 5.42 */
+
+  --color-tier-tourist:#4E6F7D;
+  --color-tier-panther:#3E6C7E;
+  --color-tier-cowboy:#4C6D64;
+  --color-tier-flatline:#A0503A;
+  --color-tier-tessier:#7C4A4E;
+  --color-tier-wintermute:#9E3B63;
+
+  /* Light tints are PINNED LITERALS, not mixes — and that asymmetry with the
+     deep register is deliberate. Mixing an accent into Lado Sunlight lands
+     DARKER than the page, so a tinted pill or an active nav row quietly eats
+     the accent's contrast on the one surface the accent always sits on. Each
+     value below is hand-placed just under the page and measured with its own
+     ink: accent ≥4.7, pill text ≥6.2, muted ≥4.7. Deep keeps color-mix because
+     there the tint moves away from the ink, not toward it. */
+  --color-cyan-tint-bg:#E9EEEF;
+  --color-cyan-tint-border:#B9CBD2;
+  --color-cyan-dim-tint-bg:#EDF0F1;
+  --color-cyan-dim-tint-border:#C3D0D6;
+  --color-stable-tint-bg:#EBEDE3;
+  --color-stable-tint-border:#C4CBB2;
+  --color-beta-tint-bg:#F2EBD8;
+  --color-beta-tint-border:#D6C89C;
+  --color-crimson-tint-bg:#F5E7E2;
+  --color-crimson-tint-border:#DCBBAE;
+
+  --color-grid-line:rgba(8,31,40,.12);
+  --color-glow-cyan:rgba(53,112,138,.16);
+  --color-glow-crimson:rgba(158,52,39,.16);
+
+  --color-pill-text-yellow:#6B5217;
+  --color-pill-text-cyan:#2A5C73;
+  --color-pill-text-phosphor:#4A5239;
+  --color-pill-text-crimson:#8E2E22;
+
+  --color-severity-critical:#9E3427;
+  --color-severity-high:#A0503A;
+  --color-severity-medium:#7A5E1C;
+  --color-severity-low:#2F6579;
+  --color-severity-info:#6B6862;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   APP-LAYER TOKENS globals.css DECLARES ITSELF
+   These are set in globals.css AFTER the @import block, so a plain :root here
+   would lose the cascade. The doubled :root:root raises specificity so load
+   order stops mattering. If you'd rather keep one source of truth, edit these
+   five values in globals.css instead and delete this section.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root:root,:root:root.dark{
+  --color-bg-card:#0E2A34;        /* fs surface-raised — ink-muted measured here */
+  --popover:#143643;
+}
+:root:root.light{
+  --color-bg-card:#FFFDF8;        /* fs light surface-raised */
+  --popover:#FFFDF8;
+}
+
+/* DIMENSION COLOURS — profile radar + dimension cards. Also declared in
+   globals.css; same specificity note applies. */
+:root:root{
+  --dimension-og:#8FA173;         /* foliage, lifted for text duty */
+  --dimension-nft:#66ADC6;        /* cannes sky */
+  --dimension-onchain:#CEBA99;    /* organic sand */
+  --dimension-og-tint-bg:color-mix(in oklab,#8FA173 11%,#081F28);
+  --dimension-og-tint-border:color-mix(in oklab,#8FA173 28%,#081F28);
+  --dimension-nft-tint-bg:color-mix(in oklab,#66ADC6 11%,#081F28);
+  --dimension-nft-tint-border:color-mix(in oklab,#66ADC6 28%,#081F28);
+  --dimension-onchain-tint-bg:color-mix(in oklab,#CEBA99 10%,#081F28);
+  --dimension-onchain-tint-border:color-mix(in oklab,#CEBA99 26%,#081F28);
+}
+:root:root.light{
+  --dimension-og:#5C6647;
+  --dimension-nft:#2F6579;
+  --dimension-onchain:#7A5E28;
+  --dimension-og-tint-bg:#EBEDE3;
+  --dimension-og-tint-border:#C4CBB2;
+  --dimension-nft-tint-bg:#E9EEEF;
+  --dimension-nft-tint-border:#B9CBD2;
+  --dimension-onchain-tint-bg:#F2EBD8;
+  --dimension-onchain-tint-border:#D6C89C;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   NOT RETINTED, ON PURPOSE
+   · Role-ladder swatches (src/app/(freeside)/_data/roles-shared.ts) and project
+     mark backgrounds (_data/projects.ts) are third-party brand colours. The
+     .ds-role-chip relative-colour recipe already pulls them onto the register.
+   · The login lattice keeps its own low-alpha line colour; it reads as texture,
+     not palette.
+   ─────────────────────────────────────────────────────────────────────────── */

@@ -1,0 +1,37 @@
+<!-- @dsCard group="Components" viewport="720x300" name="Status & Tiers" subtitle="StatusPill · StatusBadge · Callout · Spinner · access-tier chips" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<style>body{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);width:100%;margin:0 0 6px;font-weight:600}</style>
+</head><body><div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const { StatusPill, StatusBadge, Callout, Spinner, TierBadge } = window.FreesideDesignSystem_1cacde;
+function Demo(){return (<>
+  <div className="row"><span className="lbl">StatusPill</span>
+    <StatusPill state="positive">Open</StatusPill>
+    <StatusPill state="info">Boarding</StatusPill>
+    <StatusPill state="caution">Service</StatusPill>
+    <StatusPill state="critical">Closed</StatusPill>
+    <StatusPill state="neutral">TBD</StatusPill>
+  </div>
+  <div className="row"><span className="lbl">StatusBadge</span>
+    <StatusBadge variant="positive" dot>Verified</StatusBadge>
+    <StatusBadge variant="info" dot>In transit</StatusBadge>
+    <StatusBadge variant="caution" dot>Maintenance</StatusBadge>
+    <StatusBadge variant="critical" dot>Denied</StatusBadge>
+  </div>
+  <div className="row"><span className="lbl">Access tiers</span>
+    <TierBadge tier="port"/><TierBadge tier="promenade"/><TierBadge tier="villa"/>
+    <TierBadge tier="straylight"/><TierBadge tier="concierge"/><TierBadge tier="vip"/>
+  </div>
+  <div className="row" style={{alignItems:'stretch'}}>
+    <div style={{flex:1,minWidth:280}}><Callout variant="info">Credit verified. Access granted to the Promenade.</Callout></div>
+    <Spinner size={28} thickness={3}/>
+  </div>
+</>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script></body></html>

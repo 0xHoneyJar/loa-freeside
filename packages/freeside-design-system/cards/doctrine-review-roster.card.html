@@ -1,0 +1,63 @@
+<!-- @dsCard group="Doctrine" viewport="1280x6600" name="Review · Roster" subtitle="Rows, columns and the count — and a capability grant that changes neither" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Freeside — Review · Roster</title>
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="review-frames.css">
+<script src="../templates/_doctrine/doctrine.js"></script>
+<style>.g2{grid-template-columns:1fr}</style>
+</head>
+<body>
+
+<section>
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Doctrine 02 · Review</span>
+<h2 class="title">Roster, five contexts</h2>
+<p>Full width, because the record is a table and a cramped table reviews badly. Watch three things: the count, which describes the visible set rather than the true total; the skeleton, which is sized from the same set; and the export control, which appears with a grant and adds neither a row nor a column.</p>
+</div>
+<div class="g3">
+<div class="stack-8"><div class="sec">Capability is not disclosure</div><p class="body">A grant changes what may be done. Frames three and four are identical rows and columns, one export control apart.</p></div>
+<div class="stack-8"><div class="sec">Metadata is a channel</div><p class="body">Counts, skeleton rows, row identifiers and pagination figures are exports of the true total in disguise unless they are built from the visible set.</p></div>
+<div class="stack-8"><div class="sec">Absence is silent</div><p class="body">A control the viewer may not use is not rendered disabled. A dead button is a worse disclosure than a plain refusal.</p></div>
+</div>
+<div class="note"><p class="body">A presentation review. Unauthorized rows and cells must be filtered server-side, before the payload reaches the client — a row omitted from the DOM is still in the response if the server sent it.</p></div>
+</div>
+</section>
+
+<section>
+<div class="g2" id="roster"></div>
+</section>
+
+<section>
+<div class="stack-16">
+<div class="row-8"><span class="wordmark">FREESIDE</span><span class="ghost" id="measure">measuring</span></div>
+<p class="body">Sibling cards: <a href="doctrine-review-permission-gate.card.html">Review · Permission gate</a> · <a href="doctrine-review-guest-surface.card.html">Review · Guest surface</a> · <a href="doctrine-conformance.card.html">Conformance</a></p>
+</div>
+</section>
+
+<script src="review-frames.js"></script>
+<script>
+FreesideReview.render({
+  host: 'roster',
+  src: '../templates/roster/Roster.dc.html',
+  pack: 'roster',
+  destination: 'console',
+  tiles: [
+    { props: { role: 'guest', destination: 'console' }, h: 860,
+      note: 'Denied. Depth 2 over a guest\u2019s ceiling: no rows, no columns, no count, and no shape of the layer behind it.' },
+    { props: { role: 'member', destination: 'account' }, h: 860,
+      note: 'One row: your own. The count, the skeleton row and the row identifiers all describe the visible set, so none of them can be differenced into the true total.' },
+    { props: { role: 'operator', destination: 'console' }, h: 860,
+      note: 'Service. Every record the operator may see, with the machine named. No export control, because the grant is not held \u2014 and its absence is silent rather than disabled.' },
+    { props: { role: 'operator', destination: 'console', exportGranted: true }, h: 860,
+      note: 'The same rows and the same columns, plus export. Compare against the frame above: a capability grant changes agency, never disclosure.' },
+    { props: { role: 'principal', destination: 'console', systemState: 'alert' }, h: 860,
+      note: 'Ledger under alert. Every column the record carries, and the count still describes exactly what is on screen.' }
+  ]
+});
+</script>
+</body>
+</html>

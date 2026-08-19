@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../../image-slot.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="./copy.js"></script>
+<style>html,body{margin:0;padding:0}</style>
+</helmet>
+<div data-register="{{ register }}" data-accent="{{ pair }}" data-exposure="{{ exposureNum }}" style="min-height:100vh;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);display:flex;flex-direction:column;padding:var(--fs-pad-page)">
+
+<div class="fs-env fs-env-band" data-env="{{ envLevel }}" style="flex:0 0 auto;height:260px;margin:calc(-1 * var(--fs-pad-page)) calc(-1 * var(--fs-pad-page)) 0">
+<div class="fs-env-plate"><image-slot id="fs-gate-plate" shape="rect" src="../../assets/terrace-plate.png" placeholder="The surface being asked for — same render, resolved at the asker's own level"></image-slot></div>
+<i class="fs-env-grid"></i>
+<i class="fs-env-curve"></i>
+<i class="fs-env-scrim"></i>
+<i class="fs-env-veil"></i>
+<div style="position:absolute;inset:0;padding:var(--fs-pad-page);display:flex;align-items:flex-start;gap:16px;color:var(--fs-deep-space-ink)">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;opacity:.62">{{ levelBadge }}</span>
+</div>
+</div>
+
+<div style="flex:1;display:flex;align-items:flex-start;justify-content:center;padding:0 0 48px">
+<div style="position:relative;z-index:1;width:100%;max-width:600px;margin-top:-88px;padding:32px;background:var(--fs-surface-base);border:1px solid var(--fs-line-structural);box-shadow:var(--fs-shadow-2);display:flex;flex-direction:column;gap:var(--fs-gap-stack)">
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ eyebrow }}</span>
+<h1 style="font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh);margin:0">{{ headline }}</h1>
+</div>
+
+<div style="height:3px;background:var(--fs-accent-1)"></div>
+
+<p style="margin:0;max-width:62ch;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ message }}</p>
+
+<sc-if value="{{ heldVisible }}" hint-placeholder-val="{{ true }}">
+<div data-register="deep" data-accent="{{ pair }}" style="position:relative;height:84px;overflow:hidden;background:var(--fs-surface-base);border:1px solid var(--fs-line-structural)">
+<i style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.18) 0%,rgba(0,0,0,0) 36%,rgba(0,0,0,.12) 100%)"></i>
+<i style="position:absolute;left:0;right:0;top:0;height:1px;background:var(--fs-line-structural)"></i>
+<i style="position:absolute;left:38%;top:0;bottom:0;width:1px;background:var(--fs-lado-sunlight);box-shadow:0 0 18px 4px color-mix(in oklab,var(--fs-lado-sunlight) 38%,transparent)"></i>
+<i style="position:absolute;left:0;right:0;bottom:11px;height:1px;background:var(--fs-line-hairline)"></i>
+<span style="position:absolute;right:12px;bottom:7px;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">
+<sc-if value="{{ heldNamed }}" hint-placeholder-val="{{ false }}">{{ meterNote }}</sc-if>
+</span>
+</div>
+</sc-if>
+
+<sc-if value="{{ withheld }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:16px;align-items:flex-start;padding:16px;background:var(--fs-surface-raised);border-left:3px solid var(--fs-state-caution)">
+<span style="width:8px;height:8px;flex:0 0 auto;margin-top:6px;background:var(--fs-state-caution)"></span>
+<p style="margin:0;text-wrap:pretty;color:var(--fs-ink-secondary)">{{ withheldNote }}</p>
+</div>
+</sc-if>
+
+<div style="display:flex;align-items:center;gap:16px;padding-top:8px">
+<div style="display:flex;gap:2px">
+<sc-for list="{{ segGranted }}" as="s" hint-placeholder-count="2">
+<i style="width:40px;height:8px;display:block;background:var(--fs-accent-1)"></i>
+</sc-for>
+<sc-for list="{{ segRefused }}" as="s" hint-placeholder-count="1">
+<i style="width:40px;height:8px;display:block;background:var(--fs-state-critical);opacity:.32"></i>
+</sc-for>
+<sc-for list="{{ segUnasked }}" as="s" hint-placeholder-count="1">
+<i style="width:40px;height:8px;display:block;background:var(--fs-line-structural)"></i>
+</sc-for>
+</div>
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">{{ meterNote }}</span>
+</div>
+
+<div style="display:flex;gap:8px;padding-top:8px">
+<button style="font:inherit;font-weight:600;padding:12px 24px;border:none;cursor:pointer;background:var(--fs-accent-1);color:var(--fs-on-accent)" style-hover="opacity:.88">{{ primaryLabel }}</button>
+<button style="font:inherit;padding:12px 24px;border:1px solid var(--fs-line-structural);cursor:pointer;background:transparent;color:var(--fs-ink-primary)" style-hover="background:var(--fs-surface-raised)">{{ secondaryLabel }}</button>
+</div>
+
+<sc-if value="{{ showTrace }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:var(--fs-surface-raised);margin-top:8px">
+<span style="font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Resolution</span>
+<sc-for list="{{ trace }}" as="t" hint-placeholder-count="5">
+<div style="display:flex;gap:16px;align-items:baseline">
+<span style="color:var(--fs-ink-muted);width:132px;flex:0 0 auto">{{ t.k }}</span>
+<span>{{ t.v }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:16px;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">
+<span>{{ roleLabel }}</span>
+<span style="margin-left:auto">{{ stampRight }}</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;guest&quot;,&quot;member&quot;,&quot;operator&quot;,&quot;principal&quot;],&quot;default&quot;:&quot;member&quot;,&quot;tsType&quot;:&quot;'guest'|'member'|'operator'|'principal'&quot;,&quot;section&quot;:&quot;Access&quot;,&quot;label&quot;:&quot;Who is asking&quot;},&quot;destination&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;arrival&quot;,&quot;account&quot;,&quot;console&quot;,&quot;settlement&quot;],&quot;default&quot;:&quot;console&quot;,&quot;tsType&quot;:&quot;'arrival'|'account'|'console'|'settlement'&quot;,&quot;section&quot;:&quot;Depth&quot;,&quot;label&quot;:&quot;Where they are going&quot;},&quot;systemState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;nominal&quot;,&quot;degraded&quot;,&quot;alert&quot;],&quot;default&quot;:&quot;nominal&quot;,&quot;tsType&quot;:&quot;'nominal'|'degraded'|'alert'&quot;,&quot;section&quot;:&quot;State&quot;,&quot;label&quot;:&quot;What the system is doing&quot;}}">
+/* No copy here — see templates/permission-gate/copy.js. */
+class Component extends DCLogic {
+  /* The pack arrives asynchronously and componentDidMount cannot be relied on to
+     notice it: the runtime defers didMount for a logic instance created after the
+     initial mount, so it waits for an update that nothing will ever schedule.
+     renderVals() always runs, so the retry is driven from there instead. */
+  _awaitPack() {
+    if (this._poll) return;
+    this._poll = setInterval(() => {
+      const D = window.FreesideDoctrine;
+      if (!D || !D.packs['permission-gate']) return;
+      clearInterval(this._poll); this._poll = null; this.forceUpdate();
+    }, 30);
+    setTimeout(() => this._stopAwaiting(), 8000);
+  }
+
+  _stopAwaiting() {
+    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+
+  componentWillUnmount() { this._stopAwaiting(); }
+
+  renderVals() {
+    const D = window.FreesideDoctrine;
+    if (!D || !D.packs['permission-gate']) {
+      this._awaitPack();
+      return {
+      register: 'light', pair: 'resort', exposureNum: 0, levelBadge: '', envLevel: 'terrace',
+      eyebrow: '', headline: '', message: '', withheld: false, withheldNote: '',
+      heldVisible: false, heldNamed: false,
+      segGranted: [], segRefused: [], segUnasked: [], meterNote: '',
+      primaryLabel: '', secondaryLabel: '', showTrace: false, trace: [],
+      roleLabel: '', stampRight: ''
+      };
+    }
+    return D.project('permission-gate', D.resolve({
+      role: this.props.role ?? 'member',
+      destination: this.props.destination ?? 'console',
+      systemState: this.props.systemState ?? 'nominal'
+    }));
+  }
+}
+</script>
+</body>
+</html>

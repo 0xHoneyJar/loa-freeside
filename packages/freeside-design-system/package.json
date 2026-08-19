@@ -1,0 +1,59 @@
+{
+  "name": "@freeside/design-system",
+  "version": "1.0.0-rc.1",
+  "description": "Freeside Design System — Exposure doctrine, tokens, components, templates and conformance suite. Source of truth; consumers copy templates and import the stylesheets.",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "main": "styles.css",
+  "style": "styles.css",
+  "exports": {
+    ".": "./styles.css",
+    "./styles.css": "./styles.css",
+    "./environment.css": "./environment.css",
+    "./tokens/*": "./tokens/*",
+    "./doctrine": "./templates/_doctrine/doctrine.js",
+    "./manifest": "./dist/manifest.json"
+  },
+  "files": [
+    "styles.css",
+    "environment.css",
+    "tokens",
+    "components",
+    "templates",
+    "cards",
+    "retrofit",
+    "assets",
+    "docs",
+    "examples",
+    "dist",
+    "image-slot.js",
+    "doc-page.js",
+    "_ds_bundle.js",
+    "_ds_manifest.json",
+    "CLAUDE.md"
+  ],
+  "scripts": {
+    "test": "node templates/_doctrine/run-checks.js",
+    "check": "node templates/_doctrine/run-checks.js",
+    "build": "node scripts/build.js",
+    "dev": "node scripts/serve.js . 4173",
+    "preview": "node scripts/serve.js . 4174",
+    "verify": "node scripts/verify.js"
+  },
+  "keywords": [
+    "design-system",
+    "freeside",
+    "exposure",
+    "progressive-disclosure",
+    "loa"
+  ],
+  "freeside": {
+    "domain": "shared",
+    "note": "Domain classification is mandatory per ADR-007 D-1. This package is consumed by both platform and network surfaces and introduces no cross-domain runtime code."
+  }
+}

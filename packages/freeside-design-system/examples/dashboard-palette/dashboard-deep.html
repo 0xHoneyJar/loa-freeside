@@ -1,0 +1,295 @@
+<!-- Consumer artifact — interactive retint prototype for 0xHoneyJar/freeside-dashboard. Not design-system documentation; see guidelines/retrofit.card.html for the pattern. -->
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Freeside console — retint prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- The real chain, in the real order. Only the last file is new. -->
+<link rel="stylesheet" href="vendor/tokens.css">
+<link rel="stylesheet" href="vendor/shadcn-compat.css">
+<link rel="stylesheet" href="vendor/horai-light.css">
+<link rel="stylesheet" href="freeside-palette.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-width:1180px;min-height:100vh;background:var(--color-bg-void);color:var(--color-text-primary);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;font-feature-settings:'tnum' 1;display:grid;grid-template-columns:212px 1fr}
+a{color:var(--color-cyan-base);text-decoration:none}a:hover{color:var(--color-cyan-dim)}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit;color:inherit}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.mono{font-family:'IBM Plex Mono',monospace}
+/* ── sidebar ── */
+aside{background:var(--color-bg-panel);border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;padding:24px 0;position:sticky;top:0;height:100vh}
+.mark{padding:0 20px 28px;display:flex;flex-direction:column;gap:6px}
+.mark b{font-size:15px;font-weight:600;letter-spacing:.08em;color:var(--color-text-bright)}
+nav{display:flex;flex-direction:column;gap:2px;padding:0 8px}
+nav button{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13px;color:var(--color-text-secondary);width:100%;text-align:left;transition:background-color 100ms ease-out,color 100ms ease-out}
+nav button i{width:5px;height:5px;background:currentColor;opacity:.45;flex:0 0 auto}
+nav button:hover{background:var(--color-bg-surface);color:var(--color-text-primary)}
+nav button[aria-current="page"]{background:var(--color-cyan-tint-bg);color:var(--color-cyan-base);box-shadow:inset 2px 0 0 var(--color-cyan-tint-border)}
+nav button[aria-current="page"] i{opacity:1}
+nav button em{margin-left:auto;font-style:normal;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--color-text-tertiary)}
+.side-foot{margin-top:auto;padding:16px 20px 0;border-top:1px solid var(--color-border-subtle);display:flex;flex-direction:column;gap:12px}
+.seg{display:flex;border:1px solid var(--color-border-default)}
+.seg button{flex:1;padding:6px 4px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.seg button[aria-pressed="true"]{background:var(--color-bg-surface);color:var(--color-text-primary)}
+.reg{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--color-text-tertiary)}
+.reg s{width:8px;height:8px;background:var(--color-phosphor-base);text-decoration:none;flex:0 0 auto}
+/* ── main ── */
+main{display:flex;flex-direction:column;min-width:0}
+.top{display:flex;align-items:center;gap:16px;padding:0 32px;height:56px;border-bottom:1px solid var(--color-border-subtle);flex:0 0 auto;position:sticky;top:0;background:var(--color-bg-void);z-index:5}
+.trail{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.trail b{color:var(--color-text-secondary);font-weight:500}
+.search{margin-left:auto;display:flex;align-items:center;background:var(--color-bg-surface);border:1px solid var(--color-border-default);height:30px;width:216px}
+.search input{background:none;border:none;outline:none;padding:0 10px;font-size:12px;width:100%}
+.search input::placeholder{color:var(--color-text-tertiary)}
+.search button{padding:0 9px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--color-text-tertiary)}
+.search button:hover{color:var(--color-text-primary)}
+.av{width:28px;height:28px;background:var(--color-cyan-tint-bg);border:1px solid var(--color-cyan-tint-border);color:var(--color-pill-text-cyan);font-size:11px;font-weight:600;display:grid;place-items:center;flex:0 0 auto}
+.body{padding:32px;display:flex;flex-direction:column;gap:24px;flex:1;min-width:0}
+.hero{display:flex;flex-direction:column;gap:8px}
+h1{font-size:34px;font-weight:500;letter-spacing:-.02em;line-height:1.1;color:var(--color-text-bright)}
+.sub{font-size:15px;color:var(--color-text-secondary);max-width:64ch;text-wrap:pretty}
+/* ── hairline bento ── */
+.bento{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--color-border-subtle);border:1px solid var(--color-border-subtle)}
+.cell{background:var(--color-bg-card);padding:22px 24px;display:flex;flex-direction:column;gap:12px;text-align:left;transition:background-color 100ms ease-out}
+button.cell:hover{background:var(--color-bg-surface)}
+button.cell[aria-pressed="true"]{background:var(--color-bg-surface);box-shadow:inset 0 -2px 0 var(--color-cyan-base)}
+.fig{font-size:42px;font-weight:300;letter-spacing:-.02em;line-height:1;color:var(--color-text-bright)}
+.delta{font-family:'IBM Plex Mono',monospace;font-size:12px;display:flex;align-items:center;gap:6px}
+.up{color:var(--color-phosphor-base)}.down{color:var(--color-anomaly-bright)}
+.bar{height:3px;width:100%;background:var(--color-bg-elevated);position:relative}
+.bar span{position:absolute;inset:0 auto 0 0;background:var(--color-cyan-base)}
+/* ── panel + table ── */
+.panel{background:var(--color-bg-card);display:flex;flex-direction:column;min-width:0}
+.panel-head{background:var(--color-bg-surface);padding:11px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.panel-head h2{font-size:13px;font-weight:500;letter-spacing:-.01em}
+.count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--color-text-tertiary)}
+.filters{margin-left:auto;display:flex;gap:6px;align-items:center}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{background:var(--color-bg-surface);padding:0;text-align:left}
+th.plain{padding:10px 20px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-secondary);vertical-align:middle;white-space:nowrap}
+th.r.plain{text-align:right}
+th button{display:flex;align-items:center;gap:6px;width:100%;padding:10px 20px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-secondary);white-space:nowrap}
+th.r button{justify-content:flex-end}
+th button:hover{color:var(--color-text-primary);background:var(--color-bg-elevated)}
+th button u{text-decoration:none;font-size:9px;opacity:0;color:var(--color-cyan-base)}
+th button[aria-sort] u{opacity:1}
+td{padding:11px 20px;font-size:13px;border-top:1px solid color-mix(in oklab,var(--color-border-subtle) 28%,transparent)}
+td.r{text-align:right}
+tbody tr{cursor:pointer;transition:background-color 100ms ease-out}
+tbody tr:hover td{background:var(--color-bg-elevated)}
+tbody tr[aria-selected="true"] td{background:var(--color-cyan-tint-bg)}
+tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 2px 0 0 var(--color-cyan-tint-border)}
+.who{display:flex;align-items:center;gap:10px}
+.who em{font-style:normal;font-weight:500}
+.who span{color:var(--color-text-tertiary);font-size:12px}
+.empty{padding:40px 20px;text-align:center;color:var(--color-text-tertiary);font-size:13px}
+/* Tier reads as a colour BAR beside one ink — never a tinted letterform. */
+.chip{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;background:var(--color-bg-surface);color:var(--color-text-secondary);border-left:3px solid;display:inline-block}
+tbody tr:hover .chip,tbody tr[aria-selected="true"] .chip{background:var(--color-bg-card)}
+.t-tourist{border-left-color:var(--color-tier-tourist)}
+.t-panther{border-left-color:var(--color-tier-panther)}
+.t-cowboy{border-left-color:var(--color-tier-cowboy)}
+.t-flatline{border-left-color:var(--color-tier-flatline)}
+.t-tessier{border-left-color:var(--color-tier-tessier)}
+.t-wintermute{border-left-color:var(--color-tier-wintermute)}
+.fchip{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border:1px solid var(--color-border-default);color:var(--color-text-tertiary);border-left:3px solid}
+.fchip:hover{color:var(--color-text-primary)}
+.fchip[aria-pressed="true"]{background:var(--color-bg-elevated);color:var(--color-text-primary)}
+.pill{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border:1px solid;display:inline-block}
+.p-cy{background:var(--color-cyan-tint-bg);border-color:var(--color-cyan-tint-border);color:var(--color-pill-text-cyan)}
+.p-ph{background:var(--color-stable-tint-bg);border-color:var(--color-stable-tint-border);color:var(--color-pill-text-phosphor)}
+.p-yl{background:var(--color-beta-tint-bg);border-color:var(--color-beta-tint-border);color:var(--color-pill-text-yellow)}
+.p-cr{background:var(--color-crimson-tint-bg);border-color:var(--color-crimson-tint-border);color:var(--color-pill-text-crimson)}
+.dims{display:flex;gap:6px}
+.dims i{height:6px;display:block}
+.d-og{background:var(--dimension-og)}.d-nft{background:var(--dimension-nft)}.d-on{background:var(--dimension-onchain)}
+.num{font-family:'IBM Plex Mono',monospace}
+.sev{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--color-text-secondary)}
+.sev s{width:7px;height:7px;text-decoration:none;flex:0 0 auto}
+.s-nominal s{background:var(--color-severity-low)}
+.s-review s{background:var(--color-severity-medium)}
+.s-decay s{background:var(--color-severity-high)}
+.s-flagged s{background:var(--color-severity-critical)}
+/* ── generic cards grid ── */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--color-border-subtle);border:1px solid var(--color-border-subtle)}
+.tile{background:var(--color-bg-card);padding:20px 22px;display:flex;flex-direction:column;gap:10px}
+.tile h3{font-size:14px;font-weight:500}
+.tile p{font-size:12px;color:var(--color-text-tertiary);text-wrap:pretty}
+.tile .fig{font-size:30px}
+.wbar{height:6px;background:var(--color-bg-elevated);position:relative}
+.wbar span{position:absolute;inset:0 auto 0 0}
+/* ── drawer ── */
+.scrim{position:fixed;inset:0;background:var(--color-bg-overlay);opacity:0;pointer-events:none;transition:opacity 140ms ease-out;z-index:20}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;top:0;right:0;bottom:0;width:392px;background:var(--color-bg-card);border-left:1px solid var(--color-border-default);transform:translateX(100%);transition:transform 180ms cubic-bezier(0,0,.2,1);z-index:21;display:flex;flex-direction:column;overflow-y:auto}
+.sheet.on{transform:none}
+.sheet-head{padding:22px 24px;border-bottom:1px solid var(--color-border-subtle);display:flex;flex-direction:column;gap:10px;background:var(--color-bg-surface)}
+.sheet-head .row1{display:flex;align-items:flex-start;gap:12px}
+.sheet-head h2{font-size:22px;font-weight:500;letter-spacing:-.02em;line-height:1.15}
+.sheet-head button.x{margin-left:auto;width:26px;height:26px;display:grid;place-items:center;color:var(--color-text-tertiary);border:1px solid var(--color-border-default);font-size:13px;flex:0 0 auto}
+.sheet-head button.x:hover{color:var(--color-text-primary);background:var(--color-bg-elevated)}
+.sheet-sec{padding:20px 24px;display:flex;flex-direction:column;gap:14px;border-bottom:1px solid var(--color-border-subtle)}
+.kv{display:flex;align-items:baseline;gap:12px;font-size:13px}
+.kv b{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-weight:400}
+.dimrow{display:flex;flex-direction:column;gap:6px}
+.dimrow .lab{display:flex;font-size:12px;color:var(--color-text-secondary)}
+.dimrow .lab b{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-weight:400;color:var(--color-text-primary)}
+.spark{display:flex;align-items:flex-end;gap:4px;height:56px}
+.spark i{flex:1;background:var(--color-cyan-tint-border);display:block}
+.spark i:last-child{background:var(--color-cyan-base)}
+</style>
+</head>
+<body data-screen-label="Dashboard — interactive">
+<aside>
+<div class="mark"><b>FREESIDE</b><span class="eyebrow">Station Console</span></div>
+<nav id="nav"></nav>
+<div class="side-foot">
+<div class="eyebrow">Register</div>
+<div class="seg" id="seg"><button data-reg="dark">Deep</button><button data-reg="light">Light</button></div>
+<div class="reg"><s></s><span id="regname">Deep Space</span></div>
+<div class="reg">Sync 04:12 ago</div>
+</div>
+</aside>
+<main>
+<div class="top">
+<div class="trail">Console / <b id="trail">Overview</b></div>
+<div class="search"><input id="q" placeholder="Search members…" autocomplete="off"><button id="qx" hidden>esc</button></div>
+<div class="av">ZK</div>
+</div>
+<div class="body" id="view"></div>
+</main>
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-hidden="true"></aside>
+<script>
+const MEMBERS=[
+{n:"molly.eth",id:"0412",tier:"wintermute",og:92,nft:88,on:96,score:941,d:38,sig:"nominal",joined:"Epoch 04",bgt:"25,000"},
+{n:"3jane",id:"0088",tier:"tessier",og:96,nft:81,on:44,score:877,d:12,sig:"review",joined:"Epoch 01",bgt:"18,400"},
+{n:"riviera",id:"1207",tier:"flatline",og:54,nft:90,on:78,score:742,d:-61,sig:"decay",joined:"Epoch 09",bgt:"9,120"},
+{n:"armitage",id:"0031",tier:"cowboy",og:88,nft:34,on:71,score:690,d:4,sig:"nominal",joined:"Epoch 01",bgt:"12,600"},
+{n:"finn.zone",id:"0774",tier:"cowboy",og:70,nft:66,on:62,score:664,d:19,sig:"nominal",joined:"Epoch 06",bgt:"7,300"},
+{n:"dixie.flat",id:"0155",tier:"flatline",og:81,nft:52,on:40,score:648,d:-7,sig:"review",joined:"Epoch 02",bgt:"6,880"},
+{n:"wintermute.op",id:"0002",tier:"wintermute",og:99,nft:74,on:91,score:932,d:26,sig:"nominal",joined:"Epoch 01",bgt:"31,200"},
+{n:"maelcum",id:"1442",tier:"panther",og:44,nft:71,on:58,score:571,d:9,sig:"nominal",joined:"Epoch 11",bgt:"4,410"},
+{n:"aerol",id:"1890",tier:"panther",og:38,nft:64,on:49,score:512,d:-14,sig:"review",joined:"Epoch 14",bgt:"3,020"},
+{n:"cath.sprawl",id:"0937",tier:"tessier",og:76,nft:83,on:33,score:702,d:31,sig:"nominal",joined:"Epoch 05",bgt:"11,050"},
+{n:"lonny.zone",id:"2344",tier:"tourist",og:20,nft:41,on:14,score:218,d:-9,sig:"flagged",joined:"Epoch 27",bgt:"310"},
+{n:"terzibash",id:"2610",tier:"tourist",og:12,nft:28,on:9,score:164,d:2,sig:"flagged",joined:"Epoch 31",bgt:"120"},
+{n:"hideo",id:"1071",tier:"cowboy",og:66,nft:58,on:80,score:679,d:15,sig:"nominal",joined:"Epoch 08",bgt:"8,640"},
+{n:"pauley",id:"0466",tier:"flatline",og:73,nft:47,on:55,score:601,d:-23,sig:"decay",joined:"Epoch 03",bgt:"5,900"}];
+const TIERS=["tourist","panther","cowboy","flatline","tessier","wintermute"];
+const TIERLABEL={tourist:"Tourist",panther:"Panther",cowboy:"Cowboy",flatline:"Flatline",tessier:"Tessier",wintermute:"Wintermute"};
+const SIGLABEL={nominal:"Nominal",review:"Review",decay:"Decay",flagged:"Flagged"};
+const VIEWS=[["overview","Overview",""],["members","Members","14"],["cohorts","Cohorts","4"],["campaigns","Campaigns","3"],["channels","Channels","5"],["ops","Operations","2"]];
+const S={view:localStorage.getItem("fs-dash-view")||"overview",q:"",tiers:new Set(),sig:null,sort:"score",dir:-1,sel:null};
+
+const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dcls=v=>v>=0?"up":"down", dtxt=v=>(v>=0?"▲ +":"▼ −")+Math.abs(v);
+
+function rows(){
+  let r=MEMBERS.filter(m=>{
+    if(S.q&&!(m.n+" "+m.id).toLowerCase().includes(S.q.toLowerCase()))return false;
+    if(S.tiers.size&&!S.tiers.has(m.tier))return false;
+    if(S.sig&&m.sig!==S.sig)return false;
+    return true;});
+  const k=S.sort;
+  return r.sort((a,b)=>k==="n"?a.n.localeCompare(b.n)*S.dir:(a[k]-b[k])*S.dir);
+}
+function tableHTML(list,limit){
+  const shown=limit?list.slice(0,limit):list;
+  const sh=(key,label,r)=>`<th class="${r?'r':''}"><button data-sort="${key}"${S.sort===key?` aria-sort="${S.dir>0?'ascending':'descending'}"`:""}>${label}<u>${S.sort===key?(S.dir>0?"▲":"▼"):"▼"}</u></button></th>`;
+  return `<table><thead><tr>${sh("n","Member")}<th class="plain">Tier</th><th class="plain">Dimensions</th>${sh("score","Score",1)}${sh("d","Δ epoch",1)}<th class="plain">Signal</th></tr></thead><tbody>${
+    shown.length?shown.map(m=>`<tr data-id="${m.id}"${S.sel===m.id?' aria-selected="true"':""}>
+      <td><div class="who"><em>${esc(m.n)}</em><span>#${m.id}</span></div></td>
+      <td><span class="chip t-${m.tier}">${TIERLABEL[m.tier]}</span></td>
+      <td><div class="dims"><i class="d-og" style="width:${Math.round(m.og*.34)}px"></i><i class="d-nft" style="width:${Math.round(m.nft*.34)}px"></i><i class="d-on" style="width:${Math.round(m.on*.34)}px"></i></div></td>
+      <td class="r num">${m.score}</td><td class="r num ${dcls(m.d)}">${m.d>=0?"+":"−"}${Math.abs(m.d)}</td>
+      <td><span class="sev s-${m.sig}"><s></s>${SIGLABEL[m.sig]}</span></td></tr>`).join("")
+    :`<tr><td colspan="6" class="empty">No members match this filter. <button id="clr" style="color:var(--color-cyan-base)">Clear all</button></td></tr>`}</tbody></table>`;
+}
+function filtersHTML(){
+  return `<div class="filters">${TIERS.map(t=>`<button class="fchip t-${t}" data-tier="${t}"${S.tiers.has(t)?' aria-pressed="true"':""}>${TIERLABEL[t]}</button>`).join("")}</div>`;
+}
+const KPI=[["Scored members","4,182","▲ 214 this epoch",72,"","all"],["Median score","618","▲ 1.8%",54,"","all"],["Onchain share","37%","▼ 4.2%",37,"var(--color-anomaly-base)","decay"],["BGT delegated","25,000","▲ 3,900",88,"var(--color-token-yellow)","all"]];
+
+function render(){
+  const list=rows(), v=S.view;
+  $("#trail").textContent=VIEWS.find(x=>x[0]===v)[1];
+  document.querySelectorAll("#nav button").forEach(b=>{b.dataset.view===v?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current");});
+  let h="";
+  if(v==="overview"){
+    h=`<div class="hero"><div class="eyebrow">// Overview</div><h1>Station Score</h1><p class="sub">Every member scored across OG standing, collection depth, and onchain activity. Cohort weights recalculate on each epoch close.</p></div>
+    <div class="bento">${KPI.map(([l,f,d,w,c,filt],i)=>`<button class="cell" data-kpi="${filt}"${S.sig==="decay"&&filt==="decay"?' aria-pressed="true"':""}><div class="eyebrow">${l}</div><div class="fig">${f}</div><div class="delta ${d[0]==="▲"?"up":"down"}">${d}</div><div class="bar"><span style="width:${w}%${c?";background:"+c:""}"></span></div></button>`).join("")}</div>
+    <div class="panel"><div class="panel-head"><h2>Roster</h2><span class="count">${list.length} of ${MEMBERS.length} · epoch 41</span><div class="filters"><span class="pill p-ph">Stable</span><span class="pill p-yl">Beta scoring</span></div></div>${tableHTML(list,6)}</div>
+    ${list.length>6?`<button class="eyebrow" id="more" style="align-self:flex-start;color:var(--color-cyan-base)">View all ${list.length} members →</button>`:""}`;
+  } else if(v==="members"){
+    h=`<div class="hero"><div class="eyebrow">// Members</div><h1>Roster</h1><p class="sub">Sort any column, filter by tier, or search a handle. Click a row to open the member.</p></div>
+    <div class="panel"><div class="panel-head"><h2>All members</h2><span class="count">${list.length} shown</span>${filtersHTML()}</div>${tableHTML(list)}</div>`;
+  } else if(v==="cohorts"){
+    const co=[["Founders","Epoch 01–03",412,812,"var(--color-cyan-base)",34],["Builders","Epoch 04–12",1106,689,"var(--color-phosphor-base)",28],["Delegates","BGT ≥ 690",884,724,"var(--color-token-yellow)",24],["Arrivals","Epoch 24+",1780,246,"var(--color-anomaly-base)",14]];
+    h=`<div class="hero"><div class="eyebrow">// Cohorts</div><h1>Weighting</h1><p class="sub">Four cohorts split the score pool. Weights are set at epoch open and cannot be changed mid-epoch.</p></div>
+    <div class="grid3" style="grid-template-columns:repeat(2,1fr)">${co.map(([n,g,c,s,col,w])=>`<div class="tile"><div class="eyebrow">${g}</div><h3>${n}</h3><div class="fig">${s}</div><p>${c.toLocaleString()} members · median score</p><div class="wbar"><span style="width:${w*2.6}%;background:${col}"></span></div><p class="mono" style="font-size:11px">${w}% of pool</p></div>`).join("")}</div>`;
+  } else if(v==="campaigns"){
+    const ca=[["Spindle drop","Epoch 39–41","2,204","p-ph","Live"],["Promenade quest","Epoch 41","886","p-yl","Queued"],["Villa airdrop","Epoch 36–38","4,182","p-cr","Closed"]];
+    h=`<div class="hero"><div class="eyebrow">// Campaigns</div><h1>Distribution</h1><p class="sub">Reach is computed at campaign close against the roster snapshot for that epoch.</p></div>
+    <div class="panel"><div class="panel-head"><h2>Campaigns</h2><span class="count">3 total</span></div>
+    <table><thead><tr><th class="plain">Campaign</th><th class="plain">Window</th><th class="r plain">Reach</th><th class="plain">Status</th></tr></thead><tbody>${ca.map(([n,w,r,p,s])=>`<tr><td><em style="font-style:normal;font-weight:500">${n}</em></td><td class="mono" style="color:var(--color-text-secondary);font-size:12px">${w}</td><td class="r num">${r}</td><td><span class="pill ${p}">${s}</span></td></tr>`).join("")}</tbody></table></div>`;
+  } else if(v==="channels"){
+    const ch=[["#promenade",1840,88],["#desiderata",1204,64],["#the-spindle",702,41],["#villa-straylight",318,27],["#ops",64,12]];
+    h=`<div class="hero"><div class="eyebrow">// Channels</div><h1>Signal</h1><p class="sub">Seven-day message signal per channel, normalised against the busiest room.</p></div>
+    <div class="panel"><div class="panel-head"><h2>Channels</h2><span class="count">5 rooms</span></div>
+    <table><thead><tr><th class="plain">Room</th><th class="r plain">Members</th><th class="plain" style="width:44%">Signal 7d</th></tr></thead><tbody>${ch.map(([n,m,s])=>`<tr><td class="mono">${n}</td><td class="r num">${m.toLocaleString()}</td><td><div class="bar" style="height:6px"><span style="width:${s}%"></span></div></td></tr>`).join("")}</tbody></table></div>`;
+  } else {
+    const op=[["Scoring drift on onchain dimension","decay","Epoch 41 · 04:12"],["Two members flagged for wash activity","flagged","Epoch 41 · 02:38"],["Cohort weights locked","nominal","Epoch 41 · 00:00"],["Snapshot committed","nominal","Epoch 40 · 23:59"]];
+    h=`<div class="hero"><div class="eyebrow">// Operations</div><h1>Feed</h1><p class="sub">Two open items. Severity is a dot, never a fill — one per row.</p></div>
+    <div class="panel"><div class="panel-head"><h2>Recent</h2><span class="count">4 events</span></div>
+    <table><tbody>${op.map(([t,s,w])=>`<tr><td><span class="sev s-${s}"><s></s>${t}</span></td><td class="r mono" style="color:var(--color-text-tertiary);font-size:12px">${w}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  $("#view").innerHTML=h;
+}
+function openSheet(id){
+  const m=MEMBERS.find(x=>x.id===id); if(!m)return;
+  S.sel=id;
+  const hist=[.42,.5,.47,.58,.63,.6,.72,.78,.74,.86,.92,1];
+  $("#sheet").innerHTML=`<div class="sheet-head"><div class="row1"><div><div class="eyebrow">#${m.id} · joined ${m.joined}</div><h2>${esc(m.n)}</h2></div><button class="x" id="x" aria-label="Close">✕</button></div>
+  <div style="display:flex;gap:8px;align-items:center"><span class="chip t-${m.tier}">${TIERLABEL[m.tier]}</span><span class="sev s-${m.sig}"><s></s>${SIGLABEL[m.sig]}</span></div></div>
+  <div class="sheet-sec"><div class="eyebrow">Score</div><div class="fig" style="font-size:44px;font-weight:300;line-height:1">${m.score}</div><div class="delta ${dcls(m.d)}">${dtxt(m.d)} this epoch</div><div class="spark">${hist.map(v=>`<i style="height:${v*100}%"></i>`).join("")}</div><div class="eyebrow">Last 12 epochs</div></div>
+  <div class="sheet-sec"><div class="eyebrow">Dimensions</div>
+  ${[["OG standing",m.og,"var(--dimension-og)"],["Collection depth",m.nft,"var(--dimension-nft)"],["Onchain activity",m.on,"var(--dimension-onchain)"]].map(([l,v,c])=>`<div class="dimrow"><div class="lab">${l}<b>${v}</b></div><div class="wbar"><span style="width:${v}%;background:${c}"></span></div></div>`).join("")}</div>
+  <div class="sheet-sec" style="border-bottom:none"><div class="eyebrow">Detail</div>
+  <div class="kv">BGT delegated<b>${m.bgt}</b></div><div class="kv">Cohort<b>${m.joined}</b></div><div class="kv">Signal<b>${SIGLABEL[m.sig]}</b></div></div>`;
+  $("#sheet").classList.add("on"); $("#sheet").setAttribute("aria-hidden","false"); $("#scrim").classList.add("on");
+  render();
+}
+function closeSheet(){S.sel=null;$("#sheet").classList.remove("on");$("#sheet").setAttribute("aria-hidden","true");$("#scrim").classList.remove("on");render();}
+function setRegister(r){
+  document.documentElement.className=r;
+  $("#regname").textContent=r==="light"?"Light (Paradise)":"Deep Space";
+  document.querySelectorAll("#seg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.reg===r)));
+  localStorage.setItem("fs-dash-register",r);
+}
+$("#nav").innerHTML=VIEWS.map(([k,l,c])=>`<button data-view="${k}"><i></i>${l}${c?`<em>${c}</em>`:""}</button>`).join("");
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-view],[data-reg],[data-sort],[data-tier],[data-kpi],#more,#x,#clr,#qx,tbody tr[data-id]");
+  if(!t)return;
+  if(t.dataset.view){S.view=t.dataset.view;localStorage.setItem("fs-dash-view",S.view);render();return;}
+  if(t.dataset.reg){setRegister(t.dataset.reg);return;}
+  if(t.dataset.sort){const k=t.dataset.sort;S.dir=S.sort===k?-S.dir:(k==="n"?1:-1);S.sort=k;render();return;}
+  if(t.dataset.tier){S.tiers.has(t.dataset.tier)?S.tiers.delete(t.dataset.tier):S.tiers.add(t.dataset.tier);render();return;}
+  if(t.dataset.kpi){S.sig=t.dataset.kpi==="all"?null:(S.sig===t.dataset.kpi?null:t.dataset.kpi);render();return;}
+  if(t.id==="more"){S.view="members";localStorage.setItem("fs-dash-view","members");render();return;}
+  if(t.id==="clr"){S.q="";$("#q").value="";S.tiers.clear();S.sig=null;$("#qx").hidden=true;render();return;}
+  if(t.id==="qx"){S.q="";$("#q").value="";$("#qx").hidden=true;render();return;}
+  if(t.id==="x")return closeSheet();
+  if(t.dataset.id)return t.dataset.id===S.sel?closeSheet():openSheet(t.dataset.id);
+});
+$("#scrim").addEventListener("click",closeSheet);
+$("#q").addEventListener("input",e=>{S.q=e.target.value;$("#qx").hidden=!S.q;render();});
+addEventListener("keydown",e=>{if(e.key==="Escape"){if($("#sheet").classList.contains("on"))closeSheet();else if(S.q){S.q="";$("#q").value="";$("#qx").hidden=true;render();}}});
+setRegister(localStorage.getItem("fs-dash-register")||"dark");
+render();
+</script>
+</body>
+</html>

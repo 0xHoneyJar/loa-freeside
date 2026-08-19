@@ -1,0 +1,54 @@
+/* Freeside — TYPOGRAPHY. Two faces, six roles, one size each.
+   If a piece of text is not one of these six roles, it does not belong on the page.
+
+   ROLE LADDER (largest visual weight to least):
+     wordmark  Michroma caps    — the mark itself. One per screen.
+     display   Michroma caps    — hero STATEMENTS. Rare, and never numerals:
+                                    a hero figure is Archivo, tabular.
+     title     Archivo 600      — the name of the screen. One per screen.
+     section   Archivo 600      — the name of a box.
+     body      Archivo 400      — sentences.
+     label     Archivo 600 caps — the name of a field or column.
+
+   CASING IS A RULE, NOT A CHOICE:
+     wordmark / display / label  → UPPERCASE, always.
+     title / section / body      → Sentence case, always.
+     Title Case is never used anywhere in Freeside. */
+:root{
+  --fs-font-display:'Michroma','Eurostile',sans-serif;
+  --fs-font-body:'Archivo','Helvetica Neue',system-ui,sans-serif;
+  --fs-font-narrow:'Archivo Narrow','Archivo',system-ui,sans-serif; /* dense tables only */
+  --fs-font-code:ui-monospace,'SF Mono',Menlo,monospace;            /* literal code only */
+
+  /* Legacy role aliases — every retired face now resolves to the two real ones,
+     so existing components collapse to the 2-font system with no edits. */
+  --fs-font-heading:var(--fs-font-body);
+  --fs-font-wayfind:var(--fs-font-body);
+  --fs-font-ops:var(--fs-font-body);
+  --fs-font-mono:var(--fs-font-body);   /* numerals are Archivo tabular, not a mono face */
+  --fs-font-elite:var(--fs-font-display);
+  --fs-font-jp:var(--fs-font-body);
+  --fs-font-vice:var(--fs-font-display);
+
+  /* ── Six roles. Size / weight / tracking / leading are fixed per role. ── */
+  --fs-wordmark-size:20px;   --fs-wordmark-track:.16em;  --fs-wordmark-lh:1; /* @kind other */
+  --fs-display-size:44px;    --fs-display-track:.04em;   --fs-display-lh:1.05; /* @kind other */
+  --fs-title-size:26px;      --fs-title-weight:600;      --fs-title-track:-.01em; --fs-title-lh:1.15; /* @kind other */
+  --fs-section-size:15px;    --fs-section-weight:600;    --fs-section-track:0; /* @kind other */
+  --fs-section-lh:1.3; /* @kind other */
+  --fs-body-size:14px;       --fs-body-weight:400;       --fs-body-lh:1.5; /* @kind other */
+  --fs-label-size:11px;      --fs-label-weight:600;      --fs-label-track:.14em;  --fs-label-lh:1; /* @kind other */
+
+  /* Numerals — Archivo tabular. Two sizes: a stat and a cell. Nothing between. */
+  --fs-data-lg:26px; --fs-data-sm:14px;
+  --fs-numeric:tabular-nums; /* @kind other */
+
+  /* Retained ramp for component internals. Layout never reads these. */
+  --fs-size-2xs:11px; --fs-size-xs:12px; --fs-size-sm:14px; --fs-size-base:15px;
+  --fs-size-md:17px;  --fs-size-lg:20px; --fs-size-xl:26px; --fs-size-2xl:32px;
+  --fs-size-3xl:44px; --fs-size-4xl:56px; --fs-size-5xl:72px;
+
+  --fs-leading-tight:1.05; --fs-leading-snug:1.2; --fs-leading-normal:1.5;
+  --fs-tracking-wordmark:.16em; --fs-tracking-label:.14em; --fs-tracking-normal:0;
+  --fs-weight-body:400; --fs-weight-medium:500; --fs-weight-semibold:600; --fs-weight-bold:700;
+}

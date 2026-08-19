@@ -1,0 +1,601 @@
+{
+  "name": "@freeside/design-system",
+  "version": "1.0.0-rc.1",
+  "generatedAt": "2026-08-08T19:59:29.993Z",
+  "entry": {
+    "css": "styles.css",
+    "environment": "environment.css",
+    "doctrine": "templates/_doctrine/doctrine.js"
+  },
+  "counts": {
+    "tokens": 168,
+    "components": 15,
+    "templates": 6,
+    "copyPacks": 5,
+    "fragments": 196,
+    "cards": 21,
+    "assets": 3
+  },
+  "tokens": {
+    "colors.css": [
+      "--fs-deep-space-ink",
+      "--fs-lado-sunlight",
+      "--fs-lunar-concrete",
+      "--fs-cannes-sky",
+      "--fs-babylon-foliage",
+      "--fs-organic-sand",
+      "--fs-cold-mist",
+      "--fs-brick",
+      "--fs-casino-magenta",
+      "--fs-teal",
+      "--fs-bermuda-sunset",
+      "--fs-hazard",
+      "--fs-babylon-deep",
+      "--fs-cold-mist-light",
+      "--fs-ink-2",
+      "--fs-ink-3",
+      "--fs-critical",
+      "--fs-surface-base",
+      "--fs-surface-raised",
+      "--fs-surface-sunk",
+      "--fs-surface-deep",
+      "--fs-ink-primary",
+      "--fs-ink-secondary",
+      "--fs-ink-muted",
+      "--fs-line-hairline",
+      "--fs-line-structural",
+      "--fs-on-accent",
+      "--fs-accent-1",
+      "--fs-accent-2",
+      "--fs-state-positive",
+      "--fs-state-caution",
+      "--fs-state-critical",
+      "--fs-state-neutral",
+      "--fs-state-positive-fill",
+      "--fs-state-positive-fill-ink",
+      "--fs-state-caution-fill",
+      "--fs-state-caution-fill-ink",
+      "--fs-state-critical-fill",
+      "--fs-state-critical-fill-ink",
+      "--fs-accent-authority",
+      "--fs-accent-sky",
+      "--fs-accent-foliage",
+      "--fs-accent-authority-ink",
+      "--fs-accent-sky-ink",
+      "--fs-accent-foliage-ink",
+      "--fs-state-positive-ink",
+      "--fs-state-info",
+      "--fs-state-info-ink",
+      "--fs-state-caution-ink",
+      "--fs-state-critical-ink",
+      "--fs-state-neutral-ink",
+      "--fs-elev-1",
+      "--fs-elev-2",
+      "--fs-elev-3",
+      "--fs-shadow-1",
+      "--fs-shadow-2",
+      "--fs-shadow-3"
+    ],
+    "fonts.css": [],
+    "spacing.css": [
+      "--fs-gap-tight",
+      "--fs-gap",
+      "--fs-gutter",
+      "--fs-margin",
+      "--fs-pad-box",
+      "--fs-pad-cell",
+      "--fs-space-0",
+      "--fs-space-1",
+      "--fs-space-2",
+      "--fs-space-3",
+      "--fs-space-4",
+      "--fs-space-6",
+      "--fs-space-8",
+      "--fs-space-12",
+      "--fs-space-16",
+      "--fs-space-24",
+      "--fs-space-5",
+      "--fs-space-10",
+      "--fs-space-20",
+      "--fs-space-32",
+      "--fs-radius-none",
+      "--fs-radius-sm",
+      "--fs-radius-md",
+      "--fs-radius-pill",
+      "--fs-border-w",
+      "--fs-accent-bar-w",
+      "--fs-shadow-1",
+      "--fs-shadow-2",
+      "--fs-shadow-3",
+      "--fs-ease-standard",
+      "--fs-ease-exit",
+      "--fs-dur-fast",
+      "--fs-dur-base",
+      "--fs-dur-slow",
+      "--fs-dur-signature",
+      "--fs-lado-sky",
+      "--fs-z-base",
+      "--fs-z-nav",
+      "--fs-z-overlay",
+      "--fs-z-modal",
+      "--fs-z-toast",
+      "--fs-page-pad",
+      "--fs-band-pad",
+      "--fs-panel-pad",
+      "--fs-card-pad",
+      "--fs-tile-pad",
+      "--fs-pad-page",
+      "--fs-gap-stack"
+    ],
+    "typography.css": [
+      "--fs-font-display",
+      "--fs-font-body",
+      "--fs-font-narrow",
+      "--fs-font-code",
+      "--fs-font-heading",
+      "--fs-font-wayfind",
+      "--fs-font-ops",
+      "--fs-font-mono",
+      "--fs-font-elite",
+      "--fs-font-jp",
+      "--fs-font-vice",
+      "--fs-wordmark-size",
+      "--fs-wordmark-track",
+      "--fs-wordmark-lh",
+      "--fs-display-size",
+      "--fs-display-track",
+      "--fs-display-lh",
+      "--fs-title-size",
+      "--fs-title-weight",
+      "--fs-title-track",
+      "--fs-title-lh",
+      "--fs-section-size",
+      "--fs-section-weight",
+      "--fs-section-track",
+      "--fs-section-lh",
+      "--fs-body-size",
+      "--fs-body-weight",
+      "--fs-body-lh",
+      "--fs-label-size",
+      "--fs-label-weight",
+      "--fs-label-track",
+      "--fs-label-lh",
+      "--fs-data-lg",
+      "--fs-data-sm",
+      "--fs-numeric",
+      "--fs-size-2xs",
+      "--fs-size-xs",
+      "--fs-size-sm",
+      "--fs-size-base",
+      "--fs-size-md",
+      "--fs-size-lg",
+      "--fs-size-xl",
+      "--fs-size-2xl",
+      "--fs-size-3xl",
+      "--fs-size-4xl",
+      "--fs-size-5xl",
+      "--fs-leading-tight",
+      "--fs-leading-snug",
+      "--fs-leading-normal",
+      "--fs-tracking-wordmark",
+      "--fs-tracking-label",
+      "--fs-tracking-normal",
+      "--fs-weight-body",
+      "--fs-weight-medium",
+      "--fs-weight-semibold",
+      "--fs-weight-bold"
+    ]
+  },
+  "environmentTokens": [
+    "--fs-env-sky-high",
+    "--fs-env-sky-low",
+    "--fs-env-air",
+    "--fs-env-axis",
+    "--fs-env-axis-bloom",
+    "--fs-env-axis-top",
+    "--fs-env-bloom",
+    "--fs-env-curve",
+    "--fs-env-plate-filter",
+    "--fs-env-hem"
+  ],
+  "components": [
+    {
+      "name": "Button",
+      "group": "actions",
+      "types": "components/actions/Button.d.ts",
+      "impl": "components/actions/Button.jsx",
+      "docs": "components/actions/Button.prompt.md"
+    },
+    {
+      "name": "Input",
+      "group": "actions",
+      "types": "components/actions/Input.d.ts",
+      "impl": "components/actions/Input.jsx",
+      "docs": "components/actions/Input.prompt.md"
+    },
+    {
+      "name": "ChatBubble",
+      "group": "chat",
+      "types": "components/chat/ChatBubble.d.ts",
+      "impl": "components/chat/ChatBubble.jsx",
+      "docs": "components/chat/ChatBubble.prompt.md"
+    },
+    {
+      "name": "DataTable",
+      "group": "data",
+      "types": "components/data/DataTable.d.ts",
+      "impl": "components/data/DataTable.jsx",
+      "docs": "components/data/DataTable.prompt.md"
+    },
+    {
+      "name": "InfoRow",
+      "group": "data",
+      "types": "components/data/InfoRow.d.ts",
+      "impl": "components/data/InfoRow.jsx",
+      "docs": "components/data/InfoRow.prompt.md"
+    },
+    {
+      "name": "MessageBox",
+      "group": "data",
+      "types": "components/data/MessageBox.d.ts",
+      "impl": "components/data/MessageBox.jsx",
+      "docs": "components/data/MessageBox.prompt.md"
+    },
+    {
+      "name": "Step",
+      "group": "data",
+      "types": "components/data/Step.d.ts",
+      "impl": "components/data/Step.jsx",
+      "docs": "components/data/Step.prompt.md"
+    },
+    {
+      "name": "Callout",
+      "group": "status",
+      "types": "components/status/Callout.d.ts",
+      "impl": "components/status/Callout.jsx",
+      "docs": "components/status/Callout.prompt.md"
+    },
+    {
+      "name": "Spinner",
+      "group": "status",
+      "types": "components/status/Spinner.d.ts",
+      "impl": "components/status/Spinner.jsx",
+      "docs": "components/status/Spinner.prompt.md"
+    },
+    {
+      "name": "StatusBadge",
+      "group": "status",
+      "types": "components/status/StatusBadge.d.ts",
+      "impl": "components/status/StatusBadge.jsx",
+      "docs": "components/status/StatusBadge.prompt.md"
+    },
+    {
+      "name": "StatusPill",
+      "group": "status",
+      "types": "components/status/StatusPill.d.ts",
+      "impl": "components/status/StatusPill.jsx",
+      "docs": "components/status/StatusPill.prompt.md"
+    },
+    {
+      "name": "TierBadge",
+      "group": "status",
+      "types": "components/status/TierBadge.d.ts",
+      "impl": "components/status/TierBadge.jsx",
+      "docs": "components/status/TierBadge.prompt.md"
+    },
+    {
+      "name": "Card",
+      "group": "surfaces",
+      "types": "components/surfaces/Card.d.ts",
+      "impl": "components/surfaces/Card.jsx",
+      "docs": "components/surfaces/Card.prompt.md"
+    },
+    {
+      "name": "Panel",
+      "group": "surfaces",
+      "types": "components/surfaces/Panel.d.ts",
+      "impl": "components/surfaces/Panel.jsx",
+      "docs": "components/surfaces/Panel.prompt.md"
+    },
+    {
+      "name": "Tile",
+      "group": "surfaces",
+      "types": "components/surfaces/Tile.d.ts",
+      "impl": "components/surfaces/Tile.jsx",
+      "docs": "components/surfaces/Tile.prompt.md"
+    }
+  ],
+  "templates": [
+    {
+      "slug": "degraded-states",
+      "entry": "templates/degraded-states/DegradedStates.dc.html",
+      "name": "degraded-states",
+      "description": "",
+      "copyPack": "templates/degraded-states/copy.js",
+      "checks": null,
+      "printCopy": "templates/_print/DegradedStates.dc.html",
+      "files": [
+        "DegradedStates.dc.html",
+        "README.md",
+        "copy.js",
+        "ds-base.js",
+        "support.js"
+      ]
+    },
+    {
+      "slug": "docs",
+      "entry": "templates/docs/Docs.dc.html",
+      "name": "docs",
+      "description": "",
+      "copyPack": "templates/docs/copy.js",
+      "checks": null,
+      "printCopy": "templates/_print/Docs.dc.html",
+      "files": [
+        "Docs.dc.html",
+        "README.md",
+        "copy.js",
+        "ds-base.js",
+        "support.js"
+      ]
+    },
+    {
+      "slug": "guest-surface",
+      "entry": "templates/guest-surface/GuestSurface.dc.html",
+      "name": "guest-surface",
+      "description": "",
+      "copyPack": "templates/guest-surface/copy.js",
+      "checks": null,
+      "printCopy": "templates/_print/GuestSurface.dc.html",
+      "files": [
+        "GuestSurface.dc.html",
+        "README.md",
+        "copy.js",
+        "ds-base.js",
+        "support.js"
+      ]
+    },
+    {
+      "slug": "permission-gate",
+      "entry": "templates/permission-gate/PermissionGate.dc.html",
+      "name": "permission-gate",
+      "description": "",
+      "copyPack": "templates/permission-gate/copy.js",
+      "checks": null,
+      "printCopy": "templates/_print/PermissionGate.dc.html",
+      "files": [
+        "PermissionGate.dc.html",
+        "README.md",
+        "copy.js",
+        "ds-base.js",
+        "support.js"
+      ]
+    },
+    {
+      "slug": "roster",
+      "entry": "templates/roster/Roster.dc.html",
+      "name": "roster",
+      "description": "",
+      "copyPack": "templates/roster/copy.js",
+      "checks": "templates/roster/checks.js",
+      "printCopy": "templates/_print/Roster.dc.html",
+      "files": [
+        "README.md",
+        "Roster.dc.html",
+        "checks.js",
+        "copy.js",
+        "ds-base.js",
+        "support.js"
+      ]
+    },
+    {
+      "slug": "station-console",
+      "entry": "templates/station-console/StationConsole.dc.html",
+      "name": "station-console",
+      "description": "",
+      "copyPack": null,
+      "checks": null,
+      "printCopy": "templates/_print/StationConsole.dc.html",
+      "files": [
+        "README.md",
+        "StationConsole.dc.html",
+        "ds-base.js",
+        "support.js"
+      ]
+    }
+  ],
+  "copyPacks": [
+    {
+      "id": "degraded-states",
+      "file": "templates/degraded-states/copy.js",
+      "template": "degraded-states",
+      "fragments": 33
+    },
+    {
+      "id": "docs",
+      "file": "templates/docs/copy.js",
+      "template": "docs",
+      "fragments": 19
+    },
+    {
+      "id": "guest-surface",
+      "file": "templates/guest-surface/copy.js",
+      "template": "guest-surface",
+      "fragments": 65
+    },
+    {
+      "id": "permission-gate",
+      "file": "templates/permission-gate/copy.js",
+      "template": "permission-gate",
+      "fragments": 58
+    },
+    {
+      "id": "roster",
+      "file": "templates/roster/copy.js",
+      "template": "roster",
+      "fragments": 21
+    }
+  ],
+  "cards": [
+    {
+      "file": "cards/brand-environment.card.html",
+      "group": "Brand",
+      "viewport": "1280x4700",
+      "name": "Environment",
+      "subtitle": "One plate, four precisions — the media system for the inside of the cylinder"
+    },
+    {
+      "file": "cards/brand-glyphs.card.html",
+      "group": "Brand",
+      "viewport": "720x220",
+      "name": "Iconography",
+      "subtitle": "Fine-line glyphs, unframed. No coin circles, no filled or duotone icons."
+    },
+    {
+      "file": "cards/brand-marks.card.html",
+      "group": "Brand",
+      "viewport": "720x340",
+      "name": "Lockups",
+      "subtitle": "Wordmark, tagline, and the tabular figure line — two faces, no monogram"
+    },
+    {
+      "file": "cards/brand-wordmark.card.html",
+      "group": "Brand",
+      "viewport": "720x300",
+      "name": "Wordmark",
+      "subtitle": "The lockup is the only place the axial device appears. Never inline, never in a header."
+    },
+    {
+      "file": "cards/colors-accents.card.html",
+      "group": "Colors",
+      "viewport": "720x430",
+      "name": "Accent pairs",
+      "subtitle": "A surface picks ONE pair. Components read only accent-1 and accent-2 — never past them."
+    },
+    {
+      "file": "cards/colors-core.card.html",
+      "group": "Colors",
+      "viewport": "720x150",
+      "name": "Main palette",
+      "subtitle": "Deep Space Ink · Lado Sunlight · Lunar Concrete · Cannes Sky · Babylon Foliage"
+    },
+    {
+      "file": "cards/colors-inks.card.html",
+      "group": "Colors",
+      "viewport": "720x230",
+      "name": "Ink",
+      "subtitle": "One ink. Text is Deep Space Ink on light, Lado Sunlight on deep — colour is never a letterform"
+    },
+    {
+      "file": "cards/colors-materials.card.html",
+      "group": "Colors",
+      "viewport": "720x150",
+      "name": "Secondary",
+      "subtitle": "Organic Chic Sand · Cold Mist (silver) · Rose Brick"
+    },
+    {
+      "file": "cards/colors-registers.card.html",
+      "group": "Colors",
+      "viewport": "720x230",
+      "name": "Registers",
+      "subtitle": "Light (Paradise) is default; Deep Space (Authority) is earned"
+    },
+    {
+      "file": "cards/doctrine-conformance.card.html",
+      "group": "Doctrine",
+      "viewport": "1280x7950",
+      "name": "Conformance",
+      "subtitle": "37 checks over 276 cases — catalogue validity, fragment policy, selectors, reachability, deliberate failure, non-visual leakage"
+    },
+    {
+      "file": "cards/doctrine-exposure.card.html",
+      "group": "Doctrine",
+      "viewport": "1280x6300",
+      "name": "Exposure",
+      "subtitle": "The one mechanism: how much of the machine is showing, and what turns it"
+    },
+    {
+      "file": "cards/doctrine-review-guest-surface.card.html",
+      "group": "Doctrine",
+      "viewport": "1280x4700",
+      "name": "Review · Guest surface",
+      "subtitle": "One reading at four precisions, and one action whose label degrades"
+    },
+    {
+      "file": "cards/doctrine-review-permission-gate.card.html",
+      "group": "Doctrine",
+      "viewport": "1280x3900",
+      "name": "Review · Permission gate",
+      "subtitle": "One refusal, six contexts — silent, abstract and explicit disclosure"
+    },
+    {
+      "file": "cards/doctrine-review-roster.card.html",
+      "group": "Doctrine",
+      "viewport": "1280x6600",
+      "name": "Review · Roster",
+      "subtitle": "Rows, columns and the count — and a capability grant that changes neither"
+    },
+    {
+      "file": "cards/retrofit.card.html",
+      "group": "Doctrine",
+      "viewport": "1280x3600",
+      "name": "Retrofit",
+      "subtitle": "Putting Freeside colour into a repo that already has its own token layer — one file, no component edits"
+    },
+    {
+      "file": "cards/spacing-radii.card.html",
+      "group": "Spacing",
+      "viewport": "720x180",
+      "name": "Radius & form",
+      "subtitle": "Square by default — roundness is earned by context"
+    },
+    {
+      "file": "cards/spacing-scale.card.html",
+      "group": "Spacing",
+      "viewport": "720x230",
+      "name": "Scale",
+      "subtitle": "4px sub-unit, 8px rhythm"
+    },
+    {
+      "file": "cards/spacing-shadows.card.html",
+      "group": "Spacing",
+      "viewport": "720x200",
+      "name": "Elevation",
+      "subtitle": "Mineral tint + hairline first; soft ink-tinted shadow second — no glow in base"
+    },
+    {
+      "file": "cards/type-labels.card.html",
+      "group": "Type",
+      "viewport": "720x220",
+      "name": "Case & tracking",
+      "subtitle": "Wordmark 0.14em · label 0.18em uppercase · body normal"
+    },
+    {
+      "file": "cards/type-scale.card.html",
+      "group": "Type",
+      "viewport": "720x330",
+      "name": "Scale",
+      "subtitle": "Modular ~1.25 — wordmark 112 down to 11px micro-labels"
+    },
+    {
+      "file": "cards/type-system.card.html",
+      "group": "Type",
+      "viewport": "720x430",
+      "name": "Two faces, six roles",
+      "subtitle": "Michroma sets the wordmark and display. Archivo sets everything else, including every numeral."
+    }
+  ],
+  "assets": [
+    {
+      "file": "assets/horse-mark.svg",
+      "bytes": 1114
+    },
+    {
+      "file": "assets/station-interior.png",
+      "bytes": 99882
+    },
+    {
+      "file": "assets/terrace-plate.png",
+      "bytes": 1088655
+    }
+  ]
+}

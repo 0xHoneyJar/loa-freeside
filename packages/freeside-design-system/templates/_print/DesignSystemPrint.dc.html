@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<script src="./ds-base.js"></script>
+<script src="../_doctrine/doctrine.js"></script>
+<script src="../_doctrine/fixtures.js"></script>
+<script src="../permission-gate/copy.js"></script>
+<script src="../guest-surface/copy.js"></script>
+<script src="../roster/copy.js"></script>
+<script src="../degraded-states/copy.js"></script>
+<script src="../docs/copy.js"></script>
+<script src="../../doc-page.js"></script>
+<style>
+html,body{margin:0;padding:0}
+doc-page:not(:defined){visibility:hidden}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+*{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}
+.doc{font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);color:var(--fs-deep-space-ink)}
+.doc p{text-wrap:pretty}
+.grp{break-before:page;display:flex;flex-direction:column;gap:8px;margin:0 0 40px;padding-bottom:16px;border-bottom:3px solid var(--fs-accent-1)}
+.grpname{font-family:var(--fs-font-display);font-size:34px;line-height:1;letter-spacing:var(--fs-display-track);text-transform:uppercase}
+.grpnote{font-size:var(--fs-size-sm);color:var(--fs-ink-muted-on-light,#5C6166)}
+.blk,.spec{break-inside:avoid;margin:0 0 40px;display:flex;flex-direction:column;gap:12px}
+.cap{display:flex;flex-direction:column;gap:2px}
+.capname{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)}
+.capsub{font-size:var(--fs-size-xs);color:#5C6166}
+.specbody{background:var(--fs-surface-base);color:var(--fs-ink-primary);padding:24px;display:flex;flex-direction:column;gap:18px;width:720px}
+.srow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.slbl{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);font-weight:600}
+.tpl{break-before:page;height:1520px;overflow:hidden}
+.tpl .sc-host>div[data-register]{min-height:1430px !important;height:1430px !important}
+.tplcap{display:flex;align-items:center;gap:12px;height:40px}
+.tag{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent)}
+.mut{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:#5C6166}
+.fig{font-size:var(--fs-size-xs);color:#5C6166;margin-left:auto;font-variant-numeric:tabular-nums}
+/* brand-glyphs */
+[data-card="brand-glyphs"]{margin:0;padding:48px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="brand-glyphs"] .grid{display:flex;gap:48px;flex-wrap:wrap;align-items:flex-start}[data-card="brand-glyphs"] .cell{display:flex;flex-direction:column;align-items:center;gap:16px}[data-card="brand-glyphs"] .cell svg{width:28px;height:28px;fill:none;stroke:var(--fs-ink-primary);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}[data-card="brand-glyphs"] .n{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)}[data-card="brand-glyphs"] .note{font-size:14px;line-height:1.5;color:var(--fs-ink-secondary);margin-top:48px;padding-top:24px;border-top:1px solid var(--fs-line-hairline)}
+/* brand-imagery */
+[data-card="brand-imagery"]{margin:0;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary);display:grid;grid-template-columns:1fr 1.15fr;min-height:330px}[data-card="brand-imagery"] .copy{padding:32px 28px;display:flex;flex-direction:column;justify-content:center;gap:14px}[data-card="brand-imagery"] h3{font-family:var(--fs-font-heading);font-size:22px;font-weight:600;margin:0}[data-card="brand-imagery"] p{margin:0;font-size:13px;line-height:1.6;color:var(--fs-ink-secondary)}[data-card="brand-imagery"] .k{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);font-weight:600}[data-card="brand-imagery"] .frame{position:relative;overflow:hidden}[data-card="brand-imagery"] .frame img{width:100%;height:100%;object-fit:cover;display:block}[data-card="brand-imagery"] .seam{position:absolute;inset:0;background:linear-gradient(90deg,var(--fs-surface-base) 0%,rgba(247,241,229,0) 34%)}
+/* brand-marks */
+[data-card="brand-marks"]{margin:0;padding:32px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary);display:flex;flex-direction:column;gap:24px}[data-card="brand-marks"] .k{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);margin-bottom:8px}[data-card="brand-marks"] .wordmark{font-family:var(--fs-font-display);font-size:30px;letter-spacing:var(--fs-wordmark-track);line-height:1}[data-card="brand-marks"] .tagline{font-size:13px;text-transform:uppercase;letter-spacing:.2em;color:var(--fs-accent-1);font-weight:600}[data-card="brand-marks"] .figs{font-size:14px;color:var(--fs-ink-secondary);font-variant-numeric:var(--fs-numeric);letter-spacing:.04em}[data-card="brand-marks"] .lockup{display:flex;flex-direction:column;gap:8px}[data-card="brand-marks"] .compact{display:flex;align-items:baseline;gap:16px}[data-card="brand-marks"] .note{font-size:12px;color:var(--fs-ink-secondary);line-height:1.6;border-top:1px solid var(--fs-line-hairline);padding-top:16px;max-width:70ch;text-wrap:pretty}
+/* brand-wordmark */
+[data-card="brand-wordmark"]{margin:0;padding:48px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}[data-card="brand-wordmark"] .wm{font-family:var(--fs-font-display);font-size:56px;letter-spacing:.16em;text-indent:.16em}[data-card="brand-wordmark"] .axis{display:flex;align-items:center;gap:16px;width:420px}[data-card="brand-wordmark"] .axis .r{flex:1;height:1px;background:var(--fs-accent-1)}[data-card="brand-wordmark"] .axis .star{color:var(--fs-accent-1);font-size:16px;line-height:1}[data-card="brand-wordmark"] .note{font-size:14px;line-height:1.5;color:var(--fs-ink-secondary);max-width:520px;text-align:center;margin-top:24px;padding-top:24px;border-top:1px solid var(--fs-line-hairline)}
+/* colors-core */
+[data-card="colors-core"]{margin:0;padding:20px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="colors-core"] .grid{display:flex;gap:12px;flex-wrap:wrap}[data-card="colors-core"] .sw{flex:1 1 0;min-width:110px}[data-card="colors-core"] .c{height:64px;border:1px solid var(--fs-line-hairline)}[data-card="colors-core"] .n{font-size:11px;margin-top:8px;font-weight:600}[data-card="colors-core"] .h{color:var(--fs-ink-muted);font-size:10px;margin-top:2px;font-family:var(--fs-font-body)}
+/* colors-accents */
+[data-card="colors-accents"]{margin:0;padding:48px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary);display:flex;flex-direction:column;gap:24px}[data-card="colors-accents"] .pair{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:24px}[data-card="colors-accents"] .name{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}[data-card="colors-accents"] .sub{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);margin-top:8px}[data-card="colors-accents"] .bars{display:flex;gap:8px}[data-card="colors-accents"] .bar{height:40px;flex:1;display:flex;align-items:flex-end;padding:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}[data-card="colors-accents"] .bar1{color:var(--fs-on-accent)}[data-card="colors-accents"] .bar2{color:var(--fs-deep-space-ink)}[data-card="colors-accents"] .note{font-size:14px;line-height:1.5;color:var(--fs-ink-secondary);padding-top:24px;border-top:1px solid var(--fs-line-hairline)}
+/* colors-inks */
+[data-card="colors-inks"]{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="colors-inks"] .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}[data-card="colors-inks"] .pane{padding:20px;border:1px solid var(--fs-line-structural)}[data-card="colors-inks"] .k{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);font-weight:600;margin-bottom:12px}[data-card="colors-inks"] .big{font-size:22px;font-weight:600;margin-bottom:4px}[data-card="colors-inks"] .sm{font-size:13px;color:var(--fs-ink-secondary)}[data-card="colors-inks"] .mu{font-size:11px;color:var(--fs-ink-muted);margin-top:6px;font-family:var(--fs-font-body)}[data-card="colors-inks"] .rule{display:flex;gap:0;margin-top:16px}[data-card="colors-inks"] .rule div{flex:1;height:6px}[data-card="colors-inks"] .note{font-size:12px;color:var(--fs-ink-secondary);line-height:1.6;border-top:1px solid var(--fs-line-structural);padding-top:14px}
+/* colors-materials */
+[data-card="colors-materials"]{margin:0;padding:20px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="colors-materials"] .grid{display:flex;gap:12px;flex-wrap:wrap}[data-card="colors-materials"] .sw{flex:1 1 0;min-width:120px}[data-card="colors-materials"] .c{height:64px;border:1px solid var(--fs-line-hairline)}[data-card="colors-materials"] .n{font-size:11px;margin-top:8px;font-weight:600}[data-card="colors-materials"] .h{color:var(--fs-ink-muted);font-size:10px;margin-top:2px;font-family:var(--fs-font-body)}
+/* colors-registers */
+[data-card="colors-registers"]{margin:0;padding:20px;background:#b9b6ad;font-family:var(--fs-font-body)}[data-card="colors-registers"] .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}[data-card="colors-registers"] .reg{background:var(--fs-surface-base);border:1px solid var(--fs-line-hairline);padding:18px}[data-card="colors-registers"] .cap{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--fs-ink-muted);font-weight:600;margin-bottom:12px}[data-card="colors-registers"] h3{font-family:var(--fs-font-display);font-size:20px;letter-spacing:.06em;margin:0 0 4px;color:var(--fs-ink-primary)}[data-card="colors-registers"] p{margin:0;font-size:12px;color:var(--fs-ink-secondary)}[data-card="colors-registers"] .chips{display:flex;gap:8px;margin-top:14px}[data-card="colors-registers"] .chip{flex:1;height:34px;border:1px solid var(--fs-line-hairline)}
+/* type-system */
+[data-card="type-system"]{margin:0;padding:48px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="type-system"] .row{display:grid;grid-template-columns:120px 1fr auto;align-items:baseline;gap:24px;padding:16px 0;border-bottom:1px solid var(--fs-line-hairline)}[data-card="type-system"] .row:last-child{border-bottom:none}[data-card="type-system"] .tag{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted)}[data-card="type-system"] .spec{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--fs-ink-muted);font-variant-numeric:tabular-nums}
+/* type-scale */
+[data-card="type-scale"]{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="type-scale"] .row{display:flex;align-items:baseline;gap:16px;margin-bottom:10px}[data-card="type-scale"] .px{flex:0 0 78px;font-family:var(--fs-font-body);font-size:10px;color:var(--fs-ink-muted);text-align:right}[data-card="type-scale"] .d{font-family:var(--fs-font-display);letter-spacing:.06em;color:var(--fs-ink-primary);line-height:1.05}[data-card="type-scale"] .b{font-family:var(--fs-font-body);color:var(--fs-ink-primary);line-height:1.1}
+/* type-labels */
+[data-card="type-labels"]{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="type-labels"] .row{margin-bottom:20px}[data-card="type-labels"] .k{font-family:var(--fs-font-body);font-size:10px;color:var(--fs-ink-muted);margin-bottom:6px}
+/* spacing-scale */
+[data-card="spacing-scale"]{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="spacing-scale"] .row{display:flex;align-items:center;gap:16px;margin-bottom:9px}[data-card="spacing-scale"] .k{flex:0 0 120px;font-family:var(--fs-font-body);font-size:11px;color:var(--fs-ink-muted)}[data-card="spacing-scale"] .bar{height:16px;background:var(--fs-accent-authority)}
+/* spacing-radii */
+[data-card="spacing-radii"]{margin:0;padding:24px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="spacing-radii"] .grid{display:flex;gap:20px;flex-wrap:wrap}[data-card="spacing-radii"] .cell{text-align:center}[data-card="spacing-radii"] .box{width:88px;height:64px;background:var(--fs-surface-raised);border:1px solid var(--fs-line-structural)}[data-card="spacing-radii"] .n{font-size:11px;margin-top:8px;font-weight:600}[data-card="spacing-radii"] .h{font-family:var(--fs-font-body);font-size:10px;color:var(--fs-ink-muted);margin-top:2px}
+/* spacing-shadows */
+[data-card="spacing-shadows"]{margin:0;padding:28px;background:var(--fs-surface-base);font-family:var(--fs-font-body);color:var(--fs-ink-primary)}[data-card="spacing-shadows"] .grid{display:flex;gap:28px;flex-wrap:wrap}[data-card="spacing-shadows"] .cell{text-align:center}[data-card="spacing-shadows"] .box{width:120px;height:72px;background:var(--fs-surface-raised);border:1px solid var(--fs-line-hairline)}[data-card="spacing-shadows"] .n{font-size:11px;margin-top:12px;font-weight:600}[data-card="spacing-shadows"] .h{font-family:var(--fs-font-body);font-size:10px;color:var(--fs-ink-muted);margin-top:2px}
+/* doctrine-exposure */
+[data-card="doctrine-exposure"] *{box-sizing:border-box;margin:0;padding:0}[data-card="doctrine-exposure"]{background:var(--fs-deep-space-ink)}[data-card="doctrine-exposure"]{width:100%;font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric)}[data-card="doctrine-exposure"] section{padding:48px;background:var(--fs-surface-base);color:var(--fs-ink-primary)}[data-card="doctrine-exposure"] a{color:var(--fs-accent-2)}[data-card="doctrine-exposure"] a:hover{color:var(--fs-accent-1)}[data-card="doctrine-exposure"] .wordmark{font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1}[data-card="doctrine-exposure"] .display{font-family:var(--fs-font-display);font-size:var(--fs-display-size);letter-spacing:var(--fs-display-track);line-height:var(--fs-display-lh);text-transform:uppercase}[data-card="doctrine-exposure"] .title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}[data-card="doctrine-exposure"] .sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh)}[data-card="doctrine-exposure"] .lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);line-height:var(--fs-label-lh);text-transform:uppercase;color:var(--fs-ink-muted)}[data-card="doctrine-exposure"] .body{font-size:var(--fs-body-size)}[data-card="doctrine-exposure"] p{max-width:74ch;text-wrap:pretty;color:var(--fs-ink-secondary)}[data-card="doctrine-exposure"] .stack-8{display:flex;flex-direction:column;gap:8px}[data-card="doctrine-exposure"] .stack-16{display:flex;flex-direction:column;gap:16px}[data-card="doctrine-exposure"] .stack-24{display:flex;flex-direction:column;gap:24px}[data-card="doctrine-exposure"] .stack-48{display:flex;flex-direction:column;gap:48px}[data-card="doctrine-exposure"] .row-8{display:flex;gap:8px;align-items:center}[data-card="doctrine-exposure"] .row-16{display:flex;gap:16px;align-items:center}[data-card="doctrine-exposure"] .row-24{display:flex;gap:24px}[data-card="doctrine-exposure"] .g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}[data-card="doctrine-exposure"] .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}[data-card="doctrine-exposure"] .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}[data-card="doctrine-exposure"] .panel{background:var(--fs-surface-raised);padding:24px;display:flex;flex-direction:column;gap:16px}[data-card="doctrine-exposure"] .rule{height:1px;background:var(--fs-line-hairline)}[data-card="doctrine-exposure"] .bar{height:3px;background:var(--fs-accent-1)}[data-card="doctrine-exposure"] .dot{width:8px;height:8px;flex:0 0 auto}[data-card="doctrine-exposure"] /* exposure meter */
+.meter{display:flex;gap:2px;width:168px}[data-card="doctrine-exposure"] .meter i{height:8px;flex:1;background:var(--fs-line-structural);display:block}[data-card="doctrine-exposure"] .meter i.on{background:var(--fs-accent-1)}[data-card="doctrine-exposure"] /* specimen */
+.spec{display:flex;flex-direction:column;gap:16px;padding:24px;min-height:236px}[data-card="doctrine-exposure"] .spec .num{font-size:var(--fs-data-lg);font-weight:600;letter-spacing:-.01em}[data-card="doctrine-exposure"] .spec .cell{font-size:var(--fs-data-sm)}[data-card="doctrine-exposure"] .tbl{width:100%;border-collapse:collapse}[data-card="doctrine-exposure"] .tbl th{text-align:left;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:0 16px 8px 0;white-space:nowrap;vertical-align:bottom}[data-card="doctrine-exposure"] .tbl td{padding:8px 16px 8px 0;border-top:1px solid var(--fs-line-hairline);vertical-align:top;font-size:var(--fs-body-size)}[data-card="doctrine-exposure"] .tbl td:first-child,[data-card="doctrine-exposure"] .tbl th:first-child{padding-left:0}[data-card="doctrine-exposure"] .tbl .k{color:var(--fs-ink-muted);font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;white-space:nowrap}[data-card="doctrine-exposure"] .law{display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start}[data-card="doctrine-exposure"] .law .n{font-family:var(--fs-font-display);font-size:26px;line-height:1;color:var(--fs-accent-1)}[data-card="doctrine-exposure"] .tag{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;background:var(--fs-accent-1);color:var(--fs-on-accent);display:inline-block}[data-card="doctrine-exposure"] .ghost{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;padding:4px 8px;border:1px solid var(--fs-line-structural);color:var(--fs-ink-muted);display:inline-block}[data-card="doctrine-exposure"] .no{border-left:3px solid var(--fs-state-critical);padding-left:16px}[data-card="doctrine-exposure"] .formula{font-size:var(--fs-size-md);font-weight:600;letter-spacing:-.01em;padding:16px 24px;background:var(--fs-surface-raised);border-left:3px solid var(--fs-accent-1);color:var(--fs-ink-primary)}[data-card="doctrine-exposure"] .meter i.cap{background:var(--fs-state-critical);opacity:.32}[data-card="doctrine-exposure"] .yes{border-left:3px solid var(--fs-state-positive);padding-left:16px}
+/* retrofit */
+[data-card="retrofit"] *{box-sizing:border-box;margin:0;padding:0}[data-card="retrofit"]{width:100%;background:var(--fs-surface-base);color:var(--fs-ink-primary);font-family:var(--fs-font-body);font-size:var(--fs-body-size);line-height:var(--fs-body-lh);font-variant-numeric:var(--fs-numeric);padding:48px}[data-card="retrofit"] a{color:var(--fs-accent-2)}[data-card="retrofit"] a:hover{color:var(--fs-accent-1)}[data-card="retrofit"] .lab{font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)}[data-card="retrofit"] .title{font-size:var(--fs-title-size);font-weight:var(--fs-title-weight);letter-spacing:var(--fs-title-track);line-height:var(--fs-title-lh)}[data-card="retrofit"] .sec{font-size:var(--fs-section-size);font-weight:var(--fs-section-weight);line-height:var(--fs-section-lh)}[data-card="retrofit"] .stack-8{display:flex;flex-direction:column;gap:8px}[data-card="retrofit"] .stack-16{display:flex;flex-direction:column;gap:16px}[data-card="retrofit"] .stack-24{display:flex;flex-direction:column;gap:24px}[data-card="retrofit"] .stack-48{display:flex;flex-direction:column;gap:48px}[data-card="retrofit"] .row-16{display:flex;gap:16px;align-items:center}[data-card="retrofit"] p{max-width:80ch;text-wrap:pretty;color:var(--fs-ink-secondary)}[data-card="retrofit"] .rule{height:1px;background:var(--fs-line-hairline)}[data-card="retrofit"] .panel{background:var(--fs-surface-raised);padding:24px;display:flex;flex-direction:column;gap:16px}[data-card="retrofit"] .g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}[data-card="retrofit"] .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}[data-card="retrofit"] .step{display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start}[data-card="retrofit"] .step .n{font-family:var(--fs-font-display);font-size:22px;line-height:1.2;color:var(--fs-accent-1)}[data-card="retrofit"] pre{background:var(--fs-surface-sunk);padding:16px;overflow-x:auto;font-size:var(--fs-size-xs);line-height:1.7;color:var(--fs-ink-secondary);border-left:3px solid var(--fs-accent-1)}[data-card="retrofit"] code{color:var(--fs-ink-primary)}[data-card="retrofit"] table{width:100%;border-collapse:collapse}[data-card="retrofit"] th{text-align:left;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted);padding:0 16px 8px 0;white-space:nowrap}[data-card="retrofit"] td{padding:8px 16px 8px 0;border-top:1px solid var(--fs-line-hairline);vertical-align:top;font-size:var(--fs-size-xs)}[data-card="retrofit"] .sw{display:inline-flex;align-items:center;gap:8px}[data-card="retrofit"] .sw i{width:24px;height:14px;border:1px solid var(--fs-line-structural);display:block;flex:0 0 auto}[data-card="retrofit"] .no{border-left:3px solid var(--fs-state-critical);padding-left:16px}[data-card="retrofit"] .yes{border-left:3px solid var(--fs-state-positive);padding-left:16px}[data-card="retrofit"] .warn{border-left:3px solid var(--fs-state-caution);padding-left:16px}</style>
+</helmet>
+
+<doc-page width="1280px" height="1656px" margin="48px">
+<div class="doc">
+
+<div style="height:1560px;display:flex;flex-direction:column;background:var(--fs-deep-space-ink);color:var(--fs-ink-primary);padding:64px">
+<div style="display:flex;align-items:baseline;gap:24px">
+<span style="font-family:var(--fs-font-display);font-size:var(--fs-wordmark-size);letter-spacing:var(--fs-wordmark-track);line-height:1">FREESIDE</span>
+<span style="margin-left:auto;font-size:var(--fs-label-size);font-weight:var(--fs-label-weight);letter-spacing:var(--fs-label-track);text-transform:uppercase;color:var(--fs-ink-muted)">Design system · 4 August 2026</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:32px">
+<div style="height:3px;background:var(--fs-accent-1);width:220px"></div>
+<h1 style="font-family:var(--fs-font-display);font-size:var(--fs-display-size);letter-spacing:var(--fs-display-track);line-height:var(--fs-display-lh);text-transform:uppercase;margin:0;max-width:22ch">The whole system, on paper</h1>
+<p style="margin:0;max-width:78ch;color:var(--fs-ink-secondary);font-size:var(--fs-size-md)">Six templates, five component groups and seventeen guideline cards, in the order the Design System tab lists them. The templates are live renders and the components are the real compiled components — nothing here is a picture of the system.</p>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-top:32px;border-top:1px solid var(--fs-line-hairline)">
+<div style="display:flex;flex-direction:column;gap:8px"><span class="mut" style="color:var(--fs-ink-muted)">Templates</span><span style="font-size:var(--fs-data-lg);font-weight:600">6</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span class="mut" style="color:var(--fs-ink-muted)">Cards</span><span style="font-size:var(--fs-data-lg);font-weight:600">22</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span class="mut" style="color:var(--fs-ink-muted)">Tokens</span><span style="font-size:var(--fs-data-lg);font-weight:600">223</span></div>
+<div style="display:flex;flex-direction:column;gap:8px"><span class="mut" style="color:var(--fs-ink-muted)">Conformance</span><span style="font-size:var(--fs-data-lg);font-weight:600">PASS</span></div>
+</div>
+</div>
+
+<div class="grp"><span class="grpname">Templates</span><span class="grpnote">Starting points a consuming project copies. Each one is rendered live at one representative context; the Review cards in the Doctrine tab carry the full context matrix.</span></div>
+<div class="tpl" style="height:1470px">
+<div class="tplcap"><span class="tag">Terrace 0</span><span class="mut">Guest surface · guest · arrival · nominal</span><span class="fig">Paradise register · resort pair · 48 rhythm · machinery visible but unlabelled</span></div>
+<div style="height:1430px;overflow:hidden"><dc-import name="GuestSurface" role="guest" destination="arrival" system-state="nominal" hint-size="100%,1430px"></dc-import></div>
+</div>
+<div class="tpl" style="height:1470px">
+<div class="tplcap"><span class="tag">Atrium 1</span><span class="mut">Docs / long-form · member · account · nominal</span><span class="fig">One reading column · 24/48 rhythm · hairline rules</span></div>
+<div style="height:1430px;overflow:hidden"><dc-import name="Docs" role="member" destination="account" system-state="nominal" hint-size="100%,1430px"></dc-import></div>
+</div>
+<div class="tpl" style="height:1470px">
+<div class="tplcap"><span class="tag">Atrium 1</span><span class="mut">Permission gate · member · console · nominal</span><span class="fig">exposure = min(ceiling, max(depth, floor)) · abstract clamp</span></div>
+<div style="height:1430px;overflow:hidden"><dc-import name="PermissionGate" role="member" destination="console" system-state="nominal" hint-size="100%,1430px"></dc-import></div>
+</div>
+<div class="tpl" style="height:1470px">
+<div class="tplcap"><span class="tag">Service 2</span><span class="mut">Roster · operator · console · nominal</span><span class="fig">Per-row existence · per-cell sensitivity · aggregates over the visible set</span></div>
+<div style="height:1430px;overflow:hidden"><dc-import name="Roster" role="operator" destination="console" system-state="nominal" hint-size="100%,1430px"></dc-import></div>
+</div>
+<div class="tpl" style="height:1470px">
+<div class="tplcap"><span class="tag">Service 2</span><span class="mut">Degraded + alert states · operator · console · degraded</span><span class="fig">Severity tracks state · specificity tracks exposure · agency tracks role</span></div>
+<div style="height:1430px;overflow:hidden"><dc-import name="DegradedStates" role="operator" destination="console" system-state="degraded" hint-size="100%,1430px"></dc-import></div>
+</div>
+<div class="tpl" style="height:1470px">
+<div class="tplcap"><span class="tag">Operator</span><span class="mut">Station Console</span><span class="fig">Two faces · one accent pair · four layout numbers</span></div>
+<div style="height:1430px;overflow:hidden"><dc-import name="StationConsole" hint-size="100%,1430px"></dc-import></div>
+</div>
+
+<div class="grp"><span class="grpname">Components</span><span class="grpnote">The compiled components, mounted from the bundle — the same specimens the Components cards show.</span></div>
+<div class="spec">
+<div class="cap"><span class="capname">Buttons &amp; Inputs</span><span class="capsub">Bermuda Sunset-authority button (primary / sky / secondary / quiet / ghost) + input variants</span></div>
+<div class="specbody"><div class="slbl">Button — variants</div><div class="srow"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="primary" hint-size="170px,44px">Reserve a suite</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="sky" hint-size="180px,44px">Explore the resort</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="secondary" hint-size="130px,44px">View rates</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="quiet" hint-size="100px,44px">Details</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="ghost" hint-size="80px,44px">Back</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="primary" disabled="{{ yes }}" hint-size="120px,44px">Sold out</x-import></div><div class="slbl">Button — sizes</div><div class="srow"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="primary" size="sm" hint-size="60px,34px">sm</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="primary" size="md" hint-size="66px,44px">md</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Button" variant="primary" size="lg" hint-size="72px,52px">lg</x-import></div><div class="slbl">Input — field · mono (credit) · pill (organic)</div><div class="srow"><div style="width:180px"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Input" variant="field" placeholder="Guest name" hint-size="180px,44px"></x-import></div><div style="min-width:200px"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Input" variant="mono" value="TA·4417·••••·2209" hint-size="200px,44px"></x-import></div><div style="width:200px"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Input" variant="pill" placeholder="Ask the concierge…" hint-size="200px,44px"></x-import></div></div></div>
+</div>
+<div class="spec">
+<div class="cap"><span class="capname">Concierge messaging</span><span class="capsub">ChatBubble — guest / concierge / system</span></div>
+<div class="specbody"><div style="display:flex;flex-direction:column;gap:10px;max-width:460px;margin:0 auto"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.ChatBubble" role="system" hint-size="460px,36px">Concierge · Villa Straylight</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.ChatBubble" role="guest" hint-size="460px,44px">What’s on the Promenade tonight?</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.ChatBubble" role="concierge" hint-size="460px,70px">The Bermuda Sunset lounge opens at 20:00, and the casino floor is at full tilt. Shall I reserve a table?</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.ChatBubble" role="guest" hint-size="460px,44px">Yes — two, by the water.</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.ChatBubble" role="concierge" hint-size="460px,44px">Done. Your credit has been noted. Why wait?</x-import></div></div>
+</div>
+<div class="spec">
+<div class="cap"><span class="capname">Data</span><span class="capsub">DataTable · InfoRow · MessageBox (credit) · Step</span></div>
+<div class="specbody"><div style="display:grid;grid-template-columns:1fr 1fr;gap:28px"><div><div class="slbl">DataTable</div><x-import component-from-global-scope="FreesideDesignSystem_1cacde.DataTable" columns="{{ cols }}" rows="{{ rows }}" hint-size="100%,140px"></x-import><div style="margin-top:18px"><div class="slbl">InfoRow</div><x-import component-from-global-scope="FreesideDesignSystem_1cacde.InfoRow" label="Check-in" value="14:00 · Desiderata" hint-size="100%,40px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.InfoRow" label="Access tier" value="Villa" last="{{ yes }}" hint-size="100%,40px"></x-import></div></div><div><div class="slbl">MessageBox — credit payload</div><x-import component-from-global-scope="FreesideDesignSystem_1cacde.MessageBox" hint-size="100%,90px">ACCT  TA·4417·2209
+BAL   ₮ 128,400.00
+SIG   0x9e80…6e3a2c</x-import><div style="margin-top:18px"><div class="slbl">Step</div><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Step" number="1" title="Prove credit" description="Present a verified balance at customs." hint-size="100%,60px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Step" number="2" title="Choose your villa" description="Select a suite on the Promenade or the spindle." hint-size="100%,60px"></x-import></div></div></div></div>
+</div>
+<div class="spec">
+<div class="cap"><span class="capname">Status &amp; Tiers</span><span class="capsub">StatusPill · StatusBadge · Callout · Spinner · access-tier chips</span></div>
+<div class="specbody"><div class="slbl">StatusPill</div><div class="srow"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusPill" state="positive" hint-size="90px,28px">Open</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusPill" state="info" hint-size="90px,28px">Boarding</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusPill" state="caution" hint-size="90px,28px">Service</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusPill" state="critical" hint-size="90px,28px">Closed</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusPill" state="neutral" hint-size="90px,28px">TBD</x-import></div><div class="slbl">StatusBadge</div><div class="srow"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusBadge" variant="positive" dot="{{ yes }}" hint-size="110px,28px">Verified</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusBadge" variant="info" dot="{{ yes }}" hint-size="110px,28px">In transit</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusBadge" variant="caution" dot="{{ yes }}" hint-size="110px,28px">Maintenance</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.StatusBadge" variant="critical" dot="{{ yes }}" hint-size="110px,28px">Denied</x-import></div><div class="slbl">Access tiers</div><div class="srow"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.TierBadge" tier="port" hint-size="100px,26px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.TierBadge" tier="promenade" hint-size="100px,26px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.TierBadge" tier="villa" hint-size="100px,26px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.TierBadge" tier="straylight" hint-size="100px,26px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.TierBadge" tier="concierge" hint-size="100px,26px"></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.TierBadge" tier="vip" hint-size="100px,26px"></x-import></div><div class="srow" style="align-items:stretch"><div style="flex:1;min-width:280px"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Callout" variant="info" hint-size="100%,60px">Credit verified. Access granted to the Promenade.</x-import></div><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Spinner" size="{{ n28 }}" thickness="{{ n3 }}" hint-size="28px,28px"></x-import></div></div>
+</div>
+<div class="spec">
+<div class="cap"><span class="capname">Surfaces</span><span class="capsub">Card (base / deep authority / sky) · Panel with section index · Tile with accent bar</span></div>
+<div class="specbody"><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px"><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Card" variant="base" hint-size="100%,120px"><h4 style="font-family:var(--fs-font-heading);font-weight:600;margin:0 0 6px;font-size:16px">Villa Straylight</h4><p style="margin:0;font-size:13px;color:var(--fs-ink-secondary);line-height:1.5">The strictly private villa at the tip of the spindle.</p></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Card" variant="deep" hint-size="100%,120px"><h4 style="font-family:var(--fs-font-heading);font-weight:600;margin:0 0 6px;font-size:16px;color:var(--fs-lado-sunlight)">Tessier-Ashpool</h4><p style="margin:0;font-size:13px;color:var(--fs-cold-mist);line-height:1.5">Why wait? Paradise, engineered.</p></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Card" variant="sky" hint-size="100%,120px"><h4 style="font-family:var(--fs-font-heading);font-weight:600;margin:0 0 6px;font-size:16px">Cannes Terrace</h4><p style="margin:0;font-size:13px;color:var(--fs-ink-secondary);line-height:1.5">Recorded Mediterranean sky over the hanging gardens.</p></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Panel" title="Arrivals" badge="01" hint-size="100%,120px"><p style="margin:0;font-size:13px;color:var(--fs-ink-secondary);line-height:1.5">Induction train · Desiderata Station · every 6 min.</p></x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Tile" slug="Desiderata St." latency="Lv 3" accentColor="var(--fs-accent-foliage)" hint-size="100%,120px">Promenade gardens, retail, dining terraces.</x-import><x-import component-from-global-scope="FreesideDesignSystem_1cacde.Tile" slug="Lado-Acheson" latency="Axis" accentColor="var(--fs-accent-sky)" hint-size="100%,120px">The artificial sun. Do not view the source directly.</x-import></div></div>
+</div>
+
+<div class="grp"><span class="grpname">Brand</span><span class="grpnote">Iconography, imagery, lockups and the wordmark.</span></div>
+<div class="blk">
+<div class="cap"><span class="capname">Iconography</span><span class="capsub">Fine-line glyphs, unframed. No coin circles, no filled or duotone icons.</span></div>
+<div data-card="brand-glyphs" style="width:720px"><div class="grid">
+<div class="cell"><svg viewBox="0 0 24 24"><path d="M12 2 L13.6 10.4 L22 12 L13.6 13.6 L12 22 L10.4 13.6 L2 12 L10.4 10.4 Z"/></svg><div class="n">Sun</div></div>
+<div class="cell"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6 L15 12 L12 18 L9 12 Z"/></svg><div class="n">Compass</div></div>
+<div class="cell"><svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12 H21 M18 12 V16 M21 12 V15.5"/></svg><div class="n">Credit</div></div>
+<div class="cell"><svg viewBox="0 0 24 24"><path d="M5 6 H19 L12 13 V19 M8 19 H16"/></svg><div class="n">Lounge</div></div>
+<div class="cell"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M5.6 18.4l2.1-2.1"/></svg><div class="n">Maintenance</div></div>
+</div>
+<div class="note">Glyphs are drawn in the one ink and inherit it, like text. An icon is never an accent colour and never sits in a ring, badge, or coin frame — the circular motif was retired.</div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Imagery</span><span class="capsub">Engineered paradise — images feather into the mineral base at the inner seam</span></div>
+<div data-card="brand-imagery" style="width:720px"><div class="copy">
+<div class="k">Imagery</div>
+<h3>Luxury surface, machine underneath</h3>
+<p>Fabricated blue sky, cultivated planting on lunar-concrete terraces, and the Lado-Acheson light down the axis. The habitat curves up at both sides and closes overhead — there are no windows to space.</p>
+<p>The place arrives as a <strong>render in the plate</strong>. CSS supplies only sky behind, one arc closing overhead, and the overlays that seat the image — never the architecture, which gradients cannot carry.</p>
+<p>Every image <strong>feathers into the mineral base</strong> at its inner seam. No hard photo edges against content.</p>
+</div>
+<div class="frame"><img src="../../assets/terrace-plate.png" alt="Interior of the Freeside cylinder, fabricated blue sky, terraces curving overhead"><div class="seam"></div></div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Environment · four precisions</span><span class="capsub">One plate, four frames. Exposure tunes saturation, bloom and the survey grid — never the asset.</span></div>
+<div data-register="light" data-accent="resort" style="width:720px;background:var(--fs-surface-base);padding:28px;display:grid;grid-template-columns:1fr 1fr;gap:24px 20px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--fs-ink-muted)">0 · Terrace</span>
+<div class="fs-env" data-env="terrace" style="height:168px"><div class="fs-env-plate"><img src="../../assets/terrace-plate.png" alt="The cylinder at Terrace precision"></div><i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i></div>
+<span style="font-size:11px;line-height:1.5;color:var(--fs-ink-secondary)">Full colour, full bloom, unlabelled.</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--fs-ink-muted)">1 · Atrium</span>
+<div class="fs-env" data-env="atrium" style="height:168px"><div class="fs-env-plate"><img src="../../assets/terrace-plate.png" alt="The cylinder at Atrium precision"></div><i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i></div>
+<span style="font-size:11px;line-height:1.5;color:var(--fs-ink-secondary)">A half step cooler. One place may be named.</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--fs-ink-muted)">2 · Service</span>
+<div class="fs-env" data-env="service" style="height:168px"><div class="fs-env-plate"><img src="../../assets/terrace-plate.png" alt="The cylinder at Service precision"></div><i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i></div>
+<span style="font-size:11px;line-height:1.5;color:var(--fs-ink-secondary)">Colour steps back, the survey grid steps forward.</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--fs-ink-muted)">3 · Ledger</span>
+<div class="fs-env" data-env="ledger" style="height:168px"><div class="fs-env-plate"><img src="../../assets/terrace-plate.png" alt="The cylinder at Ledger precision"></div><i class="fs-env-grid"></i><i class="fs-env-curve"></i><i class="fs-env-veil"></i></div>
+<span style="font-size:11px;line-height:1.5;color:var(--fs-ink-secondary)">The air thins; the axis is a metered source.</span>
+</div>
+</div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Lockups</span><span class="capsub">Wordmark, tagline, and the tabular figure line — two faces, no monogram</span></div>
+<div data-card="brand-marks" style="width:720px"><div><div class="k">primary lockup · wordmark + tagline</div>
+<div class="lockup"><div class="wordmark">FREESIDE</div><div class="tagline">Orbital Resort · Free Port</div></div></div>
+<div><div class="k">compact · wordmark + context label</div>
+<div class="compact"><span class="wordmark" style="font-size:22px">FREESIDE</span><span class="k" style="margin:0">Station Console</span></div></div>
+<div><div class="k">figure line · tabular Archivo, not a mono face</div>
+<div class="figs">35.6895°N 139.6917°E · SPINDLE 07 · EPOCH 41</div></div>
+<p class="note">Two faces only. Michroma sets the wordmark and the display role — hero statements, sparingly; Archivo sets everything else including all numerals, which are tabular so identifiers and coordinates still align in a column. The retired direction carried a T·A monogram coin, an axial-line device and a Japanese companion face — all three are out, and nothing should reintroduce a third typeface to get a machine-read look.</p></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Wordmark</span><span class="capsub">The lockup is the only place the axial device appears. Never inline, never in a header.</span></div>
+<div data-card="brand-wordmark" style="width:720px"><div class="wm">FREESIDE</div>
+<div class="axis"><div class="r"></div><div class="star">✦</div><div class="r"></div></div>
+<div class="note">Centred, symmetrical, and stacked under the mark — that is the only correct use. The device never runs inline beside other text, never sits in a header or footer, and never separates the wordmark from a company name. Below 200px wide, drop it and keep the wordmark alone.</div></div>
+</div>
+
+<div class="grp"><span class="grpname">Colors</span><span class="grpnote">One ink, two registers, one accent pair per surface.</span></div>
+<div class="blk">
+<div class="cap"><span class="capname">Main palette</span><span class="capsub">Deep Space Ink · Lado Sunlight · Lunar Concrete · Cannes Sky · Babylon Foliage</span></div>
+<div data-card="colors-core" style="width:720px"><div class="grid">
+<div class="sw"><div class="c" style="background:#081F28"></div><div class="n">Deep Space Ink</div><div class="h">#081F28 · ink</div></div>
+<div class="sw"><div class="c" style="background:#F7F1E5"></div><div class="n">Lado Sunlight</div><div class="h">#F7F1E5 · base</div></div>
+<div class="sw"><div class="c" style="background:#C1BCB3"></div><div class="n">Lunar Concrete</div><div class="h">#C1BCB3 · stone</div></div>
+<div class="sw"><div class="c" style="background:#66ADC6"></div><div class="n">Cannes Sky</div><div class="h">#66ADC6 · sky</div></div>
+<div class="sw"><div class="c" style="background:#6E7A56"></div><div class="n">Babylon Foliage</div><div class="h">#6E7A56 · gardens</div></div>
+</div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Accent pairs</span><span class="capsub">A surface picks ONE pair. Components read only accent-1 and accent-2 — never past them.</span></div>
+<div data-card="colors-accents" style="width:720px"><div class="pair" data-accent="resort"><div><div class="name">Resort</div><div class="sub">Default</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Sunset</div><div class="bar bar2" style="background:var(--fs-accent-2)">Cannes</div></div></div>
+<div class="pair" data-accent="garden"><div><div class="name">Garden</div><div class="sub">Hospitality</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Foliage</div><div class="bar bar2" style="background:var(--fs-accent-2)">Sand</div></div></div>
+<div class="pair" data-accent="vice"><div><div class="name">Vice</div><div class="sub">Nightlife</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Magenta</div><div class="bar bar2" style="background:var(--fs-accent-2)">Hazard</div></div></div>
+<div class="pair" data-accent="systems"><div><div class="name">Systems</div><div class="sub">Ops</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Teal</div><div class="bar bar2" style="background:var(--fs-accent-2)">Cannes</div></div></div>
+<div class="pair" data-accent="dynasty"><div><div class="name">Dynasty</div><div class="sub">Formal</div></div><div class="bars"><div class="bar bar1" style="background:var(--fs-accent-1)">Brick</div><div class="bar bar2" style="background:var(--fs-accent-2)">Sand</div></div></div>
+<div class="note">Twelve colours exist. Two are visible at a time. Each pair carries its own <b>--fs-on-accent</b> — the readable ink on a solid fill is a property of the colour, not the register. Status — positive, caution, critical — is not an accent: it is a dot or a bar, at most one per row.</div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Ink</span><span class="capsub">One ink. Text is Deep Space Ink on light, Lado Sunlight on deep — colour is never a letterform</span></div>
+<div data-card="colors-inks" style="width:720px"><div class="cols">
+<div class="pane">
+<div class="k">Light · ink = Deep Space Ink</div>
+<div class="big">Prove credit.</div>
+<div class="sm">Secondary — Ink 2</div>
+<div class="mu">muted · #6B6862</div>
+<div class="rule"><div style="background:var(--fs-state-positive)"></div><div style="background:var(--fs-state-info)"></div><div style="background:var(--fs-state-caution)"></div><div style="background:var(--fs-accent-authority)"></div></div>
+</div>
+<div class="pane" data-register="deep-space" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<div class="k">Deep Space · ink = Lado Sunlight</div>
+<div class="big">Prove credit.</div>
+<div class="sm">Secondary — Cold Mist</div>
+<div class="mu">muted · Lunar Concrete</div>
+<div class="rule"><div style="background:var(--fs-state-positive)"></div><div style="background:var(--fs-state-info)"></div><div style="background:var(--fs-state-caution)"></div><div style="background:var(--fs-accent-authority)"></div></div>
+</div>
+</div>
+<div class="note"><strong>Colour is a fill, never a letterform.</strong> Of the five mains only Deep Space Ink and Lado Sunlight hold contrast as text, so those two are the entire ink table. State and accent meaning is carried by the bar, dot, tint, or rule beside mono text — which is why no <code>*-ink</code> token needs a per-register override.</div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Secondary</span><span class="capsub">Organic Chic Sand · Cold Mist (silver) · Rose Brick</span></div>
+<div data-card="colors-materials" style="width:720px"><div class="grid">
+<div class="sw"><div class="c" style="background:#CEBA99"></div><div class="n">Organic Chic Sand</div><div class="h">#CEBA99 · wicker, fabric</div></div>
+<div class="sw"><div class="c" style="background:#D1D9DB"></div><div class="n">Cold Mist</div><div class="h">#D1D9DB · glass, mist</div></div>
+<div class="sw"><div class="c" style="background:#936064"></div><div class="n">Rose Brick</div><div class="h">#936064 · woods, old-world</div></div>
+</div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Registers</span><span class="capsub">Light (Paradise) is default; Deep Space (Authority) is earned</span></div>
+<div data-card="colors-registers" style="width:720px"><div class="cols">
+<div class="reg">
+  <div class="cap">Light · Paradise · default</div>
+  <h3>FREESIDE</h3><p>Deep Space Ink on Lado Sunlight.</p>
+  <div class="chips"><div class="chip" style="background:var(--fs-surface-base)"></div><div class="chip" style="background:var(--fs-surface-raised)"></div><div class="chip" style="background:var(--fs-surface-sunk)"></div><div class="chip" style="background:var(--fs-accent-authority)"></div></div>
+</div>
+<div class="reg" data-register="deep-space" style="background:var(--fs-surface-base)">
+  <div class="cap">Deep Space · Authority</div>
+  <h3>FREESIDE</h3><p>Lado Sunlight on Deep Space Ink.</p>
+  <div class="chips"><div class="chip" style="background:var(--fs-surface-base)"></div><div class="chip" style="background:var(--fs-surface-raised)"></div><div class="chip" style="background:var(--fs-surface-sunk)"></div><div class="chip" style="background:var(--fs-accent-authority)"></div></div>
+</div>
+</div></div>
+</div>
+
+<div class="grp"><span class="grpname">Type</span><span class="grpnote">Two faces, six roles. Michroma sets the wordmark and display; Archivo sets everything else.</span></div>
+<div class="blk">
+<div class="cap"><span class="capname">Two faces, six roles</span><span class="capsub">Michroma sets the wordmark and display. Archivo sets everything else, including every numeral. Casing is fixed per role.</span></div>
+<div data-card="type-system" style="width:720px"><div class="row"><div class="tag">Wordmark</div><div style="font-family:var(--fs-font-display);font-size:20px;letter-spacing:.16em">FREESIDE</div><div class="spec">Michroma 20 / .16</div></div>
+<div class="row"><div class="tag">Display</div><div style="font-family:var(--fs-font-display);font-size:44px;letter-spacing:.04em;line-height:1.05">109,120</div><div class="spec">Michroma 44 / .04</div></div>
+<div class="row"><div class="tag">Title</div><div style="font-size:26px;font-weight:600;letter-spacing:-.01em">Villa Straylight</div><div class="spec">Archivo 26 / 600</div></div>
+<div class="row"><div class="tag">Section</div><div style="font-size:15px;font-weight:600">Service pools</div><div class="spec">Archivo 15 / 600</div></div>
+<div class="row"><div class="tag">Body</div><div style="font-size:14px;line-height:1.5;color:var(--fs-ink-secondary)">Running beside the incumbent. Divergence is logged.</div><div class="spec">Archivo 14 / 400</div></div>
+<div class="row"><div class="tag">Label</div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase">Credit line</div><div class="spec">Archivo 11 / 600 / .14</div></div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Scale</span><span class="capsub">Modular ~1.25 — wordmark 112 down to 11px micro-labels</span></div>
+<div data-card="type-scale" style="width:720px"><div class="row"><div class="px">6xl · 84</div><div class="d" style="font-size:56px">FREESIDE</div></div>
+<div class="row"><div class="px">4xl · 48</div><div class="d" style="font-size:40px">Orbital</div></div>
+<div class="row"><div class="px">2xl · 30</div><div class="b" style="font-size:30px;font-family:var(--fs-font-heading);font-weight:600">Hanging Gardens</div></div>
+<div class="row"><div class="px">xl · 24</div><div class="b" style="font-size:24px;font-family:var(--fs-font-heading)">Cannes Sky Terrace</div></div>
+<div class="row"><div class="px">base · 16</div><div class="b" style="font-size:16px">Paradise, but engineered — everything for sale.</div></div>
+<div class="row"><div class="px">sm · 14</div><div class="b" style="font-size:14px;color:var(--fs-ink-secondary)">Recorded Mediterranean sky over lunar concrete terraces.</div></div>
+<div class="row"><div class="px">xs · 12</div><div class="b" style="font-size:12px;color:var(--fs-ink-muted);text-transform:uppercase;letter-spacing:.18em">Orbital Resort · Free Port</div></div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Case & tracking</span><span class="capsub">Wordmark 0.14em · label 0.18em uppercase · body normal</span></div>
+<div data-card="type-labels" style="width:720px"><div class="row"><div class="k">wordmark · 0.14em · display caps</div><div style="font-family:var(--fs-font-display);font-size:30px;letter-spacing:.14em">FREESIDE</div></div>
+<div class="row"><div class="k">label · 0.18em · uppercase</div><div style="font-size:13px;text-transform:uppercase;letter-spacing:.18em;font-weight:600;color:var(--fs-accent-authority-ink)">Orbital Resort · Free Port · Everything For Sale</div></div>
+<div class="row"><div class="k">body · normal · sentence case</div><div style="font-size:16px;line-height:1.5;max-width:560px">It's just a big tube, and they pour things through it — tourists, hustlers, anything. Paradise, but engineered.</div></div></div>
+</div>
+
+<div class="grp"><span class="grpname">Spacing</span><span class="grpnote">4px sub-unit, 8px rhythm, square by default.</span></div>
+<div class="blk">
+<div class="cap"><span class="capname">Scale</span><span class="capsub">4px sub-unit, 8px rhythm</span></div>
+<div data-card="spacing-scale" style="width:720px"><div class="row"><div class="k">space-1 · 4</div><div class="bar" style="width:4px"></div></div>
+<div class="row"><div class="k">space-2 · 8</div><div class="bar" style="width:8px"></div></div>
+<div class="row"><div class="k">space-3 · 12</div><div class="bar" style="width:12px"></div></div>
+<div class="row"><div class="k">space-4 · 16</div><div class="bar" style="width:16px"></div></div>
+<div class="row"><div class="k">space-6 · 24</div><div class="bar" style="width:24px"></div></div>
+<div class="row"><div class="k">space-8 · 32</div><div class="bar" style="width:32px"></div></div>
+<div class="row"><div class="k">space-12 · 48</div><div class="bar" style="width:48px"></div></div>
+<div class="row"><div class="k">space-16 · 64</div><div class="bar" style="width:64px"></div></div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Radius & form</span><span class="capsub">Square by default — roundness is earned by context</span></div>
+<div data-card="spacing-radii" style="width:720px"><div class="grid">
+<div class="cell"><div class="box" style="border-radius:0"></div><div class="n">none</div><div class="h">0 · default</div></div>
+<div class="cell"><div class="box" style="border-radius:2px"></div><div class="n">sm</div><div class="h">2 · controls</div></div>
+<div class="cell"><div class="box" style="border-radius:4px"></div><div class="n">md</div><div class="h">4 · hospitality</div></div>
+<div class="cell"><div class="box" style="border-radius:999px"></div><div class="n">pill</div><div class="h">999 · organic</div></div>
+</div></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Elevation</span><span class="capsub">Mineral tint + hairline first; soft ink-tinted shadow second — no glow in base</span></div>
+<div data-card="spacing-shadows" style="width:720px"><div class="grid">
+<div class="cell"><div class="box" style="box-shadow:var(--fs-shadow-1)"></div><div class="n">elev-1</div><div class="h">cards, rows</div></div>
+<div class="cell"><div class="box" style="box-shadow:var(--fs-shadow-2)"></div><div class="n">elev-2</div><div class="h">popovers, menus</div></div>
+<div class="cell"><div class="box" style="box-shadow:var(--fs-shadow-3)"></div><div class="n">elev-3</div><div class="h">modals, overlays</div></div>
+</div></div>
+</div>
+
+<div class="grp"><span class="grpname">Doctrine</span><span class="grpnote">Exposure is the one mechanism. Conformance is summarised here; the three Review cards are live-only, because their tiles are iframes that print empty.</span></div>
+<div class="blk">
+<div class="cap"><span class="capname">Exposure</span><span class="capsub">The one mechanism: how much of the machine is showing, and what turns it</span></div>
+<div data-card="doctrine-exposure" style="width:100%"><!-- ══ 0 · TERRACE ══ -->
+<section data-register="light" data-accent="resort" data-screen-label="Doctrine — premise">
+<div class="stack-48">
+<div class="row-16"><span class="wordmark">FREESIDE</span><span class="lab" style="margin-left:auto">Doctrine 01 · Exposure</span></div>
+<div class="stack-24">
+<h1 class="display">The machine<br>is dressed,<br>not hidden</h1>
+<p style="font-size:var(--fs-body-size)">Freeside is a resort wrapped around a machine built for profit. The garden is a life-support system wearing a garden costume, and the costume is honest — on the terrace the machinery is visible, elegant, and simply not labelled. Nothing is concealed. It is <em>undescribed</em>.</p>
+<p>Every screen in this system sits somewhere on one scale: <strong style="color:var(--fs-ink-primary)">how much of the machine is showing</strong>. That number is called <strong style="color:var(--fs-ink-primary)">exposure</strong>. It is the only mechanism in the doctrine, and everything else — register, pair, density, wording — is downstream of it.</p>
+</div>
+<div class="rule"></div>
+<div class="g3">
+<div class="stack-8"><span class="lab">Not a mood</span><p class="body">Exposure is computed, not chosen. A designer never picks "cyberpunk here". They state depth, access and state; the register follows.</p></div>
+<div class="stack-8"><span class="lab">Not a theme toggle</span><p class="body">There is no dark mode. Deep Space is not night — it is the service level. Paradise is not day — it is the guest level.</p></div>
+<div class="stack-8"><span class="lab">Not decoration</span><p class="body">Higher exposure means more arithmetic on screen, not more texture. No grime, no hazard tape, no distress. The underneath is clean.</p></div>
+</div>
+</div>
+</section>
+
+<!-- ══ THREE DIALS ══ -->
+<section data-register="light" data-accent="garden" data-screen-label="Doctrine — the three dials">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">The mechanism</span>
+<h2 class="title">Two dials and a ceiling</h2>
+<p><strong style="color:var(--fs-ink-primary)">Depth</strong> sets what the task normally requires. <strong style="color:var(--fs-ink-primary)">State</strong> can force more structure to appear, for diagnosis or recovery. <strong style="color:var(--fs-ink-primary)">Access</strong> does neither — it is the ceiling on how far the interface may disclose. Elevated access <em>permits</em> deeper views; it never activates them.</p>
+<div class="formula">exposure = min( access ceiling, max( depth baseline, state floor ) )</div>
+<p>The asymmetry is the point. State pushes up from below and access caps from above, so a failing system can never widen disclosure. A guest watching the station fail still sees the terrace — the resort does not show its machinery to guests, least of all when the machinery is what is failing.</p>
+</div>
+<div class="g3">
+<div class="panel">
+<span class="lab">Baseline · Depth</span>
+<div class="sec">What the task requires</div>
+<div class="stack-8">
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Arrival, amenity, wayfinding</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Your account, your standing</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Consoles, rosters, tooling</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Settlement, weights, audit</span></div>
+</div>
+</div>
+<div class="panel">
+<span class="lab">Ceiling · Access</span>
+<div class="sec">How far disclosure may go</div>
+<div class="stack-8">
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Guest — ceiling 0</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-2)"></span><span class="body">Member — ceiling 1, own record</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Operator — ceiling 2, every record</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-accent-1)"></span><span class="body">Principal — ceiling 3, the arithmetic</span></div>
+<p class="body" style="color:var(--fs-ink-muted)">Permits. Never activates.</p>
+</div>
+</div>
+<div class="panel">
+<span class="lab">Floor · State</span>
+<div class="sec">What must be diagnosable</div>
+<div class="stack-8">
+<div class="row-8"><span class="dot" style="background:var(--fs-state-positive)"></span><span class="body">Nominal — floor 0</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-caution)"></span><span class="body">Degraded — floor 2</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-critical)"></span><span class="body">Alert — floor 3</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-neutral)"></span><span class="body">Frozen — floor 3, read-only</span></div>
+<p class="body" style="color:var(--fs-ink-muted)">Pushes up. Stops at the ceiling.</p>
+</div>
+</div>
+</div>
+<div class="panel" style="gap:24px">
+<span class="lab">Resolution</span>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Guest · arrival · nominal</span><div class="meter"><i class="on"></i><i></i><i></i><i></i></div><span class="lab" style="color:var(--fs-ink-primary)">0 · Terrace</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Operator · arrival · nominal</span><div class="meter"><i class="on"></i><i></i><i></i><i></i></div><span class="lab" style="color:var(--fs-ink-primary)">0 · Terrace — permitted, not required</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Member · account · alert</span><div class="meter"><i class="on"></i><i class="on"></i><i class="cap"></i><i class="cap"></i></div><span class="lab" style="color:var(--fs-ink-primary)">1 · Atrium — clamped at ceiling</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Operator · console · degraded</span><div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><span class="lab" style="color:var(--fs-ink-primary)">2 · Service</span></div>
+<div class="row-16"><span class="body" style="width:266px;color:var(--fs-ink-primary)">Principal · settlement · nominal</span><div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><span class="lab" style="color:var(--fs-ink-primary)">3 · Ledger</span></div>
+<div class="rule"></div>
+<div class="row-16"><span class="dot" style="background:var(--fs-state-critical);opacity:.32"></span><p class="body">Clamped — the state floor asked for this level and the access ceiling refused. That refusal is a designed screen, not an error. It is the seam.</p></div>
+</div>
+</div>
+</section>
+
+<!-- ══ FOUR LEVELS — specimen strip ══ -->
+<section data-register="light" data-accent="resort" style="background:var(--fs-surface-sunk)" data-screen-label="Doctrine — the four levels">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">The ladder</span>
+<h2 class="title">One member's standing, four exposures</h2>
+<p>The same record, rendered at each level. Read left to right: nothing becomes true that was not true before. The terrace is not a lie — it is the same number without its working shown.</p>
+</div>
+<div class="g4" style="gap:24px">
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">0 · Terrace</span></div>
+<div class="spec" data-register="light" data-accent="resort" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<div class="stack-8"><span class="lab">Standing</span><div class="title">Good</div></div>
+<div class="bar" style="background:var(--fs-accent-2)"></div>
+<p class="body" style="color:var(--fs-ink-secondary)">Everything on the terrace is open to you.</p>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Paradise · resort</span>
+<span class="body" style="color:var(--fs-ink-muted)">48 rhythm · no visible line · prose figures</span>
+</div>
+</div>
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">1 · Atrium</span></div>
+<div class="spec" data-register="light" data-accent="garden" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<div class="stack-8"><span class="lab">Standing</span><div class="num">941</div></div>
+<div class="bar"></div>
+<div class="stack-8">
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Rising this epoch</span><span class="cell" style="margin-left:auto">+38</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Tier</span><span class="cell" style="margin-left:auto">Wintermute</span></div>
+</div>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Paradise · garden</span>
+<span class="body" style="color:var(--fs-ink-muted)">24 rhythm · hairline · rounded figures</span>
+</div>
+</div>
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">2 · Service</span></div>
+<div class="spec" data-register="deep" data-accent="systems" style="background:var(--fs-surface-base);color:var(--fs-ink-primary)">
+<span class="lab">Record 0412</span>
+<div class="stack-8">
+<div class="row-8"><span class="body" style="color:var(--fs-ink-primary)">molly.eth</span><span class="cell" style="margin-left:auto">941</span></div>
+<div class="rule"></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Δ epoch 41</span><span class="cell" style="margin-left:auto">+38</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">Weight</span><span class="cell" style="margin-left:auto">0.34</span></div>
+<div class="row-8"><span class="dot" style="background:var(--fs-state-positive)"></span><span class="body" style="color:var(--fs-ink-muted)">Nominal</span></div>
+</div>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Deep Space · systems</span>
+<span class="body" style="color:var(--fs-ink-muted)">16 rhythm · structural line · exact figures</span>
+</div>
+</div>
+
+<div class="stack-8">
+<div class="row-8"><span class="lab" style="color:var(--fs-ink-primary)">3 · Ledger</span></div>
+<div class="spec" data-register="deep" data-accent="vice" style="background:var(--fs-surface-base);color:var(--fs-ink-primary);gap:8px">
+<span class="lab">0412 · e41 · op zk</span>
+<div class="stack-8" style="gap:8px">
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">gross</span><span class="cell" style="margin-left:auto">2,400.00</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">house 4.2%</span><span class="cell" style="margin-left:auto">−100.80</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">spread</span><span class="cell" style="margin-left:auto">−7.20</span></div>
+<div class="rule"></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-primary)">net pool</span><span class="cell" style="margin-left:auto">2,292.00</span></div>
+<div class="row-8"><span class="body" style="color:var(--fs-ink-muted)">party</span><span class="cell" style="margin-left:auto">T-A Ltd</span></div>
+</div>
+</div>
+<div class="stack-8" style="padding-top:8px">
+<span class="body">Deep Space · vice</span>
+<span class="body" style="color:var(--fs-ink-muted)">8 rhythm · line is the grid · signed figures</span>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<!-- ══ LEVERS ══ -->
+<section data-accent="systems" data-screen-label="Doctrine — the levers">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Specification</span>
+<h2 class="title">What each level sets</h2>
+<p>Seven levers. Once exposure is known, none of these is a judgement call. This table is the contract — a screen that mixes rows from different columns is wrong, and that is a reviewable defect rather than a matter of taste.</p>
+</div>
+<table class="tbl">
+<thead><tr><th style="width:132px">Lever</th><th>0 · Terrace</th><th>1 · Atrium</th><th>2 · Service</th><th>3 · Ledger</th></tr></thead>
+<tbody>
+<tr><td class="k">Register</td><td>Paradise</td><td>Paradise</td><td>Deep Space</td><td>Deep Space</td></tr>
+<tr><td class="k">Accent pair</td><td>resort</td><td>garden</td><td>systems</td><td>vice</td></tr>
+<tr><td class="k">Rhythm</td><td>48 only</td><td>24 and 48</td><td>16 and 24</td><td>8 and 16</td></tr>
+<tr><td class="k">Figures</td><td>Words. "Good", "rising", "most weeks"</td><td>Rounded, with a unit</td><td>Exact, tabular, aligned</td><td>Exact, signed, to the cent</td></tr>
+<tr><td class="k">Structure</td><td>No visible line. Space separates</td><td>Hairline where a box ends</td><td>Structural line, load-bearing</td><td>The line is the grid</td></tr>
+<tr><td class="k">Naming</td><td>Machinery unnamed. It is scenery</td><td>Systems named in plain words</td><td>Systems carry identifiers</td><td>Identifiers, epoch, operator, party</td></tr>
+<tr><td class="k">Arithmetic</td><td>"Included"</td><td>Itemised total</td><td>Itemised with rate</td><td>Every leg, both counterparties</td></tr>
+</tbody>
+</table>
+<div class="rule"></div>
+<div class="g3">
+<div class="stack-8"><span class="lab">On the pairs</span><p class="body">The pair ladder is not arbitrary. <strong style="color:var(--fs-ink-primary)">resort</strong> is the sun on concrete. <strong style="color:var(--fs-ink-primary)">garden</strong> is the life-support costume. <strong style="color:var(--fs-ink-primary)">systems</strong> is the clinical machine, cold and competent. <strong style="color:var(--fs-ink-primary)">vice</strong> is the house edge, and it appears only where money is being taken.</p></div>
+<div class="stack-8"><span class="lab">On nesting</span><p class="body">A subtree may re-enter a register: <strong style="color:var(--fs-ink-primary)">data-register="deep"</strong> inside a light page renders a Service panel correctly without hex literals. Use it for the seam — a raised-exposure fragment quoted inside a lower-exposure page. Never use it to put two registers side by side for contrast.</p></div>
+<div class="stack-8"><span class="lab">On dynasty</span><p class="body">The fifth pair sits outside the ladder. <strong style="color:var(--fs-ink-primary)">dynasty</strong> is ownership — Tessier-Ashpool itself. Use it for governance, provenance and anything that speaks as the house rather than about it. Never mix it into a level.</p></div>
+</div>
+</div>
+</section>
+
+<!-- ══ LAWS ══ -->
+<section data-accent="systems" style="background:var(--fs-surface-raised)" data-screen-label="Doctrine — the three laws">
+<div class="stack-48">
+<div class="stack-16"><span class="lab">Non-negotiable</span><h2 class="title">Three laws</h2></div>
+<div class="stack-48">
+<div class="law">
+<span class="n">01</span>
+<div class="stack-8">
+<div class="sec">One underlying truth, progressively disclosed</div>
+<p class="body">The substrate is identical at every level; what changes is how much of it is disclosed. Terrace need not surface every fact the Ledger holds — but nothing at Terrace may contradict it. If the terrace says "included" and the ledger says "4.2% to the house", both are true and the guest was not misled. If a level needs a <em>different fact</em> to hold, the design is lying and the level is wrong.</p>
+</div>
+</div>
+<div class="law">
+<span class="n">02</span>
+<div class="stack-8">
+<div class="sec">The machine is dressed, not hidden</div>
+<p class="body">Surface machinery stays visible. A gauge on the terrace is a real gauge reading a real number, quantized to what the terrace may know: three positions, no units, no figure. Never fake an instrument, never draw a system that does not exist, and never hide one behind an illustration.</p>
+<p class="body">Every channel is a disclosure channel. Text, numerals, geometry, ordering, colour, animation, accessibility metadata and DOM structure all represent the same facts, and each must stay within the precision the level permits. A bar whose width is the reading states the reading, whatever the caption beside it says.</p>
+</div>
+</div>
+<div class="law">
+<span class="n">03</span>
+<div class="stack-8">
+<div class="sec">State cannot breach the ceiling</div>
+<p class="body">Depth and state raise exposure; access caps it. A failure may force structure to appear so it can be diagnosed, but it may never widen disclosure — an alert is not an authorisation. Where the floor exceeds the ceiling the screen <em>clamps</em>: it acknowledges without detailing. What a clamp may say is set by the disclosure mode, not by the level alone.</p>
+</div>
+</div>
+<div class="law">
+<span class="n">04</span>
+<div class="stack-8">
+<div class="sec">Agency tracks role</div>
+<p class="body">Two users may receive equally honest accounts of the same state and still be offered different things to do about it. A guest reads "ask at the desk"; a member reads "request access"; an operator reads "request elevation"; a principal reads "open on record". The description is shared; the affordance is not. Never render an action the role cannot complete — a dead button is a worse disclosure than a plain refusal.</p>
+<p class="body">Availability and presentation are separate concerns. Role and capability decide whether an action may be performed; the resource's existence policy decides whether it may be offered at all; exposure governs only how specifically it is labelled and explained; and the destination resolves its own exposure under the same access ceiling. An operator on the terrace is still offered operations — below Service it is simply called "the console" rather than named by sector. Availability must never depend on exposure alone; presentation may.</p>
+</div>
+</div>
+</div>
+<div class="rule"></div>
+<div class="stack-16">
+<span class="lab">The three copy laws, together</span>
+<div class="g3">
+<div class="stack-8"><div class="sec">Severity tracks state</div><p class="body">Degraded and offline are different words. A guest during an alert hears a calm sentence — that is under-disclosure, not contradiction.</p></div>
+<div class="stack-8"><div class="sec">Specificity tracks exposure</div><p class="body">How much working is shown. No exposure integer and no ladder vocabulary appears below Service, in any string, ever.</p></div>
+<div class="stack-8"><div class="sec">Agency tracks role</div><p class="body">What you may do about it. Actions are projected from the role, never from the outcome alone. Availability never depends on exposure; the wording may.</p></div>
+</div>
+<p class="body">These are three axes, not one. Conflating them is what produces a screen that softens the severity word and then prints the machine's own counting underneath it.</p>
+</div>
+</div>
+</section>
+
+<!-- ══ DISCLOSURE ══ -->
+<section data-accent="systems" data-screen-label="Doctrine — disclosure">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Clamp policy</span>
+<h2 class="title">What a refusal may admit</h2>
+<p>A clamp is not one behaviour. Whether it may acknowledge hidden handling depends on the resource, not the screen — so sensitivity is declared on the resource and the mode is derived. The governing rule: <strong style="color:var(--fs-ink-primary)">a clamp may acknowledge that hidden handling exists, but it must not confirm a sensitive object's existence or disclose the shape of the inaccessible layer.</strong></p>
+</div>
+<div class="g3">
+<div class="panel"><span class="lab">Silent</span><div class="sec">Do not confirm existence</div><p class="body">The screen reads as though the destination is not a thing here. No acknowledgment, no name, no shape. For sensitive resources whose existence is above the asker's ceiling.</p></div>
+<div class="panel"><span class="lab">Abstract</span><div class="sec">Admit handling, not contents</div><p class="body">Something is being attended to and it is not yours. No structure, no identifiers, no counting. The normal Terrace and Atrium clamp.</p></div>
+<div class="panel"><span class="lab">Explicit</span><div class="sec">Name the withheld layer</div><p class="body">The asker already knows the layer exists, so the refusal states which, at what ceiling, and that it was recorded. Service and above.</p></div>
+</div>
+<p class="body">Implemented in <strong style="color:var(--fs-ink-primary)">templates/_doctrine/doctrine.js</strong> and asserted by the <strong style="color:var(--fs-ink-primary)">Conformance</strong> card, which runs all forty-eight role × depth × state combinations on every load.</p>
+</div>
+</section>
+
+<!-- ══ NOT THIS ══ -->
+<section data-accent="vice" data-screen-label="Doctrine — anti-patterns">
+<div class="stack-48">
+<div class="stack-16">
+<span class="lab">Failure modes</span>
+<h2 class="title">Not this</h2>
+<p>Every one of these has been produced by a well-intentioned generator working from the palette alone. They are the reason this page exists.</p>
+</div>
+<div class="g2">
+<div class="stack-16">
+<div class="no"><div class="sec">Cyberpunk as texture</div><p class="body">Scanlines, glitch, terminal green, monospace everywhere, hazard chevrons. The underneath is <em>clinical</em> — cold, well-lit, competent. Nothing on Freeside is broken; it is simply not for guests.</p></div>
+<div class="no"><div class="sec">Solarpunk as illustration</div><p class="body">Drawn leaves, vine borders, hand-lettered warmth. The garden is infrastructure. It reads as light, water, concrete and space — not as ornament applied to a UI.</p></div>
+<div class="no"><div class="sec">Elevated access as a theme</div><p class="body">An operator signs in and the whole product turns dark. Access permits depth; it does not apply it. An operator reading the welcome page is on the terrace like everybody else.</p></div>
+<div class="no"><div class="sec">Both registers on one screen for contrast</div><p class="body">A dark hero above a light body is not the duality. It is a gradient with extra steps. One screen resolves to one exposure.</p></div>
+</div>
+<div class="stack-16">
+<div class="no"><div class="sec">Lore in the information architecture</div><p class="body">Navigation reads "Members", "Settlement", "Access" — not "Villa Straylight". Gibson supplies the logic, not the labels. Flavour lives in transitions, empty states, and the words around the data.</p></div>
+<div class="no"><div class="sec">Density as seriousness</div><p class="body">A roster is dense because it holds 4,000 rows, not because density looks professional. Exposure sets density; content does not get to vote.</p></div>
+<div class="yes"><div class="sec">The test</div><p class="body">Name the depth, the access and the state. If those three do not produce the screen in front of you, the screen is decorated rather than designed.</p></div>
+</div>
+</div>
+<div class="rule"></div>
+<div class="row-16"><span class="tag">Doctrine 01</span><span class="ghost">Next — Templates, one per level</span><span class="lab" style="margin-left:auto">Freeside · Tessier-Ashpool</span></div>
+</div>
+</section></div>
+</div>
+<div class="blk">
+<div class="cap"><span class="capname">Retrofit</span><span class="capsub">Putting Freeside colour into a repo that already has its own token layer — one file, no component edits</span></div>
+<div data-card="retrofit" style="width:100%"><div class="stack-48">
+
+<div class="stack-16">
+<span class="lab">Adoption · pattern 2 of 2</span>
+<h1 class="title">Retrofitting a repo that already has tokens</h1>
+<p>A greenfield project consumes this system directly: link <code>styles.css</code>, read components off the bundle, set <code>data-register</code> and <code>data-exposure</code>. Most repos are not greenfield. They already have a token layer somebody trusts, a component library built on it, and no appetite for a rewrite. For those, do not replace the token layer — <strong style="color:var(--fs-ink-primary)">retint its primitives from one file and change nothing else</strong>.</p>
+</div>
+
+<div class="g2">
+<div class="panel"><span class="lab">Pattern 1 · Consume</span><div class="sec">Greenfield</div><p style="font-size:var(--fs-size-xs)">Link this system's stylesheets, use its components, follow the doctrine. Full access to registers, exposure rhythm and the projector.</p></div>
+<div class="panel"><span class="lab">Pattern 2 · Retint</span><div class="sec">Existing token layer</div><p style="font-size:var(--fs-size-xs)">One override file appended last. Freeside colour, the host's own type and spacing, zero component edits. Doctrine adopted later, screen by screen.</p></div>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-48">
+
+<div class="step">
+<span class="n">01</span>
+<div class="stack-8">
+<div class="sec">Find the primitive layer</div>
+<p>Most mature token layers are three tiers: raw primitives (<code>void</code>, <code>bone</code>, <code>cyan</code>), semantic tokens that reference them (<code>--color-bg-card</code>), and framework aliases on top (<code>--primary</code>, <code>--muted-foreground</code>). Grep the repo for hex literals. If the only matches are in the primitive file and in brand-data files, the layer is clean and this recipe works. If components carry their own hexes, fix those first — an override cannot reach them.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">02</span>
+<div class="stack-8">
+<div class="sec">Append one file, last</div>
+<p>Not a patch to the existing token file — a new file loaded after it, so the host's tokens stay pristine and the retint is one deletable line.</p>
+<pre>@import "./tokens.css";
+@import "./compat.css";
+@import "./light.css";
+@import "./freeside-palette.css";   <span style="color:var(--fs-accent-1)">/* ← the only new line */</span></pre>
+</div>
+</div>
+
+<div class="step">
+<span class="n">03</span>
+<div class="stack-8">
+<div class="sec">Keep every token name</div>
+<p>Override values, never identifiers. <code>bg-void-base</code>, <code>text-cyan-base</code> and <code>--color-phosphor-base</code> keep working and now resolve to Freeside colours. Every utility class, every component, every Tailwind arbitrary value continues to compile. Renaming tokens turns a one-file change into a repo-wide refactor and is the single most common way this goes wrong.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">04</span>
+<div class="stack-8">
+<div class="sec">Map the host's registers onto ours</div>
+<p>Whatever the host calls its themes, one of them is Deep Space and one is Paradise. Redeclare every value in both. Do not assume the host's dark theme is only used at night — in Freeside terms it is the service level, and that reframing is usually the most useful thing the retint delivers.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">05</span>
+<div class="stack-8">
+<div class="sec">Pick one accent pair for the whole app</div>
+<p>Two accents on screen. Map the host's chrome accent to the pair's first colour and its emphasis accent to the second; leave status colours functional. Choose by what the app <em>is</em>: an operator console is <code>systems</code>, a member-facing surface is <code>garden</code>, anything handling money is <code>vice</code>.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">06</span>
+<div class="stack-8">
+<div class="sec">Measure on the surface the text actually sits on</div>
+<p>The recurring defect, and it cost four rounds on the first retrofit. A colour measured against the page is not measured: small text lives on cards, on table-header tones, on row-hover, and on its own tint. Check the darkest and lightest surface each colour lands on, and take the worst.</p>
+<div class="warn stack-8" style="margin-top:8px">
+<p style="font-size:var(--fs-size-xs)"><strong style="color:var(--fs-ink-primary)">Light registers invert the tint rule.</strong> Mixing an accent into a light page lands <em>darker</em> than the page, so a tinted pill or active row eats the accent's contrast on the one surface it always sits on. In a light register, pin tints as literals just under the page colour. In a dark register, <code>color-mix</code> is safe — there the tint moves away from the ink.</p>
+</div>
+</div>
+</div>
+
+<div class="step">
+<span class="n">07</span>
+<div class="stack-8">
+<div class="sec">Do not retint what is not colour</div>
+<p>Type, spacing, radius, elevation and density belong to the host. A retint that also changes the type scale is a redesign wearing a retint's clothes, and it will be reverted. Freeside's own type and rhythm arrive later, per screen, when a team adopts the doctrine.</p>
+</div>
+</div>
+
+<div class="step">
+<span class="n">08</span>
+<div class="stack-8">
+<div class="sec">Leave third-party colour alone</div>
+<p>Partner logos, chain marks and community brand swatches are not yours to restyle. Where they need to sit on-register, pull them onto it with a relative-colour recipe rather than replacing the hue.</p>
+</div>
+</div>
+
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-24">
+<div class="stack-16">
+<span class="lab">Worked example</span>
+<h2 class="title">freeside-dashboard</h2>
+<p>The dashboard ran on a mature three-tier palette with no component-level hexes, so the whole retint is one file overriding primitives. Its two previews and the full mapping table live in <code>dashboard-palette/</code> — unlisted from this tab on purpose, since they document a consumer, not this system.</p>
+</div>
+<table>
+<thead><tr><th style="width:190px">Host primitive</th><th style="width:170px">Freeside role</th><th style="width:150px">Deep Space</th><th style="width:150px">Paradise</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td><code>void-base</code></td><td>surface-base</td><td><span class="sw"><i style="background:#081F28"></i>#081F28</span></td><td><span class="sw"><i style="background:#F7F1E5"></i>#F7F1E5</span></td><td>Five surface rungs, because the app used five</td></tr>
+<tr><td><code>bone-base</code></td><td>one ink</td><td><span class="sw"><i style="background:#F7F1E5"></i>#F7F1E5</span></td><td><span class="sw"><i style="background:#081F28"></i>#081F28</span></td><td>Hierarchy from dim/muted rungs, never from tinting the letterform</td></tr>
+<tr><td><code>cyan-base</code></td><td>accent 1 · cannes sky</td><td><span class="sw"><i style="background:#66ADC6"></i>#66ADC6</span></td><td><span class="sw"><i style="background:#2F6579"></i>#2F6579</span></td><td>Light value set by its own tint, not the page</td></tr>
+<tr><td><code>anomaly-base</code></td><td>accent 2 · bermuda sunset</td><td><span class="sw"><i style="background:#C8705B"></i>#C8705B</span></td><td><span class="sw"><i style="background:#A0503A"></i>#A0503A</span></td><td>The <code>resort</code> pair, chosen for a member-facing console</td></tr>
+<tr><td><code>phosphor-base</code></td><td>positive</td><td><span class="sw"><i style="background:#6DAC9E"></i>#6DAC9E</span></td><td><span class="sw"><i style="background:#5C6647"></i>#5C6647</span></td><td>Babylon Foliage is 3.7:1 on Deep Space — legal for a dot, not for small numerals</td></tr>
+<tr><td><code>token-yellow</code></td><td>caution</td><td><span class="sw"><i style="background:#F7D481"></i>#F7D481</span></td><td><span class="sw"><i style="background:#7A5E1C"></i>#7A5E1C</span></td><td>Hazard is unreadable on sand; light drops to ochre</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="rule"></div>
+
+<div class="stack-16">
+<span class="lab">Before you adopt the doctrine</span>
+<h2 class="title">Exposure is presentation, not access control</h2>
+<div class="no stack-8">
+<p>The exposure model decides what a permitted viewer is <strong style="color:var(--fs-ink-primary)">shown</strong>. It does not decide what they are permitted to <strong style="color:var(--fs-ink-primary)">receive</strong>. Unauthorized rows, cells, counts, pagination metadata and exports must be filtered or authorized <strong style="color:var(--fs-ink-primary)">server-side, before the payload reaches the client</strong>.</p>
+<p>Dropping a column, omitting a row from the DOM, and hiding an element with CSS are not access control — the record is still in the response and the response is readable. A retrofitted app that moves its authorization into the client because the doctrine looks like a permission system has been made less safe, not more.</p>
+<p>Read the levels as: <em>given data this client is already entitled to, how much of it does this screen state, and in what words.</em> Nothing more.</p>
+</div>
+</div>
+
+<div class="rule"></div>
+
+<div class="g3">
+<div class="yes stack-8"><div class="sec">Ship it when</div><p style="font-size:var(--fs-size-xs)">Hex literals live only in the primitive file and brand data. One import retints every screen, and reverting is one deleted line.</p></div>
+<div class="warn stack-8"><div class="sec">Fix first when</div><p style="font-size:var(--fs-size-xs)">Components carry their own colours, or semantic tokens are bypassed with arbitrary values. Consolidate those into primitives, then retint.</p></div>
+<div class="no stack-8"><div class="sec">Don't retint when</div><p style="font-size:var(--fs-size-xs)">The app is new, or the team wants the doctrine. Consume the system directly instead — a retint gets you the palette and none of the thinking.</p></div>
+</div>
+
+</div></div>
+</div>
+
+<div class="blk" style="break-before:page">
+<div class="cap"><span class="capname">Conformance</span><span class="capsub">37 checks over 276 cases · catalogue validity, fragment policy, selectors, reachability, deliberate failure, non-visual leakage</span></div>
+<div style="background:var(--fs-surface-base);color:var(--fs-ink-primary);padding:32px;display:grid;grid-template-columns:1fr 1fr;gap:24px 48px;width:100%">
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">A · Structural validity — 7</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Duplicate declarations, unknown selector IDs, missing policy axes, missing required-field fallbacks, secret on a required field, actions ungated.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">B · Fragment policy — 6</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Every fragment through the projector at every context, with no selector involved.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">C · Selector behaviour — 2</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Known contexts choose the expected IDs, deterministically.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">D · Reachability — 3</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Every production fragment is selected somewhere; canaries never are.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">E · Deliberate failure — 2</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">A canary below its floor falls back, records the reason, and fails a verdict.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">M · Mechanism — 7</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Exposure within the ceiling, state cannot breach it, access does not theme, silence never confirms.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">N · Non-visual leakage — 3</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">ARIA, title, data-*, form values, geometry and metadata read off the view model.</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:var(--fs-section-size);font-weight:var(--fs-section-weight)">R · Roster pack — 7</span><span style="color:var(--fs-ink-secondary);font-size:var(--fs-size-sm)">Row existence, cell sensitivity, action authorization, the export grant.</span></div>
+</div>
+<p style="margin:0;font-size:var(--fs-size-sm);color:#5C6166;max-width:100ch">Presentation doctrine only. Unauthorized rows, cells, counts and exports must be filtered server-side, before the payload reaches the client. Run headless with <span style="color:var(--fs-deep-space-ink)">node templates/_doctrine/run-checks.js</span>.</p>
+</div>
+
+</div>
+</doc-page>
+</x-dc>
+<template id="__bundler_thumbnail">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#081F28"/><g fill="none" stroke="#C8705B" stroke-width="3"><path d="M30 30h40M30 42h40M30 54h26"/></g><rect x="30" y="66" width="14" height="4" fill="#66ADC6"/></svg>
+</template>
+<script type="text/x-dc" data-dc-script>
+/* Print harness. The doctrine scripts arrive from the helmet asynchronously, and a
+   child that first renders without them paints its static markup with every
+   projected hole empty — with no reason to render again. So this waits for all
+   five packs and then re-renders the tree. */
+class Component extends DCLogic {
+  state = { tick: 0 };
+  componentDidMount() { this.wait(0); }
+  wait(n) {
+    var D = window.FreesideDoctrine;
+    var need = ['permission-gate', 'guest-surface', 'roster', 'degraded-states', 'docs'];
+    var ready = !!(D && D.packs) && need.every(function (p) { return !!D.packs[p]; });
+    if (ready) {
+      this.setState({ tick: this.state.tick + 1 });
+      if (n < 2) setTimeout(this.wait.bind(this, n + 1), 700);
+      return;
+    }
+    if (n < 400) setTimeout(this.wait.bind(this, n), 50);
+  }
+  renderVals() {
+    return {
+      yes: true, n28: 28, n3: 3, tick: this.state.tick,
+      cols: [{ label: 'Property' }, { label: 'Level' }, { label: 'Rate', align: 'right', mono: true }],
+      rows: [
+        ['Villa Straylight', 'Spindle tip', { value: '\u20AE 44,000', align: 'right', mono: true }],
+        ['Cannes Terrace', 'Lv 12', { value: '\u20AE 9,800', align: 'right', mono: true }],
+        ['Promenade Suite', 'Lv 3', { value: '\u20AE 3,200', align: 'right', mono: true }]
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

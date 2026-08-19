@@ -1,0 +1,132 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FREESIDE — ENVIRONMENT
+   A restrained media system, not an illustration.
+
+   Freeside is the inside of a spindle: fabricated sky, a light tube down the
+   axis, ground that curves up at the edges. None of that is DRAWN here. The
+   place itself arrives as a render or a photograph in the PLATE; this file
+   supplies only the scaffolding around it — sky behind, the Lado-Acheson axis
+   across, a hint of curvature closing overhead, and the overlays that seat the
+   image in the page.
+
+   ── WHY SO LITTLE ─────────────────────────────────────────────────────────
+   An earlier version built the whole panorama in CSS: terraces, canal, crowd
+   marks, inverted far side. It read as an airport diagram. Gradients cannot
+   carry luxury architecture, and a diagram of paradise is worse than a frame
+   waiting for a picture. So: no terraces, no water, no figures, no panorama.
+
+   ── THE LAYERS ────────────────────────────────────────────────────────────
+   Absolutely positioned, painted in DOM order:
+
+     plate → grid → axis → curve → scrim → veil → anno
+
+     plate   the render or photograph. The only place the place appears.
+     grid    survey overlay. Service and Ledger only; invisible above them.
+     axis    Lado-Acheson. One line, one bloom, never a sun disc.
+     curve   the habitat closing overhead — a single wide arc, nothing more.
+     scrim   top light-wash, so ink text may sit over the image.
+     veil    bottom feather into the page surface.
+     anno    a label, only where the level permits one.
+
+   Every layer is optional. A plate and a veil is a legitimate composition.
+
+   ── RULES ─────────────────────────────────────────────────────────────────
+   1. Same scaffolding at every exposure. What changes is precision, saturation
+      and what may be labelled — never the geometry.
+   2. Machinery reads as seams and traces in the PLATE, not as CSS mechanism.
+   3. No wilderness, no Earth horizon, no decay, no neon. The planting is
+      cultivated, the concrete is swept, the light is scheduled.
+   4. Annotations inside an environment are copy. In a product they project
+      through Exposure like any other string.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.fs-env{position:relative;overflow:hidden;isolation:isolate;
+  --fs-env-sky-high:#4E93B0;      /* Cannes blue, at the top of the arc        */
+  --fs-env-sky-low:#C6DEE6;       /* where the fabricated sky thins            */
+  --fs-env-air:#E7ECEE;           /* the haze the far side hangs in            */
+  --fs-env-axis:#FFFDF6;
+  --fs-env-axis-bloom:rgba(255,253,246,.55);
+  --fs-env-axis-top:32%;          /* the light tube sits high, never centred   */
+  --fs-env-bloom:1; /* @kind other */
+  --fs-env-curve:40px;            /* vertical radius of the overhead arc       */
+  --fs-env-plate-filter:none; /* @kind other */
+  --fs-env-hem:var(--fs-surface-base);
+  background:linear-gradient(180deg,var(--fs-env-sky-high) 0%,var(--fs-env-sky-low) 62%,var(--fs-env-air) 100%)}
+.fs-env>*{position:absolute;display:block}
+
+/* ── PLATE · the render or photograph ─────────────────────────────────────
+   Fills the frame. An <image-slot> sizes to its container, so the slot needs
+   nothing but the wrapper. Exposure tunes the plate through one filter rather
+   than through separate assets: one canonical image, four precisions. */
+.fs-env-plate{inset:0;overflow:hidden;filter:var(--fs-env-plate-filter)}
+.fs-env-plate>*{display:block;width:100%;height:100%}
+.fs-env-plate>img{object-fit:cover}
+/* A slot's dashed drop-ring is authoring chrome, not design. It draws in
+   currentColor, so a slot that already carries a render zeroes it out; a drag
+   still lights the frame in the host's own accent. A slot with no src keeps its
+   ring and caption — there it is the only thing telling you it is fillable. */
+.fs-env-plate>image-slot[src]{color:transparent}
+
+/* ── GRID · survey overlay, Service and Ledger only ──────────────────────── */
+.fs-env-grid{inset:0;pointer-events:none;opacity:0;transition:opacity .2s;background:
+  repeating-linear-gradient(90deg,rgba(8,31,40,.10) 0 1px,rgba(8,31,40,0) 1px 64px),
+  repeating-linear-gradient(180deg,rgba(8,31,40,.07) 0 1px,rgba(8,31,40,0) 1px 48px)}
+
+/* ── AXIS · Lado-Acheson. One hard line, one bloom, no sun disc ────────────
+   For frames with NO plate. A render of the interior carries its own axis in
+   perspective, and a horizontal CSS line laid over it reads as a printing
+   fault — so do not combine the two. */
+.fs-env-axis{top:var(--fs-env-axis-top);left:-4%;right:-4%;height:2px;opacity:var(--fs-env-bloom);
+  background:linear-gradient(90deg,rgba(255,253,246,0) 0%,var(--fs-env-axis) 14%,var(--fs-env-axis) 86%,rgba(255,253,246,0) 100%);
+  box-shadow:0 0 10px 0 var(--fs-env-axis-bloom)}
+.fs-env-axis::after{content:"";position:absolute;left:0;right:0;top:-28px;height:58px;pointer-events:none;
+  background:radial-gradient(56% 100% at 50% 50%,var(--fs-env-axis-bloom) 0%,rgba(255,253,246,0) 100%)}
+
+/* ── CURVE · the habitat closing overhead. One arc, hairline-edged ───────── */
+.fs-env-curve{top:calc(-1 * var(--fs-env-curve));left:-10%;right:-10%;height:34%;pointer-events:none;
+  border-radius:0 0 50% 50%/0 0 var(--fs-env-curve) var(--fs-env-curve);
+  border-bottom:1px solid rgba(247,241,229,.22);
+  background:linear-gradient(180deg,rgba(8,31,40,.22) 0%,rgba(8,31,40,.05) 58%,rgba(8,31,40,0) 100%)}
+
+/* ── SCRIM · so ink text may sit over the image ──────────────────────────── */
+.fs-env-scrim{inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(231,236,238,.86) 0%,rgba(231,236,238,.34) 26%,rgba(231,236,238,0) 52%)}
+
+/* ── VEIL · the plate feathering into the page ───────────────────────────── */
+.fs-env-veil{inset:0;pointer-events:none;
+  background:linear-gradient(0deg,var(--fs-env-hem) 0%,rgba(0,0,0,0) 26%)}
+
+/* ── ANNOTATION · only where the level permits it ───────────────────────── */
+.fs-env-anno{position:absolute;font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(8,31,40,.66);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.fs-env-anno::before{content:"";width:18px;height:1px;background:rgba(8,31,40,.42);flex:0 0 auto}
+.fs-env-anno[data-on="deep"]{color:rgba(247,241,229,.75)}
+.fs-env-anno[data-on="deep"]::before{background:rgba(247,241,229,.55)}
+
+/* ═══ EXPOSURE VARIANTS ═════════════════════════════════════════════════
+   One place, four precisions. Terrace is the resort as it is sold; Ledger is
+   the same view with its arithmetic showing. The image never changes. */
+
+.fs-env[data-env="atrium"]{--fs-env-sky-high:#5A9AB4;--fs-env-sky-low:#CBE2E9;
+  --fs-env-bloom:.82 /* @kind other */}
+
+/* Service · clean resort infrastructure. Colour steps back, the survey grid
+   steps forward. A plant room in a luxury resort — bright, swept, legible. */
+.fs-env[data-env="service"]{--fs-env-sky-high:#7FA3B2;--fs-env-sky-low:#D8E4E9;--fs-env-air:#EEF2F3;
+  --fs-env-bloom:.55; /* @kind other */
+  --fs-env-plate-filter:saturate(.74) brightness(1.05) /* @kind other */}
+.fs-env[data-env="service"] .fs-env-grid{opacity:1}
+
+/* Ledger · the same view with its ownership showing. The air thins toward
+   vacuum clarity and the axis reads as a metered source. */
+.fs-env[data-env="ledger"]{--fs-env-sky-high:#2F6579;--fs-env-sky-low:#9CC3CF;--fs-env-air:#D4DFE3;
+  --fs-env-bloom:.32; /* @kind other */
+  --fs-env-plate-filter:saturate(.6) contrast(1.06) /* @kind other */}
+.fs-env[data-env="ledger"] .fs-env-grid{opacity:.68}
+.fs-env[data-env="ledger"] .fs-env-axis{height:3px}
+
+/* ── BAND · the environment as a horizon strip inside a page ───────────────
+   A short strip needs a much longer feather than a full frame: over 110px a 26%
+   fade is 28px, which reads as a cut edge rather than a landing. */
+.fs-env-band{--fs-env-curve:22px;--fs-env-axis-top:24%}
+.fs-env-band .fs-env-veil{background:linear-gradient(0deg,var(--fs-env-hem) 0%,rgba(0,0,0,0) 64%)}
