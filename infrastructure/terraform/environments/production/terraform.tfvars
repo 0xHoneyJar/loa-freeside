@@ -12,6 +12,12 @@
 
 environment = "production"
 
+# Container Insights — disabled in 2026-05-02 cost cleanup. The 5 dependent
+# task-count alarms had zero fires in 90 days; service-up/down signal not
+# load-bearing in practice. Saves ~$100-150/mo on production. If a future
+# incident needs per-task drill-down, re-enable temporarily.
+enable_container_insights = false
+
 # VPC — Different CIDR to avoid conflicts if peered with staging
 vpc_cidr = "10.0.0.0/16"
 

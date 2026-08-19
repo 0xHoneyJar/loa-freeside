@@ -363,7 +363,9 @@ resource "aws_cloudwatch_metric_alarm" "gateway_memory_high" {
 }
 
 # Gateway Task Count (ensure at least 1 running)
+# Depends on ECS/ContainerInsights metric — only created when Container Insights is enabled.
 resource "aws_cloudwatch_metric_alarm" "gateway_no_tasks" {
+  count               = var.enable_container_insights ? 1 : 0
   alarm_name          = "${local.name_prefix}-gateway-no-tasks"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 1
