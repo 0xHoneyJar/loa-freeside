@@ -42,11 +42,11 @@ This directory contains infrastructure and deployment documentation for the Arra
 
 | Resource | Value |
 |----------|-------|
-| AWS Account | 891376933289 |
+| AWS Account | <AWS_ACCOUNT_ID> |
 | Region | us-east-1 |
 | VPC | vpc-08ccffcf89b8ec20d |
 | ECS Cluster | arrakis-production-cluster |
-| ECR Repository | 891376933289.dkr.ecr.us-east-1.amazonaws.com/arrakis-production-api |
+| ECR Repository | <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/arrakis-production-api |
 | ALB DNS | arrakis-production-alb-427042206.us-east-1.elb.amazonaws.com |
 
 ## Terraform

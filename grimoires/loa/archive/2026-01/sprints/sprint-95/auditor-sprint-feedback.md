@@ -279,7 +279,7 @@ aws iam get-role-policy \
 
 # Verify Terraform state KMS (after terraform init -reconfigure)
 aws s3api head-object \
-  --bucket arrakis-tfstate-891376933289 \
+  --bucket arrakis-tfstate-<AWS_ACCOUNT_ID> \
   --key staging/terraform.tfstate \
   --query '[ServerSideEncryption, SSEKMSKeyId]'
 # Expected: ["aws:kms", "arn:aws:kms:..."]

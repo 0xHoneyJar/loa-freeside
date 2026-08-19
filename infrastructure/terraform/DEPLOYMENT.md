@@ -38,11 +38,11 @@ Record the physical IDs in the table below before proceeding.
 # Secure backup: encrypted S3 upload with sha256 checksum
 terraform state pull > backup-$(date +%Y%m%d-%H%M%S).tfstate
 sha256sum backup-*.tfstate > backup-checksums.txt
-aws s3 cp backup-*.tfstate s3://arrakis-tfstate-891376933289/backups/ --sse aws:kms
-aws s3 cp backup-checksums.txt s3://arrakis-tfstate-891376933289/backups/ --sse aws:kms
+aws s3 cp backup-*.tfstate s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/ --sse aws:kms
+aws s3 cp backup-checksums.txt s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/ --sse aws:kms
 
 # Restore drill: verify restore works before first import
-aws s3 cp s3://arrakis-tfstate-891376933289/backups/backup-*.tfstate /tmp/restore-test.tfstate
+aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/backup-*.tfstate /tmp/restore-test.tfstate
 # In a scratch workspace: terraform state push /tmp/restore-test.tfstate
 ```
 
@@ -146,7 +146,7 @@ terraform state rm <resource_address>
 # Re-import after fix
 
 # Full state reset (emergency only):
-aws s3 cp s3://arrakis-tfstate-891376933289/backups/backup-YYYYMMDD-HHMMSS.tfstate ./
+aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/backup-YYYYMMDD-HHMMSS.tfstate ./
 terraform state push backup-YYYYMMDD-HHMMSS.tfstate
 ```
 
@@ -257,7 +257,7 @@ terraform state rm <resource_address>
 ```bash
 # Trigger: multiple import failures, state corruption
 # Time limit: 15 minutes
-aws s3 cp s3://arrakis-tfstate-891376933289/backups/backup-YYYYMMDD-HHMMSS.tfstate ./
+aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/backups/backup-YYYYMMDD-HHMMSS.tfstate ./
 terraform state push backup-YYYYMMDD-HHMMSS.tfstate
 terraform plan -var-file=environments/staging/terraform.tfvars
 # Verify: plan shows expected state

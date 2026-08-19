@@ -18,7 +18,7 @@ set -e
 
 # Configuration
 AWS_REGION="us-east-1"
-AWS_ACCOUNT_ID="891376933289"
+AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}"  # derived; overridable
 ECR_REPO="arrakis-production-api"
 ECS_CLUSTER="arrakis-production-cluster"
 ECS_SERVICE_API="arrakis-production-api"

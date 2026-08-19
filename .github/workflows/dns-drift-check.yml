@@ -37,7 +37,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: infrastructure/terraform/dns
-        run: terraform init -backend-config=environments/production/backend.tfvars
+        run: terraform init -backend-config=environments/production/backend.tfvars -backend-config="bucket=${{ secrets.TFSTATE_BUCKET }}"
 
       - name: Terraform Plan (drift detection)
         working-directory: infrastructure/terraform/dns

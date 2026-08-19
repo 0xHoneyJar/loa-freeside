@@ -94,7 +94,7 @@ secret_string = jsonencode({
 
 **Impact:**
 - Full database access if state file is leaked
-- State file stored in S3 (`arrakis-tfstate-891376933289`) - potential exposure
+- State file stored in S3 (`arrakis-tfstate-<AWS_ACCOUNT_ID>`) - potential exposure
 - No encryption of state file at rest beyond S3 SSE
 
 **Recommendation:**

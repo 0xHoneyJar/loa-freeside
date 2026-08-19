@@ -773,7 +773,7 @@ Lateral Movement Prevention: ✅ EXCELLENT
    aws kms enable-key-rotation --key-id <key-id>
 
 4. Backup current state:
-   aws s3 cp s3://arrakis-tfstate-891376933289/staging/terraform.tfstate \
+   aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/staging/terraform.tfstate \
      ./terraform.tfstate.backup
 
 5. Uncomment kms_key_id in backend.tfvars
@@ -783,7 +783,7 @@ Lateral Movement Prevention: ✅ EXCELLENT
 
 7. Verify encryption:
    aws s3api head-object \
-     --bucket arrakis-tfstate-891376933289 \
+     --bucket arrakis-tfstate-<AWS_ACCOUNT_ID> \
      --key staging/terraform.tfstate \
      --query 'ServerSideEncryption,SSEKMSKeyId'
 ```

@@ -136,11 +136,11 @@ aws kms describe-key --key-id alias/arrakis-terraform-state
 **Step 2: Backup Current State**
 ```bash
 # Backup staging state
-aws s3 cp s3://arrakis-tfstate-891376933289/staging/terraform.tfstate \
+aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/staging/terraform.tfstate \
   ./terraform-state-backup-staging-$(date +%Y%m%d).tfstate
 
 # Backup production state
-aws s3 cp s3://arrakis-tfstate-891376933289/production/terraform.tfstate \
+aws s3 cp s3://arrakis-tfstate-<AWS_ACCOUNT_ID>/production/terraform.tfstate \
   ./terraform-state-backup-production-$(date +%Y%m%d).tfstate
 ```
 
@@ -159,7 +159,7 @@ terraform init -backend-config=environments/staging/backend.tfvars -reconfigure
 **Step 5: Verify Encryption**
 ```bash
 aws s3api head-object \
-  --bucket arrakis-tfstate-891376933289 \
+  --bucket arrakis-tfstate-<AWS_ACCOUNT_ID> \
   --key staging/terraform.tfstate \
   --query '[ServerSideEncryption, SSEKMSKeyId]'
 # Expected: ["aws:kms", "arn:aws:kms:us-east-1:...:key/..."]
@@ -299,7 +299,7 @@ After completing all tasks, verify:
 
 ### KMS Encryption
 - [ ] `aws secretsmanager describe-secret --secret-id arrakis-staging/database --query 'KmsKeyId'` returns customer KMS key ARN
-- [ ] `aws s3api head-object --bucket arrakis-tfstate-891376933289 --key staging/terraform.tfstate --query 'SSEKMSKeyId'` returns KMS key ARN
+- [ ] `aws s3api head-object --bucket arrakis-tfstate-<AWS_ACCOUNT_ID> --key staging/terraform.tfstate --query 'SSEKMSKeyId'` returns KMS key ARN
 
 ### Service Access
 - [ ] Gateway can connect to Discord (read app_config)

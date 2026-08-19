@@ -6,7 +6,7 @@ This guide walks through setting up the staging environment for Arrakis.
 
 - AWS CLI v2 configured with appropriate permissions
 - Terraform >= 1.6.0
-- Access to AWS account 891376933289
+- Access to AWS account <AWS_ACCOUNT_ID>
 - ACM certificate for `staging.api.arrakis.community` (or wildcard `*.api.arrakis.community`)
 
 ## Step 1: Create Staging Secrets
