@@ -76,3 +76,6 @@ export * from './migration.js';
 
 // Agent Gateway Interface (Hounfour Phase 4 — Spice Gate)
 export * from './agent-gateway.js';
+
+// Interaction History Port (relocated from themes/sietch — coherence F4 / arrakis-shqm)
+export * from './interaction-history.js';

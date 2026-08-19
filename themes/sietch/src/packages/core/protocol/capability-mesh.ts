@@ -16,24 +16,15 @@ import type {
   CapabilitySet,
   ResolutionContext,
 } from './capability-catalog.js';
+// InteractionRecord + InteractionHistoryProvider now live in @freeside/core/ports
+// (single source of truth, platform-core <- theme belt — coherence F4 / arrakis-shqm).
+// Imported for local use by InMemoryInteractionHistoryProvider below.
+import type { InteractionRecord, InteractionHistoryProvider } from '@freeside/core/ports';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Record of interaction between two models */
-export interface InteractionRecord {
-  model_pair: [string, string];
-  quality_score: number;
-  observation_count: number;
-}
-
-/** Provider interface for interaction history — decoupled from storage layer */
-export interface InteractionHistoryProvider {
-  /**
-   * Get interaction records between two models.
-   * Returns empty array if no interactions found.
-   */
-  getInteractions(modelA: string, modelB: string): Promise<InteractionRecord[]>;
-}
+// Re-exported for any existing importers of these names from this module.
+export type { InteractionRecord, InteractionHistoryProvider };
 
 /** Threshold configuration for ensemble capability unlocking */
 export interface MeshThresholdConfig {
