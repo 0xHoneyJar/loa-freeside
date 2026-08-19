@@ -106,6 +106,26 @@ modules:
       PR: activities-api #25 (Lane A read-plane LIVE + write path built behind
       GATE-SEC-1, merged 269ede35; PRs #21/#22/#23 superseded by the squash).
 
+  billing-api:
+    git_url: https://github.com/0xHoneyJar/billing-api.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-06-06"
+    runtime_state: scaffolded
+    notes: |
+      Billing building — credit ledger + S2S reserve/finalize. EXTRACTED from the
+      loa-freeside monolith (ADR-008); repo github.com/0xHoneyJar/billing-api is
+      PRIVATE (created 2026-06-06, thin-v1 #1 merged: credit ledger + S2S finalize;
+      last push 2026-06-21). NOT deployed — billing-api-production.up.railway.app/health
+      → 404 (probed 2026-06-25). beacon_url ~ (private cell, no public subdomain).
+      Registered 2026-06-25 to close the registry-vs-territory drift KRANZ flagged: the
+      ledger-api note below previously asserted "billing remains genuinely un-extracted
+      (no repo)" — FALSE; billing-api exists. Credit-lot logic MAY still dual-home in the
+      monolith (packages/services/credit-lot-service.ts) — verify cutover before treating
+      billing-api as the live billing authority. Bears on the revenue line (loa-finn#66).
+
   events-api:
     # In-repo LIBRARY building (@0xhoneyjar/events) — the ACVP event protocol
     # definer. The FIRST in-repo beacon (cycle-112 S5, closes arrakis-vl8f).
@@ -201,7 +221,8 @@ modules:
       cutover; do NOT assume ledger-api is the live balance authority yet. Registered
       2026-06-19 to close the registry-vs-territory drift the 2026-06-04 gecko census
       flagged (DRIFT-2: "freeside-ledger IS extracted; doctrine said it wasn't").
-      billing remains genuinely un-extracted (no repo).
+      billing IS NOW extracted too — see billing-api above (registered 2026-06-25); the
+      prior "un-extracted (no repo)" claim here was the same drift class, now corrected.
 
   mediums-api:
     # NOTE: GH repo still at freeside-mediums (only mediums of the 8 cells not yet
@@ -386,3 +407,22 @@ modules:
       GraphQL API at `/graphql`. Per memory, storage was named the
       "real blocker" for the Mibera inventory sovereignty arc — that
       framing predates the current deployment; verify status with operator.
+
+  worlds-api:
+    git_url: https://github.com/0xHoneyJar/worlds-api.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-04-29"
+    runtime_state: scaffolded
+    notes: |
+      World manifest registry — sealed schemas + terraform generator (created
+      2026-04-29, public; last push 2026-06-06). Library/tool shape, NOT an HTTP
+      runtime: worlds-api-production.up.railway.app/health → 404 (probed 2026-06-25);
+      deployment_url ~ (no served runtime planned — it generates terraform the platform
+      consumes). Registered 2026-06-25 to close the registry-vs-territory drift KRANZ
+      flagged (worlds-api existed but was unrecorded). ⚠ Manifest-only: world RUNTIME
+      (guild/member lifecycle) still lives in themes/sietch — there is NO world-runtime
+      building, so runtime work (e.g. #292) must NOT route here. Verify intended runtime
+      shape with operator.
