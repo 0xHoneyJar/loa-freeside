@@ -15,5 +15,9 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*", "bin/**/*"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist", "tests"],
+  "references": [
+    { "path": "../beacon-schema" },
+    { "path": "../freeside-registry" }
+  ]
 }
