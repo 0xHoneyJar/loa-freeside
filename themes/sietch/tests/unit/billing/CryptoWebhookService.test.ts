@@ -201,15 +201,108 @@ describe('CryptoWebhookService', () => {
     // -------------------------------------------------------------------------
 
     describe('timestamp check', () => {
-      it('should reject stale events', async () => {
+      it('should PROCESS a stale finished event (delayed terminal delivery, money path)', async () => {
+        // Sietch has no reconciliation sweep — quarantining a stale
+        // signature-valid 'finished' event would strand the payment.
+        // Replay safety comes from the idempotency layers that still run
+        // (Redis dedupe, DB status-transition validation).
+        const staleFinished = createTestEvent({
+          status: 'finished',
+          timestamp: new Date(Date.now() - 15 * 60 * 1000),
+        });
+
+        const result = await cryptoWebhookService.processEvent(staleFinished);
+
+        expect(result.status).toBe('processed');
+        expect(mockedBillingQueries.updateCryptoPaymentStatus).toHaveBeenCalledWith(
+          '12345',
+          expect.objectContaining({ status: 'finished' }),
+        );
+      });
+
+      it('should PROCESS stale non-finished TERMINAL events (failed/refunded/expired)', async () => {
+        // A delayed terminal truth must not strand the row in its previous
+        // pending status — there is no recovery sweep on this path. The
+        // idempotency layers (Redis dedupe, DB transition validation)
+        // still protect against replays.
+        for (const status of ['failed', 'refunded', 'expired'] as const) {
+          vi.clearAllMocks();
+          const staleTerminal = createTestEvent({
+            status,
+            timestamp: new Date(Date.now() - 15 * 60 * 1000),
+          });
+
+          const result = await cryptoWebhookService.processEvent(staleTerminal);
+
+          expect(result.status).toBe('processed');
+          expect(mockedBillingQueries.updateCryptoPaymentStatus).toHaveBeenCalledWith(
+            '12345',
+            expect.objectContaining({ status }),
+          );
+        }
+      });
+
+      it('should quarantine stale events with a durable record', async () => {
         const staleEvent = createTestEvent({
           timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
         });
 
         const result = await cryptoWebhookService.processEvent(staleEvent);
 
-        expect(result.status).toBe('failed');
-        expect(result.error).toContain('too old');
+        expect(result.status).toBe('quarantined');
+        expect(result.message).toContain('too old');
+        // Operator trail only — nothing in sietch consumes this row, so the
+        // message must not promise reconciliation that will never happen.
+        expect(mockedBillingQueries.logBillingAuditEvent).toHaveBeenCalledWith(
+          'crypto_webhook_quarantined_stale',
+          expect.objectContaining({ paymentId: staleEvent.paymentId }),
+        );
+        expect(result.message).not.toMatch(/reconcil/i);
+        // No processing side effects
+        expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
+      });
+
+      it('never quarantines a money-bearing status, however late it arrives', async () => {
+        // The safety property the quarantine gate depends on: quarantine can
+        // only ever drop a NON-terminal transition. Every status that decides
+        // credit or settlement is processed regardless of age, so a dropped
+        // event can never cost a customer their credits or leave a settled
+        // payment looking pending.
+        const terminal = ['finished', 'failed', 'refunded', 'expired'] as const;
+        const nonTerminal = ['waiting', 'confirming', 'confirmed', 'sending', 'partially_paid'] as const;
+
+        for (const status of terminal) {
+          vi.clearAllMocks();
+          const result = await cryptoWebhookService.processEvent(
+            createTestEvent({ status, timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000) }),
+          );
+          expect(result.status).not.toBe('quarantined');
+        }
+
+        for (const status of nonTerminal) {
+          vi.clearAllMocks();
+          const result = await cryptoWebhookService.processEvent(
+            createTestEvent({ status, timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000) }),
+          );
+          expect(result.status).toBe('quarantined');
+          // …and dropping it touches no payment state.
+          expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
+        }
+      });
+
+      it('should return quarantine_failed when the durable record cannot be written', async () => {
+        mockedBillingQueries.logBillingAuditEvent.mockImplementationOnce(() => {
+          throw new Error('disk full');
+        });
+        const staleEvent = createTestEvent({
+          timestamp: new Date(Date.now() - 15 * 60 * 1000),
+        });
+
+        const result = await cryptoWebhookService.processEvent(staleEvent);
+
+        expect(result.status).toBe('quarantine_failed');
+        expect(result.error).toContain('durably recorded');
+        expect(mockedBillingQueries.updateCryptoPaymentStatus).not.toHaveBeenCalled();
       });
 
       it('should accept events within age limit', async () => {
@@ -328,6 +421,21 @@ describe('CryptoWebhookService', () => {
         } as any);
 
         const event = createTestEvent({ status: 'failed' });
+        const result = await cryptoWebhookService.processEvent(event);
+
+        expect(result.status).toBe('processed');
+      });
+
+      it('should allow expired status from partially_paid (not strand the payment)', async () => {
+        mockedBillingQueries.getCryptoPaymentByPaymentId.mockReturnValue({
+          id: 'cp_test_123',
+          paymentId: '12345',
+          communityId: 'test-community',
+          tier: 'premium',
+          status: 'partially_paid',
+        } as any);
+
+        const event = createTestEvent({ status: 'expired' });
         const result = await cryptoWebhookService.processEvent(event);
 
         expect(result.status).toBe('processed');

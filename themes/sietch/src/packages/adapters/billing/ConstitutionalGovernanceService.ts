@@ -207,26 +207,7 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
     const entityType = opts.entityType ?? null;
 
     return this.db.transaction(() => {
-      // Allocate version from sequence counter under BEGIN IMMEDIATE
-      const seqRow = this.db.prepare(
-        `SELECT current_version FROM system_config_version_seq
-         WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
-      ).get(paramKey, entityType) as { current_version: number } | undefined;
-
-      let nextVersion: number;
-      if (seqRow) {
-        nextVersion = seqRow.current_version + 1;
-        this.db.prepare(
-          `UPDATE system_config_version_seq SET current_version = ?
-           WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
-        ).run(nextVersion, paramKey, entityType);
-      } else {
-        nextVersion = 1;
-        this.db.prepare(
-          `INSERT INTO system_config_version_seq (param_key, entity_type, current_version)
-           VALUES (?, ?, ?)`,
-        ).run(paramKey, entityType, nextVersion);
-      }
+      const nextVersion = this.allocateVersion(paramKey, entityType);
 
       const id = randomUUID();
       const valueJson = String(value);
@@ -242,6 +223,148 @@ export class ConstitutionalGovernanceService implements IConstitutionalGovernanc
 
       return this.getConfigRow(id);
     })();
+  }
+
+  /** Allocate the next config version from the sequence counter. Must be called inside a transaction. */
+  private allocateVersion(paramKey: string, entityType: string | null): number {
+    const seqRow = this.db.prepare(
+      `SELECT current_version FROM system_config_version_seq
+       WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
+    ).get(paramKey, entityType) as { current_version: number } | undefined;
+
+    if (seqRow) {
+      const nextVersion = seqRow.current_version + 1;
+      this.db.prepare(
+        `UPDATE system_config_version_seq SET current_version = ?
+         WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')`,
+      ).run(nextVersion, paramKey, entityType);
+      return nextVersion;
+    }
+    this.db.prepare(
+      `INSERT INTO system_config_version_seq (param_key, entity_type, current_version)
+       VALUES (?, ?, ?)`,
+    ).run(paramKey, entityType, 1);
+    return 1;
+  }
+
+  async activateFromAgentGovernance(
+    paramKey: string,
+    value: unknown,
+    opts: {
+      proposerAccountId: string;
+      agentProposalId: string;
+      totalWeight: number;
+      entityType?: string | null;
+    },
+  ): Promise<SystemConfig> {
+    // Agent quorum + cooldown were already enforced by AgentGovernanceService;
+    // a draft here would never apply (resolution reads only active configs),
+    // so the config is created and activated in ONE transaction with the
+    // standard supersede + audit trail (same shape as emergencyOverride,
+    // with agent-quorum provenance instead of human approvers).
+    const validation = validateConfigValue(paramKey, value);
+    if (!validation.valid) {
+      throw new SchemaValidationError(paramKey, validation.error!);
+    }
+
+    // Entity scope travels with the proposal: an entity-scoped proposal must
+    // supersede and create only its own (param_key, entity_type) row, never
+    // the global one. '__global__' is the reserved COALESCE sentinel for a
+    // NULL (global) scope; a literal value would supersede the real global
+    // config but store a phantom-scoped row that global resolution
+    // (entity_type IS NULL) never finds. Reject it defensively here too (the
+    // agent proposal boundary rejects it first).
+    if (opts.entityType === '__global__') {
+      throw new SchemaValidationError(
+        paramKey,
+        `entityType '__global__' is reserved; omit entityType for a global scope`,
+      );
+    }
+    const entityType = opts.entityType ?? null;
+
+    // BEGIN IMMEDIATE: the idempotency check below is check-then-insert, so
+    // the write lock must be taken BEFORE the check — two deferred
+    // transactions in different processes could otherwise both pass the
+    // SELECT and both insert.
+    return this.db.transaction(() => {
+      // Idempotent by proposal id: activation may be retried (orphan
+      // recovery, claim released after a post-config failure) and may race
+      // across app instances. If a config already carries this proposal's
+      // provenance, return it instead of minting a second version that
+      // supersedes the first.
+      const existing = this.db.prepare(`
+        SELECT id FROM system_config
+        WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
+      `).get(opts.agentProposalId) as { id: string } | undefined;
+      if (existing) {
+        logger.info({
+          configId: existing.id,
+          paramKey,
+          agentProposalId: opts.agentProposalId,
+          event: 'constitutional.agent_governance.already_activated',
+        }, 'Agent governance activation already applied — idempotent no-op');
+        return this.getConfigRow(existing.id);
+      }
+
+      const nextVersion = this.allocateVersion(paramKey, entityType);
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      const actor = `agent-governance:${opts.proposerAccountId}`;
+      const metadata = JSON.stringify({
+        source: 'agent-governance',
+        agentProposalId: opts.agentProposalId,
+        totalWeight: opts.totalWeight,
+      });
+
+      // Supersede previous active config for same (param_key, entity_type)
+      const prevActive = this.db.prepare(`
+        SELECT id FROM system_config
+        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = COALESCE(?, '__global__')
+          AND status = 'active'
+      `).get(paramKey, entityType) as { id: string } | undefined;
+
+      if (prevActive) {
+        // Mark the old row superseded WITHOUT the forward link yet:
+        // superseded_by is an immediate FK to system_config(id), and the new
+        // row is not inserted until below — setting it here raises FOREIGN KEY
+        // constraint failed under PRAGMA foreign_keys=ON (production). Vacating
+        // 'active' first also frees the partial-unique active index
+        // (idx_system_config_active) so the new active row can be inserted.
+        this.db.prepare(`
+          UPDATE system_config SET status = 'superseded', superseded_at = ?
+          WHERE id = ?
+        `).run(now, prevActive.id);
+        this.logAudit(prevActive.id, 'superseded', 'system', 'active', 'superseded', nextVersion, null);
+      }
+
+      // value_json is always JSON (resolution does JSON.parse); String(value)
+      // would store bare `fixed_allocation` instead of `"fixed_allocation"`
+      // and make the activated config throw at resolution time.
+      this.db.prepare(`
+        INSERT INTO system_config
+          (id, param_key, entity_type, value_json, config_version, status, proposed_by, activated_at, metadata)
+        VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+      `).run(id, paramKey, entityType, JSON.stringify(value), nextVersion, actor, now, metadata);
+
+      if (prevActive) {
+        // Now that the new row exists, establish the forward link. FK target
+        // is present, so this satisfies the immediate superseded_by FK.
+        this.db.prepare(`
+          UPDATE system_config SET superseded_by = ? WHERE id = ?
+        `).run(id, prevActive.id);
+      }
+
+      this.logAudit(id, 'activated', actor, null, 'active', nextVersion, metadata);
+
+      logger.info({
+        configId: id,
+        paramKey,
+        agentProposalId: opts.agentProposalId,
+        event: 'constitutional.agent_governance.activated',
+      }, 'Config activated via agent governance');
+
+      return this.getConfigRow(id);
+    }).immediate();
   }
 
   async submit(configId: string, proposerAdminId: string): Promise<SystemConfig> {

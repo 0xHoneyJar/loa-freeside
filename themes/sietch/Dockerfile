@@ -105,12 +105,19 @@ RUN cp -r src/static dist/static 2>/dev/null || true
 # Build packages/services/ — route files import at runtime via
 # ../../../../packages/services/*.js which resolves to /packages/services/.
 # The .d.ts stubs are compile-time only; we need actual .js for runtime.
+#
+# This list must stay a superset of the modules the vitest workspace aliases
+# (vitest.workspace.ts `sharedResolve`). A module that is aliased but not built
+# here resolves in tests and 404s in production — tsc cannot catch it either,
+# because the .d.ts stub satisfies the compiler. Guarded by
+# tests/unit/packaged-services-parity.test.ts.
 COPY packages/services /repo/packages/services
 RUN npx esbuild \
       /repo/packages/services/velocity-service.ts \
       /repo/packages/services/feature-flags.ts \
       /repo/packages/services/purpose-service.ts \
       /repo/packages/services/community-scope.ts \
+      /repo/packages/services/event-sourcing-service.ts \
       --outdir=/repo/packages/services-dist \
       --format=esm --platform=node --target=node20
 
@@ -212,6 +219,13 @@ USER root
 RUN apk add --no-cache jq
 COPY tests/e2e/e2e-entrypoint.sh /app/e2e-entrypoint.sh
 RUN chmod +x /app/e2e-entrypoint.sh
+# docker-compose.e2e.yml mounts named volumes at /data (SQLite billing DB) and
+# /shared (JWKS handoff to loa-finn). Docker seeds a fresh named volume from the
+# image's directory at that path, ownership included — and when the path does
+# not exist in the image it creates the mountpoint root-owned. This container
+# runs as `nodejs`, so the first write failed with SQLITE_CANTOPEN on
+# /data/billing.db. Create both owned by nodejs instead of running as root.
+RUN mkdir -p /data /shared && chown nodejs:nodejs /data /shared
 USER nodejs
 
 CMD ["/app/e2e-entrypoint.sh"]

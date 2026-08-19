@@ -22,8 +22,9 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
-import { sqliteTimestamp } from './protocol/timestamps.js';
+import { sqliteTimestamp, sqliteTimestampToMs } from './protocol/timestamps.js';
 import { validateConfigValue, CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
+import { ENTITY_TYPES, type EntityType } from '../../core/protocol/billing-types.js';
 import type { IEconomicEventEmitter } from '../../core/ports/IEconomicEventEmitter.js';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import type { IAgentProvenanceVerifier } from '../../core/ports/IAgentProvenanceVerifier.js';
@@ -46,8 +47,24 @@ import type {
  */
 const BLOCKED_PREFIXES = ['kyc.', 'payout.', 'fraud_rule.', 'settlement.'];
 
+/** Reserved COALESCE sentinel for a NULL (global) entity_type — never a real scope. */
+const GLOBAL_ENTITY_SENTINEL = '__global__';
+
 /** Default proposal expiry: 7 days from creation */
 const DEFAULT_PROPOSAL_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * Grace window added past cooldown_ends_at when a proposal reaches quorum.
+ * activateExpiredCooldowns gates on expires_at > now, and expireStaleProposals
+ * expires quorum_reached rows once expires_at passes. Without extending
+ * expires_at at quorum, a cooldown that ends near (or after) the original
+ * voting deadline — a long configured cooldown, or quorum reached late in the
+ * window — would let the proposal expire before it can be activated. Extending
+ * to cooldown_ends_at + this grace guarantees the hourly activation cron has a
+ * window to apply the approved change, while still expiring proposals that sit
+ * un-activated through genuine extended downtime.
+ */
+const ACTIVATION_GRACE_SECONDS = 24 * 60 * 60;
 
 // =============================================================================
 // AgentGovernanceService
@@ -85,6 +102,34 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     if (BLOCKED_PREFIXES.some(prefix => paramKey.startsWith(prefix))) {
       throw Object.assign(
         new Error(`Parameter '${paramKey}' is not proposable by agents`),
+        { code: 'VALIDATION_ERROR', statusCode: 400 },
+      );
+    }
+
+    // '__global__' is the reserved COALESCE sentinel for a NULL (global)
+    // entity_type. A literal '__global__' scope would supersede the real
+    // global config yet store a phantom-scoped row that global resolution
+    // (entity_type IS NULL) never finds — reject it at the boundary.
+    if (entityType === GLOBAL_ENTITY_SENTINEL) {
+      throw Object.assign(
+        new Error(`entityType '${GLOBAL_ENTITY_SENTINEL}' is reserved; omit entityType for a global scope`),
+        { code: 'VALIDATION_ERROR', statusCode: 400 },
+      );
+    }
+
+    // A provided entity scope must be a canonical entity type. A blank,
+    // miscased ('Agent'), or arbitrary scope would activate an entity_type that
+    // typed resolution (which queries the canonical values) never reads — the
+    // proposal would appear activated yet have no effect. Omit for global.
+    if (
+      entityType !== undefined &&
+      entityType !== null &&
+      !ENTITY_TYPES.includes(entityType as EntityType)
+    ) {
+      throw Object.assign(
+        new Error(
+          `entityType '${entityType}' is not a canonical entity type (${ENTITY_TYPES.join(', ')}); omit entityType for a global scope`,
+        ),
         { code: 'VALIDATION_ERROR', statusCode: 400 },
       );
     }
@@ -127,10 +172,19 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     const entityTypeNorm = entityType ?? null;
 
     return this.db.transaction(() => {
-      // Step 6: Check for existing open proposal (partial unique index enforces this too)
+      // Step 6: Reject a second in-flight proposal for the same scope.
+      //
+      // 'quorum_reached' counts as in-flight, not settled: it is approved but
+      // not yet applied (it waits out the cooldown). Excluding only 'open' let
+      // a second proposal be created and also reach quorum, after which BOTH
+      // enter the activation sweep for one scope and each activation supersedes
+      // the other's config — the final active value then depended on retry
+      // timing. Keeping one in-flight proposal per scope makes that impossible
+      // at the source. (The partial unique index covers the 'open' half.)
       const existing = this.db.prepare(`
         SELECT id FROM agent_governance_proposals
-        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = ? AND status = 'open'
+        WHERE param_key = ? AND COALESCE(entity_type, '__global__') = ?
+          AND status IN ('open', 'quorum_reached')
       `).get(paramKey, entityTypeNorm ?? '__global__') as { id: string } | undefined;
 
       if (existing) {
@@ -165,14 +219,19 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       let cooldownEndsAt: string | null = null;
 
       if (weightResult.totalWeight >= requiredWeight) {
-        cooldownEndsAt = sqliteTimestamp(new Date(Date.now() + cooldownSeconds * 1000));
+        const cooldownEndsMs = Date.now() + cooldownSeconds * 1000;
+        cooldownEndsAt = sqliteTimestamp(new Date(cooldownEndsMs));
         status = 'quorum_reached';
 
+        // Ensure the voting deadline never pre-empts a legitimate cooldown.
+        const quorumExpiresAt = sqliteTimestamp(
+          new Date(Math.max(sqliteTimestampToMs(expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
+        );
         this.db.prepare(`
           UPDATE agent_governance_proposals
-          SET status = 'quorum_reached', cooldown_ends_at = ?, updated_at = ?
+          SET status = 'quorum_reached', cooldown_ends_at = ?, expires_at = ?, updated_at = ?
           WHERE id = ?
-        `).run(cooldownEndsAt, now, proposalId);
+        `).run(cooldownEndsAt, quorumExpiresAt, now, proposalId);
 
         this.emitEventInTx('AgentProposalQuorumReached', proposerAccountId, {
           proposalId, paramKey, totalWeight: weightResult.totalWeight,
@@ -235,6 +294,16 @@ export class AgentGovernanceService implements IAgentGovernanceService {
           { code: 'CONFLICT', statusCode: 409 },
         );
       }
+      // Reject votes past the deadline even if the hourly expiry phase has not
+      // yet flipped the status to 'expired'. Otherwise a late vote could reach
+      // quorum and the quorum path would extend expires_at to
+      // cooldown_ends_at + grace, resurrecting an already-expired proposal.
+      if (sqliteTimestampToMs(proposal.expiresAt) <= sqliteTimestampToMs(now)) {
+        throw Object.assign(
+          new Error(`Proposal ${proposalId} has passed its voting deadline`),
+          { code: 'CONFLICT', statusCode: 409 },
+        );
+      }
 
       // Step 4: Check duplicate vote (PK constraint also enforces this)
       const existingVote = this.db.prepare(`
@@ -269,13 +338,18 @@ export class AgentGovernanceService implements IAgentGovernanceService {
       const updated = this.readProposal(proposalId)!;
       if (updated.status === 'open' && updated.totalWeight >= updated.requiredWeight) {
         const cooldownSeconds = this.resolveNumericParam('governance.agent_cooldown_seconds');
-        const cooldownEndsAt = sqliteTimestamp(new Date(Date.now() + cooldownSeconds * 1000));
+        const cooldownEndsMs = Date.now() + cooldownSeconds * 1000;
+        const cooldownEndsAt = sqliteTimestamp(new Date(cooldownEndsMs));
 
+        // Ensure the voting deadline never pre-empts a legitimate cooldown.
+        const quorumExpiresAt = sqliteTimestamp(
+          new Date(Math.max(sqliteTimestampToMs(updated.expiresAt), cooldownEndsMs + ACTIVATION_GRACE_SECONDS * 1000)),
+        );
         this.db.prepare(`
           UPDATE agent_governance_proposals
-          SET status = 'quorum_reached', cooldown_ends_at = ?, updated_at = ?
+          SET status = 'quorum_reached', cooldown_ends_at = ?, expires_at = ?, updated_at = ?
           WHERE id = ?
-        `).run(cooldownEndsAt, now, proposalId);
+        `).run(cooldownEndsAt, quorumExpiresAt, now, proposalId);
 
         this.emitEventInTx('AgentProposalQuorumReached', updated.proposerAccountId, {
           proposalId, paramKey: updated.paramKey,
@@ -392,61 +466,321 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     const now = sqliteTimestamp();
     let activated = 0;
 
+    // Fail closed: activation REQUIRES the constitutional governance service to
+    // create the active config a proposal applies. Without it, claiming a
+    // proposal 'activated' would silently drop the approved change — no config,
+    // and the terminal status hides the row from both expireStaleProposals and
+    // the orphan-recovery arm below. Activate nothing so proposals stay
+    // quorum_reached and are applied once governance is wired in.
+    if (!this.governance) {
+      logger.error({
+        event: 'agent.governance.activation_skipped_no_service',
+      }, 'activateExpiredCooldowns has no constitutional governance service — activating nothing (proposals remain quorum_reached)');
+      return 0;
+    }
+
+    // ORDER matters and must be total. Two proposals for the same
+    // (param_key, entity_type) can both be quorum_reached, and each activation
+    // supersedes the previously active config — so an unordered scan could
+    // apply them in either order and leave the OLDER value active. Oldest
+    // first (with a total tie-break) means the newest approved value is
+    // applied last and wins, every run.
     const proposals = this.db.prepare(`
       SELECT * FROM agent_governance_proposals
-      WHERE status = 'quorum_reached' AND cooldown_ends_at <= ?
-    `).all(now) as ProposalRow[];
+      WHERE status = 'quorum_reached' AND cooldown_ends_at <= ? AND expires_at > ?
+      ORDER BY created_at ASC, id ASC
+    `).all(now, now) as ProposalRow[];
 
     for (const row of proposals) {
+      // Cross-sweep guard for the same reversal. If a NEWER proposal for this
+      // scope already activated — because this one failed a previous sweep and
+      // was released for retry — applying this one now would supersede the
+      // newer approved value with an older one. It is stale, not pending:
+      // close it instead.
+      const newerActivated = this.db.prepare(`
+        SELECT id FROM agent_governance_proposals
+        WHERE param_key = ?
+          AND COALESCE(entity_type, '__global__') = ?
+          AND status = 'activated'
+          AND (created_at > ? OR (created_at = ? AND id > ?))
+        LIMIT 1
+      `).get(
+        row.param_key,
+        row.entity_type ?? GLOBAL_ENTITY_SENTINEL,
+        row.created_at, row.created_at, row.id,
+      ) as { id: string } | undefined;
+
+      if (newerActivated) {
+        this.db.prepare(`
+          UPDATE agent_governance_proposals
+          SET status = 'expired', updated_at = ?
+          WHERE id = ? AND status = 'quorum_reached'
+        `).run(now, row.id);
+        logger.warn({
+          event: 'agent.governance.proposal_superseded',
+          proposalId: row.id,
+          paramKey: row.param_key,
+          supersededBy: newerActivated.id,
+        }, 'Approved proposal closed without applying — a newer proposal for the same scope already activated');
+        continue;
+      }
+
+      // CLAIM the proposal atomically before doing any work: overlapping
+      // sweeps (multiple app instances running the cron) can both read the
+      // same quorum_reached row; the conditional UPDATE lets exactly one
+      // sweep win, so one proposal can never produce duplicate config
+      // versions. (The proposal-status CHECK constraint has no in-progress
+      // state, so the claim writes the terminal status directly, stamping
+      // activation_claimed_at so the orphan-recovery arm below can tell a
+      // hard-crash orphan from a legacy activation — see migration 069.)
+      // expires_at > now is the authoritative gate: the hourly lifecycle job
+      // runs activation BEFORE expiry, so after scheduler downtime a
+      // quorum_reached proposal past its expires_at would otherwise be
+      // activated here instead of expired. expireStaleProposals covers
+      // 'quorum_reached', so a proposal that missed its window must expire,
+      // not apply its config.
+      const claim = this.db.prepare(`
+        UPDATE agent_governance_proposals
+        SET status = 'activated', activation_claimed_at = ?, updated_at = ?
+        WHERE id = ? AND status = 'quorum_reached' AND expires_at > ?
+      `).run(now, now, row.id, now);
+      if (claim.changes === 0) continue; // another sweep claimed it, or it expired
+
       try {
-        this.db.transaction(() => {
-          // Create system_config entry via constitutional governance
-          if (this.governance) {
-            const config = this.governance.propose(
-              row.param_key,
-              JSON.parse(row.proposed_value),
-              {
-                proposer: `agent-governance:${row.proposer_account_id}`,
-                justification: `Agent governance proposal ${row.id} activated after cooldown`,
-                skipApproval: true, // Auto-approved (quorum met)
-              } as any,
-            );
-          }
-
-          // Update proposal status
-          this.db.prepare(`
-            UPDATE agent_governance_proposals
-            SET status = 'activated', updated_at = ?
-            WHERE id = ?
-          `).run(now, row.id);
-
-          // Emit activation event
-          this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
-            proposalId: row.id,
-            paramKey: row.param_key,
-            proposedValue: row.proposed_value,
-            totalWeight: row.total_weight,
-            timestamp: now,
-          });
-        })();
-
+        await this.activateProposalConfig(row, now);
         activated++;
-
         logger.info({
           event: 'agent.governance.proposal_activated',
           proposalId: row.id,
           paramKey: row.param_key,
         }, 'Agent governance proposal activated');
       } catch (err: any) {
+        // activateProposalConfig has two commit points: the config itself, then
+        // the transaction writing activated_config_id + emitting the event. If
+        // the throw came from the SECOND, the config is already LIVE — releasing
+        // the claim would then be actively harmful. It clears the only crash
+        // marker, and the retry re-enters the claim, which gates on
+        // `expires_at > now`; after scheduler downtime near the end of the
+        // activation grace window that gate fails, expireStaleProposals closes
+        // the row 'expired', and an applied config is left with no
+        // activated_config_id behind a falsely terminal proposal.
+        //
+        // So release only when nothing was applied. With a config committed the
+        // row stays 'activated' + claimed, which is precisely the LINK orphan
+        // shape the recovery arm below completes idempotently.
+        const committedConfigId = this.findProvenanceConfigId(row.id);
+        if (committedConfigId) {
+          logger.error({
+            event: 'agent.governance.activation_link_error',
+            proposalId: row.id,
+            configId: committedConfigId,
+            err: err.message,
+          }, 'Config committed but linking failed — claim retained for link recovery');
+          continue;
+        }
+
+        // Nothing applied: release the claim so the next sweep retries;
+        // without this the proposal would be closed with no config behind it.
+        this.db.prepare(`
+          UPDATE agent_governance_proposals
+          SET status = 'quorum_reached', activation_claimed_at = NULL, updated_at = ?
+          WHERE id = ? AND status = 'activated'
+        `).run(now, row.id);
         logger.error({
           event: 'agent.governance.activation_error',
           proposalId: row.id,
           err: err.message,
-        }, 'Failed to activate proposal');
+        }, 'Failed to activate proposal — claim released for retry');
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Crash recovery for terminal-but-unapplied proposals.
+    //
+    // The claim writes the terminal status BEFORE the config exists (the status
+    // CHECK constraint has no in-progress state). A thrown error releases the
+    // claim; a hard crash — SIGKILL, OOM, eviction — cannot. Two distinct
+    // orphan shapes result, and they need different treatment:
+    //
+    //   LINK   — the config committed (carrying this proposal's
+    //            agentProposalId provenance) but the follow-up transaction that
+    //            writes activated_config_id + emits the event did not run.
+    //            Linking is idempotent; no config is created or superseded.
+    //
+    //   REAPPLY — the crash landed before the config existed at all. Safe only
+    //            because activation_claimed_at (migration 069) proves the claim
+    //            was made by THIS code path. A pre-recovery-mechanism LEGACY
+    //            activation has that column NULL, and re-running it would CREATE
+    //            a config superseding whatever is active now — clobbering newer
+    //            values on upgrade. Legacy rows are therefore still left alone:
+    //            a stranded proposal can be re-proposed, silent config
+    //            corruption cannot be undone.
+    // -----------------------------------------------------------------------
+    if (this.governance) {
+      const orphans = this.db.prepare(`
+        SELECT * FROM agent_governance_proposals
+        WHERE status = 'activated' AND activated_config_id IS NULL
+        ORDER BY created_at ASC, id ASC
+      `).all() as ProposalRow[];
+
+      for (const row of orphans) {
+        const configId = this.findProvenanceConfigId(row.id);
+
+        if (configId) {
+          try {
+            this.db.transaction(() => {
+              this.db.prepare(`
+                UPDATE agent_governance_proposals
+                SET activated_config_id = ?, updated_at = ?
+                WHERE id = ? AND activated_config_id IS NULL
+              `).run(configId, now, row.id);
+              this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
+                proposalId: row.id,
+                paramKey: row.param_key,
+                proposedValue: row.proposed_value,
+                totalWeight: row.total_weight,
+                timestamp: now,
+              });
+            })();
+            activated++;
+            logger.warn({
+              event: 'agent.governance.proposal_link_recovered',
+              proposalId: row.id,
+              paramKey: row.param_key,
+            }, 'Linked agent proposal to its already-committed config (link/event transaction had not run)');
+          } catch (err: any) {
+            logger.error({
+              event: 'agent.governance.link_recovery_error',
+              proposalId: row.id,
+              err: err.message,
+            }, 'Failed to link orphaned agent proposal activation');
+          }
+          continue;
+        }
+
+        // No config. Only a claimed row is recoverable — see REAPPLY above.
+        if (!row.activation_claimed_at) continue;
+
+        // Same supersede rule as the main loop: a crash orphan must not
+        // resurrect an older value over a newer proposal that already applied.
+        const newerActivated = this.db.prepare(`
+          SELECT id FROM agent_governance_proposals
+          WHERE param_key = ?
+            AND COALESCE(entity_type, '__global__') = ?
+            AND status = 'activated'
+            AND activated_config_id IS NOT NULL
+            AND (created_at > ? OR (created_at = ? AND id > ?))
+          LIMIT 1
+        `).get(
+          row.param_key,
+          row.entity_type ?? GLOBAL_ENTITY_SENTINEL,
+          row.created_at, row.created_at, row.id,
+        ) as { id: string } | undefined;
+
+        if (newerActivated) {
+          this.db.prepare(`
+            UPDATE agent_governance_proposals
+            SET status = 'expired', activation_claimed_at = NULL, updated_at = ?
+            WHERE id = ? AND status = 'activated' AND activated_config_id IS NULL
+          `).run(now, row.id);
+          logger.warn({
+            event: 'agent.governance.orphan_superseded',
+            proposalId: row.id,
+            paramKey: row.param_key,
+            supersededBy: newerActivated.id,
+          }, 'Crash-orphaned activation closed without applying — a newer proposal for the same scope already activated');
+          continue;
+        }
+
+        try {
+          await this.activateProposalConfig(row, now);
+          activated++;
+          logger.warn({
+            event: 'agent.governance.proposal_reapply_recovered',
+            proposalId: row.id,
+            paramKey: row.param_key,
+            claimedAt: row.activation_claimed_at,
+          }, 'Re-applied a claimed activation that crashed before its config was created');
+        } catch (err: any) {
+          logger.error({
+            event: 'agent.governance.reapply_recovery_error',
+            proposalId: row.id,
+            err: err.message,
+          }, 'Failed to re-apply crash-orphaned agent proposal activation');
+        }
       }
     }
 
     return activated;
+  }
+
+  /**
+   * The id of the config this proposal already created, if any.
+   *
+   * `activateFromAgentGovernance` stamps `agentProposalId` into the config's
+   * metadata, so the config's own existence is the durable record that the
+   * change went live — the proposal row cannot carry that fact, because
+   * `activated_config_id` is written in a LATER transaction. This is therefore
+   * the authoritative "was anything applied?" probe for both the crash window
+   * (orphan recovery) and the thrown-error window (the claim-release decision
+   * in activateExpiredCooldowns); the two must agree, hence one helper.
+   */
+  private findProvenanceConfigId(proposalId: string): string | undefined {
+    const row = this.db.prepare(`
+      SELECT id FROM system_config
+      WHERE metadata LIKE '%"agentProposalId":"' || ? || '"%'
+      LIMIT 1
+    `).get(proposalId) as { id: string } | undefined;
+    return row?.id;
+  }
+
+  /**
+   * Create-and-activate the constitutional config for a claimed proposal,
+   * then emit the activation event. Awaited OUTSIDE any sync transaction:
+   * an un-awaited async call inside db.transaction() turns failures into
+   * unhandled rejections. The event is emitted after the config commits,
+   * so an orphan-recovered proposal (config missing) has never emitted it.
+   */
+  private async activateProposalConfig(row: ProposalRow, now: string): Promise<void> {
+    // A draft would never apply (resolution reads only active configs);
+    // quorum + cooldown were enforced in this layer, so
+    // activateFromAgentGovernance runs the supersede + activate + audit
+    // path in one transaction.
+    let activatedConfigId: string | null = null;
+    if (this.governance) {
+      const config = await this.governance.activateFromAgentGovernance(
+        row.param_key,
+        JSON.parse(row.proposed_value),
+        {
+          proposerAccountId: row.proposer_account_id,
+          agentProposalId: row.id,
+          totalWeight: row.total_weight,
+          entityType: row.entity_type,
+        },
+      );
+      activatedConfigId = config.id;
+    }
+
+    this.db.transaction(() => {
+      // Record the FK audit link (activated_config_id → system_config.id).
+      // activateFromAgentGovernance is idempotent by proposal id, so a
+      // retry/orphan-recovery returns the same config and this UPDATE is a
+      // stable no-op-in-value.
+      if (activatedConfigId !== null) {
+        this.db.prepare(`
+          UPDATE agent_governance_proposals
+          SET activated_config_id = ?, updated_at = ?
+          WHERE id = ?
+        `).run(activatedConfigId, now, row.id);
+      }
+      this.emitEventInTx('AgentProposalActivated', row.proposer_account_id, {
+        proposalId: row.id,
+        paramKey: row.param_key,
+        proposedValue: row.proposed_value,
+        totalWeight: row.total_weight,
+        timestamp: now,
+      });
+    })();
   }
 
   // ---------------------------------------------------------------------------
@@ -571,6 +905,14 @@ interface ProposalRow {
   status: string;
   cooldown_ends_at: string | null;
   activated_config_id: string | null;
+  /**
+   * Set when the activation sweep claims this proposal, cleared when a failed
+   * activation releases the claim (migration 069). Non-null on an `activated`
+   * row with no config means a hard crash landed inside the claim→config
+   * window — the one orphan shape that is safe to re-apply. NULL means a
+   * legacy activation, which must never be re-applied.
+   */
+  activation_claimed_at: string | null;
   expires_at: string;
   created_at: string;
   updated_at: string;

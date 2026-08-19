@@ -236,6 +236,42 @@ class StatsService {
    *
    * @returns Community statistics
    */
+  /**
+   * Sum onboarded members' BGT (wei) with BigInt. Summed in JS: wei values
+   * exceed SQLite's int64, so SUM(CAST(... AS INTEGER)) saturates/overflows
+   * and silently corrupts the total (same class as the DigestService fix).
+   */
+  private sumMemberBgtWei(db: ReturnType<typeof getDatabase>): bigint {
+    const rows = db
+      .prepare(
+        `
+        SELECT bgt_held
+        FROM eligibility_snapshot
+        WHERE wallet_address IN (
+          SELECT wallet_address
+          FROM wallet_mappings
+          WHERE discord_user_id IN (
+            SELECT discord_user_id
+            FROM member_profiles
+            WHERE onboarding_complete = 1
+          )
+        )
+      `
+      )
+      .all() as Array<{ bgt_held: string | null }>;
+
+    let total = 0n;
+    for (const row of rows) {
+      if (!row.bgt_held) continue;
+      try {
+        total += BigInt(row.bgt_held);
+      } catch {
+        logger.warn({ bgtHeld: row.bgt_held }, 'Skipping malformed bgt_held value in stats sum');
+      }
+    }
+    return total;
+  }
+
   getCommunityStats(): CommunityStatsResponse {
     const db = getDatabase();
 
@@ -281,26 +317,8 @@ class StatsService {
     }
 
     // Total BGT represented (from eligibility snapshot)
-    const bgtRow = db
-      .prepare(
-        `
-        SELECT SUM(CAST(bgt_held AS INTEGER)) as total_bgt
-        FROM eligibility_snapshot
-        WHERE wallet_address IN (
-          SELECT wallet_address
-          FROM wallet_mappings
-          WHERE discord_user_id IN (
-            SELECT discord_user_id
-            FROM member_profiles
-            WHERE onboarding_complete = 1
-          )
-        )
-      `
-      )
-      .get() as { total_bgt: string | null };
-
-    const totalBgtWei = bgtRow.total_bgt ?? '0';
-    const totalBgt = parseFloat(formatUnits(BigInt(totalBgtWei), 18));
+    const totalWei = this.sumMemberBgtWei(db);
+    const totalBgt = parseFloat(formatUnits(totalWei, 18));
 
     // Weekly active members (active in last 7 days)
     const weeklyActiveRow = db
@@ -404,25 +422,7 @@ class StatsService {
       .get() as { tier: Tier; total_activity: number } | undefined;
 
     // Get total BGT in wei for API
-    const bgtRow = db
-      .prepare(
-        `
-        SELECT SUM(CAST(bgt_held AS INTEGER)) as total_bgt
-        FROM eligibility_snapshot
-        WHERE wallet_address IN (
-          SELECT wallet_address
-          FROM wallet_mappings
-          WHERE discord_user_id IN (
-            SELECT discord_user_id
-            FROM member_profiles
-            WHERE onboarding_complete = 1
-          )
-        )
-      `
-      )
-      .get() as { total_bgt: string | null };
-
-    const totalBgtWei = bgtRow.total_bgt ?? '0';
+    const totalBgtWei = this.sumMemberBgtWei(db).toString();
 
     return {
       totalMembers: communityStats.total_members,

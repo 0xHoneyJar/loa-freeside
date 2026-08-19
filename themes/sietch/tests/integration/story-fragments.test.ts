@@ -6,9 +6,14 @@
  * - Fragment posting to #the-door
  * - Usage count tracking
  * - Category-based selection (Fedaykin vs Naib)
+ *
+ * Runs against the CURRENT StoryService API: synchronous, direct sqlite
+ * queries via getDatabase(). Uses a real in-memory better-sqlite3 database
+ * instead of mocking individual query helpers (which no longer exist).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
 
 // Mock config
 vi.mock('../../src/config.js', () => ({
@@ -31,333 +36,164 @@ vi.mock('../../src/utils/logger.js', () => ({
   },
 }));
 
-// Mock database queries
-const mockGetStoryFragments = vi.fn();
-const mockIncrementFragmentUsage = vi.fn();
-const mockGetFragmentStats = vi.fn();
+// getDatabase() returns a real in-memory sqlite database per test
+let db: Database.Database;
 
 vi.mock('../../src/db/index.js', () => ({
-  getDatabase: vi.fn(() => ({
-    prepare: vi.fn(() => ({
-      all: vi.fn(),
-      get: vi.fn(),
-      run: vi.fn(),
-    })),
-  })),
-  getStoryFragments: mockGetStoryFragments,
-  incrementFragmentUsage: mockIncrementFragmentUsage,
-  getFragmentStats: mockGetFragmentStats,
+  getDatabase: vi.fn(() => db),
   logAuditEvent: vi.fn(),
 }));
 
 // Import after mocks
 const { storyService } = await import('../../src/services/StoryService.js');
 
+function seedFragments(rows: Array<{ id: string; category: string; content: string; used_count: number }>) {
+  const insert = db.prepare(
+    'INSERT INTO story_fragments (id, category, content, used_count) VALUES (?, ?, ?, ?)'
+  );
+  for (const r of rows) insert.run(r.id, r.category, r.content, r.used_count);
+}
+
+function makeTextChannel() {
+  return {
+    isTextBased: () => true,
+    send: vi.fn(async () => ({})),
+  };
+}
+
 describe('Story Fragments Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE story_fragments (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        used_count INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   describe('Fragment Selection', () => {
-    it('should select least-used Fedaykin fragment', async () => {
-      const mockFragments = [
-        {
-          id: 'frag-1',
-          category: 'fedaykin_join',
-          content: 'The desert wind carried whispers...',
-          used_count: 0,
-        },
-        {
-          id: 'frag-2',
-          category: 'fedaykin_join',
-          content: 'Footsteps in the sand revealed...',
-          used_count: 2,
-        },
-        {
-          id: 'frag-3',
-          category: 'fedaykin_join',
-          content: 'The winds shifted...',
-          used_count: 1,
-        },
-      ];
+    it('should select least-used Fedaykin fragment', () => {
+      seedFragments([
+        { id: 'frag-1', category: 'fedaykin_join', content: 'The desert wind carried whispers...', used_count: 0 },
+        { id: 'frag-2', category: 'fedaykin_join', content: 'Footsteps in the sand revealed...', used_count: 2 },
+        { id: 'frag-3', category: 'fedaykin_join', content: 'The winds shifted...', used_count: 1 },
+      ]);
 
-      mockGetStoryFragments.mockResolvedValue(mockFragments);
-
-      const fragment = await storyService.getFragment('fedaykin_join');
+      const fragment = storyService.getFragment('fedaykin_join');
 
       expect(fragment).toBeDefined();
-      expect(fragment.id).toBe('frag-1'); // Lowest usage count (0)
-      expect(fragment.category).toBe('fedaykin_join');
+      expect(fragment!.id).toBe('frag-1'); // Lowest usage count (0)
+      expect(fragment!.category).toBe('fedaykin_join');
     });
 
-    it('should select least-used Naib fragment', async () => {
-      const mockFragments = [
-        {
-          id: 'naib-1',
-          category: 'naib_join',
-          content: 'The council chamber stirred...',
-          used_count: 3,
-        },
-        {
-          id: 'naib-2',
-          category: 'naib_join',
-          content: 'The sands trembled...',
-          used_count: 1,
-        },
-        {
-          id: 'naib-3',
-          category: 'naib_join',
-          content: 'Ancient traditions speak...',
-          used_count: 5,
-        },
-      ];
+    it('should select least-used Naib fragment', () => {
+      seedFragments([
+        { id: 'naib-1', category: 'naib_join', content: 'The council chamber stirred...', used_count: 3 },
+        { id: 'naib-2', category: 'naib_join', content: 'The sands trembled...', used_count: 1 },
+        { id: 'naib-3', category: 'naib_join', content: 'Ancient traditions speak...', used_count: 5 },
+      ]);
 
-      mockGetStoryFragments.mockResolvedValue(mockFragments);
-
-      const fragment = await storyService.getFragment('naib_join');
+      const fragment = storyService.getFragment('naib_join');
 
       expect(fragment).toBeDefined();
-      expect(fragment.id).toBe('naib-2'); // Lowest usage count (1)
-      expect(fragment.category).toBe('naib_join');
+      expect(fragment!.id).toBe('naib-2'); // Lowest usage count (1)
+      expect(fragment!.category).toBe('naib_join');
     });
 
-    it('should handle empty fragment table gracefully', async () => {
-      mockGetStoryFragments.mockResolvedValue([]);
-
-      const fragment = await storyService.getFragment('fedaykin_join');
-
+    it('should handle empty fragment table gracefully', () => {
+      const fragment = storyService.getFragment('fedaykin_join');
       expect(fragment).toBeNull();
     });
 
-    it('should balance usage across multiple fragments', async () => {
-      // All fragments have same usage count - should rotate randomly
-      const mockFragments = [
-        {
-          id: 'frag-1',
-          category: 'fedaykin_join',
-          content: 'Fragment 1',
-          used_count: 5,
-        },
-        {
-          id: 'frag-2',
-          category: 'fedaykin_join',
-          content: 'Fragment 2',
-          used_count: 5,
-        },
-        {
-          id: 'frag-3',
-          category: 'fedaykin_join',
-          content: 'Fragment 3',
-          used_count: 5,
-        },
-      ];
+    it('should balance usage across multiple fragments', () => {
+      // All fragments have the same usage count — ties break randomly, and
+      // repeated selection rotates because used_count increments.
+      seedFragments([
+        { id: 'frag-1', category: 'fedaykin_join', content: 'Fragment 1', used_count: 5 },
+        { id: 'frag-2', category: 'fedaykin_join', content: 'Fragment 2', used_count: 5 },
+        { id: 'frag-3', category: 'fedaykin_join', content: 'Fragment 3', used_count: 5 },
+      ]);
 
-      mockGetStoryFragments.mockResolvedValue(mockFragments);
-
-      const fragment = await storyService.getFragment('fedaykin_join');
-
-      expect(fragment).toBeDefined();
-      expect(fragment.used_count).toBe(5);
-      expect(['frag-1', 'frag-2', 'frag-3']).toContain(fragment.id);
+      const seen = new Set<string>();
+      for (let i = 0; i < 3; i++) {
+        const fragment = storyService.getFragment('fedaykin_join');
+        expect(fragment).toBeDefined();
+        seen.add(fragment!.id);
+      }
+      // Three selections over three equal fragments must cover all of them
+      // (each selection increments used_count, so the others become least-used).
+      expect(seen.size).toBe(3);
     });
   });
 
   describe('Usage Count Tracking', () => {
-    it('should increment usage count after selecting fragment', async () => {
-      const mockFragment = {
-        id: 'frag-track',
-        category: 'fedaykin_join',
-        content: 'Test fragment',
-        used_count: 2,
-      };
+    it('should increment usage count after selecting fragment', () => {
+      seedFragments([
+        { id: 'frag-track', category: 'fedaykin_join', content: 'Test fragment', used_count: 2 },
+      ]);
 
-      mockGetStoryFragments.mockResolvedValue([mockFragment]);
+      storyService.getFragment('fedaykin_join');
 
-      const fragment = await storyService.getFragment('fedaykin_join');
-
-      expect(mockIncrementFragmentUsage).toHaveBeenCalledWith('frag-track');
+      const row = db
+        .prepare('SELECT used_count FROM story_fragments WHERE id = ?')
+        .get('frag-track') as { used_count: number };
+      expect(row.used_count).toBe(3);
     });
 
-    it('should track usage stats correctly', async () => {
-      const mockStats = [
-        { category: 'fedaykin_join', total_count: 5, total_uses: 25, avg_uses: 5 },
-        { category: 'naib_join', total_count: 3, total_uses: 12, avg_uses: 4 },
-      ];
+    it('should track usage stats correctly', () => {
+      seedFragments([
+        { id: 'f1', category: 'fedaykin_join', content: 'A', used_count: 10 },
+        { id: 'f2', category: 'fedaykin_join', content: 'B', used_count: 15 },
+        { id: 'n1', category: 'naib_join', content: 'C', used_count: 12 },
+      ]);
 
-      mockGetFragmentStats.mockResolvedValue(mockStats);
+      const stats = storyService.getFragmentStats();
 
-      const stats = await storyService.getFragmentStats();
-
-      expect(stats).toHaveLength(2);
-      expect(stats[0].category).toBe('fedaykin_join');
-      expect(stats[0].total_uses).toBe(25);
-      expect(stats[1].category).toBe('naib_join');
-      expect(stats[1].total_uses).toBe(12);
+      expect(stats.total).toBe(3);
+      expect(stats.byCategory['fedaykin_join']).toMatchObject({ count: 2, totalUsed: 25 });
+      expect(stats.byCategory['naib_join']).toMatchObject({ count: 1, totalUsed: 12 });
     });
   });
 
   describe('Fragment Posting', () => {
     it('should post Fedaykin fragment to #the-door', async () => {
-      const mockFragment = {
-        id: 'frag-post',
-        category: 'fedaykin_join',
-        content: 'A new warrior joins the ranks...',
-        used_count: 0,
-      };
-
-      const mockChannel = {
-        id: 'channel-the-door',
-        isTextBased: () => true,
-        send: vi.fn().mockResolvedValue({
-          id: 'msg-123',
-        }),
-      };
-
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue(mockChannel),
-        },
-      };
-
-      mockGetStoryFragments.mockResolvedValue([mockFragment]);
+      seedFragments([
+        { id: 'frag-1', category: 'fedaykin_join', content: 'The desert welcomes you.', used_count: 0 },
+      ]);
+      const channel = makeTextChannel();
+      const mockClient = { channels: { fetch: vi.fn(async () => channel) } };
 
       const result = await storyService.postJoinFragment(mockClient as any, 'fedaykin');
 
       expect(result).toBe(true);
-      expect(mockChannel.send).toHaveBeenCalled();
-
-      // Check that message includes decorative borders
-      const sentContent = mockChannel.send.mock.calls[0][0];
-      expect(sentContent).toContain('━'); // Border character
-      expect(sentContent).toContain('A new warrior joins the ranks...');
+      expect(mockClient.channels.fetch).toHaveBeenCalledWith('channel-the-door');
+      expect(channel.send).toHaveBeenCalledTimes(1);
+      expect(channel.send.mock.calls[0][0]).toContain('The desert welcomes you.');
     });
 
     it('should post Naib fragment to #the-door', async () => {
-      const mockFragment = {
-        id: 'naib-post',
-        category: 'naib_join',
-        content: 'The council welcomes a new leader...',
-        used_count: 0,
-      };
-
-      const mockChannel = {
-        id: 'channel-the-door',
-        isTextBased: () => true,
-        send: vi.fn().mockResolvedValue({
-          id: 'msg-456',
-        }),
-      };
-
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue(mockChannel),
-        },
-      };
-
-      mockGetStoryFragments.mockResolvedValue([mockFragment]);
+      seedFragments([
+        { id: 'naib-1', category: 'naib_join', content: 'The council convenes.', used_count: 0 },
+      ]);
+      const channel = makeTextChannel();
+      const mockClient = { channels: { fetch: vi.fn(async () => channel) } };
 
       const result = await storyService.postJoinFragment(mockClient as any, 'naib');
 
       expect(result).toBe(true);
-      expect(mockChannel.send).toHaveBeenCalled();
-
-      const sentContent = mockChannel.send.mock.calls[0][0];
-      expect(sentContent).toContain('The council welcomes a new leader...');
-    });
-
-    it('should handle missing channel gracefully', async () => {
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue(null),
-        },
-      };
-
-      mockGetStoryFragments.mockResolvedValue([
-        {
-          id: 'frag',
-          category: 'fedaykin_join',
-          content: 'Test',
-          used_count: 0,
-        },
-      ]);
-
-      const result = await storyService.postJoinFragment(mockClient as any, 'fedaykin');
-
-      expect(result).toBe(false);
-    });
-
-    it('should handle posting error gracefully', async () => {
-      const mockChannel = {
-        id: 'channel-the-door',
-        isTextBased: () => true,
-        send: vi.fn().mockRejectedValue(new Error('Discord API error')),
-      };
-
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue(mockChannel),
-        },
-      };
-
-      mockGetStoryFragments.mockResolvedValue([
-        {
-          id: 'frag',
-          category: 'fedaykin_join',
-          content: 'Test',
-          used_count: 0,
-        },
-      ]);
-
-      const result = await storyService.postJoinFragment(mockClient as any, 'fedaykin');
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('Fragment Formatting', () => {
-    it('should format fragment with decorative borders', async () => {
-      const mockFragment = {
-        id: 'frag-format',
-        category: 'fedaykin_join',
-        content: 'Test fragment content with multiple lines\nSecond line here',
-        used_count: 0,
-      };
-
-      const mockChannel = {
-        id: 'channel-the-door',
-        isTextBased: () => true,
-        send: vi.fn().mockResolvedValue({ id: 'msg' }),
-      };
-
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue(mockChannel),
-        },
-      };
-
-      mockGetStoryFragments.mockResolvedValue([mockFragment]);
-
-      await storyService.postJoinFragment(mockClient as any, 'fedaykin');
-
-      const sentContent = mockChannel.send.mock.calls[0][0];
-
-      // Should have top border
-      expect(sentContent).toMatch(/━+/);
-
-      // Should contain fragment content
-      expect(sentContent).toContain('Test fragment content with multiple lines');
-      expect(sentContent).toContain('Second line here');
-
-      // Should have bottom border
-      expect(sentContent.split('\n').length).toBeGreaterThan(2);
+      expect(channel.send.mock.calls[0][0]).toContain('The council convenes.');
     });
 
     it('should not post for non-elite tiers', async () => {
-      const mockClient = {
-        channels: {
-          fetch: vi.fn(),
-        },
-      };
+      const mockClient = { channels: { fetch: vi.fn() } };
 
       const result = await storyService.postJoinFragment(mockClient as any, 'hajra');
 
@@ -366,70 +202,63 @@ describe('Story Fragments Integration', () => {
     });
   });
 
+  describe('Fragment Formatting', () => {
+    it('should format fragment with decorative borders', () => {
+      const formatted = storyService.formatFragment('A tale of sand.');
+      const lines = formatted.split('\n');
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toBe(lines[2]); // top and bottom border match
+      expect(lines[1]).toBe('A tale of sand.');
+      expect(lines[0].length).toBeGreaterThan(10);
+    });
+  });
+
   describe('Category Filtering', () => {
-    it('should only return fragments matching category', async () => {
-      const mockFragments = [
-        {
-          id: 'fed-1',
-          category: 'fedaykin_join',
-          content: 'Fedaykin fragment',
-          used_count: 0,
-        },
-      ];
+    it('should only return fragments matching category', () => {
+      seedFragments([
+        { id: 'fed-1', category: 'fedaykin_join', content: 'Fedaykin fragment', used_count: 0 },
+        { id: 'naib-1', category: 'naib_join', content: 'Naib fragment', used_count: 0 },
+      ]);
 
-      mockGetStoryFragments.mockResolvedValue(mockFragments);
-
-      const fragment = await storyService.getFragment('fedaykin_join');
+      const fragment = storyService.getFragment('fedaykin_join');
 
       expect(fragment).toBeDefined();
-      expect(fragment.category).toBe('fedaykin_join');
-
-      // Verify query was called with correct category
-      expect(mockGetStoryFragments).toHaveBeenCalledWith('fedaykin_join');
+      expect(fragment!.id).toBe('fed-1');
+      expect(fragment!.category).toBe('fedaykin_join');
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle invalid tier gracefully', async () => {
-      const mockClient = {
-        channels: {
-          fetch: vi.fn(),
-        },
-      };
+      const mockClient = { channels: { fetch: vi.fn() } };
 
       const result = await storyService.postJoinFragment(mockClient as any, 'invalid' as any);
 
       expect(result).toBe(false);
     });
 
-    it('should handle database error during fragment retrieval', async () => {
-      mockGetStoryFragments.mockRejectedValue(new Error('Database error'));
-
-      await expect(
-        storyService.getFragment('fedaykin_join')
-      ).rejects.toThrow('Database error');
+    it('should handle database error during fragment retrieval', () => {
+      // getFragment() is synchronous — a DB failure surfaces as a throw.
+      db.close(); // subsequent prepare() throws
+      expect(() => storyService.getFragment('fedaykin_join')).toThrow();
+      // reopen so afterEach close() is a no-op on a valid handle
+      db = new Database(':memory:');
     });
 
-    it('should handle concurrent fragment requests', async () => {
-      // Multiple simultaneous requests should each get different fragments
-      const mockFragments = [
+    it('should handle sequential fragment requests with rotation', () => {
+      seedFragments([
         { id: 'frag-1', category: 'fedaykin_join', content: 'A', used_count: 0 },
         { id: 'frag-2', category: 'fedaykin_join', content: 'B', used_count: 0 },
-        { id: 'frag-3', category: 'fedaykin_join', content: 'C', used_count: 0 },
-      ];
-
-      mockGetStoryFragments.mockResolvedValue(mockFragments);
-
-      const results = await Promise.all([
-        storyService.getFragment('fedaykin_join'),
-        storyService.getFragment('fedaykin_join'),
-        storyService.getFragment('fedaykin_join'),
       ]);
 
-      expect(results).toHaveLength(3);
-      expect(results[0]).toBeDefined();
-      expect(results[1]).toBeDefined();
-      expect(results[2]).toBeDefined();
+      const first = storyService.getFragment('fedaykin_join');
+      const second = storyService.getFragment('fedaykin_join');
+
+      expect(first).toBeDefined();
+      expect(second).toBeDefined();
+      // After the first selection increments its count, the second selection
+      // must pick the other fragment.
+      expect(second!.id).not.toBe(first!.id);
     });
   });
 });

@@ -317,6 +317,17 @@ export class LoaFinnStub {
       }
     }
 
+    // Drop when the script is exhausted at exactly dropAfterEvents. The in-loop
+    // guard tests `i >= dropAfterEvents` and i never reaches events.length, so a
+    // fully-scripted drop (events.length === dropAfterEvents) would otherwise
+    // fall through and emit usage + done — a clean finalized stream instead of
+    // the interruption the caller asked for. dropAfterEvents > events.length
+    // still finishes cleanly: that drop point is never reached.
+    if (behavior.dropAfterEvents != null && behavior.events.length >= behavior.dropAfterEvents) {
+      res.destroy();
+      return;
+    }
+
     // Usage event
     const usageEvent: AgentStreamEvent = {
       type: 'usage',

@@ -155,11 +155,12 @@ class TierService {
   /**
    * Check if a tier change is a promotion (moving to higher tier)
    *
-   * @param oldTier - Previous tier
+   * @param oldTier - Previous tier (null = initial assignment, never a promotion)
    * @param newTier - New tier
    * @returns True if this is a promotion
    */
-  isPromotion(oldTier: Tier, newTier: Tier): boolean {
+  isPromotion(oldTier: Tier | null, newTier: Tier): boolean {
+    if (oldTier === null) return false; // initial assignment, not a promotion
     const oldIndex = TIER_ORDER.indexOf(oldTier);
     const newIndex = TIER_ORDER.indexOf(newTier);
     return newIndex > oldIndex;

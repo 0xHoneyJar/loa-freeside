@@ -35,6 +35,25 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.e2e.yml"
 
+# The loa-finn-e2e service builds from a sibling-repo checkout that THIS script
+# does not create — scripts/run-e2e.sh clones it, at "$REPO_ROOT/.loa-finn-checkout".
+# Export the same absolute path: docker compose resolves the
+# `${LOA_FINN_DIR:-.loa-finn-checkout}` default relative to the COMPOSE FILE's
+# directory, so leaving it unset silently looks in tests/e2e/ and fails with an
+# opaque "unable to prepare context: path ... not found".
+export LOA_FINN_DIR="${LOA_FINN_DIR:-$REPO_ROOT/.loa-finn-checkout}"
+
+# Fail with a diagnosis instead of a docker build-context error.
+if [ ! -d "$LOA_FINN_DIR" ]; then
+  echo "[run-e2e] ERROR: loa-finn checkout missing at $LOA_FINN_DIR" >&2
+  echo "[run-e2e] The loa-finn-e2e service builds from that directory. This script" >&2
+  echo "[run-e2e] only starts the stack; it does not provision it. Either:" >&2
+  echo "[run-e2e]   • run scripts/run-e2e.sh instead (clones loa-finn; needs" >&2
+  echo "[run-e2e]     LOA_FINN_SHA and read access to \$LOA_FINN_REPO), or" >&2
+  echo "[run-e2e]   • point LOA_FINN_DIR at an existing checkout." >&2
+  exit 2
+fi
+
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-120000}"
 E2E_LOG_DIR="${E2E_LOG_DIR:-$REPO_ROOT/.run/e2e-logs}"
@@ -61,6 +80,21 @@ cleanup() {
     docker compose -f "$COMPOSE_FILE" logs "$svc" > "$E2E_LOG_DIR/${svc}.log" 2>&1 || true
   done
   echo "[run-e2e] Logs saved to $E2E_LOG_DIR"
+
+  # On failure, ECHO the tails as well as saving them. Saving alone puts the
+  # cause in an uploaded artifact, which needs a separate authenticated download
+  # to read — so a red run shows only "Docker compose up failed" and the actual
+  # reason stays invisible to anyone reading the job log. Bounded to 40 lines a
+  # service so a green run's output is unaffected and a red one stays readable.
+  if [ "$exit_code" -ne 0 ]; then
+    for svc in arrakis-e2e loa-finn-e2e contract-validator; do
+      [ -s "$E2E_LOG_DIR/${svc}.log" ] || continue
+      echo ""
+      echo "─── last 40 lines: ${svc} ──────────────────────────────"
+      tail -n 40 "$E2E_LOG_DIR/${svc}.log"
+    done
+    echo "───────────────────────────────────────────────────────"
+  fi
 
   echo "[run-e2e] Tearing down Docker Compose stack..."
   docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true

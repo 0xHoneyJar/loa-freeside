@@ -17,9 +17,10 @@
  * @module packages/services/nowpayments-handler
  */
 
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { Redis } from 'ioredis';
 import { mintCreditLot } from './credit-lot-service.js';
+import { withCommunityScope } from './community-scope.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -55,9 +56,6 @@ const MICRO_PER_USD = 1_000_000n;
 /** 1 cent = 10,000 micro-USD */
 const MICRO_PER_CENT = 10_000n;
 
-/** Redis idempotency key TTL: 24 hours */
-const REDIS_PROCESSED_TTL = 86_400;
-
 /** Default lot expiry: 90 days from purchase */
 export const LOT_EXPIRY_DAYS = 90;
 
@@ -69,6 +67,136 @@ export const LOT_EXPIRY_DAYS = 90;
 export function usdToMicroSafe(priceUsd: number): bigint {
   const cents = Math.round(priceUsd * 100);
   return BigInt(cents) * MICRO_PER_CENT;
+}
+
+// --------------------------------------------------------------------------
+// Redis budget-adjustment outbox (durable, exactly-once)
+// --------------------------------------------------------------------------
+
+/** A pending Redis budget-limit increment for a minted lot. */
+export interface RedisCreditAdjustment {
+  lotId: string;
+  communityId: string;
+  amountCents: bigint;
+}
+
+/**
+ * Anything that can run a query — a Pool, or (preferred for the outbox) a
+ * community-scoped PoolClient from withCommunityScope. The outbox tables carry
+ * forced tenant RLS, so writes MUST come from a scoped client unless the
+ * connection is deliberately privileged.
+ */
+export interface Queryable {
+  query(text: string, params?: unknown[]): Promise<unknown>;
+}
+
+/**
+ * Atomic marker-check + INCRBY in one Redis round-trip.
+ *
+ * Without atomicity there is a crash window between INCRBY and setting the
+ * processed marker: a retry after such a crash would INCRBY a second time and
+ * double-credit the community. The Lua script makes "increment only if not yet
+ * processed, then mark processed" a single atomic operation, so the adjustment
+ * is applied exactly once no matter how many times it is retried.
+ *
+ * The marker is PERSISTENT (no TTL): a pending outbox row is retryable for an
+ * unbounded interval (e.g. a prolonged DB outage that blocks the applied_at
+ * write after Redis was already credited). An expiring marker could lapse while
+ * such a row is still pending, and the next drain would INCRBY again and
+ * double-credit. Marker lifetime is therefore coupled to the durable row, not a
+ * fixed clock. Markers are one-per-minted-lot, so the key set stays bounded by
+ * purchase volume.
+ *
+ * DEPLOYMENT REQUIREMENT — the marker must not be evictable.
+ * `applied_at IS NULL` is the durable guard: once the outbox row is
+ * acknowledged it is never drained again, so the marker only has to survive the
+ * window between the INCRBY and that acknowledgement. But that window is
+ * unbounded when Postgres is unavailable, and under `maxmemory-policy
+ * allkeys-lru` / `allkeys-random` a no-TTL key IS a candidate for eviction —
+ * so a marker could be dropped while the hot `agent:budget:limit:{cid}` key
+ * survives, and the next drain would credit a second time. This is the one
+ * realistic double-credit sequence left in the design, and it is closed by
+ * configuration, not code: run this Redis with `noeviction` or a `volatile-*`
+ * policy (both leave no-TTL keys alone). See the runbook's Redis requirements.
+ *
+ *   KEYS[1] = processed:mint:{lotId}   ARGV[1] = amountCents
+ *   KEYS[2] = agent:budget:limit:{cid}
+ *   returns 1 if applied now, 0 if already applied earlier (both = credit present)
+ */
+const APPLY_CREDIT_LUA = `
+if redis.call('EXISTS', KEYS[1]) == 1 then
+  return 0
+end
+redis.call('INCRBY', KEYS[2], ARGV[1])
+redis.call('SET', KEYS[1], '1')
+return 1
+`;
+
+/**
+ * Durably enqueue a Redis budget adjustment. MUST run inside the same
+ * transaction/client as the credit-lot mint so the outbox row is durable iff
+ * the lot is. Idempotent per lot_id.
+ */
+export async function enqueueRedisCreditAdjustment(
+  client: PoolClient,
+  adj: RedisCreditAdjustment,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO pending_redis_credit_adjustments (lot_id, community_id, amount_cents)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (lot_id) DO NOTHING`,
+    [adj.lotId, adj.communityId, adj.amountCents.toString()],
+  );
+}
+
+/**
+ * Apply a pending Redis budget adjustment exactly once and mark the outbox row
+ * resolved. On Redis failure the row is left pending (attempts bumped) for the
+ * reconciliation sweep to retry.
+ *
+ * @param db - a community-scoped client (withCommunityScope) for the
+ *   adjustment's community. pending_redis_credit_adjustments carries forced
+ *   tenant RLS, so the acknowledging UPDATE must run under that scope.
+ * @returns true if the credit is now present in Redis, false if still pending.
+ */
+export async function applyRedisCreditAdjustment(
+  redis: Redis,
+  db: Queryable,
+  adj: RedisCreditAdjustment,
+): Promise<boolean> {
+  const processedKey = `processed:mint:${adj.lotId}`;
+  const limitKey = `agent:budget:limit:${adj.communityId}`;
+
+  try {
+    // eval returns 1 (applied now) or 0 (already applied) — both mean the
+    // INCRBY has landed exactly once, so the outbox row can be resolved.
+    await redis.eval(
+      APPLY_CREDIT_LUA,
+      2,
+      processedKey,
+      limitKey,
+      adj.amountCents.toString(),
+    );
+  } catch {
+    // Redis still unavailable — record the failed attempt, leave pending.
+    await Promise.resolve(
+      db.query(
+        `UPDATE pending_redis_credit_adjustments
+         SET attempts = attempts + 1, last_attempt_at = NOW()
+         WHERE lot_id = $1`,
+        [adj.lotId],
+      ),
+    ).catch(() => {});
+    return false;
+  }
+
+  await db.query(
+    `UPDATE pending_redis_credit_adjustments
+     SET applied_at = NOW(), attempts = attempts + 1, last_attempt_at = NOW()
+     WHERE lot_id = $1`,
+    [adj.lotId],
+  );
+  return true;
 }
 
 // --------------------------------------------------------------------------
@@ -136,16 +264,29 @@ export async function processPaymentForLedger(
   event: WebhookLotEvent,
 ): Promise<NowpaymentsLotResult> {
   const amountMicro = usdToMicroSafe(event.priceUsd);
+  const amountCents = amountMicro / MICRO_PER_CENT;
 
   // Lot expiry: 90 days from now
   const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-  // Step 1: Mint credit lot (idempotent via payment_id)
+  // Step 1: Mint credit lot AND enqueue the Redis-adjustment outbox row in ONE
+  // transaction (idempotent via payment_id). The outbox row is durable iff the
+  // lot is, so a Redis INCRBY that fails or is deferred is never lost — the
+  // reconciliation sweep drains pending_redis_credit_adjustments until the
+  // credit lands exactly once.
   const client = await pool.connect();
   let lotId: string | null = null;
 
   try {
     await client.query('BEGIN');
+    // Establish tenant scope for the transaction: credit_lots and
+    // pending_redis_credit_adjustments both carry forced RLS keyed on
+    // app.current_community_id(). Harmless on a privileged connection.
+    // set_config(..., is_local => true) is the parameterizable equivalent of
+    // SET LOCAL — the SET command itself does not accept bind parameters.
+    await client.query(`SELECT set_config('app.community_id', $1, true)`, [
+      event.communityId,
+    ]);
 
     lotId = await mintCreditLot(client, {
       community_id: event.communityId,
@@ -154,6 +295,14 @@ export async function processPaymentForLedger(
       payment_id: event.paymentId,
       expires_at: expiresAt,
     });
+
+    if (lotId) {
+      await enqueueRedisCreditAdjustment(client, {
+        lotId,
+        communityId: event.communityId,
+        amountCents,
+      });
+    }
 
     await client.query('COMMIT');
   } catch (err) {
@@ -173,34 +322,16 @@ export async function processPaymentForLedger(
     };
   }
 
-  // Step 2: Conditional Redis budget limit increment
-  // Only if the INSERT actually created a new lot (not duplicate)
-  // Idempotency: check processed:{lotId} before INCRBY
-  let redisAdjusted = false;
-  const processedKey = `processed:mint:${lotId}`;
-
-  try {
-    const alreadyProcessed = await redis.exists(processedKey);
-
-    if (!alreadyProcessed) {
-      // Convert micro-USD to cents for Redis (÷ 10,000)
-      const amountCents = amountMicro / MICRO_PER_CENT;
-
-      // INCRBY the budget limit
-      await redis.incrby(
-        `agent:budget:limit:${event.communityId}`,
-        Number(amountCents),
-      );
-
-      // Mark as processed with TTL
-      await redis.set(processedKey, '1', 'EX', REDIS_PROCESSED_TTL);
-      redisAdjusted = true;
-    }
-  } catch {
-    // Redis failure should not roll back the Postgres lot.
-    // Reconciliation sweep will catch up.
-    // Log is handled by caller (CryptoWebhookService).
-  }
+  // Step 2: Apply the Redis budget increment exactly once, acknowledging the
+  // outbox row under the payment's tenant scope (forced RLS). On failure the
+  // durable outbox row stays pending for the sweep to retry.
+  const redisAdjusted = await withCommunityScope(event.communityId, pool, (scoped) =>
+    applyRedisCreditAdjustment(redis, scoped, {
+      lotId,
+      communityId: event.communityId,
+      amountCents,
+    }),
+  );
 
   return {
     lotId,

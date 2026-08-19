@@ -60,16 +60,42 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          node-version: '22'
+          # loa:shortcut: pure-speed npm cache warmup — does not change npm ci output
+          cache: 'npm'
+          cache-dependency-path: themes/sietch/package-lock.json
 
       - name: Install dependencies
+        # themes/sietch is an npm project (package-lock.json, no pnpm-lock.yaml).
+        # Mirrors the green ci.yml convention; `pnpm install --frozen-lockfile`
+        # here fails ERR_PNPM_NO_LOCKFILE.
         working-directory: themes/sietch
-        run: pnpm install --frozen-lockfile
+        run: npm ci
+
+      # The loa-finn-e2e service in docker-compose.e2e.yml builds from
+      # $GITHUB_WORKSPACE/.loa-finn-checkout. tests/e2e/run-e2e.sh only STARTS
+      # the stack — it does not provision that directory, so without these two
+      # steps every run aborted at its precondition with exit 2 before Docker
+      # started. Provision it here rather than relaxing the precondition.
+      - name: Resolve pinned loa-finn SHA
+        id: loa-finn-pin
+        run: |
+          sha="$(grep -vE '^\s*(#|$)' tests/e2e/loa-finn.sha | head -1 | tr -d '[:space:]')"
+          case "$sha" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
+            *) echo "::error::tests/e2e/loa-finn.sha does not contain a commit SHA"; exit 1 ;;
+          esac
+          [ "${#sha}" -eq 40 ] || { echo "::error::expected a full 40-char SHA, got ${#sha} chars"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "pinned loa-finn @ $sha"
+
+      - name: Provision pinned loa-finn checkout
+        uses: actions/checkout@v6
+        with:
+          repository: 0xHoneyJar/loa-finn
+          ref: ${{ steps.loa-finn-pin.outputs.sha }}
+          path: .loa-finn-checkout
+          persist-credentials: false
 
       - name: Generate ES256 test keypair
         run: |

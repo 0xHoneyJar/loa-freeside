@@ -217,7 +217,9 @@ export class GlobalDiscordTokenBucket {
     // Store configuration with defaults
     this.config = {
       maxTokens: config.maxTokens || 50,
-      refillRate: config.refillRate || 50,
+      // ?? not ||: an explicit refillRate of 0 (no automatic refill) is a
+      // valid configuration and must not be coerced to the default.
+      refillRate: config.refillRate ?? 50,
       bucketKey: config.bucketKey || 'discord:global:tokens',
       defaultTimeout: config.defaultTimeout || 30000,
       initialBackoff: config.initialBackoff || 100,
@@ -431,6 +433,18 @@ export class GlobalDiscordTokenBucket {
       return; // Already running
     }
 
+    // refillRate 0 is a supported "no automatic refill" configuration (the
+    // bucket is topped up externally, or is a fixed allowance). Running the
+    // interval anyway costs one Redis Lua round-trip per second per worker
+    // forever and, while the bucket is still full, logs "refilled to maximum"
+    // on every tick — all to add zero tokens.
+    if (this.config.refillRate <= 0) {
+      this.logger.info({
+        refillRate: this.config.refillRate,
+      }, 'Token refill loop not started (no automatic refill configured)');
+      return;
+    }
+
     this.refillIntervalId = setInterval(async () => {
       try {
         const newTokens = await this.redis.eval(
@@ -476,7 +490,15 @@ export class GlobalDiscordTokenBucket {
     this.stopRefillLoop();
 
     if (this.redis) {
-      await this.redis.quit();
+      try {
+        await this.redis.quit();
+      } catch (err) {
+        // quit() on an already-closed connection rejects with
+        // "Connection is closed." — close() is idempotent by contract.
+        if (!(err instanceof Error && err.message.includes('Connection is closed'))) {
+          throw err;
+        }
+      }
     }
 
     this.isInitialized = false;

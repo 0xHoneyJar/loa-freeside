@@ -70,8 +70,20 @@ const PROCESSED_EVENT_CACHE_TTL = 24 * 60 * 60;
  * Crypto webhook processing result
  */
 export interface CryptoWebhookResult {
-  /** Processing status */
-  status: 'processed' | 'duplicate' | 'skipped' | 'failed';
+  /**
+   * Processing status.
+   * - 'quarantined': stale signed event that was NOT applied. Only reachable
+   *   for NON-terminal statuses — every terminal status is processed however
+   *   late it arrives (see staleProcessableStatuses), so no credit or
+   *   settlement outcome can be dropped here. The audit record is an
+   *   observability trail, not a work queue: nothing in sietch consumes it.
+   *   The payment's status simply stays where it was until the next event
+   *   (which for a real payment always includes a terminal one). Safe to ack —
+   *   a provider retry of a stale event is still stale.
+   * - 'quarantine_failed': stale signed event that could NOT be durably
+   *   recorded — the route must return a retriable 503, never ack.
+   */
+  status: 'processed' | 'duplicate' | 'skipped' | 'failed' | 'quarantined' | 'quarantine_failed';
   /** Payment ID */
   paymentId: string;
   /** Payment status */
@@ -203,7 +215,25 @@ class CryptoWebhookService {
       // STEP 1.5 - TIMESTAMP CHECK: Reject stale events (replay prevention)
       // ========================================================================
       const eventAge = Date.now() - event.timestamp.getTime();
-      if (eventAge > MAX_EVENT_AGE_MS) {
+      // Terminal statuses (mirrors isValidStatusTransition's terminal set):
+      // delayed delivery of a TERMINAL truth must be processed, not
+      // quarantined — sietch has no reconciliation sweep, so quarantining
+      // would strand the payment in its previous pending status until
+      // manual ops ('finished' strands the customer's credits; 'failed'/
+      // 'refunded'/'expired' strand the row as apparently-pending forever).
+      const staleProcessableStatuses: CryptoPaymentStatus[] = [
+        'finished',
+        'failed',
+        'refunded',
+        'expired',
+      ];
+      if (eventAge > MAX_EVENT_AGE_MS && staleProcessableStatuses.includes(paymentStatus)) {
+        // Stale but signature-valid TERMINAL event: process it. Replay
+        // safety does not depend on the freshness gate here — the layers
+        // below still apply: Redis (payment_id, status) dedupe, DB
+        // status-transition validation (terminal states cannot transition
+        // further, so a replay against an already-terminal payment is
+        // rejected), and idempotent subscription/credit handling.
         logger.warn(
           {
             paymentId,
@@ -212,13 +242,55 @@ class CryptoWebhookService {
             ageMs: eventAge,
             maxAgeMs: MAX_EVENT_AGE_MS,
           },
-          'Rejecting stale crypto webhook event (potential replay attack)'
+          'Processing stale terminal crypto webhook (delayed delivery) — idempotency layers protect against replay'
         );
+      } else if (eventAge > MAX_EVENT_AGE_MS) {
+        logger.warn(
+          {
+            paymentId,
+            paymentStatus,
+            eventTimestamp: event.timestamp.toISOString(),
+            ageMs: eventAge,
+            maxAgeMs: MAX_EVENT_AGE_MS,
+          },
+          'Quarantining stale crypto webhook event (potential replay attack)'
+        );
+        // Only NON-terminal statuses reach here (terminal ones are processed
+        // above however late they arrive), so dropping this transition cannot
+        // lose credit or a settlement outcome — it can only leave the row at a
+        // slightly older non-terminal status until the next event.
+        //
+        // Record it for the operator trail. Deliberately NOT a work queue:
+        // sietch has no provider-polling recovery job, and nothing consumes
+        // this audit row. If the record itself fails we still refuse to ack
+        // (the caller returns a retriable 503) so a quarantine decision is
+        // never invisible.
+        try {
+          logBillingAuditEvent('crypto_webhook_quarantined_stale', {
+            paymentId,
+            paymentStatus,
+            eventTimestamp: event.timestamp.toISOString(),
+            ageMs: eventAge,
+            maxAgeMs: MAX_EVENT_AGE_MS,
+            paymentProvider: 'nowpayments',
+          });
+        } catch (recordErr) {
+          logger.error(
+            { paymentId, paymentStatus, error: (recordErr as Error).message },
+            'Failed to durably record quarantined stale webhook'
+          );
+          return {
+            status: 'quarantine_failed',
+            paymentId,
+            paymentStatus,
+            error: 'Stale event could not be durably recorded',
+          };
+        }
         return {
-          status: 'failed',
+          status: 'quarantined',
           paymentId,
           paymentStatus,
-          error: 'Event timestamp too old - possible replay attack',
+          message: 'Event timestamp too old - non-terminal transition dropped (no credit impact)',
         };
       }
 
@@ -476,6 +548,7 @@ class CryptoWebhookService {
    * waiting → confirming → confirmed → sending → finished
    * waiting → partially_paid
    * waiting → expired
+   * partially_paid → expired
    * any → failed
    * any → refunded
    */
@@ -505,7 +578,11 @@ class CryptoWebhookService {
       confirming: ['confirmed', 'finished'],
       confirmed: ['sending', 'finished'],
       sending: ['finished'],
-      partially_paid: ['confirming', 'confirmed', 'sending', 'finished'],
+      // 'expired' included: NOWPayments can expire a partially-paid payment
+      // when the window closes before full payment. Without it, a delayed
+      // 'expired' returns 'skipped' → 200 ack → the row is stranded
+      // 'partially_paid' forever (sietch has no reconciliation sweep).
+      partially_paid: ['confirming', 'confirmed', 'sending', 'finished', 'expired'],
       finished: [],
       failed: [],
       refunded: [],

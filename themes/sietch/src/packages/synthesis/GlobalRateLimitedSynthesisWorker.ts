@@ -35,6 +35,7 @@ import {
   SynthesisWorker,
   SynthesisError,
   DiscordAPIError,
+  customSynthesisBackoff,
 } from './SynthesisWorker.js';
 import type { SynthesisWorkerConfig } from './SynthesisWorker.js';
 import {
@@ -114,9 +115,11 @@ export class GlobalRateLimitedSynthesisWorker {
 
     this.globalBucket = new GlobalDiscordTokenBucket(bucketConfig);
 
-    // Initialize underlying SynthesisWorker (but don't start it)
-    // We wrap its processJob method with rate limiting
-    this.synthesisWorker = new SynthesisWorker(config);
+    // Initialize underlying SynthesisWorker WITHOUT starting its consumer
+    // (autorun: false). We only reuse its processJob() logic — if it ran, it
+    // would process jobs from the same queue while bypassing global token
+    // acquisition entirely (and ignoring pause()).
+    this.synthesisWorker = new SynthesisWorker({ ...config, autorun: false });
 
     // Create our own worker that wraps synthesis with rate limiting
     const connection = new Redis(config.redis.port, config.redis.host, {
@@ -132,6 +135,13 @@ export class GlobalRateLimitedSynthesisWorker {
       limiter: config.limiter || {
         max: 10,
         duration: 1000,
+      },
+      // BullMQ 5.x resolves backoff.type:'custom' jobs from the worker's
+      // settings.backoffStrategy — required for the rate-limit-timeout retry
+      // (rethrown in processJobWithRateLimit) to follow 5s/25s/125s instead of
+      // throwing "Unknown backoff strategy custom".
+      settings: {
+        backoffStrategy: customSynthesisBackoff,
       },
     };
 
@@ -235,20 +245,18 @@ export class GlobalRateLimitedSynthesisWorker {
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      // Handle rate limit errors
+      // Rate-limit token-acquisition timeout: RETHROW so BullMQ re-queues the
+      // UNEXECUTED job per its attempts/backoff. Returning a resolved
+      // { success: false } here makes BullMQ mark the job COMPLETED — it does
+      // not inspect the return value's `retryable` flag — silently dropping
+      // jobs once tokens are exhausted (notably under refillRate: 0, which is
+      // now a valid no-automatic-refill configuration). This matches the
+      // documented invariant in the integration suite ('must not complete').
       if (
         error instanceof SynthesisError &&
         error.code === 'RATE_LIMIT_TIMEOUT'
       ) {
-        return {
-          success: false,
-          error: {
-            code: error.code,
-            message: error.message,
-            retryable: true,
-          },
-          duration,
-        };
+        throw error;
       }
 
       // Handle Discord API 429 errors (shouldn't happen with bucket, but just in case)

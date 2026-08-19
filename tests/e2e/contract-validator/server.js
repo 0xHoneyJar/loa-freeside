@@ -12,7 +12,11 @@
  */
 
 import express from 'express';
-import Ajv from 'ajv';
+// The built-in schemas below declare $schema: draft/2020-12. Ajv 8's default
+// export only carries the draft-07 meta-schema, so addSchema() threw
+// `no schema with key or ref "https://json-schema.org/draft/2020-12/schema"`
+// and the service crashed at startup. ajv/dist/2020 is the 2020-12 build.
+import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, basename } from 'path';

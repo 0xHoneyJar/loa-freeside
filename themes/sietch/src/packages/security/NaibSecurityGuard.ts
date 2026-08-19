@@ -209,7 +209,10 @@ export class NaibSecurityGuard {
   constructor(mfaService: MFAService, config?: Partial<SecurityGuardConfig>) {
     this.mfaService = mfaService;
     this.config = {
-      protectedOperations: config?.protectedOperations ?? DEFAULT_PROTECTED_OPERATIONS,
+      // Copy: add/removeProtectedOperation mutate this array in place — a
+      // shared reference would corrupt DEFAULT_PROTECTED_OPERATIONS (or the
+      // caller's array) for every other guard instance.
+      protectedOperations: [...(config?.protectedOperations ?? DEFAULT_PROTECTED_OPERATIONS)],
       requireMfaForDestructive: config?.requireMfaForDestructive ?? true,
       maxVerificationAttempts: config?.maxVerificationAttempts ?? 5,
       verificationWindow: config?.verificationWindow ?? 300, // 5 minutes

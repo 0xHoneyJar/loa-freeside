@@ -145,11 +145,13 @@ class DigestService {
 
     const newMembers = newMembersRow.count;
 
-    // Total BGT represented
-    const totalBgtRow = db
+    // Total BGT represented. Summed in JS with BigInt: wei values exceed
+    // SQLite's int64 (CAST saturates at ~9.2e18 and SUM raises "integer
+    // overflow"), so an SQL-side integer sum silently corrupts the total.
+    const bgtRows = db
       .prepare(
         `
-        SELECT SUM(CAST(bgt_held AS INTEGER)) as total_bgt
+        SELECT bgt_held
         FROM eligibility_snapshot
         WHERE wallet_address IN (
           SELECT wallet_address
@@ -162,10 +164,19 @@ class DigestService {
         )
       `
       )
-      .get() as { total_bgt: string | null };
+      .all() as Array<{ bgt_held: string | null }>;
 
-    const totalBgtWei = totalBgtRow.total_bgt ?? '0';
-    const totalBgt = parseFloat(formatUnits(BigInt(totalBgtWei), 18));
+    let totalWei = 0n;
+    for (const row of bgtRows) {
+      if (!row.bgt_held) continue;
+      try {
+        totalWei += BigInt(row.bgt_held);
+      } catch {
+        logger.warn({ bgtHeld: row.bgt_held }, 'Skipping malformed bgt_held value in digest sum');
+      }
+    }
+    const totalBgtWei = totalWei.toString();
+    const totalBgt = parseFloat(formatUnits(totalWei, 18));
 
     // Tier distribution
     const tierRows = db
@@ -272,7 +283,12 @@ class DigestService {
         JOIN eligibility_snapshot es ON wm.wallet_address = es.wallet_address
         WHERE mp.onboarding_complete = 1
         AND datetime(mp.created_at) > datetime('now', '-7 days')
-        ORDER BY CAST(es.bgt_held AS INTEGER) DESC
+        -- LENGTH-then-lexicographic avoids CAST AS INTEGER, which saturates at
+        -- int64 for wei magnitudes. It is exact only for CANONICAL non-negative
+        -- integer strings, so leading zeros are stripped first: without LTRIM,
+        -- '0001' (length 4) would outrank '999' (length 3). A value of all
+        -- zeros trims to '' (length 0) and correctly sorts last.
+        ORDER BY LENGTH(LTRIM(es.bgt_held, '0')) DESC, LTRIM(es.bgt_held, '0') DESC
         LIMIT 1
       `
       )

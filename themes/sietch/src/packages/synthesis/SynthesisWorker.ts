@@ -39,6 +39,23 @@ import type {
 } from './types.js';
 
 // =============================================================================
+// Retry backoff
+// =============================================================================
+
+/**
+ * Custom retry backoff: 5s, 25s, 125s (5000 * 5^(attemptsMade-1)).
+ *
+ * BullMQ 5.x resolves a `backoff.type: 'custom'` job from the *Worker's*
+ * `settings.backoffStrategy` (a queue-side `backoffStrategies` map is inert).
+ * Defined here so every consuming worker registers the same schedule and a
+ * rate-limit-timeout retry follows 5s/25s/125s instead of failing with
+ * "Unknown backoff strategy custom".
+ */
+export function customSynthesisBackoff(attemptsMade: number): number {
+  return 5000 * Math.pow(5, attemptsMade - 1);
+}
+
+// =============================================================================
 // Error Types
 // =============================================================================
 
@@ -104,6 +121,13 @@ export interface SynthesisWorkerConfig {
     duration: number;
   };
   discordClient: Client;
+  /**
+   * When false, the underlying BullMQ worker is created but does NOT start
+   * consuming the queue. Used by GlobalRateLimitedSynthesisWorker, which
+   * reuses processJob() but must be the ONLY consumer so every job passes
+   * through global token acquisition.
+   */
+  autorun?: boolean;
 }
 
 /**
@@ -132,6 +156,13 @@ export class SynthesisWorker {
       limiter: config.limiter || {
         max: 10,
         duration: 1000,
+      },
+      autorun: config.autorun ?? true,
+      // BullMQ 5.x resolves backoff.type:'custom' jobs from the worker's
+      // settings.backoffStrategy — without this, retries throw
+      // "Unknown backoff strategy custom" (5s/25s/125s schedule).
+      settings: {
+        backoffStrategy: customSynthesisBackoff,
       },
     };
 

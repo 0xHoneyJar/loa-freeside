@@ -15,6 +15,15 @@ import path from 'node:path';
 const sharedResolve = {
   alias: [
     {
+      // Route files import repo-root packages/services via a 4-up relative
+      // path that resolves to themes/packages/services/, which holds ONLY
+      // .d.ts compile stubs (see the stub file headers). Map those
+      // specifiers to the real implementations so tests can load the
+      // modules at runtime.
+      find: /^(?:\.\.\/)+packages\/services\/(purpose-service|velocity-service|feature-flags|event-sourcing-service)\.js$/,
+      replacement: path.resolve(__dirname, '../../packages/services/$1.ts'),
+    },
+    {
       find: /^@arrakis\/core\/(.*)/,
       replacement: path.resolve(__dirname, '../../packages/core/$1'),
     },

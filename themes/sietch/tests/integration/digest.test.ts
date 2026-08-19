@@ -1,14 +1,20 @@
 /**
  * Weekly Digest Integration Tests
  *
- * Tests end-to-end weekly digest generation and posting:
- * - Stats collection from various sources
+ * Tests weekly digest system:
+ * - Stats collection (members, BGT, tiers, promotions, badges)
  * - Digest formatting
- * - Discord posting
- * - Digest storage
+ * - Posting to announcements channel with duplicate protection
+ * - Persistent storage in weekly_digests
+ *
+ * Runs against the CURRENT DigestService API: collectWeeklyStats() is
+ * synchronous and queries sqlite directly via getDatabase(). Uses a real
+ * in-memory better-sqlite3 database instead of mocking DB helpers that no
+ * longer exist.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
 
 // Mock config
 vi.mock('../../src/config.js', () => ({
@@ -31,299 +37,333 @@ vi.mock('../../src/utils/logger.js', () => ({
   },
 }));
 
-// Mock database queries
-const mockCountMembers = vi.fn();
-const mockCountNewMembers = vi.fn();
-const mockGetTotalBgt = vi.fn();
-const mockGetTierDistribution = vi.fn();
-const mockCountTierPromotions = vi.fn();
-const mockCountBadgesAwarded = vi.fn();
-const mockGetRecentTierChanges = vi.fn();
-const mockGetTopActiveMembers = vi.fn();
-const mockInsertWeeklyDigest = vi.fn();
+// getDatabase() returns a real in-memory sqlite database per test
+let db: Database.Database;
 
 vi.mock('../../src/db/index.js', () => ({
-  getDatabase: vi.fn(() => ({
-    prepare: vi.fn(() => ({
-      get: vi.fn(() => ({ count: 350 })),
-      all: vi.fn(() => []),
-    })),
-  })),
-  countMembers: mockCountMembers,
-  countNewMembersInDateRange: mockCountNewMembers,
-  getTotalBgtRepresented: mockGetTotalBgt,
-  getTierDistribution: mockGetTierDistribution,
-  countTierPromotions: mockCountTierPromotions,
-  countBadgesAwardedInDateRange: mockCountBadgesAwarded,
-  getRecentTierChanges: mockGetRecentTierChanges,
-  getTopActiveMembers: mockGetTopActiveMembers,
-  insertWeeklyDigest: mockInsertWeeklyDigest,
+  getDatabase: vi.fn(() => db),
   logAuditEvent: vi.fn(),
 }));
 
 // Import after mocks
 const { digestService } = await import('../../src/services/DigestService.js');
 
+const SCHEMA = `
+  CREATE TABLE member_profiles (
+    member_id TEXT PRIMARY KEY,
+    discord_user_id TEXT NOT NULL,
+    nym TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    onboarding_complete INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE wallet_mappings (
+    discord_user_id TEXT NOT NULL,
+    wallet_address TEXT NOT NULL
+  );
+  CREATE TABLE eligibility_snapshot (
+    wallet_address TEXT NOT NULL,
+    bgt_held TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE tier_history (
+    member_id TEXT NOT NULL,
+    old_tier TEXT,
+    new_tier TEXT NOT NULL,
+    changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE member_badges (
+    member_id TEXT NOT NULL,
+    awarded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE member_activity (
+    member_id TEXT NOT NULL,
+    activity_balance INTEGER NOT NULL DEFAULT 0,
+    last_active_at TEXT
+  );
+  CREATE TABLE weekly_digests (
+    week_identifier TEXT PRIMARY KEY,
+    total_members INTEGER NOT NULL,
+    new_members INTEGER NOT NULL,
+    total_bgt TEXT NOT NULL,
+    tier_distribution TEXT NOT NULL,
+    most_active_tier TEXT,
+    promotions_count INTEGER NOT NULL,
+    notable_promotions TEXT NOT NULL,
+    badges_awarded INTEGER NOT NULL,
+    top_new_member_nym TEXT,
+    message_id TEXT,
+    channel_id TEXT,
+    generated_at TEXT NOT NULL
+  );
+`;
+
+const BGT = (whole: number) => (BigInt(whole) * 10n ** 18n).toString();
+
+function seedMember(opts: {
+  id: string;
+  nym?: string;
+  tier?: string;
+  bgt?: number;
+  createdDaysAgo?: number;
+}) {
+  const created =
+    opts.createdDaysAgo !== undefined
+      ? `datetime('now', '-${opts.createdDaysAgo} days')`
+      : `datetime('now', '-30 days')`;
+  db.prepare(
+    `INSERT INTO member_profiles (member_id, discord_user_id, nym, tier, onboarding_complete, created_at)
+     VALUES (?, ?, ?, ?, 1, ${created})`
+  ).run(opts.id, `discord-${opts.id}`, opts.nym ?? `Nym-${opts.id}`, opts.tier ?? 'hajra');
+  db.prepare('INSERT INTO wallet_mappings (discord_user_id, wallet_address) VALUES (?, ?)').run(
+    `discord-${opts.id}`,
+    `0xwallet-${opts.id}`
+  );
+  db.prepare('INSERT INTO eligibility_snapshot (wallet_address, bgt_held) VALUES (?, ?)').run(
+    `0xwallet-${opts.id}`,
+    BGT(opts.bgt ?? 10)
+  );
+}
+
+function makeTextChannel() {
+  return {
+    isTextBased: () => true,
+    send: vi.fn(async () => ({ id: 'msg-1', channelId: 'channel-announcements' })),
+  };
+}
+
 describe('Weekly Digest Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    db = new Database(':memory:');
+    db.exec(SCHEMA);
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   describe('Stats Collection', () => {
-    it('should collect all required weekly stats', async () => {
-      // Setup mock data
-      mockCountMembers.mockResolvedValue(350);
-      mockCountNewMembers.mockResolvedValue(25);
-      mockGetTotalBgt.mockResolvedValue('1250000000000000000000000'); // 1.25M BGT
-      mockGetTierDistribution.mockResolvedValue([
-        { tier: 'hajra', count: 100 },
-        { tier: 'ichwan', count: 80 },
-        { tier: 'qanat', count: 70 },
-        { tier: 'sihaya', count: 50 },
-        { tier: 'mushtamal', count: 25 },
-        { tier: 'sayyadina', count: 12 },
-        { tier: 'usul', count: 6 },
-        { tier: 'fedaykin', count: 62 },
-        { tier: 'naib', count: 7 },
-      ]);
-      mockCountTierPromotions.mockResolvedValue(18);
-      mockCountBadgesAwarded.mockResolvedValue(12);
-      mockGetRecentTierChanges.mockResolvedValue([
-        { member_id: 'm1', nym: 'Member1', to_tier: 'fedaykin' },
-        { member_id: 'm2', nym: 'Member2', to_tier: 'usul' },
-      ]);
-      mockGetTopActiveMembers.mockResolvedValue([
-        { member_id: 'm3', nym: 'ActiveMember', activity_balance: 1500 },
-      ]);
+    it('should collect all required weekly stats', () => {
+      // 3 long-standing members + 2 new this week
+      seedMember({ id: 'm1', tier: 'hajra', bgt: 100 });
+      seedMember({ id: 'm2', tier: 'fedaykin', bgt: 500 });
+      seedMember({ id: 'm3', tier: 'naib', bgt: 1000 });
+      seedMember({ id: 'm4', tier: 'hajra', bgt: 50, createdDaysAgo: 2 });
+      seedMember({ id: 'm5', tier: 'ichwan', bgt: 250, createdDaysAgo: 1 });
 
-      const stats = await digestService.collectWeeklyStats();
+      // A promotion this week (old_tier NOT NULL) and an initial assignment
+      db.prepare(
+        `INSERT INTO tier_history (member_id, old_tier, new_tier, changed_at)
+         VALUES ('m2', 'usul', 'fedaykin', datetime('now', '-1 day'))`
+      ).run();
+      db.prepare(
+        `INSERT INTO tier_history (member_id, old_tier, new_tier, changed_at)
+         VALUES ('m4', NULL, 'hajra', datetime('now', '-1 day'))`
+      ).run();
 
-      expect(stats.totalMembers).toBe(350);
-      expect(stats.newMembers).toBe(25);
-      expect(stats.totalBgt).toBe('1250000'); // Formatted
-      expect(stats.promotions).toBe(18);
-      expect(stats.badgesAwarded).toBe(12);
-      expect(stats.tierDistribution).toHaveLength(9);
+      // Badges this week
+      db.prepare(
+        `INSERT INTO member_badges (member_id, awarded_at) VALUES ('m1', datetime('now', '-2 days'))`
+      ).run();
+      db.prepare(
+        `INSERT INTO member_badges (member_id, awarded_at) VALUES ('m2', datetime('now', '-1 day'))`
+      ).run();
+
+      const stats = digestService.collectWeeklyStats();
+
+      expect(stats.totalMembers).toBe(5);
+      expect(stats.newMembers).toBe(2);
+      expect(stats.totalBgt).toBe(1900); // 100+500+1000+50+250
+      expect(stats.promotionsCount).toBe(1); // initial assignment excluded
+      expect(stats.notablePromotions).toEqual([{ nym: 'Nym-m2', newTier: 'fedaykin' }]);
+      expect(stats.badgesAwarded).toBe(2);
+      expect(stats.tierDistribution.hajra).toBe(2);
+      expect(stats.tierDistribution.fedaykin).toBe(1);
+      expect(stats.tierDistribution.naib).toBe(1);
+      // Top new member by BGT is the ichwan joiner with 250
+      expect(stats.topNewMember).toEqual({ nym: 'Nym-m5', tier: 'ichwan' });
+      expect(stats.weekIdentifier).toMatch(/^\d{4}-W\d{2}$/);
     });
 
-    it('should handle zero new members gracefully', async () => {
-      mockCountMembers.mockResolvedValue(300);
-      mockCountNewMembers.mockResolvedValue(0);
-      mockGetTotalBgt.mockResolvedValue('1000000000000000000000000');
-      mockGetTierDistribution.mockResolvedValue([
-        { tier: 'hajra', count: 100 },
-        { tier: 'ichwan', count: 80 },
-        { tier: 'qanat', count: 50 },
-        { tier: 'sihaya', count: 30 },
-        { tier: 'mushtamal', count: 20 },
-        { tier: 'sayyadina', count: 10 },
-        { tier: 'usul', count: 5 },
-        { tier: 'fedaykin', count: 60 },
-        { tier: 'naib', count: 7 },
-      ]);
-      mockCountTierPromotions.mockResolvedValue(0);
-      mockCountBadgesAwarded.mockResolvedValue(0);
-      mockGetRecentTierChanges.mockResolvedValue([]);
-      mockGetTopActiveMembers.mockResolvedValue([]);
+    it('ranks top new member correctly when bgt_held has leading zeros', () => {
+      // bgt_held is a wei string. LENGTH-then-lexicographic ordering is exact
+      // only for CANONICAL integer strings: a non-canonical '000…' value (as
+      // legacy/imported rows can carry) is longer than a genuinely larger
+      // canonical value, so without normalization it wins the ranking.
+      seedMember({ id: 'small', nym: 'LeadingZeros', tier: 'hajra', createdDaysAgo: 1 });
+      seedMember({ id: 'big', nym: 'GenuineTop', tier: 'ichwan', createdDaysAgo: 1 });
 
-      const stats = await digestService.collectWeeklyStats();
+      // '00000000000000000001' (20 chars) vs '999999999999999999' (18 chars).
+      // Length-first without LTRIM ranks the leading-zero row first; the real
+      // maximum is GenuineTop.
+      db.prepare('UPDATE eligibility_snapshot SET bgt_held = ? WHERE wallet_address = ?').run(
+        '00000000000000000001',
+        '0xwallet-small'
+      );
+      db.prepare('UPDATE eligibility_snapshot SET bgt_held = ? WHERE wallet_address = ?').run(
+        '999999999999999999',
+        '0xwallet-big'
+      );
 
+      const stats = digestService.collectWeeklyStats();
+
+      expect(stats.topNewMember).toEqual({ nym: 'GenuineTop', tier: 'ichwan' });
+    });
+
+    it('should handle zero new members gracefully', () => {
+      seedMember({ id: 'm1', tier: 'hajra', bgt: 100 });
+
+      const stats = digestService.collectWeeklyStats();
+
+      expect(stats.totalMembers).toBe(1);
       expect(stats.newMembers).toBe(0);
-      expect(stats.promotions).toBe(0);
+      expect(stats.promotionsCount).toBe(0);
       expect(stats.badgesAwarded).toBe(0);
+      expect(stats.topNewMember).toBeNull();
     });
   });
 
   describe('Digest Formatting', () => {
-    it('should format digest with all stats sections', async () => {
-      const mockStats = {
-        totalMembers: 350,
-        newMembers: 25,
-        totalBgt: '1250000',
-        tierDistribution: [
-          { tier: 'hajra', count: 100 },
-          { tier: 'ichwan', count: 80 },
-          { tier: 'qanat', count: 70 },
-          { tier: 'sihaya', count: 50 },
-          { tier: 'mushtamal', count: 25 },
-          { tier: 'sayyadina', count: 12 },
-          { tier: 'usul', count: 6 },
-          { tier: 'fedaykin', count: 62 },
-          { tier: 'naib', count: 7 },
-        ],
-        mostActiveTier: 'ichwan',
-        promotions: 18,
-        badgesAwarded: 12,
-        notablePromotions: [
-          { nym: 'Member1', tier: 'fedaykin' },
-          { nym: 'Member2', tier: 'usul' },
-        ],
-        topNewMember: { nym: 'NewMember', tier: 'qanat' },
-      };
+    it('should format digest with all stats sections', () => {
+      seedMember({ id: 'm1', tier: 'fedaykin', bgt: 500, createdDaysAgo: 1 });
+      db.prepare(
+        `INSERT INTO tier_history (member_id, old_tier, new_tier, changed_at)
+         VALUES ('m1', 'usul', 'fedaykin', datetime('now', '-1 day'))`
+      ).run();
+      db.prepare(
+        `INSERT INTO member_badges (member_id, awarded_at) VALUES ('m1', datetime('now', '-1 day'))`
+      ).run();
 
-      const formatted = digestService.formatDigest(mockStats);
+      const stats = digestService.collectWeeklyStats();
+      const message = digestService.formatDigest(stats);
 
-      expect(formatted).toContain('350'); // Total members
-      expect(formatted).toContain('25'); // New members
-      expect(formatted).toContain('1,250,000'); // BGT formatted
-      expect(formatted).toContain('18'); // Promotions
-      expect(formatted).toContain('12'); // Badges
-      expect(formatted).toContain('Member1'); // Notable promotion
-      expect(formatted).toContain('fedaykin'); // Tier name
+      expect(message).toContain('Weekly Pulse of the Sietch');
+      expect(message).toContain('Community Stats');
+      expect(message).toContain('Total Members: **1** (+1 new)');
+      expect(message).toContain('500 BGT');
+      expect(message).toContain('New Members');
+      expect(message).toContain('Tier Promotions');
+      expect(message).toContain('**Nym-m1** reached **Fedaykin**!');
+      expect(message).toContain('Badges Awarded');
+      expect(message).toContain('The spice flows...');
     });
 
-    it('should handle digest with no notable events', async () => {
-      const mockStats = {
-        totalMembers: 300,
-        newMembers: 0,
-        totalBgt: '1000000',
-        tierDistribution: [
-          { tier: 'hajra', count: 100 },
-          { tier: 'ichwan', count: 80 },
-          { tier: 'qanat', count: 50 },
-          { tier: 'sihaya', count: 30 },
-          { tier: 'mushtamal', count: 20 },
-          { tier: 'sayyadina', count: 10 },
-          { tier: 'usul', count: 5 },
-          { tier: 'fedaykin', count: 60 },
-          { tier: 'naib', count: 7 },
-        ],
-        mostActiveTier: 'hajra',
-        promotions: 0,
-        badgesAwarded: 0,
-        notablePromotions: [],
-        topNewMember: null,
-      };
+    it('should handle digest with no notable events', () => {
+      seedMember({ id: 'm1', tier: 'hajra', bgt: 10 });
 
-      const formatted = digestService.formatDigest(mockStats);
+      const stats = digestService.collectWeeklyStats();
+      const message = digestService.formatDigest(stats);
 
-      expect(formatted).toContain('300'); // Total members
-      expect(formatted).toBeDefined();
-      expect(formatted.length).toBeGreaterThan(0);
+      expect(message).toContain('Weekly Pulse of the Sietch');
+      expect(message).toContain('Total Members: **1**');
+      // Sections with no events are omitted entirely
+      expect(message).not.toContain('New Members');
+      expect(message).not.toContain('Tier Promotions');
+      expect(message).not.toContain('Badges Awarded');
+    });
+
+    it('should format large BGT numbers correctly', () => {
+      seedMember({ id: 'whale', tier: 'naib', bgt: 1_250_000 });
+
+      const stats = digestService.collectWeeklyStats();
+      const message = digestService.formatDigest(stats);
+
+      expect(stats.totalBgt).toBe(1_250_000);
+      expect(message).toContain('1,250,000 BGT');
     });
   });
 
   describe('Digest Posting', () => {
-    it('should post digest to announcements channel', async () => {
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue({
-            id: 'channel-announcements',
-            isTextBased: () => true,
-            send: vi.fn().mockResolvedValue({
-              id: 'message-123',
-              url: 'https://discord.com/channels/guild/channel/message-123',
-            }),
-          }),
-        },
-      };
+    it('should post digest to announcements channel and store the record', async () => {
+      seedMember({ id: 'm1', tier: 'hajra', bgt: 100 });
+      const stats = digestService.collectWeeklyStats();
+      const channel = makeTextChannel();
+      const client = { channels: { fetch: vi.fn(async () => channel) } };
 
-      mockCountMembers.mockResolvedValue(350);
-      mockCountNewMembers.mockResolvedValue(25);
-      mockGetTotalBgt.mockResolvedValue('1250000000000000000000000');
-      mockGetTierDistribution.mockResolvedValue([
-        { tier: 'hajra', count: 100 },
-        { tier: 'ichwan', count: 80 },
-        { tier: 'qanat', count: 70 },
-        { tier: 'sihaya', count: 50 },
-        { tier: 'mushtamal', count: 25 },
-        { tier: 'sayyadina', count: 12 },
-        { tier: 'usul', count: 6 },
-        { tier: 'fedaykin', count: 62 },
-        { tier: 'naib', count: 7 },
-      ]);
-      mockCountTierPromotions.mockResolvedValue(18);
-      mockCountBadgesAwarded.mockResolvedValue(12);
-      mockGetRecentTierChanges.mockResolvedValue([]);
-      mockGetTopActiveMembers.mockResolvedValue([]);
-
-      const result = await digestService.postDigest(mockClient as any);
+      const result = await digestService.postDigest(stats, client as any, 'channel-announcements');
 
       expect(result.success).toBe(true);
-      expect(result.messageId).toBe('message-123');
-      expect(mockInsertWeeklyDigest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          posted_at: expect.any(Number),
-          message_id: 'message-123',
-          stats: expect.any(String),
-        })
-      );
+      expect(client.channels.fetch).toHaveBeenCalledWith('channel-announcements');
+      expect(channel.send).toHaveBeenCalledTimes(1);
+      expect(channel.send.mock.calls[0][0]).toContain('Weekly Pulse of the Sietch');
+
+      // Stored with the Discord message id filled in
+      const row = db
+        .prepare('SELECT * FROM weekly_digests WHERE week_identifier = ?')
+        .get(stats.weekIdentifier) as Record<string, unknown>;
+      expect(row).toBeTruthy();
+      expect(row.message_id).toBe('msg-1');
+      expect(row.total_members).toBe(1);
+    });
+
+    it('should not post a duplicate digest for the same week', async () => {
+      seedMember({ id: 'm1', tier: 'hajra', bgt: 100 });
+      const stats = digestService.collectWeeklyStats();
+      const channel = makeTextChannel();
+      const client = { channels: { fetch: vi.fn(async () => channel) } };
+
+      const first = await digestService.postDigest(stats, client as any, 'channel-announcements');
+      expect(first.success).toBe(true);
+
+      const second = await digestService.postDigest(stats, client as any, 'channel-announcements');
+      expect(second.success).toBe(false);
+      expect(second.error).toContain('already exists');
+      expect(channel.send).toHaveBeenCalledTimes(1);
     });
 
     it('should handle posting failure gracefully', async () => {
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockRejectedValue(new Error('Channel not found')),
-        },
+      seedMember({ id: 'm1', tier: 'hajra', bgt: 100 });
+      const stats = digestService.collectWeeklyStats();
+      const client = {
+        channels: { fetch: vi.fn(async () => { throw new Error('Discord unavailable'); }) },
       };
 
-      const result = await digestService.postDigest(mockClient as any);
+      const result = await digestService.postDigest(stats, client as any, 'channel-announcements');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
-      expect(mockInsertWeeklyDigest).not.toHaveBeenCalled();
+      expect(result.error).toBeTruthy();
     });
   });
 
   describe('Digest Storage', () => {
     it('should store digest with all metadata', async () => {
-      const digestData = {
-        posted_at: Date.now(),
-        message_id: 'msg-123',
-        stats: JSON.stringify({ totalMembers: 350 }),
-      };
+      seedMember({ id: 'm1', tier: 'fedaykin', bgt: 500, createdDaysAgo: 1 });
+      db.prepare(
+        `INSERT INTO tier_history (member_id, old_tier, new_tier, changed_at)
+         VALUES ('m1', 'usul', 'fedaykin', datetime('now', '-1 day'))`
+      ).run();
 
-      mockInsertWeeklyDigest.mockResolvedValue({ id: 'digest-1' });
+      const stats = digestService.collectWeeklyStats();
+      const channel = makeTextChannel();
+      const client = { channels: { fetch: vi.fn(async () => channel) } };
+      await digestService.postDigest(stats, client as any, 'channel-announcements');
 
-      await digestService.storeDigest(digestData);
+      const row = db
+        .prepare('SELECT * FROM weekly_digests WHERE week_identifier = ?')
+        .get(stats.weekIdentifier) as Record<string, unknown>;
 
-      expect(mockInsertWeeklyDigest).toHaveBeenCalledWith(digestData);
+      expect(row.new_members).toBe(1);
+      expect(row.promotions_count).toBe(1);
+      expect(JSON.parse(row.tier_distribution as string).fedaykin).toBe(1);
+      expect(JSON.parse(row.notable_promotions as string)).toEqual([
+        { nym: 'Nym-m1', newTier: 'fedaykin' },
+      ]);
+      expect(row.top_new_member_nym).toBe('Nym-m1');
+      expect(digestService.digestExistsForWeek(stats.weekIdentifier)).toBe(true);
     });
   });
 
   describe('Edge Cases', () => {
-    it('should handle database query failures', async () => {
-      mockCountMembers.mockRejectedValue(new Error('Database error'));
-
-      await expect(digestService.collectWeeklyStats()).rejects.toThrow('Database error');
+    it('should handle database query failures', () => {
+      db.close();
+      expect(() => digestService.collectWeeklyStats()).toThrow();
+      db = new Database(':memory:'); // valid handle for afterEach close()
     });
 
-    it('should handle missing announcements channel ID', async () => {
-      // This would be handled by graceful degradation in config
-      const mockClient = {
-        channels: {
-          fetch: vi.fn().mockResolvedValue(null),
-        },
-      };
-
-      const result = await digestService.postDigest(mockClient as any);
-
-      expect(result.success).toBe(false);
-    });
-
-    it('should format large BGT numbers correctly', async () => {
-      mockCountMembers.mockResolvedValue(500);
-      mockCountNewMembers.mockResolvedValue(50);
-      mockGetTotalBgt.mockResolvedValue('10000000000000000000000000'); // 10M BGT
-      mockGetTierDistribution.mockResolvedValue([
-        { tier: 'hajra', count: 200 },
-        { tier: 'ichwan', count: 150 },
-        { tier: 'qanat', count: 100 },
-        { tier: 'sihaya', count: 50 },
-        { tier: 'mushtamal', count: 25 },
-        { tier: 'sayyadina', count: 12 },
-        { tier: 'usul', count: 6 },
-        { tier: 'fedaykin', count: 62 },
-        { tier: 'naib', count: 7 },
-      ]);
-      mockCountTierPromotions.mockResolvedValue(30);
-      mockCountBadgesAwarded.mockResolvedValue(20);
-      mockGetRecentTierChanges.mockResolvedValue([]);
-      mockGetTopActiveMembers.mockResolvedValue([]);
-
-      const stats = await digestService.collectWeeklyStats();
-
-      expect(stats.totalBgt).toContain('10,000,000'); // 10M formatted
+    it('should produce a stable ISO week identifier', () => {
+      expect(digestService.getWeekIdentifier(new Date('2025-01-16T12:00:00Z'))).toBe('2025-W03');
+      expect(digestService.getWeekIdentifier(new Date('2024-12-31T12:00:00Z'))).toBe('2025-W01');
     });
   });
 });

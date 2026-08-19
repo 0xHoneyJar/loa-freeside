@@ -18,9 +18,22 @@ while [ $attempts -lt $max_attempts ]; do
     echo "[e2e-entrypoint] Server is healthy"
     break
   fi
+  # A server that died on boot and one that is merely slow both just fail the
+  # health probe, so without this check both spend the full 30s and report the
+  # same "failed to start" — hiding which one happened, and the exit status that
+  # would say why. `wait` on an already-reaped child yields its real code.
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    # `|| server_status=$?` is required: under `set -e` a bare failing `wait`
+    # aborts the script before these diagnostics can print.
+    server_status=0
+    wait "$SERVER_PID" || server_status=$?
+    echo "[e2e-entrypoint] ERROR: server process exited during startup (status ${server_status}) after ${attempts}s"
+    echo "[e2e-entrypoint] The node stderr above this line is the real failure."
+    exit 1
+  fi
   attempts=$((attempts + 1))
   if [ $attempts -eq $max_attempts ]; then
-    echo "[e2e-entrypoint] ERROR: Server failed to start within ${max_attempts}s"
+    echo "[e2e-entrypoint] ERROR: Server still running but not healthy within ${max_attempts}s"
     kill "$SERVER_PID" 2>/dev/null || true
     exit 1
   fi
@@ -43,6 +56,22 @@ if [ -n "$JWKS_EXPORT_PATH" ]; then
   if command -v jq > /dev/null 2>&1; then
     if ! jq empty "$tmp_path" 2>/dev/null; then
       echo "[e2e-entrypoint] ERROR: JWKS is not valid JSON"
+      rm -f "$tmp_path"
+      exit 1
+    fi
+    # `jq empty` only proves the response parses. {"keys":[]} parses fine and is
+    # exactly 11 bytes — which is what this export was writing, then reporting
+    # as "exported successfully". loa-finn mounts this file to verify arrakis
+    # tokens without an HTTP fetch, so an empty key set makes the whole handoff
+    # a no-op that still looks green. Assert the thing that matters.
+    key_count=$(jq '.keys | length' "$tmp_path" 2>/dev/null || echo 0)
+    if [ "$key_count" -lt 1 ]; then
+      echo "[e2e-entrypoint] ERROR: JWKS contains no keys (.keys is empty)" >&2
+      echo "[e2e-entrypoint] /.well-known/jwks.json is served from the" >&2
+      echo "[e2e-entrypoint] s2s_jwks_public_keys table (JwksService), not from" >&2
+      echo "[e2e-entrypoint] AGENT_JWT_PRIVATE_KEY. Nothing in the E2E seeds that" >&2
+      echo "[e2e-entrypoint] table, so the export is vacuous. Seed a public key" >&2
+      echo "[e2e-entrypoint] before startup, or drop the JWKS handoff." >&2
       rm -f "$tmp_path"
       exit 1
     fi

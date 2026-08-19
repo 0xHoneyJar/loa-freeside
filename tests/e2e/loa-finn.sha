@@ -1,0 +1,15 @@
+# Pinned loa-finn commit for the billing E2E stack.
+#
+# The loa-finn-e2e service in docker-compose.e2e.yml builds from a checkout of
+# 0xHoneyJar/loa-finn. Pinning it here keeps the E2E deterministic and makes a
+# version bump a reviewable one-line diff rather than an invisible drift to
+# whatever main happened to be at run time.
+#
+# Format: one line, a full 40-character commit SHA. Comments (#) and blank
+# lines are ignored. scripts/run-e2e.sh verifies the checkout resolves to
+# exactly this SHA and aborts on mismatch.
+#
+# 69f3f8a = 0xHoneyJar/loa-finn main @ 2026-07-19, "chore: rename maintainer
+# handle and halt stale simstim state (#263)" — the tip at the time this pin
+# was introduced. Bump deliberately.
+69f3f8a733b3607c79f57ebcfbc17164c307a9c3

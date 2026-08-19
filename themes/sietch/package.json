@@ -85,18 +85,20 @@
     "rate-limit-redis": "^4.3.1",
     "swagger-ui-express": "^5.0.1",
     "viem": "^2.44.1",
-    "ws": "^8.19.0",
+    "ws": "^8.21.0",
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "overrides": {
     "fast-xml-parser": ">=5.3.8",
     "postman-request": {
       "form-data": ">=2.5.4",
       "qs": ">=6.14.1"
-    }
+    },
+    "undici": "^6.27.0",
+    "ws": "$ws"
   },
   "devDependencies": {
     "@types/argon2": "^0.14.1",

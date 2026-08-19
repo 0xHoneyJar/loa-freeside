@@ -95,7 +95,12 @@ jobs:
         working-directory: packages/adapters
 
       - name: Install sietch dependencies (root tests import themes/sietch protocol)
-        run: npm ci --ignore-scripts
+        run: |
+          npm ci --ignore-scripts
+          # --ignore-scripts skips better-sqlite3's binding install, but the
+          # sietch integration tests (e.g. transfer-conservation-stress) open a
+          # real SQLite database. Rebuild just that package.
+          npm rebuild better-sqlite3
         working-directory: themes/sietch
 
       - name: Type check

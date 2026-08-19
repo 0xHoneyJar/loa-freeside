@@ -97,9 +97,18 @@ RUN npm run build
 # ============================================
 WORKDIR /repo/apps/worker
 
-# Link all workspace packages for tsc resolution
-RUN mkdir -p node_modules/@arrakis && \
+# Link all workspace packages for tsc resolution.
+#
+# @freeside/core is linked as well as @arrakis/core: the worker imports
+# `@freeside/core/ports` (thread-message-handler.ts, handlers/commands/setup.ts)
+# but, unlike its @freeside/sandbox and @freeside/nats-schemas siblings,
+# @freeside/core is not a `file:` dependency in apps/worker/package.json, so
+# npm never creates node_modules/@freeside/core and tsc cannot resolve the
+# subpath. Same target, both specifiers — the package's own exports map already
+# declares "./ports".
+RUN mkdir -p node_modules/@arrakis node_modules/@freeside && \
     ln -sf /repo/packages/core node_modules/@arrakis/core && \
+    ln -sf /repo/packages/core node_modules/@freeside/core && \
     ln -sf /repo/packages/sandbox node_modules/@arrakis/sandbox && \
     ln -sf /repo/packages/adapters node_modules/@arrakis/adapters && \
     ln -sf /repo/packages/shared/nats-schemas node_modules/@arrakis/nats-schemas

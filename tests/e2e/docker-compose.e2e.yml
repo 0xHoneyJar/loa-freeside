@@ -60,6 +60,21 @@ services:
       # Identity Anchor Graduated Trust (Sprint 251, Task 7.1)
       - IDENTITY_ANCHOR_ENABLED=${IDENTITY_ANCHOR_ENABLED:-true}
       - IDENTITY_ANCHOR_HIGH_VALUE_THRESHOLD_MICRO=100000000
+      # src/config.ts validates the WHOLE config at import time (parseConfig,
+      # config.ts:712) — not just the slice the billing E2E exercises. Without
+      # these nine the process exits 1 before serving, and the billing stack
+      # never comes up. Values mirror the placeholders agent-ci.yml already
+      # uses for the same schema; none is a real credential and none reaches a
+      # network. BGT_ADDRESS must be hex — the schema is addressSchema.
+      - BGT_ADDRESS=${BGT_ADDRESS:-0x0000000000000000000000000000000000000001}
+      - TRIGGER_PROJECT_ID=${TRIGGER_PROJECT_ID:-test-project-id}
+      - TRIGGER_SECRET_KEY=${TRIGGER_SECRET_KEY:-test-secret-key}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-test-bot-token}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-test-guild-id}
+      - DISCORD_CHANNEL_THE_DOOR=${DISCORD_CHANNEL_THE_DOOR:-test-channel-the-door}
+      - DISCORD_CHANNEL_CENSUS=${DISCORD_CHANNEL_CENSUS:-test-channel-census}
+      - DISCORD_ROLE_NAIB=${DISCORD_ROLE_NAIB:-test-role-naib}
+      - DISCORD_ROLE_FEDAYKIN=${DISCORD_ROLE_FEDAYKIN:-test-role-fedaykin}
     ports:
       - "${E2E_ARRAKIS_PORT:-3099}:3000"
     extra_hosts:
@@ -81,7 +96,11 @@ services:
   loa-finn-e2e:
     build:
       context: ${LOA_FINN_DIR:-.loa-finn-checkout}
-      dockerfile: Dockerfile
+      # loa-finn keeps its Dockerfile under deploy/, not at the repo root — its
+      # own docker-compose.yml builds with `context: .` + `dockerfile:
+      # deploy/Dockerfile`. Bare `Dockerfile` here resolves to nothing in the
+      # checkout and fails the build context read.
+      dockerfile: deploy/Dockerfile
     environment:
       - REDIS_URL=redis://redis-e2e:6379
       - PORT=8080

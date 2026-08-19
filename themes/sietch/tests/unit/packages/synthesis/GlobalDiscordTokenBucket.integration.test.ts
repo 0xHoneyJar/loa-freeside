@@ -176,7 +176,7 @@ describe('GlobalDiscordTokenBucket', () => {
 
     it('should throw error if tokens > maxTokens', async () => {
       await expect(bucket.acquire(51)).rejects.toThrow(TokenBucketError);
-      await expect(bucket.acquire(51)).rejects.toThrow('exceed');
+      await expect(bucket.acquire(51)).rejects.toThrow('Cannot acquire 51 tokens');
     });
   });
 
@@ -232,7 +232,10 @@ describe('GlobalDiscordTokenBucket', () => {
       );
       const duration = Date.now() - start;
 
-      expect(duration).toBeGreaterThanOrEqual(450);
+      // acquireWithWait exits early once the remaining time cannot fit
+      // another sleep (sleepTime <= maxBackoff 200), so the observed
+      // duration is timeout - lastSleep at minimum.
+      expect(duration).toBeGreaterThanOrEqual(300);
       expect(duration).toBeLessThan(600);
     });
 
@@ -261,7 +264,8 @@ describe('GlobalDiscordTokenBucket', () => {
       // Note: We can't strictly verify exponential due to jitter,
       // but we can verify intervals are reasonable
       for (const interval of attempts) {
-        expect(interval).toBeGreaterThan(0);
+        // the first interval (drain -> first sleep call) can be <1ms
+        expect(interval).toBeGreaterThanOrEqual(0);
         expect(interval).toBeLessThan(500); // Max backoff
       }
     });
@@ -330,6 +334,58 @@ describe('GlobalDiscordTokenBucket', () => {
 
       const tokens = await bucket.getCurrentTokens();
       expect(tokens).toBe(50); // Should be at max
+    });
+  });
+
+  describe('Token Refill — refillRate 0 (no automatic refill)', () => {
+    it('does not start the refill interval, so it costs no Redis traffic', async () => {
+      // refillRate 0 is a supported fixed-allowance configuration. Running the
+      // 1s Lua interval anyway would add zero tokens while producing a
+      // per-second Redis round-trip and a "refilled to maximum" log line on
+      // every worker.
+      const evals: unknown[][] = [];
+      const logs: string[] = [];
+      bucket = new GlobalDiscordTokenBucket({
+        ...testConfig,
+        refillRate: 0,
+        logger: {
+          debug: () => {},
+          // The bucket logs either (message) or (context, message).
+          info: (message: string | object, ...rest: unknown[]) => {
+            logs.push([message, ...rest].filter((a) => typeof a === 'string').join(' '));
+          },
+          warn: () => {},
+          error: () => {},
+        },
+      });
+      await bucket.initialize();
+
+      // Record every Redis eval issued after initialization.
+      const inner = (bucket as unknown as { redis: { eval: (...a: unknown[]) => unknown } }).redis;
+      const originalEval = inner.eval.bind(inner);
+      inner.eval = (...args: unknown[]) => { evals.push(args); return originalEval(...args); };
+
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+
+      expect(evals).toHaveLength(0);
+      expect(logs.some((l) => /refilled to maximum/i.test(l))).toBe(false);
+      expect(logs.some((l) => /no automatic refill/i.test(l))).toBe(true);
+      // The allowance itself is untouched and still spendable.
+      expect(await bucket.getCurrentTokens()).toBe(50);
+      expect(await bucket.acquire(50)).toBe(true);
+      // …and it genuinely does not refill.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      expect(await bucket.getCurrentTokens()).toBe(0);
+    });
+
+    it('still refills when refillRate is positive', async () => {
+      bucket = new GlobalDiscordTokenBucket({ ...testConfig, refillRate: 10 });
+      await bucket.initialize();
+      await bucket.acquire(50);
+
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      expect(await bucket.getCurrentTokens()).toBeGreaterThan(0);
     });
   });
 
