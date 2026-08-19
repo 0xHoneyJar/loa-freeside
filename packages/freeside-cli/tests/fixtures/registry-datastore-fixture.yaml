@@ -1,0 +1,18 @@
+# Test registry — doctor --data (datastore-legibility S1-T4). `ordering` carries a
+# deployment_url (the /admin/data-store base); `no-store-cell` has none (unreported).
+version: 1
+modules:
+  ordering:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: https://ordering-service-production.up.railway.app
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-01"
+  no-store-cell:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-03"

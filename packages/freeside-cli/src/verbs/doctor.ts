@@ -35,7 +35,7 @@ import {
   type AcvpProofReceipt,
 } from "@freeside/beacon-schema";
 import { jcsCanonicalize, sha256Hex } from "../lib/jcs.js";
-import { hardenedBeaconFetcher } from "../lib/harden-beacon-fetch.js";
+import { hardenedBeaconFetcher, isBlockedAddress, normalizeHost } from "../lib/harden-beacon-fetch.js";
 
 export type Severity = "ok" | "warn" | "error";
 
@@ -108,6 +108,13 @@ export interface DoctorOptions {
    * step 3) that makes receipts actually consumed and backed buildings report
    * `bound`. Unset (or a clone absent) → unchanged fixture/null posture. */
   readonly cellsDir?: string;
+  /** --data: injected data-store self-report fetcher (determinism + no live calls
+   *  in tests). Default = `defaultDataStoreFetcher` (https-only + private-range
+   *  reject + Bearer per-cell token). Only used by `doctorData`. */
+  readonly fetchDataStore?: DataStoreFetcher;
+  /** --data: the in-scope cell slugs to probe. Default = `DATA_STORE_CELLS`
+   *  (S1 settle gate = ONE cell). S2/S3 widen this to the fan-out set. */
+  readonly dataCells?: readonly string[];
 }
 
 const ALL_ZEROS_64 = "0".repeat(64);
@@ -842,3 +849,209 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
     },
   };
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  --data: cell data-store self-report aggregator (datastore-legibility SDD C-3)
+//  Probes each in-scope cell's authed GET /admin/data-store, joins nothing yet
+//  (the ratified-label drift fold is S2/S3 / C-4+C-5), classifies topology, and
+//  prints JSON + a terse table. The S1 settle gate: ONE cell (ordering) legible
+//  end-to-end. G-3 holds — no Railway API, the operator's per-cell token only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The sanitized shape a cell's `GET /admin/data-store` returns (datastore.report.v1).
+ *  Re-declared here (cross-package: the CLI cannot import ordering's type). */
+export interface CellDataStoreFacts {
+  readonly schema_version: "datastore.report.v1";
+  readonly engine: string | null;
+  readonly host_fp: string | null;
+  readonly reachable: boolean;
+  readonly migrations_applied: number | null;
+  readonly store: string;
+}
+
+/** Topology-only status for S1 (the ratified-label `contested`/`coherent` fold is
+ *  S3 / C-5). `reported` = cell served a valid report; `unreachable` = endpoint
+ *  present but unreachable/errored; `unreported` = no endpoint (no deployment_url / 404). */
+export type DataStoreStatus = "reported" | "unreachable" | "unreported";
+
+export interface DataStoreRow {
+  readonly slug: string;
+  readonly engine: string | null;
+  readonly host_fp: string | null;
+  readonly reachable: boolean;
+  readonly status: DataStoreStatus;
+}
+
+export interface DataStoreReport {
+  readonly schema_version: "datastore.doctor.v1";
+  readonly rows: readonly DataStoreRow[];
+  readonly summary: {
+    readonly cells: number;
+    readonly reported: number;
+    readonly unreachable: number;
+    readonly unreported: number;
+  };
+}
+
+export interface DataStoreFetchResult {
+  readonly status: number; // 0 on transport failure
+  readonly body: string;
+  readonly error?: string;
+}
+/** `(url, token) → result`. Injected for tests — the settle gate uses a fixture. */
+export type DataStoreFetcher = (url: string, token: string | undefined) => Promise<DataStoreFetchResult>;
+
+/** Phase-1 in-scope cells. S1 settle gate = ONE cell (ordering); S2/S3 widen it.
+ *  Explicit (not all of `registry.modules`) so the slice is exactly "ordering is
+ *  legible" until the remaining cells land their `/admin/data-store` route. */
+export const DATA_STORE_CELLS: readonly string[] = ["ordering"];
+
+/** Per-cell service-token env var, e.g. `ordering` → `ORDERING_SERVICE_TOKEN`. */
+export function dataStoreTokenEnv(slug: string): string {
+  return `${slug.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}_SERVICE_TOKEN`;
+}
+
+/** Validate a cell body as `datastore.report.v1`; null when it is not that shape
+ *  (a 404 page / non-report blob is `unreported`/`unreachable`, never fabricated). */
+export function parseCellDataStoreFacts(body: string): CellDataStoreFacts | null {
+  if (!body) return null;
+  let p: unknown;
+  try {
+    p = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (typeof p !== "object" || p === null) return null;
+  const o = p as Record<string, unknown>;
+  if (o.schema_version !== "datastore.report.v1") return null;
+  if (typeof o.reachable !== "boolean") return null;
+  return {
+    schema_version: "datastore.report.v1",
+    engine: typeof o.engine === "string" ? o.engine : null,
+    host_fp: typeof o.host_fp === "string" ? o.host_fp : null,
+    reachable: o.reachable,
+    migrations_applied: typeof o.migrations_applied === "number" ? o.migrations_applied : null,
+    store: typeof o.store === "string" ? o.store : "unknown",
+  };
+}
+
+/** Pure classifier (S1 topology-only). no endpoint → unreported; transport fail /
+ *  non-2xx / unparseable → unreachable; a valid report → reported. A 404 is a
+ *  reachable host WITHOUT the route → unreported (the route isn't deployed yet). */
+export function classifyDataStore(
+  hasEndpoint: boolean,
+  fetched: DataStoreFetchResult | null,
+  facts: CellDataStoreFacts | null,
+): DataStoreStatus {
+  if (!hasEndpoint) return "unreported";
+  if (!fetched || fetched.status === 0) return "unreachable";
+  if (fetched.status === 404) return "unreported";
+  if (fetched.status < 200 || fetched.status >= 300 || !facts) return "unreachable";
+  return "reported";
+}
+
+/** The default live fetcher: https-only + reject private/loopback/metadata resolved
+ *  IPs (`isBlockedAddress`) + timeout + Bearer per-cell token.
+ *  loa:shortcut: no cell-host allowlist + a resolve-then-fetch TOCTOU window; IP-pin
+ *  like `harden-beacon-fetch` when cells federate (that path is 443/allowlist-only and
+ *  cannot carry this auth). Upgrade trigger: `--data` reaching non-operator hosts. */
+export const defaultDataStoreFetcher: DataStoreFetcher = async (url, token) => {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return { status: 0, body: "", error: "bad_url" };
+  }
+  if (u.protocol !== "https:") return { status: 0, body: "", error: "not_https" };
+  if (!normalizeHost(u.hostname)) return { status: 0, body: "", error: "bad_host" };
+  try {
+    const { lookup } = await import("node:dns/promises");
+    const addrs = await lookup(u.hostname, { all: true });
+    if (addrs.some((a) => isBlockedAddress(a.address))) {
+      return { status: 0, body: "", error: "resolved_private" };
+    }
+  } catch {
+    return { status: 0, body: "", error: "dns_error" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
+      redirect: "error",
+    });
+    return { status: res.status, body: await res.text() };
+  } catch {
+    return { status: 0, body: "", error: "transport_error" };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/** `loa doctor --data` — probe each in-scope cell's `/admin/data-store`, classify,
+ *  and return the projection. Never throws on a cell failure — an unreachable cell
+ *  is a legible FACT (`status: unreachable`), not an aggregator error. */
+export const doctorData = async (opts: DoctorOptions = {}): Promise<DataStoreReport> => {
+  const registry = opts.registryPath ? loadRegistry(opts.registryPath) : loadRegistry();
+  const fetchDataStore = opts.fetchDataStore ?? defaultDataStoreFetcher;
+  const cells = opts.dataCells ?? DATA_STORE_CELLS;
+
+  const rows: DataStoreRow[] = [];
+  for (const slug of cells) {
+    const entry = registry.modules[slug];
+    const deploymentUrl = entry?.deployment_url ?? null;
+    if (!deploymentUrl) {
+      rows.push({ slug, engine: null, host_fp: null, reachable: false, status: "unreported" });
+      continue;
+    }
+    const url = `${deploymentUrl.replace(/\/+$/, "")}/admin/data-store`;
+    const token = process.env[dataStoreTokenEnv(slug)];
+    let fetched: DataStoreFetchResult | null = null;
+    try {
+      fetched = await fetchDataStore(url, token);
+    } catch {
+      fetched = null;
+    }
+    const facts =
+      fetched && fetched.status >= 200 && fetched.status < 300
+        ? parseCellDataStoreFacts(fetched.body)
+        : null;
+    const status = classifyDataStore(true, fetched, facts);
+    rows.push({
+      slug,
+      engine: facts?.engine ?? null,
+      host_fp: facts?.host_fp ?? null,
+      reachable: facts?.reachable ?? false,
+      status,
+    });
+  }
+
+  return {
+    schema_version: "datastore.doctor.v1",
+    rows,
+    summary: {
+      cells: rows.length,
+      reported: rows.filter((r) => r.status === "reported").length,
+      unreachable: rows.filter((r) => r.status === "unreachable").length,
+      unreported: rows.filter((r) => r.status === "unreported").length,
+    },
+  };
+};
+
+/** Terse table for `--data` (the `printList` precedent). host_fp is the salted
+ *  correlation id, never a secret; a null field prints as `-`. */
+export function renderDataStoreTable(report: DataStoreReport): string {
+  const w = Math.max(4, ...report.rows.map((r) => r.slug.length));
+  const lines: string[] = [
+    `  ${"SLUG".padEnd(w)}  ${"ENGINE".padEnd(9)}  ${"HOST_FP".padEnd(16)}  REACH  STATUS`,
+  ];
+  for (const r of report.rows) {
+    lines.push(
+      `  ${r.slug.padEnd(w)}  ${(r.engine ?? "-").padEnd(9)}  ${(r.host_fp ?? "-").padEnd(16)}  ${r.reachable ? "yes  " : "no   "}  ${r.status}`,
+    );
+  }
+  const s = report.summary;
+  lines.push(`  ${s.cells} cell(s): ${s.reported} reported · ${s.unreachable} unreachable · ${s.unreported} unreported`);
+  return lines.join("\n");
+}

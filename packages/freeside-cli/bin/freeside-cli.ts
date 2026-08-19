@@ -12,7 +12,7 @@
 
 import { listModules, printList } from "../src/verbs/list.js";
 import { inspectModule } from "../src/verbs/inspect.js";
-import { doctor } from "../src/verbs/doctor.js";
+import { doctor, doctorData, renderDataStoreTable } from "../src/verbs/doctor.js";
 import { orderVerb } from "../src/verbs/order.js";
 import { kitchenVerb } from "../src/verbs/kitchen.js";
 import { fulfillVerb } from "../src/verbs/fulfill.js";
@@ -85,6 +85,16 @@ const main = async (): Promise<number> => {
     }
     case "doctor": {
       const flags = args.slice(1);
+      // --data: cell data-store self-report projection (datastore-legibility SDD C-3).
+      // S1 settle gate — exits 0 (the report is the deliverable; an unreachable cell
+      // is a legible fact, not a failure). The `contested` → exit-1 fold arrives with
+      // the ratified label layer in S3.
+      if (flags.includes("--data")) {
+        const report = await doctorData({ registryPath: flagValue(flags, "--registry") });
+        console.log(JSON.stringify(report, null, 2));
+        console.log(renderDataStoreTable(report));
+        return 0;
+      }
       const report = await doctor({
         remote: flags.includes("--remote"),
         acvpOnly: flags.includes("--acvp"),
