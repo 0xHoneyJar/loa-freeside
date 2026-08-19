@@ -29,9 +29,42 @@ import {
   WorkflowTooLargeError,
 } from "./gate-leak-recipe-compiler.js";
 import { buildPublicWorkKeyMaterial } from "./shared-preparation-work-key.js";
-import type { PublicPreparationWorkKeyMaterial } from "./shared-preparation-types.js";
+import type {
+  KitchenDeploymentTarget,
+  PublicPreparationWorkKeyMaterial,
+  VersionedDigest,
+} from "./shared-preparation-types.js";
 import { digestOf } from "./digest.js";
 import type { RecipeExpansionCertificate } from "./admission-capacity-types.js";
+
+function deploymentDigestKey(d: VersionedDigest): string {
+  return `${d.algorithm}:${d.domain}:${d.major_version}:${d.digest}`;
+}
+
+/** Bake kitchen coords at admit — dispatch must not re-walk resolution. */
+export function kitchenTargetsFromResolution(
+  record: ConfirmedResolutionRecord,
+): Readonly<Record<string, KitchenDeploymentTarget>> {
+  const selected = record.selected_deployment_ids ?? [];
+  const candidate = findSelectedCandidate(record);
+  if (candidate === undefined || selected.length === 0) return {};
+
+  const standardValue = candidate.token_standard.value;
+  const tokenStandard = standardValue === "erc1155" ? "erc1155" : "erc721";
+  const out: Record<string, KitchenDeploymentTarget> = {};
+  const selectedKeys = new Set(selected.map((d) => d.digest));
+
+  for (const deployment of candidate.identity.deployments) {
+    if (!selectedKeys.has(deployment.deployment_id.digest)) continue;
+    out[deploymentDigestKey(deployment.deployment_id)] = {
+      network_namespace: deployment.network.network_namespace,
+      network_reference: deployment.network.network_reference,
+      address: deployment.address,
+      token_standard: tokenStandard,
+    };
+  }
+  return out;
+}
 
 export type CollectionReportAdmissionErrorCode =
   | "invalid_request"
@@ -84,7 +117,7 @@ function communityScopeDigest(communityRef: string): string {
   return createHash("sha256").update(`community:${communityRef}`).digest("hex");
 }
 
-function findSelectedCandidate(record: ConfirmedResolutionRecord) {
+export function findSelectedCandidate(record: ConfirmedResolutionRecord) {
   const selected = record.selected_deployment_ids ?? [];
   if (selected.length === 0) return undefined;
   const selectedKeys = new Set(selected.map((d) => d.digest));
@@ -358,6 +391,7 @@ export async function admitCollectionReportOrder(
     certificate,
     work_key: primaryWorkKey,
     additional_root_work_keys: additionalRootWorkKeys,
+    kitchen_targets_by_deployment_digest: kitchenTargetsFromResolution(record),
     order_tenant_scope_digest: communityScopeDigest(input.binding.community_ref),
     pool_scope: {
       network_ref: primaryNetworkRef(record),

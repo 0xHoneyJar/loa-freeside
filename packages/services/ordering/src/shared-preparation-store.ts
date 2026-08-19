@@ -14,13 +14,19 @@ import {
 import {
   isActivePublicWorkState,
   isLeasablePublicWorkState,
+  type KitchenDeploymentTarget,
   type PreparationWorkItemRecord,
   type PublicPreparationWorkKeyMaterial,
   type PublicWorkState,
   type ReadinessEvidenceEnvelope,
   type ReportWorkLinkRecord,
   type SharedPreparationWorkRecord,
+  type VersionedDigest,
 } from "./shared-preparation-types.js";
+
+function deploymentDigestKey(d: VersionedDigest): string {
+  return `${d.algorithm}:${d.domain}:${d.major_version}:${d.digest}`;
+}
 
 export class SharedPreparationFencingError extends Error {
   constructor(message: string) {
@@ -41,6 +47,10 @@ export interface JoinPublicWorkInput {
   readonly order_tenant_scope_digest: string;
   readonly work_key: PublicPreparationWorkKeyMaterial;
   readonly now_ms: number;
+  /** Digest-key → kitchen coords; applied only when creating new work items. */
+  readonly kitchen_targets_by_deployment_digest?: Readonly<
+    Record<string, KitchenDeploymentTarget>
+  >;
 }
 
 export type JoinPublicWorkResult =
@@ -293,6 +303,9 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     work_key: PublicPreparationWorkKeyMaterial;
     generation: number;
     now_ms: number;
+    kitchen_targets_by_deployment_digest?: Readonly<
+      Record<string, KitchenDeploymentTarget>
+    >;
   }): MutableWork {
     const workId = `spw_${randomUUID()}`;
     const workKeyDigest = digestPublicWorkKey(input.work_key);
@@ -324,12 +337,17 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
     this.works.set(workId, work);
     for (const deploymentId of input.work_key.deployment_ids) {
       const itemId = `pwi_${randomUUID()}`;
+      const kitchenTarget =
+        input.kitchen_targets_by_deployment_digest?.[deploymentDigestKey(deploymentId)];
       const item: MutableItem = {
         work_item_id: itemId,
         work_id: workId,
         deployment_id: structuredClone(deploymentId),
         capability: input.work_key.capability,
         adapter_version: input.work_key.adapter_version,
+        ...(kitchenTarget !== undefined
+          ? { kitchen_target: structuredClone(kitchenTarget) }
+          : {}),
         state: "queued",
         attempt: 0,
         lease_epoch: 0,
@@ -413,6 +431,7 @@ export class InMemorySharedPreparationStore implements SharedPreparationStore {
         work_key: input.work_key,
         generation,
         now_ms: input.now_ms,
+        kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
       });
       this.attachLink({
         order_id: input.order_id,

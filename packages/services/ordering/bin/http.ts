@@ -39,9 +39,27 @@ import {
   serviceTokenForPublicAuthMounts,
 } from '../src/public-auth-posture.js';
 import { createAdmissionCapacityComposition } from '../src/admission-capacity-composition.js';
+import { createOrderStore } from '../src/store-factory.js';
+import { createPublicPrepComposition } from '../src/public-preparation-composition.js';
 
-const { store, orchestrator, enqueue } = await createOrderingComposition();
-const { admissionCapacity } = await createAdmissionCapacityComposition(store);
+const store = await createOrderStore();
+const {
+  admissionCapacity,
+  preparationStore,
+  capacityStore,
+} = await createAdmissionCapacityComposition(store);
+
+const resolutionStore = await createResolutionStore({
+  orderStore: store instanceof PostgresOrderStore ? store : undefined,
+});
+
+const publicPrep = createPublicPrepComposition({
+  preparationStore,
+  capacityStore,
+  orderStore: store,
+});
+
+const { orchestrator, enqueue } = await createOrderingComposition({ store });
 
 const serviceToken = serviceTokenFromEnv();
 const writeRoutes = writeRoutePostureFromEnv();
@@ -77,9 +95,6 @@ if (publicAuthToken.kind === 'refuse') {
   );
 }
 
-const resolutionStore = await createResolutionStore({
-  orderStore: store instanceof PostgresOrderStore ? store : undefined,
-});
 // COLLECTION_RESOLVE_PROBE_MODE=catalog forces the local catalog even when
 // SONAR_* URLs are set (kitchen image lag / token mismatch). Default: http when
 // configured, else catalog.
@@ -141,6 +156,7 @@ const app = createIntakeApp({
       reason: publicAuthPosture.reason,
     },
     resolve_probe: resolutionProbeMode,
+    public_prep: publicPrep?.mode ?? 'off',
   },
 });
 
@@ -197,9 +213,13 @@ if (process.env.ENABLE_REPROBE === 'true') {
   worker.start();
 }
 
+if (publicPrep) {
+  publicPrep.worker.start();
+}
+
 const port = Number(process.env.PORT ?? 8090);
 serve({ fetch: app.fetch, port });
 // eslint-disable-next-line no-console
 console.log(
-  `ordering-service listening on :${port} (write_routes=${writeRoutes}, resolve_probe=${resolutionProbeMode}, public_auth=${publicAuthPosture.mode}/wired=${mountPublicAuthRoutes})`,
+  `ordering-service listening on :${port} (write_routes=${writeRoutes}, resolve_probe=${resolutionProbeMode}, public_auth=${publicAuthPosture.mode}/wired=${mountPublicAuthRoutes}, public_prep=${publicPrep?.mode ?? 'off'})`,
 );

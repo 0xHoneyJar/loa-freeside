@@ -39,10 +39,14 @@ import { digestOf } from "./digest.js";
 import type { NewOrder, OrderRecord, OrderStore, OutboxEvent } from "./store.js";
 import { InMemoryOrderStore } from "./store.js";
 import type {
+  JoinPublicWorkInput,
   JoinPublicWorkResult,
   SharedPreparationStore,
 } from "./shared-preparation-store.js";
-import type { PublicPreparationWorkKeyMaterial } from "./shared-preparation-types.js";
+import type {
+  KitchenDeploymentTarget,
+  PublicPreparationWorkKeyMaterial,
+} from "./shared-preparation-types.js";
 import { digestPublicWorkKey } from "./shared-preparation-work-key.js";
 import { ORDER_LIFECYCLE_SUBJECTS, type OrderPlaced } from "@freeside/ordering-protocol";
 
@@ -63,6 +67,10 @@ export interface AdmitOrderInput {
    * collection_identity). All are joinPublicWork'd in the same admission txn.
    */
   readonly additional_root_work_keys?: readonly PublicPreparationWorkKeyMaterial[];
+  /** Digest-key → kitchen coords baked at admit for live Sonar dispatch. */
+  readonly kitchen_targets_by_deployment_digest?: Readonly<
+    Record<string, KitchenDeploymentTarget>
+  >;
   readonly order_tenant_scope_digest: string;
   readonly pool_scope: CapacityPoolScope;
   readonly now_ms: number;
@@ -80,6 +88,7 @@ export async function joinAllRootWorkKeys(
     readonly order_tenant_scope_digest: string;
     readonly work_key: PublicPreparationWorkKeyMaterial;
     readonly additional_root_work_keys?: readonly PublicPreparationWorkKeyMaterial[];
+    readonly kitchen_targets_by_deployment_digest?: JoinPublicWorkInput["kitchen_targets_by_deployment_digest"];
     readonly now_ms: number;
   },
 ): Promise<JoinPublicWorkResult> {
@@ -87,6 +96,7 @@ export async function joinAllRootWorkKeys(
     order_id: input.order_id,
     order_tenant_scope_digest: input.order_tenant_scope_digest,
     work_key: input.work_key,
+    kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
     now_ms: input.now_ms,
   });
   if (primary.kind !== "joined") return primary;
@@ -96,6 +106,7 @@ export async function joinAllRootWorkKeys(
       order_id: input.order_id,
       order_tenant_scope_digest: input.order_tenant_scope_digest,
       work_key: extra,
+      kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
       now_ms: input.now_ms,
     });
     if (join.kind !== "joined") return join;
@@ -535,6 +546,7 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
             order_tenant_scope_digest: input.order_tenant_scope_digest,
             work_key: input.work_key,
             additional_root_work_keys: input.additional_root_work_keys,
+            kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
             now_ms: input.now_ms,
           });
           if (join.kind !== "joined") {
@@ -619,6 +631,7 @@ export class InMemoryAdmissionCapacityStore implements AdmissionCapacityStore {
               order_tenant_scope_digest: input.order_tenant_scope_digest,
               work_key: input.work_key,
               additional_root_work_keys: input.additional_root_work_keys,
+              kitchen_targets_by_deployment_digest: input.kitchen_targets_by_deployment_digest,
               now_ms: input.now_ms,
             },
           );

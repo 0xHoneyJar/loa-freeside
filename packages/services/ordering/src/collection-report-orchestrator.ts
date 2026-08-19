@@ -5,6 +5,9 @@
  * NOT route through AccessRiskAuditInputs (that caused immediate invalid-inputs
  * failures). V1 advances placed → routing → producing and holds in preparing
  * until a real Gate Leak producer exists — no fake fulfill, no ETA theater.
+ *
+ * Public preparation is owned solely by PublicPreparationWorker / adapter.
+ * This driver does not sniff fulfillment phases or settle prep outcomes.
  */
 
 import {
@@ -25,17 +28,12 @@ import {
 } from "./resolver.js";
 import type { PrivateOpsPublisher } from "./private-ops.js";
 import type { ProcessResult } from "./orchestrator.js";
-import type { PublicPreparationAdapter } from "./public-preparation-adapter.js";
-import type { SharedPreparationStore } from "./shared-preparation-store.js";
 
 export interface CollectionReportOrchestratorDeps {
   store: OrderStore;
   resolver: CapabilityResolver;
   now: () => number;
   opsChannel?: PrivateOpsPublisher;
-  /** CR-204A — drive linked shared preparation work while producing. */
-  preparationStore?: SharedPreparationStore;
-  publicPrepAdapter?: PublicPreparationAdapter;
 }
 
 export class CollectionReportOrchestrator {
@@ -109,16 +107,7 @@ export class CollectionReportOrchestrator {
       if (isTerminal(record.state)) return { success: true };
     }
 
-    if (record.state === "producing") {
-      if (this.deps.preparationStore && this.deps.publicPrepAdapter) {
-        const linked = await this.deps.preparationStore.getActiveWorkForOrder(orderId);
-        if (linked) {
-          await this.deps.publicPrepAdapter.processWork(linked.work.work_id);
-        }
-      }
-      return { success: true };
-    }
-
+    // producing: hold until Gate Leak artifact producer (worker owns prep advance).
     return { success: true };
   }
 

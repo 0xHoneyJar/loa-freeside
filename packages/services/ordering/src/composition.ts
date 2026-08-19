@@ -50,8 +50,14 @@ export interface OrderingComposition {
   enqueue: IngredientEnqueueService | undefined;
 }
 
-export async function createOrderingComposition(): Promise<OrderingComposition> {
-  const store = await createOrderStore();
+export interface CreateOrderingCompositionOptions {
+  readonly store?: OrderStore;
+}
+
+export async function createOrderingComposition(
+  options: CreateOrderingCompositionOptions = {},
+): Promise<OrderingComposition> {
+  const store = options.store ?? (await createOrderStore());
   const triage = createKitchenTriagePorts();
   const httpProbes = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
   const github = createGitHubIssuePort();

@@ -1,4 +1,8 @@
-import type { PublicPrepCapability, VersionedDigest } from "./shared-preparation-types.js";
+import type {
+  KitchenDeploymentTarget,
+  PublicPrepCapability,
+  VersionedDigest,
+} from "./shared-preparation-types.js";
 import { sonarPhysicalJobRef } from "./public-preparation-dispatch-key.js";
 
 export type SonarPrepJobStatus = "queued" | "indexing" | "indexed" | "failed";
@@ -10,6 +14,8 @@ export interface SonarPrepDispatchRequest {
   readonly adapter_version: string;
   readonly generation: number;
   readonly lease_epoch: number;
+  /** Baked at admit onto the work item — required for live kitchen HTTP. */
+  readonly kitchen_deployment?: KitchenDeploymentTarget;
 }
 
 export interface SonarPrepDispatchResult {
