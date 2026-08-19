@@ -19,23 +19,44 @@ pnpm add nats  # peer dep — consumers bring their own connection
 
 ## Quick start (publisher)
 
+Emit through the sanctioned `emit()` facade. `makeEmitter(...)` closes over the
+per-cell constants (transport, signer, chain store) so the call site collapses to
+`emit(SchemaId, payload, specifier?)`. It validates the payload against its
+registry schema, signs the original bytes, advances the per-cell hash chain, and
+publishes — returning a typed `Either`, never throwing.
+
+> The raw `publishEnvelope` function is INTERNAL — `emit()` uses it under the hood
+> after validating. It skips schema validation, so it is NOT a public entrypoint:
+> it is unexported from the package index and the `./publisher` subpath is omitted
+> from the exports map (events #255, FR-7/SKP-002). Reach for `emit()`.
+
 ```typescript
 import { connect } from "nats";
 import {
-  publishEnvelope,
+  makeEmitter,
+  createNatsTransport,
   LocalEd25519Signer,
   InMemoryPrevHashStore,
-  nftMintDetectedTopic,
+  NftMintDetectedId,
 } from "@0xhoneyjar/events";
+import { Either } from "effect";
 
 const nats = await connect({ servers: process.env.NATS_URL });
 const signer = await LocalEd25519Signer.fromSeedHex(process.env.SIGNING_SEED_HEX!, "sonar-api-1");
-const prevHashStore = new InMemoryPrevHashStore();
 
-await publishEnvelope({
-  nats,
-  subject: nftMintDetectedTopic({ collectionSlug: "mibera-shadow" }),  // "nft.mint.detected.mibera-shadow.v1"
-  payload: {
+const emitter = makeEmitter({
+  cell: "sonar-api",
+  transport: createNatsTransport(nats),
+  signer,
+  prevHashStore: new InMemoryPrevHashStore(),
+});
+
+// The specifier ("mibera-shadow") builds the subject from the registry topic:
+// "nft.mint.detected.mibera-shadow.v1". A schema mismatch is an Either.Left —
+// it never reaches the bus and never forks the chain.
+const result = await emitter.emit(
+  NftMintDetectedId,
+  {
     chain_id: 80094,
     contract: "0x048327A187b944ddac61c6e202BfccD20d17c008",
     token_id: "234",
@@ -44,10 +65,12 @@ await publishEnvelope({
     transaction_hash: "0xdef...",
     timestamp: new Date().toISOString(),
   },
-  emittedBy: "sonar-api",
-  signer,
-  prevHashStore,
-});
+  "mibera-shadow",
+);
+
+if (Either.isLeft(result)) {
+  // handle SchemaEmitError | TransportEmitError | … — never a silent drop
+}
 ```
 
 ## Quick start (subscriber)
@@ -89,7 +112,7 @@ await subscribeEnvelope({
 | JCS | RFC 8785 canonicalization (byte-deterministic JSON) | `src/jcs.ts` |
 | Signer | Ed25519 sign/verify via @noble/curves; JWKS lookup | `src/signer.ts` |
 | Topics | Hounfour 3-segment topic builders (`{aggregate}.{noun}.{verb}.v{N}`) | `src/topics.ts` |
-| Publisher | publishEnvelope: canonicalize → hash → sign → publish → store prev_hash | `src/publisher.ts` |
+| Publisher (INTERNAL) | publishEnvelope: canonicalize → hash → sign → publish → store prev_hash. Used only by `emit()` internally — not a public entrypoint (skips schema validation; unexported, events #255). Consumers use `emit()`. | `src/publisher.ts` |
 | Subscriber | subscribeEnvelope: parse → schema → subject-bind → hash → sig → chain → payload-schema → advance → handler | `src/subscriber.ts` |
 | Schemas | Per-event Effect.Schema definitions (start: NftMintDetected) | `src/schemas/` |
 

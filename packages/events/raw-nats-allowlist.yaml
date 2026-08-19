@@ -45,3 +45,10 @@ entries:
 
 # Populated by S3 when the computed-subject sites convert from raw to emitRaw.
 emitRaw_allowlist: []
+
+# Populated only if a legitimate publishEnvelope bypass is identified during
+# implementation. Empty by default (zero external callers today — Assumption 1).
+# Entries use the same id format as `entries`:
+#   "<file-fragment>::publishEnvelope"
+# The shrink gate (tools/check-nats-allowlist-shrinks.sh) covers this section.
+publishEnvelope_allowlist: []

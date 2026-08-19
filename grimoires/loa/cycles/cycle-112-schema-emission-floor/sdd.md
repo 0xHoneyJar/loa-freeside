@@ -464,6 +464,10 @@ The rule flags, outside `packages/events/**`:
    composition root, or
 4. (IMP-005) a dataflow where a raw NATS client is aliased to a variable and then
    `.publish`-ed — not just the direct call form.
+5. (events #255) an import of `publishEnvelope` from `"@0xhoneyjar/events"` as a
+   value (not `import type`) — the capability that bypasses schema validation.
+   Kind: `publishEnvelope-bypass`. Allowlist: `publishEnvelope_allowlist` section
+   of `raw-nats-allowlist.yaml`.
 
 …unless the site is in the allowlist (§5.2). `emitRaw` call sites are checked
 against the separate `emitRaw-allowlist` (§3.3/§5.2).

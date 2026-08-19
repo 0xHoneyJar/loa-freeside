@@ -49,6 +49,10 @@ ENFORCE=0
 [ "${1:-}" = "--enforce" ] && ENFORCE=1
 
 # Extract the union of `- id: "..."` values from a YAML stream on stdin.
+# Section-BLIND by design: it unions EVERY `- id:` line — `entries`,
+# `emitRaw_allowlist`, AND `publishEnvelope_allowlist` (events #255) alike. So the
+# shrink-only gate at the addition check below already covers a publishEnvelope
+# bypass addition; no separate, yq-dependent PE block is needed (FAGAN F4).
 extract_ids() {
   grep -E '^[[:space:]]*-[[:space:]]+id:' \
     | sed -E 's/^[[:space:]]*-[[:space:]]+id:[[:space:]]*//; s/^"//; s/"[[:space:]]*$//' \
@@ -122,4 +126,9 @@ if [ -n "$additions" ]; then
 fi
 
 echo "[nats-allowlist] OK — allowlist did not grow (additions: 0)."
+# NOTE: publishEnvelope_allowlist (events #255) is covered by the SAME addition
+# check above — extract_ids unions its `- id:` lines too, so a PE-bypass addition
+# already trips "GAINED id(s)". The former yq-based PE block here was dead code
+# (it fired only after the union path already failed) and fails-open where yq is
+# absent; deleted per FAGAN F4. Smoke test #6 asserts the union catches it.
 exit 0

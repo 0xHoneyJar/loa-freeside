@@ -30,10 +30,6 @@
       "types": "./dist/src/topics.d.ts",
       "import": "./dist/src/topics.js"
     },
-    "./publisher": {
-      "types": "./dist/src/publisher.d.ts",
-      "import": "./dist/src/publisher.js"
-    },
     "./subscriber": {
       "types": "./dist/src/subscriber.d.ts",
       "import": "./dist/src/subscriber.js"
@@ -59,7 +55,7 @@
       "import": "./dist/src/mutex.js"
     }
   },
-  "//exports-note": "cycle-112: ./transport is DELIBERATELY omitted. The internalPublish capability (raw NATS publish) must be unreachable from outside the package; emit.ts/publisher.ts import ./transport.js via relative path. The exports map gates all subpaths, so neither @0xhoneyjar/events/transport nor /dist/src/transport.js resolves for a consumer (FR-7, SKP-002).",
+  "//exports-note": "cycle-112: ./transport AND ./publisher are DELIBERATELY omitted (events #255). The internalPublish capability (raw NATS publish, ./transport) and the raw publishEnvelope capability (schema-validation bypass, ./publisher) must both be unreachable from outside the package; emit.ts imports them via relative paths (./transport.js, ./publisher.js). The exports map gates all subpaths, so none of @0xhoneyjar/events/transport, @0xhoneyjar/events/publisher, nor their /dist/src/*.js forms resolve for a consumer. The sanctioned external path is makeEmitter()/emit(), which validates before signing (FR-7, SKP-002).",
   "files": [
     "dist",
     "src",

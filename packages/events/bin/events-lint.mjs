@@ -18,6 +18,10 @@
 //   3. An ignored `emit()` / `emitRaw()` result — a bare call statement whose
 //      Either is never consumed (fire-and-forget = silent dropped event;
 //      SKP-001 #1 / T2.7).
+//   4. `publishEnvelope` imported as a value from `@0xhoneyjar/events` in any
+//      file outside the events package — the capability that bypasses schema
+//      validation (FR-1 / events #255). Must go through emit() or be explicitly
+//      allowlisted in publishEnvelope_allowlist.
 //
 // Teaching output (FR-ADOPT-6): each finding names the file:line, says whether
 // it is NEW (un-allowlisted → a regression) or allowlisted (informational),
@@ -107,6 +111,176 @@ function isAllowlisted(relPath, subject) {
 
 const SUBJECT_LITERAL = /\.(?:nats|jetstream)\.publish\s*\(\s*["']([^"']+)["']/;
 
+// =============================================================================
+// publishEnvelope-bypass detection (FR-1 / events #255) — WHOLE-FILE, two-pass.
+//
+// The old detector matched `publishEnvelope` AND `from "@0xhoneyjar/events"` on
+// the SAME line. FAGAN proved that trivially evaded: a multi-line (Prettier)
+// import (F1) and a `import * as events` + `events.publishEnvelope()` member
+// access (F2) both split the two tokens across lines → total miss. Its
+// comment-skip was also insufficient → false positives on mentions inside
+// comments and on type-only forms (F3). This rule alone moves to whole-file
+// matching; the internalPublish / raw-nats-publish / unhandled-emit rules stay
+// line-based below.
+//
+// A file is flagged IFF it imports a runnable `publishEnvelope` VALUE from
+// `@0xhoneyjar/events`: a named value import (NOT `import type`, `export type`,
+// or an inline `{ type publishEnvelope }`), OR a namespace import whose alias is
+// then member-accessed as `.publishEnvelope`. Comments are stripped first so
+// mentions inside `//…` / `/* … */` never match (and string + regex literals are
+// preserved, so neither a `//` inside a string nor a quote inside a regex like
+// `/["']/` desyncs the stripper — FAGAN NF2).
+//
+// The match is bounded to a SINGLE import/export STATEMENT (FAGAN NF1): the
+// binding clause between the keyword and `from` is constrained to the import-
+// specifier grammar (identifiers / `{ } , *` / `as` / `type` / whitespace). A
+// `:`, `(`, `=`, or `"` ends the clause, so an `export interface Foo {
+// publishEnvelope: … }` or `export const cfg = { publishEnvelope: true }` sitting
+// next to a real `@0xhoneyjar/events` import is NOT swept into the binding and
+// never false-positives.
+//
+// **Load-bearing control is the STRUCTURAL fence, not this scanner.** events #255
+// is fenced by un-exporting `publishEnvelope` from the package index AND omitting
+// the `./publisher` subpath from package.json `exports` — so the raw capability
+// is unreachable from any consumer regardless of how they spell the import. This
+// scanner is the in-monorepo backstop (catches a relative-path reach inside the
+// repo before it ships); the un-export is the wall. Because of that wall, these
+// detector blind spots are ACCEPTED, not chased (the evasion cannot obtain the
+// capability from the public API anyway):
+//   • destructure-from-namespace: `const { publishEnvelope } = events;` after a
+//     `* as events` import (no `.publishEnvelope` member token).
+//   • fully-computed member access: `events["publish" + "Envelope"](…)`.
+//   • prefix-substring line attribution: a binding whose name merely STARTS with
+//     `publishEnvelope` (e.g. `publishEnvelopeRaw`) is attributed to the literal
+//     token line; cosmetic only.
+// =============================================================================
+
+// Strip line + block comments while PRESERVING byte offsets and newlines, so a
+// char offset into the stripped text maps to the same line as the original.
+// String-AND-regex-aware: `//` or `/*` inside a string ('/"/`) OR inside a regex
+// literal (`/…/`) is NOT treated as a comment opener, and a quote inside a regex
+// does not desync the stripper into string state (FAGAN NF2). `/` is read as a
+// regex literal (not division) when the previous significant token is an
+// expression-start char OR a regex-preceding keyword (`return`, `typeof`, …).
+function stripComments(src) {
+  let out = "";
+  const n = src.length;
+  let state = "code"; // code | line | block | sq | dq | tpl | regex
+  let prevSig = "";   // last significant (non-ws) char emitted in code state
+  let curWord = "";   // current identifier run
+  let lastWord = "";  // most recent completed identifier (keyword-before-regex)
+  let inClass = false; // inside a [...] char class within a regex literal
+  const REGEX_BEFORE = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "<", ">", "+", "-", "*", "/", "%", "^", "~", "\n"]);
+  const REGEX_KEYWORDS = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "do", "else", "yield", "await", "case"]);
+  const isWord = (ch) =>
+    (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "$";
+
+  for (let i = 0; i < n; i++) {
+    const c = src[i];
+    const d = i + 1 < n ? src[i + 1] : "";
+    if (state === "code") {
+      if (c === "/" && d === "/") { state = "line"; out += "  "; i++; prevSig = ""; curWord = ""; continue; }
+      if (c === "/" && d === "*") { state = "block"; out += "  "; i++; prevSig = ""; curWord = ""; continue; }
+      if (c === "/") {
+        const regexOk = REGEX_BEFORE.has(prevSig) || REGEX_KEYWORDS.has(lastWord);
+        out += c; prevSig = "/"; if (curWord) lastWord = curWord; curWord = "";
+        if (regexOk) { state = "regex"; inClass = false; }
+        continue;
+      }
+      if (c === "'" || c === '"' || c === "`") {
+        state = c === "'" ? "sq" : c === '"' ? "dq" : "tpl";
+        out += c; prevSig = c; if (curWord) lastWord = curWord; curWord = "";
+        continue;
+      }
+      out += c;
+      if (!/\s/.test(c)) prevSig = c;
+      if (isWord(c)) { curWord += c; } else { if (curWord) lastWord = curWord; curWord = ""; }
+      continue;
+    }
+    if (state === "line") {
+      if (c === "\n") { state = "code"; out += c; prevSig = "\n"; continue; }
+      out += " "; continue;
+    }
+    if (state === "block") {
+      if (c === "*" && d === "/") { state = "code"; out += "  "; i++; prevSig = ""; continue; }
+      out += c === "\n" ? "\n" : " "; continue;
+    }
+    if (state === "regex") {
+      if (c === "\\") { out += c + (d || ""); i++; continue; }
+      if (c === "\n") { state = "code"; out += c; prevSig = "\n"; continue; } // defensive: regex can't span lines
+      if (c === "[") { inClass = true; out += c; continue; }
+      if (c === "]") { inClass = false; out += c; continue; }
+      if (c === "/" && !inClass) { state = "code"; out += c; prevSig = "/"; continue; }
+      out += c; continue;
+    }
+    // string states (sq/dq/tpl): copy verbatim, honor escapes, exit on matching quote
+    if (c === "\\") { out += c + (d || ""); i++; continue; }
+    if ((state === "sq" && c === "'") || (state === "dq" && c === '"') || (state === "tpl" && c === "`")) {
+      state = "code"; prevSig = c;
+    }
+    out += c;
+  }
+  return out;
+}
+
+const lineAtOffset = (s, off) => {
+  let line = 1;
+  for (let k = 0; k < off && k < s.length; k++) if (s[k] === "\n") line++;
+  return line;
+};
+
+// Matches a SINGLE `import`/`export … from "@0xhoneyjar/events"` statement. The
+// clause (group 2) is constrained to the import-specifier grammar `[\w\s{},*]` —
+// identifiers, `{ } , *`, and the word-keywords `as`/`type`, plus whitespace.
+// Because a string literal (`"`, `@`, `/`), a `;`, a `:`, a `(`, or an `=` is NOT
+// in that charset, the clause cannot span a prior statement's `from "…"` (so a
+// `publishEnvelope` binding from a DIFFERENT package is never mis-attributed) NOR
+// an adjacent interface/object body whose member happens to be `publishEnvelope`
+// (FAGAN NF1). The inner `(?!\b(?:import|export)\b)` lookahead additionally stops
+// the clause at a SECOND statement keyword, so a local `export { publishEnvelope }`
+// (no `from`, no `;` — ASI) immediately before an `@events` import is not swept in
+// on a no-semicolon codebase (FAGAN NF6). It is statement-isolation expressed as a
+// charset + a keyword barrier.
+const EVENTS_IMPORT = /\b(import|export)\b((?:(?!\b(?:import|export)\b)[\w\s{},*])*?)\bfrom\s*["']@0xhoneyjar\/events["']/g;
+
+// Returns { line } for the first reachable publishEnvelope VALUE, or null.
+function detectPublishEnvelopeBypass(stripped) {
+  EVENTS_IMPORT.lastIndex = 0;
+  let m;
+  while ((m = EVENTS_IMPORT.exec(stripped)) !== null) {
+    const full = m[0];
+    const clause = m[2];
+    // Statement-level type-only (`import type …` / `export type …`): no value.
+    if (/^\s*type\b/.test(clause)) continue;
+
+    // Namespace import: `* as ns` → reachable only if `ns.publishEnvelope` is used.
+    const ns = clause.match(/\*\s+as\s+(\w+)/);
+    if (ns) {
+      const member = new RegExp(`\\b${ns[1]}\\s*\\.\\s*publishEnvelope\\b`);
+      const mm = member.exec(stripped);
+      if (mm) return { line: lineAtOffset(stripped, mm.index) };
+      continue;
+    }
+
+    // Named bindings: `{ a, publishEnvelope, … }`. A `type ` prefix on the
+    // specifier (inline type modifier) means the binding is NOT a runnable value.
+    // `[^}]*` is safe because import braces never nest (the NF1 charset already
+    // forbids object/type bodies inside the clause).
+    const brace = clause.match(/\{([^}]*)\}/);
+    if (brace) {
+      for (const spec of brace[1].split(",")) {
+        const s = spec.trim();
+        if (!s || /^type\b/.test(s)) continue;
+        if (/^publishEnvelope\b/.test(s)) {
+          const off = m.index + Math.max(0, full.indexOf("publishEnvelope"));
+          return { line: lineAtOffset(stripped, off) };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // Discriminate NATS from Redis/Rabbit/notifier by RECEIVER NAME, not imports:
 // every NATS emit in this codebase publishes via `.nats.publish(` or
 // `.jetstream.publish(`, while every carve-out uses `.client.` / `.redis.` /
@@ -155,6 +329,20 @@ for (const file of walk(ROOT)) {
       findings.push({ file: rel, line: i + 1, kind: "unhandled-emit-either", allowlisted: false, text: trimmed });
     }
   }
+
+  // publishEnvelope-bypass (FR-1 / events #255): whole-file, comment-stripped,
+  // two-pass — catches multi-line imports (F1) and namespace member access (F2)
+  // the old line matcher missed, without the comment false-positives (F3).
+  const pe = detectPublishEnvelopeBypass(stripComments(text));
+  if (pe) {
+    findings.push({
+      file: rel,
+      line: pe.line,
+      kind: "publishEnvelope-bypass",
+      allowlisted: isAllowlisted(rel, "publishEnvelope"),
+      text: (lines[pe.line - 1] ?? "").trim(),
+    });
+  }
 }
 
 const newFindings = findings.filter((f) => !f.allowlisted);
@@ -170,6 +358,10 @@ if (JSON_OUT) {
       "raw NATS .publish bypasses the schema floor. Use emit(SchemaId, payload). New event? `freeside events:new-schema <name>`.",
     "unhandled-emit-either":
       "the emit()/emitRaw() result is a typed Either — handle it (branch on Either.isLeft). An ignored Left is a silent dropped event.",
+    "publishEnvelope-bypass":
+      "publishEnvelope skips schema validation. Use the cell's emit() (makeEmitter) — it " +
+      "validates before signing. If a raw path is genuinely required, add an explicit " +
+      "entry to publishEnvelope_allowlist in raw-nats-allowlist.yaml.",
   };
   if (findings.length === 0) {
     console.log("[events-lint] OK — no raw NATS emits, no capability leaks, no unhandled emit Eithers.");
