@@ -15,6 +15,11 @@ export interface RateLimiter {
   check(key: string): RateDecision;
 }
 
+/** The expensive public reconstruction path may use a deployment-shared async store. */
+export interface ReconstructionBudget {
+  check(key: string): RateDecision | Promise<RateDecision>;
+}
+
 export interface RateLimiterConfig {
   /** Max requests per window. */
   limit: number;

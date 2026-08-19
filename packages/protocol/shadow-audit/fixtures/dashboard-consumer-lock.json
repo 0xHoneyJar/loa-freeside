@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "consumer_repository": "0xHoneyJar/freeside-dashboard",
+  "consumer_commit": "636a7c827cb1b39401784bdddd69d87854072fa5",
+  "consumer_source": "src/lib/freeside-worlds/access-audit/types.ts",
+  "consumer_source_sha256": "1d17962adf457819f8d766a9c1036d0044f5b0a6a58670e53c3ed68a0fa20cad",
+  "shadow_audit_protocol_version": "2",
+  "anonymous_audit_output_fields": [
+    "aggregate",
+    "cta",
+    "inputs_hash",
+    "mode",
+    "protocol_version",
+    "run_id"
+  ],
+  "aggregate_fields": [
+    "coverage_uncertain",
+    "holder_turnover",
+    "newly_eligible",
+    "role_coverage",
+    "sold_lapsed",
+    "stale_access",
+    "stale_access_risk_band",
+    "unmatched_role_holders",
+    "whale_concentration"
+  ],
+  "refusal_envelope_fields": [
+    "drift",
+    "error"
+  ]
+}

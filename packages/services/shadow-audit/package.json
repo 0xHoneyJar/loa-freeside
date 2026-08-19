@@ -1,6 +1,6 @@
 {
   "name": "@freeside/shadow-audit-service",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AuditService + resolvers for the Shadow Access Audit (stateless compute, hexagonal ports)",
   "type": "module",
   "main": "src/index.ts",
@@ -21,6 +21,7 @@
     "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.7.0",
+    "postgres": "^3.4.0",
     "tsx": "^4.19.0",
     "zod": "^3.23.8"
   },

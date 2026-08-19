@@ -9,8 +9,15 @@
  * half-wired audit):
  *   OPERATED_COMMUNITIES   comma-separated community names this deploy audits (dogfood-full)
  *   CTA_PRODUCT, CTA_CONVERSATION   the product + conversation door URLs
- *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155" } }
- *   RPC_URL_<chain>        a JSON-RPC endpoint per chain (e.g. RPC_URL_80094) for block-at-date resolution
+ *   COLLECTION_REGISTRY    JSON: { "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"|"erc1155", "union": "<logical collection id>" } }
+ *                          Entries sharing an explicit `union` id are ONE collection deployed on several chains
+ *                          (S5-T3): an audit addressed at any of them reconstructs the UNION of all of them,
+ *                          and refuses outright if any one is unreachable. Chains are NUMERIC ids ("1",
+ *                          "80094") — the same id the sonar query is scoped by.
+ *   RPC_URL_<chain>        JSON-RPC endpoint(s) per chain for block-at-date resolution. ONE url, or a
+ *                          COMMA-SEPARATED failover pool tried in order with retry+backoff (S5-T2 — the
+ *                          free endpoints each fail in their own way; there is no paid key). e.g.
+ *                          RPC_URL_1="https://ethereum-rpc.publicnode.com,https://eth.drpc.org"
  * Optional:
  *   SHADOW_AUDIT_API_KEY   the X-API-Key the dashboard sends (when unset the aggregate is open)
  *   BELT_GATEWAY_URL       sonar GraphQL endpoint (defaults to belt-gateway-production)
@@ -23,11 +30,17 @@
 import { serve } from '@hono/node-server';
 import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
-import { buildAuditApp, configFromEnv } from '../src/server.js';
-import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-source.js';
+import { buildAuditApp, configFromEnv, validateApiKeyEnv } from '../src/server.js';
+import { makeSonarOwnershipSource, type CollectionIndexEntry } from '../src/ownership-source.js';
 import { loadRegistry } from '../src/collection-sot.js';
 import { readFileSync } from 'node:fs';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
+import { parseRpcUrls } from '../src/rpc-pool.js';
+import {
+  connectPostgresRoleSnapshotRepository,
+  makeRepositoryRoleStore,
+  type PostgresRoleSnapshotConnection,
+} from '../src/role-store-postgres.js';
 
 process.on('unhandledRejection', (reason) => {
   // F9: log AND exit non-zero — a swallowed rejection can leave the process wedged (event loop alive, no
@@ -36,18 +49,33 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
+// §12.3: fail-closed — refuse startup when SHADOW_AUDIT_API_KEY is absent/empty.
+// For local dev only: SHADOW_AUDIT_ALLOW_ANON=dev-only (never in production).
+try {
+  validateApiKeyEnv(process.env);
+} catch (err) {
+  console.error('[shadow-audit-api] FATAL:', (err as Error).message);
+  process.exit(1);
+}
+
 // the COLLECTION_REGISTRY values (collection id + token standard) are the most correctness-critical config
 // in the deploy — VALIDATE them, the way role-source validates its snapshot (FAGAN MEDIUM-2). A typo'd
 // `collection` would match no Transfers → an empty, silently-wrong audit.
 const RegistrySchema = z.record(
   z.string(),
-  z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
+  z
+    .object({
+      collection: z.string().min(1),
+      standard: z.enum(['erc721', 'erc1155']),
+      union: z.string().min(1),
+    })
+    .strict(),
 );
 
-function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; chains: Set<string> } {
+function loadRegistryFromEnv(): { map: Record<string, CollectionIndexEntry>; chains: Set<string> } {
   const raw = process.env.COLLECTION_REGISTRY;
   if (!raw) {
-    throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard })');
+    throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard, union })');
   }
   let parsed: unknown;
   try {
@@ -61,14 +89,18 @@ function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; 
     const chain = key.split('/')[0];
     if (chain) chains.add(chain);
   }
-  return { registry: registryFromMap(map), chains };
+  // Entries sharing an explicit `union` id ARE one collection on several chains (S5-T3) — a belt-gateway
+  // `collection` query id is not treated as identity. Two rows with the SAME chain+contract but
+  // different collection ids would be a config defect; the map key makes that unrepresentable.
+  return { map, chains };
 }
 
-/** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). */
+/** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). A comma-separated value is a
+ *  FAILOVER POOL — the free endpoints each fail in their own way and no paid key is available (S5-T2). */
 function resolverFor(chain: string): BlockTimeResolver {
   const url = process.env[`RPC_URL_${chain}`];
   if (!url) {
-    throw new Error(`RPC_URL_${chain} is required (JSON-RPC endpoint for chain ${chain}, for block-at-date resolution)`);
+    throw new Error(`RPC_URL_${chain} is required (JSON-RPC endpoint(s) for chain ${chain}, for block-at-date resolution)`);
   }
   return makeRpcBlockTimeResolver({ url });
 }
@@ -92,7 +124,7 @@ const collapse = loadRegistry({
     return loadRegistryFromEnv();
   },
 });
-const { registry, chains } = collapse;
+const { registry, sources, chains } = collapse;
 if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
   console.error(
     `[shadow-audit-api] settle gate: serving ${collapse.included.length} ratified collection(s); ` +
@@ -100,10 +132,20 @@ if (collapse.included.length > 0 || Object.keys(collapse.excluded).length > 0) {
   );
 }
 // BOOT-validate an RPC URL for every registry chain — never boot /healthz-green with a chain that fails
-// every real audit at request time (FAGAN MEDIUM-3).
-const missingRpc = [...chains].filter((c) => !process.env[`RPC_URL_${c}`]);
-if (missingRpc.length > 0) {
-  throw new Error(`missing JSON-RPC endpoint(s) for registry chain(s): ${missingRpc.map((c) => `RPC_URL_${c}`).join(', ')}`);
+// every real audit at request time (FAGAN MEDIUM-3). S5-T2: the value may be a comma-separated failover
+// pool, so validate that each chain resolves to >= 1 well-formed endpoint (a typo'd URL fails HERE, not at
+// the first audit).
+const badRpc: string[] = [];
+for (const c of chains) {
+  const raw = process.env[`RPC_URL_${c}`] ?? '';
+  try {
+    if (parseRpcUrls(raw).length === 0) badRpc.push(`RPC_URL_${c} (unset or empty)`);
+  } catch (e) {
+    badRpc.push(`RPC_URL_${c} (${(e as Error).message})`);
+  }
+}
+if (badRpc.length > 0) {
+  throw new Error(`missing/invalid JSON-RPC endpoint(s) for registry chain(s): ${badRpc.join(', ')}`);
 }
 
 const sonar = new SonarClient(
@@ -111,11 +153,68 @@ const sonar = new SonarClient(
   defaultTransferPageFetcher,
 );
 const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
-const app = buildAuditApp(ownership, configFromEnv(), registry);
+const config = configFromEnv();
+let postgresConnection: PostgresRoleSnapshotConnection | undefined;
+let roleStore;
+let teaserBudget;
+// `configFromEnv` has already normalized singular/plural ingest-token forms and requires at least one for
+// Postgres. Initialize from the selected backend, not from one legacy input shape, so token rotation cannot
+// validate successfully and then fail to wire the repository.
+if (config.roleSnapshotStore === 'postgres') {
+  const community = config.operatedCommunities[0];
+  if (!community || !config.databaseUrl) {
+    throw new Error('Postgres role-store configuration is incomplete');
+  }
+  postgresConnection = connectPostgresRoleSnapshotRepository(config.databaseUrl, sources);
+  await postgresConnection.repository.initialize();
+  roleStore = makeRepositoryRoleStore({ repository: postgresConnection.repository, community, sources });
+  teaserBudget = postgresConnection.teaserBudget(
+    config.teaserBudget ?? { limit: 30, windowMs: 60_000 },
+  );
+}
+const app = buildAuditApp(ownership, config, { registry, sources }, { roleStore, teaserBudget });
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(
     `[shadow-audit-api] listening on http://0.0.0.0:${info.port} · operated=${process.env.OPERATED_COMMUNITIES ?? '(unset!)'} · key=${process.env.SHADOW_AUDIT_API_KEY ? 'set' : 'OPEN'}`,
   );
 });
+
+let shutdownStarted = false;
+async function shutdown(signal: 'SIGTERM' | 'SIGINT'): Promise<void> {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  console.log(`[shadow-audit-api] ${signal}: draining HTTP requests`);
+
+  const forceExit = setTimeout(() => {
+    console.error('[shadow-audit-api] graceful shutdown timed out');
+    process.exit(1);
+  }, 5_000);
+  forceExit.unref();
+
+  try {
+    // Stop accepting new work and wait for active requests before closing the database they may still use.
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    await postgresConnection?.close();
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (error) {
+    console.error(
+      `[shadow-audit-api] graceful shutdown failed: ${error instanceof Error ? error.name : 'UnknownError'}`,
+    );
+    clearTimeout(forceExit);
+    process.exit(1);
+  }
+}
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    void shutdown(signal);
+  });
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "S2-T2 org-as-code baseline. Trusted canonical identities only; no upstream summaries or values. Regenerate with `node .railway/plan-gate.mjs --update-baseline` in the same PR that changes .railway/railway.ts.",
+  "fingerprint": "55f548d145ece465927a36d081f84e13d49affe7957511a2a4fe69c51fd5db4e",
+  "changeCount": 1,
+  "changes": [
+    "resource.update|safe|resource:shadow-audit-api|field:source.branch"
+  ]
+}

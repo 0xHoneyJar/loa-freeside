@@ -42,13 +42,18 @@ const SAMPLE_OUTPUT: AuditOutput = AuditOutputSchema.parse({
     stale_access: { kind: 'exact', value: 9 },
     whale_concentration: 0.34,
     stale_access_risk_band: 'elevated',
+    // A demo community we can actually SEE: 8 role-holders unresolved, 92% coverage ⇒ confident.
+    // (Below the real service's 50% floor it would REFUSE outright rather than render an aggregate.)
+    unmatched_role_holders: { kind: 'exact', value: 8 },
+    role_coverage: 0.92,
+    coverage_uncertain: false,
   },
   cta: CTA,
 });
 
 class DemoAuditAdapter implements AuditPort {
   async invoke(_req: AuditRequest): Promise<AuditServiceResult> {
-    return { ok: true, output: SAMPLE_OUTPUT, uncertain: false, unmatchedRoleHolders: 0 };
+    return { ok: true, output: SAMPLE_OUTPUT, uncertain: false, uncertainReasons: [], unmatchedRoleHolders: 0 };
   }
 }
 

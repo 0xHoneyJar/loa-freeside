@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { SourceResolver } from '../collection-union.js';
 import { type Order } from '@freeside/shadow-audit-protocol';
 import { runAudit, type AuditRequest, type OwnershipSource, type RoleSource, type WhaleSource } from '../audit-service.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
@@ -38,15 +39,19 @@ const makeOwnership = (extraHolders: string[] = []): OwnershipSource => {
 };
 
 const snapshot = (): RoleSnapshot => ({
-  source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+  source: 'discord:guild:1', community: 'thj', collection: { chain: '1', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
   owner: A('9', 9), freshness_threshold_seconds: 86_400,
   entries: [...roleStale, ...roleOk].map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
 });
 const roles: RoleSource = { load: async () => snapshot() };
+// S5-T3: this suite audits a collection with ONE declared deployment (a union of one) — its intent is
+// unchanged. The multi-source cases live in audit-service.test.ts / access-risk.test.ts.
+const sources: SourceResolver = () => [{ chain: "1", contract: CONTRACT }];
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const order: Order = {
   community: { name: 'thj', owner_wallet: A('9', 9) },
-  source: { chain: 'ethereum', contract_address: CONTRACT },
+  source: { chain: '1', contract_address: CONTRACT },
   gating_rule: { kind: 'nft-balance', threshold: 1 },
   products: ['audit'], mode: 'lead-magnet',
 };
@@ -57,7 +62,7 @@ const req = (): AuditRequest => ({
 
 describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the migration delta)', () => {
   it('WIRING CROSS-CHECK: the band→change mapping agrees with the direct cohort filter', async () => {
-    const r = await runAudit(req(), { ownership: makeOwnership(), whale, roles });
+    const r = await runAudit(req(), { ownership: makeOwnership(), whale, roles, sources });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const { comparison, aggregate } = r.output;
@@ -78,7 +83,7 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
   });
 
   it('METHODOLOGY: the output carries the settle-context — rule + incumbent-snapshot time + evidence anchor', async () => {
-    const r = await runAudit(req(), { ownership: makeOwnership(), whale, roles });
+    const r = await runAudit(req(), { ownership: makeOwnership(), whale, roles, sources });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.output.methodology).toEqual({
@@ -86,6 +91,10 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
       role_snapshot_at: '2026-06-22T11:00:00.000Z',
       evidence_block: SNAP_BLOCK,
       sources: ['sonar', 'role-snapshot'],
+      // S5-T3: the settle-context now also names HOW the collection's deployments were combined, and
+      // exactly which ones were read — a reader can re-derive the run instead of trusting it.
+      union_semantics: 'any-source',
+      collection_sources: [{ chain: '1', contract: CONTRACT, snapshot_block: SNAP_BLOCK }],
     });
   });
 
@@ -99,12 +108,13 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     };
     const rolesSold: RoleSource = {
       load: async () => ({
-        source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+        source: 'discord:guild:1', community: 'thj', collection: { chain: '1', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
         owner: A('9', 9), freshness_threshold_seconds: 86_400,
         entries: [{ discord_user_id: 'u1', wallet: sold, role_ids: ['h'] }, { discord_user_id: 'u2', wallet: kept, role_ids: ['h'] }],
       }),
     };
-    const r = await runAudit(req(), { ownership, whale, roles: rolesSold });
+    const r = await runAudit(req(), { ownership, whale, roles: rolesSold, sources });
     expect(r.ok).toBe(true);
     if (!r.ok || !r.output.comparison) return;
     // `sold` is DEMOTED — it no longer qualifies NOW. If the delta settled at evidence_block (where `sold` still
@@ -124,12 +134,13 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     };
     const rolesSmall: RoleSource = {
       load: async () => ({
-        source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+        source: 'discord:guild:1', community: 'thj', collection: { chain: '1', contract: CONTRACT },
+  captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
         owner: A('9', 9), freshness_threshold_seconds: 86_400,
         entries: twoStale.map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
       }),
     };
-    const r = await runAudit(req(), { ownership, whale, roles: rolesSmall });
+    const r = await runAudit(req(), { ownership, whale, roles: rolesSmall, sources });
     expect(r.ok).toBe(true);
     if (!r.ok || !r.output.comparison) return;
     expect(r.output.aggregate.stale_access.kind).toBe('bucketed'); // suppressed (< k)
@@ -138,7 +149,7 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
 
   it('TEETH: one stale holder re-acquiring MOVES the delta (the comparison tracks real decisions)', async () => {
     // roleStale[0] now holds 1 → it flips stale→ok: demotions 6→5, no_change 6→7.
-    const r = await runAudit(req(), { ownership: makeOwnership([roleStale[0]!]), whale, roles });
+    const r = await runAudit(req(), { ownership: makeOwnership([roleStale[0]!]), whale, roles, sources });
     expect(r.ok).toBe(true);
     if (!r.ok || !r.output.comparison) return;
     expect(r.output.comparison.aggregate.demotions).toBe(5);
@@ -147,7 +158,7 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
   });
 
   it('AUTHED-ONLY + CONTRACT-PARITY: an anon audit carries no per-member delta AND a byte-stable response shape', async () => {
-    const r = await runAudit({ ...req(), includeRecords: false }, { ownership: makeOwnership(), whale, roles });
+    const r = await runAudit({ ...req(), includeRecords: false }, { ownership: makeOwnership(), whale, roles, sources });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.output.records).toBeUndefined();
@@ -155,6 +166,13 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     expect(r.output.methodology).toBeUndefined(); // the methodology travels WITH the authed delta, not the anon response
     // CONTRACT-PARITY GUARD: the anon response keys must stay byte-stable — freeside-dashboard strict-decodes
     // GET /v1/audit with onExcessProperty:error, so any NEW top-level field silently breaks the integration.
-    expect(Object.keys(r.output).sort()).toEqual(['aggregate', 'cta', 'inputs_hash', 'mode', 'run_id']);
+    expect(Object.keys(r.output).sort()).toEqual([
+      'aggregate',
+      'cta',
+      'inputs_hash',
+      'mode',
+      'protocol_version',
+      'run_id',
+    ]);
   });
 });

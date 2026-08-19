@@ -65,23 +65,77 @@ describe('shadow-audit settle gate — collapse onto the ratified ledger (S3-T2,
 
   it('env COLLECTION_REGISTRY still overrides (deprecated break-glass, back-compat)', () => {
     const r = loadRegistry({
-      envRegistry: '{"80094/0xabc": {"collection":"legacy","standard":"erc721"}}',
-      registryFromEnv: (raw) => {
-        const map = JSON.parse(raw);
-        const chains = new Set<string>(['80094']);
-        return {
-          registry: ({ chain, contract }) => map[`${chain}/${contract}`],
-          chains,
-        };
-      },
+      envRegistry: '{"80094/0xabc": {"collection":"legacy","standard":"erc721","union":"legacy"}}',
+      registryFromEnv: (raw) => ({ map: JSON.parse(raw), chains: new Set<string>(['80094']) }),
     });
     expect(r.registry({ chain: '80094', contract: '0xabc' })).toEqual({ collection: 'legacy', standard: 'erc721' });
+    // The env path builds the SAME index as the ratified path — one collection, one deployment.
+    expect(r.sources({ chain: '80094', contract: '0xabc' })).toEqual([{ chain: '80094', contract: '0xabc' }]);
   });
 
   it('a malformed/missing snapshot FAILS LOUD (never fail-open to empty)', () => {
-    expect(() => loadRegistry({ registryFromEnv: () => ({ registry: () => undefined, chains: new Set() }) })).toThrow(/no collection source/);
+    expect(() => loadRegistry({ registryFromEnv: () => ({ map: {}, chains: new Set() }) })).toThrow(/no collection source/);
     expect(() =>
-      loadRegistry({ snapshotJson: '{not json', registryFromEnv: () => ({ registry: () => undefined, chains: new Set() }) }),
+      loadRegistry({ snapshotJson: '{not json', registryFromEnv: () => ({ map: {}, chains: new Set() }) }),
     ).toThrow(/not valid JSON/);
+  });
+});
+
+/**
+ * S5-T3 — the settle gate must gate the COLLECTION, not the row.
+ *
+ * A collection is the UNION of its deployments. Serving "the ratified subset" of a bridged collection hands
+ * the audit a PARTIAL union — and a partial union silently brands every holder on the withheld chain as
+ * stale access. The per-row gate was correct when a collection was one row; it is a leak now.
+ */
+describe('shadow-audit settle gate — multi-source collections (S5-T3)', () => {
+  const HC_ETH = { chain: '1', contract: '0x' + 'a'.repeat(40) };
+  const HC_BERA = { chain: '80094', contract: '0x' + 'b'.repeat(40) };
+
+  it('groups a collection deployed on two chains into ONE source set (either addresses both)', () => {
+    const r = buildRegistryFromSnapshot(
+      snap([
+        { ...HC_ETH, collection_key: 'honeycomb', token_standard: 'erc721', world: 'thj', world_validated: true, contested: false },
+        { ...HC_BERA, collection_key: 'honeycomb', token_standard: 'erc721', world: 'thj', world_validated: true, contested: false },
+      ]),
+    );
+    const expected = [
+      { chain: '1', contract: HC_ETH.contract },
+      { chain: '80094', contract: HC_BERA.contract },
+    ];
+    // Addressing EITHER deployment resolves the collection's FULL source set — that is what makes a
+    // berachain-addressed audit see the 2,280 ethereum holders it used to call stale.
+    expect(r.sources(HC_BERA)).toEqual(expected);
+    expect(r.sources(HC_ETH)).toEqual(expected);
+    expect(r.included).toHaveLength(2);
+  });
+
+  it('FAIL-CLOSED: one unservable deployment withholds the WHOLE collection (never a partial union)', () => {
+    const r = buildRegistryFromSnapshot(
+      snap([
+        { ...HC_ETH, collection_key: 'honeycomb', token_standard: 'erc721', world: 'thj', world_validated: true, contested: true },
+        { ...HC_BERA, collection_key: 'honeycomb', token_standard: 'erc721', world: 'thj', world_validated: true, contested: false },
+      ]),
+    );
+    // The bera row is individually ratified — but serving it ALONE is a partial union of Honeycomb, which
+    // would report every ethereum holder as stale. Withhold both; refusing is recoverable, wrong is not.
+    expect(r.registry(HC_BERA)).toBeUndefined();
+    expect(r.registry(HC_ETH)).toBeUndefined();
+    expect(r.included).toHaveLength(0);
+    expect(r.excluded['1:' + HC_ETH.contract]).toBe('contested');
+    expect(r.excluded['80094:' + HC_BERA.contract]).toContain('partial_union');
+  });
+
+  it('an unrelated collection is unaffected by another collection being withheld', () => {
+    const r = buildRegistryFromSnapshot(
+      snap([
+        { ...HC_ETH, collection_key: 'honeycomb', token_standard: 'unknown', world: 'thj', world_validated: true, contested: false },
+        { ...MIBERA, collection_key: 'mibera', token_standard: 'erc721', world: 'mibera', world_validated: true, contested: false },
+      ]),
+    );
+    expect(r.registry(HC_ETH)).toBeUndefined();
+    expect(r.sources({ chain: '80094', contract: MIBERA.contract })).toEqual([
+      { chain: '80094', contract: MIBERA.contract },
+    ]);
   });
 });

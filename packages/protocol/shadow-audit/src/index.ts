@@ -43,6 +43,7 @@ export { type AccessDecisionPort, tokenGatingPolicy, badgePolicy, type BadgeEvid
 export {
   CohortCountSchema,
   type CohortCount,
+  AuditAggregateShapeSchema_UNREFINED,
   AuditAggregateSchema,
   type AuditAggregate,
   CtaSchema,
@@ -51,6 +52,25 @@ export {
   type Methodology,
   AuditOutputSchema,
   type AuditOutput,
+} from './schemas/audit-output.js';
+// The DRIFT REPORT (S5-T4) — the assumption-free side-by-side + the two derived floors. The bound
+// derivation is exported because it is ONE rule with TWO enforcement sites: the service produces with it,
+// the schema re-derives with it and refuses anything else (see DriftReportSchema's superRefine).
+export {
+  SourceHoldersSchema,
+  type SourceHolders,
+  StaleFloorSchema,
+  UndergrantFloorSchema,
+  DriftReportSchema,
+  type DriftReport,
+  publicSourceBounds,
+  staleFloorFrom,
+  undergrantFloorFrom,
+  STALE_FLOOR_ASSUMPTION,
+  STALE_FLOOR_BREAKS_WHEN,
+  UNDERGRANT_FLOOR_ASSUMPTION,
+  UNDERGRANT_FLOOR_BREAKS_WHEN,
+  DRIFT_DISCLOSURE,
 } from './schemas/audit-output.js';
 // Shadow Mode — the Comparison View + Discrepancy Report (the migration delta: promotion/demotion/no_change).
 export {
@@ -72,7 +92,16 @@ export {
 } from './schemas/refusal.js';
 export { jcsCanonicalize, sha256Hex } from './jcs.js';
 export {
+  AuditSourceSchema,
+  type AuditSource,
   AuditInputsSchema,
   type AuditInputs,
+  SHADOW_AUDIT_PROTOCOL_VERSION,
   computeInputsHash,
 } from './inputs-hash.js';
+export {
+  AnonymousAuditOutputSchema,
+  type AnonymousAuditOutput,
+  AuditRefusalEnvelopeSchema,
+  type AuditRefusalEnvelope,
+} from './consumer-contract.js';

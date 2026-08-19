@@ -4,7 +4,9 @@ import { InMemoryEventStore } from '../event-store.js';
 import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
+import type { SourceResolver } from '../collection-union.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
+import { AuditRefusalEnvelopeSchema } from '@freeside/shadow-audit-protocol';
 
 const R1 = '0x' + '1'.repeat(40);
 const R2 = '0x' + '2'.repeat(40);
@@ -19,6 +21,7 @@ function snapshot(): RoleSnapshot {
   return {
     source: 'discord:guild:1',
     community: 'thj',
+    collection: { chain: '1', contract: CONTRACT }, // the gated collection these roles are for
     captured_at: '2026-06-22T11:00:00.000Z',
     export_method: 'export',
     owner: OWNER,
@@ -38,11 +41,15 @@ const ownership: OwnershipSource = {
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const roles: RoleSource = { load: async () => snapshot() };
 
+/** The fixture collection has ONE declared deployment (chain 1) — see audit-service.test.ts for the union. */
+const sources: SourceResolver = () => [{ chain: '1', contract: CONTRACT }];
+
 function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   return {
     ownership,
     whale,
     roles,
+    sources,
     eventStore: new InMemoryEventStore(),
     rateLimiter: new FixedWindowRateLimiter({ limit: 100, windowMs: 60_000, now: () => NOW_MS }),
     auth: {
@@ -63,11 +70,11 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
   };
 }
 
-const GET_URL = `/v1/audit?chain=ethereum&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
+const GET_URL = `/v1/audit?chain=1&contract=${CONTRACT}&snapshot_date=2026-06-22&community=thj&owner_wallet=${OWNER}&threshold=1`;
 
 function namedBody() {
   return {
-    chain: 'ethereum',
+    chain: '1',
     contract: CONTRACT,
     snapshot_date: '2026-06-22',
     community: 'thj',
@@ -205,6 +212,31 @@ describe('GET /v1/audit/view (thin dashboard HTML)', () => {
     expect(html).toContain('/shadow-access'); // product CTA
     expect(html).toContain('/talk'); // conversation CTA
   });
+
+  it('LEADS with the assumption-free side-by-side, and labels each floor with its violation direction (S5-T4)', async () => {
+    const res = await createAuditRouter(makeDeps()).request(`/v1/audit/view${GET_URL.slice(GET_URL.indexOf('?'))}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // THE HEADLINE — two measured facts, no derivation. This is the DoD's "sees its real drift, NEXT TO its
+    // incumbent roles", and it is the ONLY part of this page that is true at 0% identity coverage.
+    expect(html).toContain('Your role, next to the chain');
+    expect(html).toContain('members</strong> hold the role');
+    expect(html).toContain('Both numbers are measured. No identity data, no assumptions.');
+    // The side-by-side must come BEFORE the wallet-matched cohorts — the floors are never the headline.
+    expect(html.indexOf('Your role, next to the chain')).toBeLessThan(
+      html.indexOf('Members we could match to a wallet'),
+    );
+
+    // …and every floor carries its assumption + the direction it errs when that assumption breaks, and says
+    // it bounds WALLETS. A floor rendered as a bare number about PEOPLE is the failure mode.
+    expect(html).toContain('wallets</strong>');
+    expect(html).toContain('Holds only if no two role members hold the role through the same wallet');
+    expect(html).toContain('Holds only if each role member holds the collection through at most one wallet');
+    expect(html).toContain('<strong>overstates</strong>');
+    // whitespace-insensitive: the CLAIM is load-bearing, the template's line-wrapping is not.
+    expect(html.replace(/\s+/g, ' ')).toContain('It bounds WALLETS, not people: one person with ten wallets is ten holders.');
+  });
 });
 
 describe('GET /v1/collections/:chain/:contract — capability read (FR-2)', () => {
@@ -241,5 +273,95 @@ describe('GET /v1/collections/:chain/:contract — capability read (FR-2)', () =
     );
     const body = (await (await app.request('/v1/collections/10/0xED5A')).json()) as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(['chain', 'collection', 'contract', 'standard']);
+  });
+});
+
+/**
+ * Bug 20260712-486383 — the signal must reach THE WIRE, not just `runAudit`'s return value.
+ *
+ * `uncertain` was already returned by runAudit — and dropped by every JSON route (it was once a
+ * top-level field and was REMOVED because it broke the dashboard's strict decode). So "flip
+ * uncertain" was a no-op fix: the JSON channel the dashboard reads carried no signal at all.
+ */
+describe('role coverage on the wire (bug 20260712-486383)', () => {
+  /** `matchedCount` of `total` role-holders resolve to a wallet. */
+  function coverageRoles(matchedCount: number, total: number): RoleSource {
+    return {
+      load: async () => ({
+        ...snapshot(),
+        entries: Array.from({ length: total }, (_, i) =>
+          i < matchedCount
+            ? {
+                discord_user_id: `u${i}`,
+                wallet: '0x' + (i + 1).toString(16).padStart(40, '0'),
+                role_ids: ['h'],
+              }
+            : { discord_user_id: `u${i}`, role_ids: ['h'] },
+        ),
+      }),
+    };
+  }
+
+  it('GET /v1/audit REFUSES 422 role-coverage-too-low for the real 1/515 THJ shape', async () => {
+    const app = createAuditRouter(makeDeps({ roles: coverageRoles(1, 515) }));
+    const res = await app.request(GET_URL);
+    expect(res.status).toBe(422);
+    const body = AuditRefusalEnvelopeSchema.parse(await res.json());
+    expect(body.error.code).toBe('role-coverage-too-low');
+    expect(body.error.reason).toContain('515'); // names what we cannot see
+    expect(body.error.retryable).toBe(false); // re-running changes nothing; the missing links do
+  });
+
+  it('builds coverage-refusal drift from current counts without historical reconstruction', async () => {
+    let historicalReconstructions = 0;
+    let currentReads = 0;
+    const app = createAuditRouter(
+      makeDeps({
+        roles: coverageRoles(1, 515),
+        ownership: {
+          ...ownership,
+          balancesAt: async (args) => {
+            historicalReconstructions++;
+            return ownership.balancesAt(args);
+          },
+          currentBalances: async (args) => {
+            currentReads++;
+            return ownership.currentBalances(args);
+          },
+        },
+      }),
+    );
+
+    expect((await app.request(GET_URL)).status).toBe(422);
+    expect(historicalReconstructions).toBe(0);
+    expect(currentReads).toBe(1);
+  });
+
+  it('GET /v1/audit (the JSON channel the dashboard reads) carries the coverage signal', async () => {
+    // 14/20 = 70%: served, but labelled. 6 unmatched >= k → exact cohort, so the ratio is publishable.
+    const app = createAuditRouter(makeDeps({ roles: coverageRoles(14, 20), k: 5 }));
+    const res = await app.request(GET_URL);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      aggregate: {
+        coverage_uncertain: boolean;
+        role_coverage: number | null;
+        unmatched_role_holders: { kind: string; value?: number };
+      };
+    };
+    expect(body.aggregate.coverage_uncertain).toBe(true);
+    expect(body.aggregate.role_coverage).toBe(0.7);
+    expect(body.aggregate.unmatched_role_holders).toEqual({ kind: 'exact', value: 6 });
+  });
+
+  it('GET /v1/audit/view names the blind spot instead of calling it "stale"', async () => {
+    const app = createAuditRouter(makeDeps({ roles: coverageRoles(14, 20), k: 5 }));
+    const res = await app.request(GET_URL.replace('/v1/audit?', '/v1/audit/view?'));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('could only resolve');
+    expect(html).toContain('could not resolve');
+    // The snapshot is FRESH — calling it stale would be its own small lie.
+    expect(html).not.toContain('snapshot is stale');
   });
 });

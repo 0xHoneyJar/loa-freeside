@@ -5,7 +5,7 @@ import type { OwnershipActivity } from '../ownership-projection-subscriber.js';
 
 const W = (n: string) => '0x' + n.repeat(40);
 const A = W('a'), B = W('b'), R1 = W('1'), R2 = W('2');
-const CHAIN = 'ethereum';
+const CHAIN = '1';
 
 // a fake @freeside/events subscriber — captures the handler so the test can feed the worldline.
 let feed: (a: OwnershipActivity) => void = () => {};

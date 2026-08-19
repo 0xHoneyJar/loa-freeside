@@ -1,6 +1,6 @@
 {
   "name": "@freeside/shadow-audit-protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sealed Zod schemas + deterministic inputs_hash for the Shadow Access Audit (dogfood-NFT lead magnet)",
   "type": "module",
   "main": "src/index.ts",

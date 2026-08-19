@@ -15,10 +15,13 @@ export {
 export {
   RoleSnapshotSchema,
   RoleSnapshotEntrySchema,
+  SnapshotCollectionSchema,
+  collectionKey,
   isSnapshotFresh,
   resolveRoles,
   type RoleSnapshot,
   type RoleSnapshotEntry,
+  type SnapshotCollection,
   type RoleResolution,
 } from './role-snapshot.js';
 export {
@@ -41,6 +44,7 @@ export {
   type AuditRequest,
   type AuditDeps,
   type AuditServiceResult,
+  RoleSourceDataError,
 } from './audit-service.js';
 export {
   RunEventSchema,
@@ -71,10 +75,26 @@ export {
 export {
   FixedWindowRateLimiter,
   type RateLimiter,
+  type ReconstructionBudget,
   type RateLimiterConfig,
   type RateDecision,
 } from './rate-limiter.js';
+export {
+  PostgresFixedWindowRateLimiter,
+  type PostgresFixedWindowRateLimiterConfig,
+} from './postgres-rate-limiter.js';
 export { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
+export {
+  RoleSnapshotConflictError,
+} from './role-store.js';
+export {
+  makeRepositoryRoleStore,
+  PostgresRoleSnapshotRepository,
+  connectPostgresRoleSnapshotRepository,
+  type RoleSnapshotRecord,
+  type RoleSnapshotRepository,
+  type PostgresRoleSnapshotConnection,
+} from './role-store-postgres.js';
 export {
   comparisonArtifact,
   exportComparisonJson,
